@@ -1,0 +1,50 @@
+{
+  "name": "opensphere-inc",
+  "owner": {
+    "name": "OPENSPHERE Inc.",
+    "url": "https://github.com/OPENSPHERE-Inc"
+  },
+  "plugins": [
+    {
+      "name": "creview",
+      "source": "./creview",
+      "description": "Multi-agent parallel code review workflow: start → triage → respond → resolve, with an automatic multi-round driver. Reviewers and fixers are resolved from the destination project's .claude/agents.",
+      "homepage": "https://github.com/OPENSPHERE-Inc/claude-plugin-marketplace",
+      "license": "MIT",
+      "keywords": [
+        "code-review",
+        "ai-agent",
+        "workflow",
+        "triage"
+      ]
+    },
+    {
+      "name": "cprompt",
+      "source": "./cprompt",
+      "description": "Create and edit AI-facing prompts (agent / skill / rule / command) and self-check / fix them against prompt-discipline rules.",
+      "homepage": "https://github.com/OPENSPHERE-Inc/claude-plugin-marketplace",
+      "license": "MIT",
+      "keywords": [
+        "prompt-engineering",
+        "ai-agent",
+        "authoring"
+      ]
+    },
+    {
+      "name": "agent-sequencer",
+      "source": {
+        "source": "github",
+        "repo": "OPENSPHERE-Inc/agent-sequencer"
+      },
+      "description": "Claude Code skill + MCP server that lets a Python script drive an AI agent through strictly-defined workflows. Required to run creview's review_rounds.py sequencer program.",
+      "homepage": "https://github.com/OPENSPHERE-Inc/agent-sequencer",
+      "license": "MIT",
+      "keywords": [
+        "mcp",
+        "ai-agent",
+        "workflow",
+        "sequencer"
+      ]
+    }
+  ]
+}

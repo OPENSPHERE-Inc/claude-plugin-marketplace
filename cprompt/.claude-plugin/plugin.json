@@ -1,0 +1,17 @@
+{
+  "name": "cprompt",
+  "version": "0.1.0",
+  "description": "Create and edit AI-facing prompts (agent / skill / rule / command) and self-check / fix them against prompt-discipline rules.",
+  "author": {
+    "name": "OPENSPHERE Inc.",
+    "url": "https://github.com/OPENSPHERE-Inc"
+  },
+  "homepage": "https://github.com/OPENSPHERE-Inc/claude-plugin-marketplace",
+  "repository": "https://github.com/OPENSPHERE-Inc/claude-plugin-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "prompt-engineering",
+    "ai-agent",
+    "authoring"
+  ]
+}
