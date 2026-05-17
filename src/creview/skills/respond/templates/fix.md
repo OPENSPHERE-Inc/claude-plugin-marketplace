@@ -18,7 +18,8 @@ template_id: 2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14
    - Estimate ▶️ Maintain: fix_plan の各編集を適用する通常の修正。
    - Estimate 🚧 Alternative: FIXME: コメント追加のみ（ロジック変更なし）。fix_plan に記載のコメント文言（無ければ `Estimate:` の FIXME 付与方向性）に沿う。
 3. セルフレビュー: 変更箇所再読、新たな問題（リグレッション・スレッド安全性・リソースリーク等）の混入を確認、見つけたら報告前に修正。
-4. `{{tmp_dir}}/statuses/{finding-id}.json` に Write。
+4. 修正にコメントの追加・変更が含まれる場合、`{{plugin_root}}/rules/comment.md` を Read し、追加・変更したコメントが同規律に違反していないかセルフチェックする。違反があれば報告前に修正する。
+5. `{{tmp_dir}}/statuses/{finding-id}.json` に Write。
 
 並列化制約（複数 id を担当する場合）:
 
