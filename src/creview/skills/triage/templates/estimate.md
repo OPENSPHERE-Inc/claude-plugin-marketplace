@@ -56,10 +56,10 @@ fix_plan 形式: 文字列配列。各要素は `"{file:line} — {変更内容}
 - Alternative: FIXME / TODO 付与のみ
 - Downgrade: 見積対象となった却下プラン（そのまま記録）
 
-memo_value 形式:
+memo_value 形式（Maintain / Alternative は fix_plan 全エントリを末尾 ` — Plan: ` セグメントに畳んで単一行で持つ。各エントリを ` (n) ` 番号マーカーで連結し改行を含めない。要約・省略しない。Downgrade は付加しない）:
 
-- Maintain: `▶️ Maintain — Cost: {cost}, Future: {future}, Signals: {a,b,... または none}`
+- Maintain: `▶️ Maintain — Cost: {cost}, Future: {future}, Signals: {a,b,... または none} — Plan: (1) {fix_plan[0]} (2) {fix_plan[1]} ...`
 - Downgrade: `🔻 Downgrade — Cost: ..., Future: ..., Signals: ... — {格下げ理由}`
-- Alternative: `🚧 Alternative — Cost: ..., Future: ..., Signals: ... — FIXME 付与: {方向性}`
+- Alternative: `🚧 Alternative — Cost: ..., Future: ..., Signals: ... — FIXME 付与: {方向性} — Plan: (1) {fix_plan[0]} ...`
 
 戻り値: `{items: [{id, verdict}, ...], template_id}`（items は担当 ids 全件分）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

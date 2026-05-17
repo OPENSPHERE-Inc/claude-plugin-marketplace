@@ -56,10 +56,10 @@ fix_plan format: array of strings, each entry `"{file:line} — {what to change}
 - Alternative: FIXME / TODO insertion(s) only
 - Downgrade: the rejected plan that was costed (record as-is)
 
-memo_value format:
+memo_value format (for Maintain / Alternative, fold all fix_plan entries onto the single line as a trailing ` — Plan: ` segment; join entries with ` (n) ` numbered markers and include no newlines; do not summarize or omit; do not append for Downgrade):
 
-- Maintain: `▶️ Maintain — Cost: {cost}, Future: {future}, Signals: {a,b,... or none}`
+- Maintain: `▶️ Maintain — Cost: {cost}, Future: {future}, Signals: {a,b,... or none} — Plan: (1) {fix_plan[0]} (2) {fix_plan[1]} ...`
 - Downgrade: `🔻 Downgrade — Cost: ..., Future: ..., Signals: ... — {downgrade reason}`
-- Alternative: `🚧 Alternative — Cost: ..., Future: ..., Signals: ... — FIXME insertion: {direction}`
+- Alternative: `🚧 Alternative — Cost: ..., Future: ..., Signals: ... — FIXME insertion: {direction} — Plan: (1) {fix_plan[0]} ...`
 
 Return value: `{items: [{id, verdict}, ...], template_id}` (items covers all assigned ids). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

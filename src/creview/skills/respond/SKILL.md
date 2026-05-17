@@ -42,7 +42,7 @@ fix: Add null check before accessing output pointer
 ```markdown
 <!-- METADATA({finding-id}) -->
 - **Triage:** 🔧 Will Fix (assignee: cpp-sensei) — Valid finding
-- **Estimate:** ▶️ Maintain — Cost: M, Future: S, Signals: b,d
+- **Estimate:** ▶️ Maintain — Cost: M, Future: S, Signals: b,d — Plan: (1) src/foo.cpp:42 — null チェック追加
 <!-- /METADATA({finding-id}) -->
 ```
 

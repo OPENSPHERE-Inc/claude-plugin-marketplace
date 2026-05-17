@@ -38,13 +38,13 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 本スキルはマーカーの間に以下のフィールドを追加する:
 
 - `triage`（ステップ 1）— 値の形式: `🔧 Will Fix (assignee: {specialist}) — {判定理由}` / `🚫 Won't Fix — {対応不要の理由}`。
-- `estimate`（ステップ 2）— 値の形式: `▶️ Maintain — Cost: {S/M/L}, Future: {S/M/L}, Signals: {none\|a,b,c,d,e,f}` / `🔻 Downgrade — Cost: ..., Future: ..., Signals: ... — {格下げ理由}` / `🚧 Alternative — Cost: ..., Future: ..., Signals: ... — FIXME 付与: {方向性}`。
+- `estimate`（ステップ 2）— 値の形式: `▶️ Maintain — Cost: {S/M/L}, Future: {S/M/L}, Signals: {none\|a,b,c,d,e,f} — Plan: (1) {file:line — 変更} (2) ...` / `🔻 Downgrade — Cost: ..., Future: ..., Signals: ... — {格下げ理由}` / `🚧 Alternative — Cost: ..., Future: ..., Signals: ... — FIXME 付与: {方向性} — Plan: (1) {file:line — FIXME 文言} ...`。` — Plan: ` は Maintain / Alternative のみに付加し、見積で確定した修正プランを単一行に畳んだもの（Downgrade には付かない）。
 
 `status`（設定者: `/creview:respond`）と `verification`（設定者: `/creview:resolve`）は本スキルの対象外である。
 
 ### 値の制約
 
-- 単一行のみ（改行不可）。長い rationale は finding 本文側に書き、メタデータ値は要約に留める。
+- 単一行のみ（改行不可）。長い rationale は finding 本文側に書き、メタデータ値は要約に留める。例外として `estimate` の ` — Plan: ` セグメントは要約せず fix_plan 全エントリを保持する。単一行制約は維持し、各エントリは ` (n) ` 番号マーカーで連結し改行を含めない。
 - 追記のみ（削除不可）。同 (id, field) は last write wins。
 
 ### 絵文字対応表
@@ -86,7 +86,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ```jsonl
 {"id":"C-1","field":"triage","value":"🔧 Will Fix (assignee: cpp-sensei) — reason"}
-{"id":"C-1","field":"estimate","value":"▶️ Maintain — Cost: M, Future: S, Signals: b,d"}
+{"id":"C-1","field":"estimate","value":"▶️ Maintain — Cost: M, Future: S, Signals: b,d — Plan: (1) src/foo.cpp:42 — null チェック追加"}
 ```
 
 書き出しには **Write ツール**を使う。Bash の cat heredoc は値内のアポストロフィ（例: `Won't Fix`）でクォーティングが破綻するため使用不可。
