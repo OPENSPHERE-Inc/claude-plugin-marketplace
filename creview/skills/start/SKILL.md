@@ -49,15 +49,26 @@ For common prohibitions, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`. The pro
 
 For launch-prompt-completeness rules, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch Prompt Completeness.
 
+## Internal Processing (Intermediate Files)
+
+The leader (you) does not place reviewer output bodies in context.
+
+### Working directory
+
+```
+{tmp_dir} = .claude/tmp/creview-start-{timestamp}/
+{tmp_dir}/diff.txt                    ← Diff fetched by the leader in Step 1 (input to the scope-analysis sub-agent)
+{tmp_dir}/reviews/{reviewer-name}.md  ← Output from each reviewer (numbered list of findings)
+```
+
+`{timestamp}` is resolved once by the leader at the start of Step 1 and the same value is used in all subsequent steps and in `{final_doc_path}`. Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`.
+
 ## Step 1 — Identify Review Scope and Fetch Diff
 
 The leader (you) does not Read the diff content. Diff analysis, line counting, and selection of required reviewer candidates are delegated to the scope-analysis sub-agent; the leader receives only the return value (line count + candidate list + summary).
 
 1. Based on the user's input, identify the review target (base branch, target paths, etc.) and any explicitly requested reviewers (if any).
-2. Create working directories:
-   - Temporary directory: `.claude/tmp/creview-start-{timestamp}/`
-   - Reviewer output subdirectory: `{tmp_dir}/reviews/`
-   - Create both with `mkdir -p`.
+2. Resolve `{timestamp}` to fix `{tmp_dir}`, and create the working directory with `mkdir -p {tmp_dir}/reviews`.
 3. Fetch diff information via script:
    - Output file path: `{tmp_dir}/diff.txt`
    - Run:

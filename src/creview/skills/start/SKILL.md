@@ -49,15 +49,26 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch
 
 起動プロンプトの完全性に関する規約は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動プロンプトの完全性を参照。
 
+## 内部処理（中間ファイル）
+
+リーダー（あなた）はレビュアー出力本体を context に載せない。
+
+### 作業用ディレクトリ
+
+```
+{tmp_dir} = .claude/tmp/creview-start-{timestamp}/
+{tmp_dir}/diff.txt                    ← リーダーがステップ 1 で取得する差分（スコープ解析サブエージェント入力）
+{tmp_dir}/reviews/{reviewer-name}.md  ← 各レビュアーの出力（指摘の番号付きリスト）
+```
+
+`{timestamp}` はステップ 1 開始時にリーダーが一度だけ解決し、以降の全ステップおよび `{final_doc_path}` で同一値を使う。作成はステップ 1、削除はリーダーがステップ 4 で `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で行う。
+
 ## ステップ 1 — レビュー範囲の特定と差分取得
 
 リーダー（あなた）は差分内容を Read しない。差分の解析・行数算出・必要レビュアー候補の選定はスコープ解析サブエージェントに委譲し、戻り値（行数 + 候補リスト + サマリ）のみ受け取る。
 
 1. ユーザーの入力に基づき、レビュー対象（ベースブランチ・対象パス等）と明示要求レビュアー（あれば）を特定する。
-2. 作業用ディレクトリを作成する:
-   - 一時ディレクトリ: `.claude/tmp/creview-start-{timestamp}/`
-   - レビュアー出力サブディレクトリ: `{tmp_dir}/reviews/`
-   - `mkdir -p` で両方作成する。
+2. `{timestamp}` を解決して `{tmp_dir}` を確定し、`mkdir -p {tmp_dir}/reviews` で作業用ディレクトリを作成する。
 3. 差分情報をスクリプトで取得する:
    - 出力ファイルパス: `{tmp_dir}/diff.txt`
    - 以下を実行:
