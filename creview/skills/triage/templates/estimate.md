@@ -56,6 +56,8 @@ fix_plan format: array of strings, each entry `"{file:line} — {what to change}
 - Alternative: FIXME / TODO insertion(s) only
 - Downgrade: the rejected plan that was costed (record as-is)
 
+Write the `rationale`, the `fix_plan` change descriptions, and the `memo_value` prose in the same language as the existing Finding descriptions in `{{document_path}}` (the `▶️ Maintain` / `🔻 Downgrade` / `🚧 Alternative` labels and emoji, the `Cost:` / `Future:` / `Signals:` / `Plan:` keys, the signal letters a–f, S/M/L, the `(n)` markers, and file:line stay fixed).
+
 memo_value format (for Maintain / Alternative, fold all fix_plan entries onto the single line as a trailing ` — Plan: ` segment; join entries with ` (n) ` numbered markers and include no newlines; do not summarize or omit; do not append for Downgrade):
 
 - Maintain: `▶️ Maintain — Cost: {cost}, Future: {future}, Signals: {a,b,... or none} — Plan: (1) {fix_plan[0]} (2) {fix_plan[1]} ...`

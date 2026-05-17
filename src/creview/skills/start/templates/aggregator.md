@@ -11,6 +11,7 @@ template_id: 7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54
 ラウンド番号: `{{round_num_or_omitted}}`
 レビュー対象: `{{targets_description}}`
 レビュアー一覧: `{{reviewer_names_csv}}`
+出力言語: `{{doc_lang}}`
 
 統合手順:
 
@@ -26,6 +27,7 @@ template_id: 7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54
 - 指摘ごとにメタデータ（レビュアー）を箇条書きで記載し、その下に「指摘」を太字ラベル付きで記述する。
 - 指摘本文の後、`---` 区切りの前に、メタデータ挿入用マーカー `<!-- METADATA({finding-id}) -->` と `<!-- /METADATA({finding-id}) -->` を空行で挟んで配置する。マーカー間は空のまま出力する（後工程で機械的にメタデータが挿入される）。
 - 指摘と指摘の間は `---` の水平線で区切る。Status 行は出力しない（本スキルの責務外）。
-- 該当指摘がない重要度セクション（`## Critical` / `## Major` / `## Minor` / `## Info`）も見出しを省略せず、本文に `指摘無し` と記載する。
+- 該当指摘がない重要度セクション（`## Critical` / `## Major` / `## Minor` / `## Info`）も見出しを省略せず、本文に「指摘無し」相当を `{{doc_lang}}` で記載する。
+- 散文（指摘の説明、サマリ本文、メタデータの見出しラベル）は `{{doc_lang}}` で記述する。構造アンカー（重要度見出し `## Critical` / `## Major` / `## Minor` / `## Info`、finding-id、`<!-- METADATA(...) -->` マーカー）は後工程の解析対象のため `{{doc_lang}}` に関わらず変更しない。
 
 戻り値: `{doc_path, findings_total, severity_counts: {critical, major, minor, info}, duplicates_merged, template_id}`。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

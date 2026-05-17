@@ -1,3 +1,5 @@
+<!-- Skeleton example. Write the prose and labels (Date / Scope / Reviewers / Summary / counts, etc.) in doc_lang. Do not change the severity headings, finding-id, or METADATA markers. -->
+
 # Parallel Code Review Report — Round {N}
 
 - **Date:** YYYY-MM-DD

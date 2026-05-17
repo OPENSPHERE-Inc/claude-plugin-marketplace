@@ -43,6 +43,12 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch
 - 指定がない場合のデフォルト: `.claude/tmp/creview-start-{timestamp}.md`（`{timestamp}` は作業用ディレクトリ名と同じ値）。tmp_dir 配下には置かない（ステップ 4 で削除されるため）。
 - 上位のオーケストレーター（/creview:rounds 等）から呼び出される場合は呼び出し側がパスを指定する。
 
+## 出力言語
+
+レビュードキュメントの散文（指摘の説明、サマリ本文）はユーザーのチャット言語で記述する。リーダーは現在のチャットでユーザーが使用している言語を判定し `{doc_lang}`（例: `日本語`、`English`）として確定し、ステップ 2 のレビュアーおよびステップ 3 の集約サブエージェントへ変数として渡す。
+
+構造アンカー（重要度見出し `## Critical` / `## Major` / `## Minor` / `## Info`、finding-id、メタデータマーカー）は後工程（triage / respond / resolve）の解析対象のため `{doc_lang}` に関わらず変更しない。
+
 ## サブエージェント共通指示
 
 共通禁止事項は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` を参照。各サブエージェントへのプロンプト本体は `templates/*.md` の外部テンプレートに格納されている（frontmatter に `template_id` を持つ）。リーダーは Agent ツール起動時に「テンプレートを Read して指示に従う」旨の起動プロンプトに変数値を埋めて渡す。サブエージェントは戻り値に `template_id` を含める。リーダーは戻り値の `template_id` が各ステップで指定されている UUID（後述、各ステップにハードコード）と一致することを確認し、不一致の場合は当該サブエージェントを再起動する。
@@ -119,6 +125,7 @@ Agent ツール起動時は `subagent_type={name}`（スコープ解析 Sub が�
 - base: {base}
 - diff_path: {diff_path}
 - output_path: {output_path}
+- doc_lang: {doc_lang}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
 - (none)
@@ -150,6 +157,7 @@ Agent ツール起動時は `subagent_type={name}`（スコープ解析 Sub が�
 - round_num_or_omitted: {round_num_or_omitted}
 - targets_description: {targets_description}
 - reviewer_names_csv: {reviewer_names_csv}
+- doc_lang: {doc_lang}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
 - (none)

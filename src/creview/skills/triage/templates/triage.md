@@ -52,6 +52,8 @@ Won't Fix ガイドライン（いずれか該当時）:
 
 `{{tmp_dir}}/triage.json` 形式: `{items: [{id, verdict, assignee（Won't Fix は null）, reason, memo_value}], will_fix_count, wontfix_count, by_stage: {<stage>: <int>}}`
 
+`reason` および `memo_value` の散文は、`{{document_path}}` の既存 Finding 説明と同じ言語で記述する（`🔧 Will Fix` / `🚫 Won't Fix` のラベルと絵文字、`(assignee: ...)` は固定）。
+
 memo_value 形式:
 
 - Will Fix: `🔧 Will Fix (assignee: {assignee}) — {reason}`

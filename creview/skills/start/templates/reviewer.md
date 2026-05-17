@@ -17,4 +17,5 @@ Rules:
 Output:
 
 - Write only a numbered list in the format `[severity] file_path:line — Description of the issue and its importance.` to `{{output_path}}` (no preamble or postamble).
+- Write the issue description in `{{doc_lang}}`. Keep `file_path:line` and the severity labels (Critical / Major / Minor / Info) as-is.
 - Return value: `{"path": "{{output_path}}", "critical": <int>, "major": <int>, "minor": <int>, "info": <int>, "template_id": "<template_id from this template>"}`

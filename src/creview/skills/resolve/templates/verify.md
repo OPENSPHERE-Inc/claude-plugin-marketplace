@@ -51,6 +51,8 @@ Unresolved として報告するケース:
 
 trailing_field: マーカー内の末尾フィールド（例: `Status: 🟢 Fixed` / `Triage: 🚫 Won't Fix` / `(empty)`）。
 
+`reason` / `memo_value` の説明文 / `feedback_detail` の散文は、`{{document_path}}` の既存 Finding 説明と同じ言語で記述する（`✅ Verified` / `💬 Feedback` ラベルと絵文字は固定）。
+
 memo_value:
 
 - Resolved: `✅ Verified — {検証結果}`

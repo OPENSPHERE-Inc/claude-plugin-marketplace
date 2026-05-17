@@ -43,6 +43,12 @@ If no base branch is specified via `--base`, use whichever of `main` or `master`
 - Default when not specified: `.claude/tmp/creview-start-{timestamp}.md` (`{timestamp}` matches the working directory name). Do not place it under tmp_dir (it would be deleted in Step 4).
 - When invoked from an upper orchestrator (e.g., /creview:rounds), the caller specifies the path.
 
+## Output Language
+
+The review document prose (finding descriptions, summary body) is written in the user's chat language. The leader determines the language the user is currently using in the chat, fixes it as `{doc_lang}` (e.g., `日本語`, `English`), and passes it as a variable to the Step 2 reviewers and the Step 3 aggregator sub-agent.
+
+Structural anchors (severity headings `## Critical` / `## Major` / `## Minor` / `## Info`, finding-id, metadata markers) are parsing targets for later phases (triage / respond / resolve), so they do not change regardless of `{doc_lang}`.
+
 ## Common Sub-Agent Instructions
 
 For common prohibitions, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`. The prompt body for each sub-agent is stored in an external template under `templates/*.md` (each template has a `template_id` in its frontmatter). When launching via the Agent tool, the leader passes a launch prompt that instructs the sub-agent to "Read the template and follow its instructions," with the variable values substituted in. The sub-agent must include `template_id` in its return value. The leader verifies that the returned `template_id` matches the UUID specified at each step (hardcoded per step, see below); if it does not match, the leader re-launches that sub-agent.
@@ -119,6 +125,7 @@ Variables (substitute into the template's {{...}} placeholders):
 - base: {base}
 - diff_path: {diff_path}
 - output_path: {output_path}
+- doc_lang: {doc_lang}
 
 Round-specific overrides (apply after following the template's instructions):
 - (none)
@@ -150,6 +157,7 @@ Variables (substitute into the template's {{...}} placeholders):
 - round_num_or_omitted: {round_num_or_omitted}
 - targets_description: {targets_description}
 - reviewer_names_csv: {reviewer_names_csv}
+- doc_lang: {doc_lang}
 
 Round-specific overrides (apply after following the template's instructions):
 - (none)

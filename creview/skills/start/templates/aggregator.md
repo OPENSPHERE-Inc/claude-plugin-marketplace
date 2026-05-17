@@ -11,6 +11,7 @@ Output file: `{{final_doc_path}}`
 Round number: `{{round_num_or_omitted}}`
 Review target: `{{targets_description}}`
 Reviewer list: `{{reviewer_names_csv}}`
+Output language: `{{doc_lang}}`
 
 Consolidation procedure:
 
@@ -26,6 +27,7 @@ Format rules:
 - For each finding, list metadata (reviewers) as bullets, and below that write the "Finding" with a bold label.
 - After the finding body and before the `---` separator, place the metadata insertion markers `<!-- METADATA({finding-id}) -->` and `<!-- /METADATA({finding-id}) -->`, separated from surrounding content by blank lines. Output the space between the markers as empty (a later step inserts metadata mechanically).
 - Separate findings with a `---` horizontal rule. Do not output a Status line (it is outside this skill's responsibility).
-- For severity sections with no applicable findings (`## Critical` / `## Major` / `## Minor` / `## Info`), do not omit the heading; output the heading and write `No findings` in the body.
+- For severity sections with no applicable findings (`## Critical` / `## Major` / `## Minor` / `## Info`), do not omit the heading; output the heading and write the `No findings` equivalent in `{{doc_lang}}` in the body.
+- Write the prose (finding descriptions, summary body, metadata heading labels) in `{{doc_lang}}`. Structural anchors (severity headings `## Critical` / `## Major` / `## Minor` / `## Info`, finding-id, `<!-- METADATA(...) -->` markers) are parsing targets for later phases, so they do not change regardless of `{{doc_lang}}`.
 
 Return value: `{doc_path, findings_total, severity_counts: {critical, major, minor, info}, duplicates_merged, template_id}`. Include `template_id` exactly as Read from this template's frontmatter.

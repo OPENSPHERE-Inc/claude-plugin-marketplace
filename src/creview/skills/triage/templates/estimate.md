@@ -56,6 +56,8 @@ fix_plan 形式: 文字列配列。各要素は `"{file:line} — {変更内容}
 - Alternative: FIXME / TODO 付与のみ
 - Downgrade: 見積対象となった却下プラン（そのまま記録）
 
+`rationale` / `fix_plan` の変更説明 / `memo_value` の散文は、`{{document_path}}` の既存 Finding 説明と同じ言語で記述する（`▶️ Maintain` / `🔻 Downgrade` / `🚧 Alternative` のラベルと絵文字、`Cost:` / `Future:` / `Signals:` / `Plan:` のキー、シグナル記号 a–f、S/M/L、`(n)` マーカー、file:line は固定）。
+
 memo_value 形式（Maintain / Alternative は fix_plan 全エントリを末尾 ` — Plan: ` セグメントに畳んで単一行で持つ。各エントリを ` (n) ` 番号マーカーで連結し改行を含めない。要約・省略しない。Downgrade は付加しない）:
 
 - Maintain: `▶️ Maintain — Cost: {cost}, Future: {future}, Signals: {a,b,... または none} — Plan: (1) {fix_plan[0]} (2) {fix_plan[1]} ...`
