@@ -1,7 +1,7 @@
 ---
 name: resolve
 description: レビュー指摘の解決状況を実際のソースコードと照合して検証し、検証メタデータを書き戻す
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュー検証
@@ -10,7 +10,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## 入力
 
-ユーザーはレビュードキュメント（markdown）へのパスを指定する。引数が `$ARGUMENTS` の場合、レビュードキュメントへのパスとして解釈する。
+ユーザーはレビュードキュメント（markdown）へのパスを指定する。引数が `$ARGUMENTS` の場合、レビュードキュメントへのパスとして解釈する。`--base {branch}` でベースブランチを指定できる（指定がなければリモートに存在する `main` または `master` を使用する。両方存在する場合は `main` を優先）。
 
 ## レビュードキュメント形式
 
@@ -70,13 +70,13 @@ Unresolved の指摘には `verification` 値を書き込まない。
 
 ```
 {tmp_dir} = .claude/tmp/creview-resolve-{timestamp}/
+{tmp_dir}/diff.txt                 ← リーダーがステップ 1 で取得する差分（検証サブエージェント入力）
 {tmp_dir}/verifications/{id}.json  ← 検証サブエージェントの出力（指摘 1 件 1 ファイル）
 {tmp_dir}/events.jsonl             ← 編纂サブエージェントの出力（render-review.py 入力）
 {tmp_dir}/resolve-summary.md       ← 編纂サブエージェントの出力（検証レポート）
 ```
 
-ステップ 1 開始時にリーダーが `mkdir -p {tmp_dir}/verifications` で `{tmp_dir}` を作成する。
-ステップ 4 完了後にリーダーが `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で削除する。
+作成はステップ 1、削除はリーダーがステップ 4 で `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で行う。
 
 ### events.jsonl
 
@@ -91,9 +91,17 @@ events.jsonl は `{tmp_dir}/events.jsonl` に置く。形式:
 
 **Unresolved** の指摘（トリアージ未実施 / 見積未完了 / 修正未完了）は events.jsonl に書き込まない（verification を付ける段階にない）。
 
-## ステップ 1 — 解析（解析サブエージェントへ委譲）
+## ステップ 1 — 差分取得と解析（解析サブエージェントへ委譲）
 
-`Agent(subagent_type="review-helper", prompt=...)` で起動する。タスク固有の指示は `templates/analyze.md` 外部テンプレートに格納されている。起動プロンプト例:
+リーダー（あなた）は差分内容を Read しない。差分なしでは検証が不十分になるため、リーダーが差分をファイルに取得し、検証サブエージェントに渡す。
+
+1. ベースブランチを特定する（入力の `--base` 指定値。指定がなければリモートに存在する `main` または `master`。両方存在する場合は `main` を優先）。
+2. `mkdir -p {tmp_dir}/verifications` で `{tmp_dir}` を作成する。
+3. 差分をスクリプトで `{tmp_dir}/diff.txt` に取得する:
+   ```
+   ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
+   ```
+4. 解析サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する。タスク固有の指示は `templates/analyze.md` 外部テンプレートに格納されている。起動プロンプト例:
 
 ```
 最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/analyze.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
@@ -124,6 +132,7 @@ events.jsonl は `{tmp_dir}/events.jsonl` に置く。形式:
 - ids: {ids}
 - document_path: {document_path}
 - tmp_dir: {tmp_dir}
+- diff_path: {tmp_dir}/diff.txt
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
 - (該当なし)
@@ -157,11 +166,11 @@ events.jsonl は `{tmp_dir}/events.jsonl` に置く。形式:
 
 2. 編纂サブエージェントから戻り値（`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count, template_id}`）を受け取る。`template_id` が `1c5e8b2f-7d34-4a96-b8c1-5e9a3f7d2c84` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
 
+## ステップ 4 — 完了報告とクリーンアップ
+
+1. リーダーは編纂サブエージェントから受け取った `summary_line` をコンソールに表示する。
+2. 詳細レポートが必要な場合のみ `summary_path`（`{tmp_dir}/resolve-summary.md`）を Read する。
 3. リーダーが `{tmp_dir}` を一括削除する:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}
    ```
-
-## ステップ 4 — 完了報告
-
-リーダーは編纂サブエージェントから受け取った `summary_line` をコンソールに表示する。詳細レポートが必要な場合のみ `summary_path`（`{tmp_dir}` 削除前であれば `resolve-summary.md`）を Read する。

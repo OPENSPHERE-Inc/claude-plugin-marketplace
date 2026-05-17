@@ -6,7 +6,10 @@ template_id: 8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94
 
 担当指摘 `{{ids}}` の検証を一括実施する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
 
-入力: レビュードキュメント `{{document_path}}`（Read して各 id の severity / location / description / 末尾フィールドを取得する）。
+入力:
+
+- レビュードキュメント `{{document_path}}`（Read して各 id の severity / location / description / 末尾フィールドを取得する）。
+- 差分ファイル `{{diff_path}}`（Read して今回の変更範囲を把握する。`Status: 🟢 Fixed` の検証では、記載された修正がこの差分に実在するかを照合の基準とする。差分外を根拠に Resolved と判定しない）。
 
 各 id について以下のロジックで Resolved / Feedback / Unresolved を判定し、結果を `{{tmp_dir}}/verifications/{id}.json` に Write する。末尾フィールドは METADATA マーカー間の triage / estimate / status / verification の最終値。
 

@@ -6,7 +6,10 @@ template_id: 8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94
 
 Verify the assigned findings `{{ids}}` in batch. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
 
-Input: review document `{{document_path}}` (Read it to obtain each id's severity / location / description / trailing field).
+Input:
+
+- Review document `{{document_path}}` (Read it to obtain each id's severity / location / description / trailing field).
+- Diff file `{{diff_path}}` (Read it to grasp the scope of the current changes. For `Status: 🟢 Fixed` verification, use whether the described fix actually exists in this diff as the baseline for collation. Do not judge Resolved based on anything outside the diff).
 
 For each id, determine Resolved / Feedback / Unresolved using the logic below and Write the result to `{{tmp_dir}}/verifications/{id}.json`. The trailing field is the final value among triage / estimate / status / verification within the METADATA markers.
 

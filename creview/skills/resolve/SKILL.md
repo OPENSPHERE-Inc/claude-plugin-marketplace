@@ -1,7 +1,7 @@
 ---
 name: resolve
 description: Verify review finding resolutions against actual source code and write back verification metadata
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Verification
@@ -10,7 +10,7 @@ You are the **review verifier**: re-read the updated review document, verify eac
 
 ## Input
 
-The user specifies a path to the review document (markdown). When the argument is `$ARGUMENTS`, interpret it as the path to the review document.
+The user specifies a path to the review document (markdown). When the argument is `$ARGUMENTS`, interpret it as the path to the review document. `--base {branch}` specifies the base branch (if not specified, use `main` or `master` that exists on the remote; if both exist, prefer `main`).
 
 ## Review Document Format
 
@@ -70,13 +70,13 @@ The leader (you) does not place the verification body in context.
 
 ```
 {tmp_dir} = .claude/tmp/creview-resolve-{timestamp}/
+{tmp_dir}/diff.txt                 ← Diff fetched by the leader in Step 1 (input to the verification sub-agent)
 {tmp_dir}/verifications/{id}.json  ← Output from the verification sub-agent (one file per finding)
 {tmp_dir}/events.jsonl             ← Output from the aggregator sub-agent (input to render-review.py)
 {tmp_dir}/resolve-summary.md       ← Output from the aggregator sub-agent (verification report)
 ```
 
-At the start of Step 1, the leader creates `{tmp_dir}` with `mkdir -p {tmp_dir}/verifications`.
-After Step 4 completes, the leader removes it with `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`.
+Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`.
 
 ### events.jsonl
 
@@ -91,9 +91,17 @@ Use the **Write tool** for output. Bash cat heredoc is unusable because apostrop
 
 **Unresolved** findings (not yet triaged / estimate not yet completed / fix not yet completed) are not written to events.jsonl (they are not at the stage of receiving a verification).
 
-## Step 1 — Analysis (delegate to the analysis sub-agent)
+## Step 1 — Fetch diff and analyze (delegate to the analysis sub-agent)
 
-Launch via `Agent(subagent_type="review-helper", prompt=...)`. Task-specific instructions are stored in the `templates/analyze.md` external template. Example launch prompt:
+The leader (you) does not Read the diff content. Verification is insufficient without the diff, so the leader fetches the diff to a file and passes it to the verification sub-agent.
+
+1. Determine the base branch (the input's `--base` value; if not specified, `main` or `master` that exists on the remote; if both exist, prefer `main`).
+2. Create `{tmp_dir}` with `mkdir -p {tmp_dir}/verifications`.
+3. Fetch the diff to `{tmp_dir}/diff.txt` with the script:
+   ```
+   ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
+   ```
+4. Launch the analysis sub-agent via `Agent(subagent_type="review-helper", prompt=...)`. Task-specific instructions are stored in the `templates/analyze.md` external template. Example launch prompt:
 
 ```
 As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/analyze.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
@@ -124,6 +132,7 @@ Variables (substitute into the template's {{...}} placeholders):
 - ids: {ids}
 - document_path: {document_path}
 - tmp_dir: {tmp_dir}
+- diff_path: {tmp_dir}/diff.txt
 
 Round-specific overrides (apply after following the template's instructions):
 - (none)
@@ -157,11 +166,11 @@ Include `template_id` (Read from the template's frontmatter) in the return value
 
 2. Receive the return value from the aggregator sub-agent (`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count, template_id}`). Verify that `template_id` matches `1c5e8b2f-7d34-4a96-b8c1-5e9a3f7d2c84`. If it does not match, relaunch the sub-agent.
 
+## Step 4 — Completion report and cleanup
+
+1. The leader displays the `summary_line` received from the aggregator sub-agent on the console.
+2. Read `summary_path` (`{tmp_dir}/resolve-summary.md`) only if a detailed report is needed.
 3. The leader removes `{tmp_dir}` in one shot:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}
    ```
-
-## Step 4 — Completion report
-
-The leader displays the `summary_line` received from the aggregator sub-agent on the console. Read `summary_path` (`resolve-summary.md`, available before `{tmp_dir}` is removed) only if a detailed report is needed.
