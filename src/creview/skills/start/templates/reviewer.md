@@ -17,4 +17,5 @@ template_id: 4d8c2e5b-1f73-4a96-b2e8-9c1d3a7f4b62
 出力:
 
 - `{{output_path}}` に `[重要度] file_path:line — 問題の説明とその重要性。` 形式の番号付きリストのみ Write（前置き・後書き禁止）。
+- 問題の説明は `{{doc_lang}}` で記述する。`file_path:line` と重要度ラベル（Critical / Major / Minor / Info）はそのまま。
 - 戻り値: `{"path": "{{output_path}}", "critical": <int>, "major": <int>, "minor": <int>, "info": <int>, "template_id": "<本テンプレートの template_id>"}`

@@ -51,6 +51,8 @@ Format of `{{tmp_dir}}/verifications/{id}.json`: `{id, severity, trailing_field,
 
 trailing_field: the trailing field within the markers (e.g., `Status: 🟢 Fixed` / `Triage: 🚫 Won't Fix` / `(empty)`).
 
+Write the `reason`, the `memo_value` description text, and the `feedback_detail` prose in the same language as the existing Finding descriptions in `{{document_path}}` (the `✅ Verified` / `💬 Feedback` labels and emoji stay fixed).
+
 memo_value:
 
 - Resolved: `✅ Verified — {verification result}`

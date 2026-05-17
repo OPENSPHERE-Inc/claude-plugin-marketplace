@@ -52,6 +52,8 @@ Specialist assignment (Will Fix only): Enumerate the destination project's agent
 
 `{{tmp_dir}}/triage.json` format: `{items: [{id, verdict, assignee (null for Won't Fix), reason, memo_value}], will_fix_count, wontfix_count, by_stage: {<stage>: <int>}}`
 
+Write the `reason` and `memo_value` prose in the same language as the existing Finding descriptions in `{{document_path}}` (the `🔧 Will Fix` / `🚫 Won't Fix` labels and emoji, and `(assignee: ...)`, stay fixed).
+
 memo_value format:
 
 - Will Fix: `🔧 Will Fix (assignee: {assignee}) — {reason}`

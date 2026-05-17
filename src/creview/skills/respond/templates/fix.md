@@ -28,6 +28,8 @@ template_id: 2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14
 
 `{{tmp_dir}}/statuses/{finding-id}.json` 形式: `{id, specialist, description（修正内容の簡潔な説明）, memo_value}`
 
+`description` および `memo_value` の散文は、`{{document_path}}` の既存 Finding 説明と同じ言語で記述する（`🟢 Fixed` ラベルと絵文字は固定）。
+
 memo_value 形式:
 
 - Maintain: `🟢 Fixed — {修正内容}`

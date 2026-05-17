@@ -28,6 +28,8 @@ Parallelization constraints (when handling multiple ids):
 
 `{{tmp_dir}}/statuses/{finding-id}.json` format: `{id, specialist, description (concise description of the fix), memo_value}`
 
+Write the `description` and `memo_value` prose in the same language as the existing Finding descriptions in `{{document_path}}` (the `🟢 Fixed` label and emoji stay fixed).
+
 memo_value format:
 
 - Maintain: `🟢 Fixed — {fix description}`
