@@ -21,6 +21,8 @@ A finding is a fix target when **all** of the following hold:
 
 Skip (not a fix target): `Triage: 🚫 Won't Fix`, `Estimate: 🔻 Downgrade`, any finding already carrying `Status:`, and findings with no `Triage:` or no `Estimate:` (run `/creview:triage` first — record these in `not_ready` with the reason).
 
-`{{tmp_dir}}/targets.json` format: `{items: [{id, assignee, estimate (Maintain|Alternative)}], fix_count, not_ready: [{id, reason}]}`
+For each fix target, extract fix_plan from the part after ` — Plan: ` on the `Estimate:` line. Split on the leading `(1) ` and subsequent ` (n) ` numbered markers into a string array, one entry per element. When there is no ` — Plan: ` segment, set fix_plan to an empty array.
+
+`{{tmp_dir}}/targets.json` format: `{items: [{id, assignee, estimate (Maintain|Alternative), fix_plan (string array, [] when absent)}], fix_count, not_ready: [{id, reason}]}`
 
 Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` (`by_assignee` groups the fix targets by assignee; do not include finding bodies). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

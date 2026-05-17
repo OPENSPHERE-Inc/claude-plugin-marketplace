@@ -21,6 +21,8 @@ template_id: 7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95
 
 スキップ（修正対象外）: `Triage: 🚫 Won't Fix`、`Estimate: 🔻 Downgrade`、すでに `Status:` を持つ指摘、`Triage:` または `Estimate:` がない指摘（先に `/creview:triage` を実行する。これらは理由を添えて `not_ready` に記録する）。
 
-`{{tmp_dir}}/targets.json` 形式: `{items: [{id, assignee, estimate (Maintain|Alternative)}], fix_count, not_ready: [{id, reason}]}`
+各修正対象について、`Estimate:` 行の ` — Plan: ` 以降を fix_plan として抽出する。先頭 `(1) ` および以降の ` (n) ` 番号マーカーで分割し、各エントリを要素とする文字列配列にする。` — Plan: ` セグメントが無い場合は fix_plan を空配列にする。
+
+`{{tmp_dir}}/targets.json` 形式: `{items: [{id, assignee, estimate (Maintain|Alternative), fix_plan (文字列配列、無ければ [])}], fix_count, not_ready: [{id, reason}]}`
 
 戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}`（`by_assignee` は修正対象を assignee 単位でグルーピングする。指摘本文は含めない）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
