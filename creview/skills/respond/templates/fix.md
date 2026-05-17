@@ -18,7 +18,8 @@ For each id:
    - Estimate ▶️ Maintain: a normal fix applying each edit in fix_plan.
    - Estimate 🚧 Alternative: add a FIXME: comment only (no logic change). Use the comment wording in fix_plan (or, if absent, the FIXME-insertion direction in `Estimate:`).
 3. Self-review: Re-read the changed locations, check for new issues introduced (regressions, thread safety, resource leaks, etc.), and fix any found before reporting.
-4. Write to `{{tmp_dir}}/statuses/{finding-id}.json`.
+4. When the fix includes added or changed comments, Read `{{plugin_root}}/rules/comment.md` and self-check the added/changed comments against that discipline. Fix any violations before reporting.
+5. Write to `{{tmp_dir}}/statuses/{finding-id}.json`.
 
 Parallelization constraints (when handling multiple ids):
 
