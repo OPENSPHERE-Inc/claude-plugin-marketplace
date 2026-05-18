@@ -18,7 +18,19 @@ fi
 ALLOWED_PREFIX=".claude/tmp/"
 
 for target in "$@"; do
-    normalized="${target#./}"
+    # Convert absolute path to relative by stripping the current working directory prefix.
+    # Rejects absolute paths outside the current project.
+    if [[ "${target}" == /* ]]; then
+        cwd="$(pwd)"
+        if [[ "${target}" == "${cwd}/"* ]]; then
+            normalized="${target#"${cwd}/"}"
+        else
+            echo "Error: absolute path is outside the current project: ${target}" >&2
+            exit 1
+        fi
+    else
+        normalized="${target#./}"
+    fi
 
     if [[ "${normalized}" == *..* ]]; then
         echo "Error: path containing '..' is not allowed: ${target}" >&2

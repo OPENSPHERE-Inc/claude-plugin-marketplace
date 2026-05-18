@@ -23,6 +23,10 @@ The user specifies one or more of the following as the review target:
 
 If the argument is `$ARGUMENTS`, interpret it as the review target specification (including round number and options).
 
+## Timestamp (`{timestamp}`)
+
+`{timestamp}` is a current date-time string (format `YYYYMMDD-HHMMSS`, e.g., `20240101-120000`) determined once at the start of Step 1. The same value is used in all subsequent steps.
+
 ## Options
 
 - `--base {branch}` — Specify the base branch. Defaults to `main` or `master`.
@@ -40,7 +44,7 @@ If no base branch is specified via `--base`, use whichever of `main` or `master`
 ### Output Destination (`{final_doc_path}`)
 
 - If `--output` is given, use that value.
-- Default when not specified: `.claude/tmp/creview-start-{timestamp}.md` (`{timestamp}` matches the working directory name). Do not place it under tmp_dir (it would be deleted in Step 4).
+- Default when not specified: `.claude/tmp/creview-start-{timestamp}.md`. Do not place it under tmp_dir (it would be deleted in Step 4).
 - When invoked from an upper orchestrator (e.g., /creview:rounds), the caller specifies the path.
 
 ## Output Language
@@ -67,7 +71,7 @@ The leader (you) does not place reviewer output bodies in context.
 {tmp_dir}/reviews/{reviewer-name}.md  ← Output from each reviewer (numbered list of findings)
 ```
 
-`{timestamp}` is resolved once by the leader at the start of Step 1 and the same value is used in all subsequent steps and in `{final_doc_path}`. Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`.
+Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`.
 
 ## Step 1 — Identify Review Scope and Fetch Diff
 

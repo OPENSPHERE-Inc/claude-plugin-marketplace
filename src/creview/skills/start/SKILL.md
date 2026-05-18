@@ -23,6 +23,10 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch
 
 引数が `$ARGUMENTS` の場合、レビュー対象の指定（ラウンド番号やオプションを含む）として解釈する。
 
+## タイムスタンプ（`{timestamp}`）
+
+`{timestamp}` はステップ 1 の開始時に一度だけ決定する現在日時文字列（`YYYYMMDD-HHMMSS` 形式、例: `20240101-120000`）。以降の全ステップで同一値を使う。
+
 ## オプション
 
 - `--base {branch}` — ベースブランチを指定する。デフォルトは `main` または `master`。
@@ -40,7 +44,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch
 ### 出力先 (`{final_doc_path}`)
 
 - `--output` 指定があればその値。
-- 指定がない場合のデフォルト: `.claude/tmp/creview-start-{timestamp}.md`（`{timestamp}` は作業用ディレクトリ名と同じ値）。tmp_dir 配下には置かない（ステップ 4 で削除されるため）。
+- 指定がない場合のデフォルト: `.claude/tmp/creview-start-{timestamp}.md`。tmp_dir 配下には置かない（ステップ 4 で削除されるため）。
 - 上位のオーケストレーター（/creview:rounds 等）から呼び出される場合は呼び出し側がパスを指定する。
 
 ## 出力言語
@@ -67,7 +71,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch
 {tmp_dir}/reviews/{reviewer-name}.md  ← 各レビュアーの出力（指摘の番号付きリスト）
 ```
 
-`{timestamp}` はステップ 1 開始時にリーダーが一度だけ解決し、以降の全ステップおよび `{final_doc_path}` で同一値を使う。作成はステップ 1、削除はリーダーがステップ 4 で `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で行う。
+作成はステップ 1、削除はリーダーがステップ 4 で `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で行う。
 
 ## ステップ 1 — レビュー範囲の特定と差分取得
 

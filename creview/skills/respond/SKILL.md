@@ -16,6 +16,10 @@ Run `/creview:triage {document}` before this skill. This skill fixes only findin
 
 The user supplies a path to a review document (markdown). When the argument is `$ARGUMENTS`, interpret it as the path to the review document.
 
+## Timestamp (`{timestamp}`)
+
+`{timestamp}` is a current date-time string (format `YYYYMMDD-HHMMSS`, e.g., `20240101-120000`) determined once at the start of Step 1. The same value is used in all subsequent steps.
+
 ## Options
 
 - `--commit` (default OFF) — Create a commit for each finding's fix.
