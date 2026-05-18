@@ -156,6 +156,7 @@ _RESPOND_SCHEMA = {
         "fixed_count": {"type": "integer", "minimum": 0},
         "code_changed": {"type": "boolean"},
         "summary_line": {"type": "string", "maxLength": 500},
+        "workflow_warning": {"type": ["string", "null"]},
     },
     "required": ["fixed_count", "code_changed"],
     "additionalProperties": True,
@@ -181,6 +182,7 @@ _FEEDBACK_SCHEMA = {
         "feedback_count": {"type": "integer", "minimum": 0},
         "code_changed": {"type": "boolean"},
         "summary_line": {"type": "string", "maxLength": 500},
+        "workflow_warning": {"type": ["string", "null"]},
     },
     "required": ["unresolved_count", "code_changed"],
     "additionalProperties": True,
@@ -324,12 +326,16 @@ _TPL_RESPOND = textwrap.dedent("""\
     {{
       "fixed_count": <int>,
       "code_changed": <bool>,
-      "summary_line": "(<=200 chars 1 行サマリ。編纂サブエージェントの戻り値をそのまま転記)"
+      "summary_line": "(<=200 chars 1 行サマリ。編纂サブエージェントの戻り値をそのまま転記)",
+      "workflow_warning": "(フォーマット／ビルド手順未宣言時の警告。無ければ null)"
     }}
     - fixed_count: 編纂サブエージェントの戻り値 fixed_count
       （Maintain の通常修正 + Alternative の FIXME 付与の合算 / 対象なしなら 0）
     - code_changed: 編纂サブエージェントの戻り値 code_changed
-    - summary_line: ユーザー通知用の 1 行サマリ\
+    - summary_line: ユーザー通知用の 1 行サマリ
+    - workflow_warning: respond スキルがステップ 3 で保持した workflow_warning
+      （フォーマット／ビルド手順が解決できず目視チェックのみだった場合に設定。
+      解決できた場合は null）\
 """)
 
 _TPL_RESOLVE = textwrap.dedent("""\
@@ -380,13 +386,16 @@ _TPL_FEEDBACK = textwrap.dedent("""\
       "resolved_count": <int>,
       "feedback_count": <int>,
       "code_changed": <bool>,
-      "summary_line": "(<=200 chars 1 行サマリ)"
+      "summary_line": "(<=200 chars 1 行サマリ)",
+      "workflow_warning": "(Step 2.5.2 の respond でフォーマット／ビルド手順未宣言時の警告。無ければ null)"
     }}
     - unresolved_count: 本試行後の {resolve_skill} 編纂サブエージェント戻り値 feedback_count
     - resolved_count: 同戻り値の resolved_count
     - feedback_count: unresolved_count と同義
     - code_changed: 本試行で 1 行でもソースコードを修正したか
-    - summary_line: ユーザー通知用の 1 行サマリ\
+    - summary_line: ユーザー通知用の 1 行サマリ
+    - workflow_warning: Step 2.5.2 の {respond_skill} がステップ 3 で保持した
+      workflow_warning（解決できた場合や respond をスキップした場合は null）\
 """)
 
 _TPL_CONFIRM_ROUND = textwrap.dedent("""\
@@ -462,7 +471,7 @@ def _format_per_round_stats_block(round_records: list[dict]) -> str:
             f"crit={sev.get('critical', 0)},maj={sev.get('major', 0)},"
             f"min={sev.get('minor', 0)},info={sev.get('info', 0)}"
         )
-        lines.append(
+        line = (
             f"    - Round {r['round_num']}: "
             f"findings={r['findings_total']} ({sev_str}), "
             f"will_fix={r['will_fix_count']}, "
@@ -476,6 +485,10 @@ def _format_per_round_stats_block(round_records: list[dict]) -> str:
             f"unresolved={r['unresolved']}, "
             f"code_changed={r['code_changed']}"
         )
+        warning = r.get("workflow_warning")
+        if warning:
+            line += f', workflow_warning="{warning}"'
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -560,6 +573,7 @@ def run(ctx):
             "code_changed": False,
             "respond_summary_line": "",
             "resolve_summary_line": "",
+            "workflow_warning": None,
         }
 
         # ----- 収束判定 1: 指摘ゼロ -----
@@ -638,6 +652,10 @@ def run(ctx):
                 round_record["respond_summary_line"] = respond_result[
                     "summary_line"
                 ]
+            if respond_result.get("workflow_warning"):
+                round_record["workflow_warning"] = respond_result[
+                    "workflow_warning"
+                ]
 
             # fixed_count == 0 なら検証対象がないので Step 2.4-2.5 はスキップ
             if respond_result["fixed_count"] > 0:
@@ -700,6 +718,10 @@ def run(ctx):
                     if feedback_result.get("summary_line"):
                         round_record["resolve_summary_line"] = feedback_result[
                             "summary_line"
+                        ]
+                    if feedback_result.get("workflow_warning"):
+                        round_record["workflow_warning"] = feedback_result[
+                            "workflow_warning"
                         ]
                     if feedback_result["code_changed"]:
                         round_record["code_changed"] = True

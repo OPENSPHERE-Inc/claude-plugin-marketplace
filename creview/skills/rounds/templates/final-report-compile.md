@@ -9,7 +9,7 @@ Generate the final report from all rounds' review documents. Read `{{plugin_root
 Input:
 
 - Each round's review document: `{{round_doc_paths}}` (e.g., `Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...`)
-- Each round's statistics (reference information): `{{round_stats}}` (e.g., `Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...`)
+- Each round's statistics (reference information): `{{round_stats}}` (e.g., `Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...`). A round annotated with `workflow_warning="..."` indicates that, in that round's respond, the format / build procedure could not be resolved and automatic verification was skipped.
 - Report template: `{{template_path}}`
 - Output path: `{{report_path}}`
 - Language: `{{language}}`
@@ -19,6 +19,7 @@ What to do:
 1. Read the template markdown to grasp the structure (`<...>` placeholders, table structure, and the subsection examples in the future-recommendations section).
 2. From each round's md `<!-- METADATA(id) --> ... <!-- /METADATA(id) -->`, extract Triage / Estimate / Status / Verification values to obtain per-finding details (severity / location / summary / response / whether a separate-PR recommendation is attached, etc.).
 3. Fill the template's statistics summary, full findings list, future recommendations, and review document list, and Write to `{{report_path}}`.
+   - If one or more rounds in `{{round_stats}}` have a `workflow_warning`, record the relevant rounds and the warning content in the template's "Build / format verification notes" section. If there are none, write that section as "Automatic verification was performed in all rounds".
    - Aggregation rules for the "Recommended future actions" section:
      - Candidates: among Triage: 🚫 Won't Fix / Estimate: 🔻 Downgrade / Estimate: 🚧 Alternative, findings whose reason field explicitly states a separate-PR recommendation.
      - Exclusion: among the candidates, exclude any whose same-location, same-content counterpart was resolved as Status: 🟢 Fixed in a later round (already fixed, so no need to keep on the roadmap). Identity is judged by matching `file:line` and the finding summary. When the judgment is difficult, do not exclude; instead, append a note to the recommendation reason indicating that the judgment is deferred.

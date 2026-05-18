@@ -20,6 +20,14 @@ Column definitions:
 - **Unresolved**: number of findings that still have `Verification: 💬 Feedback` even after running the feedback re-fix loop 3 times.
 - **Feedback re-fix attempts**: number of attempts of the feedback re-fix loop executed in this round (max 3).
 
+## Build / format verification notes
+
+`<Automatic verification was performed in all rounds / The rounds below had no declared format / build procedure and were visual-check only>`
+
+| Round | Detail |
+|-------|--------|
+| Round N | Automatic verification skipped because `.claude/rules/build-format.md` etc. was undeclared (visual check only) |
+
 ## Full findings list and response status
 
 ### Resolved

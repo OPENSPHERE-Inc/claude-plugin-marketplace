@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: レビュー・トリアージ・対応・検証を複数ラウンド自動で繰り返し、対応すべき指摘がなくなるまで反復する
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(mkdir:*), Bash(cmake:*), Bash(make:*), Bash(clang-format:*), Bash(cmake-format:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*)
 ---
 
 # レビューラウンド自動実行
@@ -46,7 +46,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
   - 見積集約サブエージェント（ステップ 2.2 / 2.5） — 個別見積結果のサマリを生成（triage § ステップ 2）。
   - 修正対象選定サブエージェント（ステップ 2.3 / 2.5） — レビュードキュメントのメタデータを Read し、assignee 単位でグルーピングした修正対象を返却（respond § ステップ 1）。
   - 個別の修正（ステップ 2.3 / 2.5） — assignee 単位の専門家サブエージェントに委譲、各 Sub が担当 ids を順次修正（respond § ステップ 2）。
-  - フォーマット&ビルド検証サブエージェント（ステップ 2.3 / 2.5） — clang-format / cmake-format + ビルドを 1 回実行し、失敗時はコード分析で専門家を判定（修正は行わず推奨のみ返す）。
+  - フォーマット&ビルド検証サブエージェント（ステップ 2.3 / 2.5） — 反映先プロジェクトのフォーマット／ビルド手順を解決して 1 回実行し、失敗時はコード分析で専門家を判定（修正は行わず推奨のみ返す）。
   - ビルド修正専門家サブエージェント（ステップ 2.3 / 2.5） — フォーマット&ビルド検証 Sub が判定した専門家として、ビルドエラーを修正する。完了後リーダーがフォーマット&ビルド検証 Sub を再起動する（respond § ステップ 3）。
   - 解析サブエージェント（ステップ 2.4 / 2.5） — レビュードキュメントを Read して検証担当割当 (by_assignee) を返却（resolve § ステップ 1、ファイル出力なし）。
   - 検証サブエージェント（ステップ 2.4 / 2.5） — specialist 単位で並列起動し、担当指摘を一括検証（resolve § ステップ 2、読み取り専用）。
@@ -159,6 +159,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 - コンソール出力: 修正開始時 `## Round {N} — Step 3: Respond (Fix & Verify)`。
 - ステップ 1〜4 — respond § の指示に従いサブエージェントへ委譲する。並列化とフォーマット&ビルド検証 ⇄ ビルド修正の再実行ループは同 SKILL に従いリーダーがオーケストレーションする。respond compile はそのステップ 4 で `status` をドキュメントに永続化する。
 - `fix_count == 0`（Maintain / Alternative の対象なし）の場合、respond スキルの compile は何も反映しない。2.4 に進む。
+- respond § ステップ 3 で `workflow_warning`（フォーマット／ビルド手順が解決できず目視チェックのみだった場合の警告。解決できた場合は null）を受け取っていれば、本ラウンドの記録用に保持する。
 
 ### 2.4 — レビュー検証（resolve スキル）
 
@@ -181,6 +182,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 1. `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)` を表示。triage スキル（2.2）を再実行。トリアージ起動プロンプトのオーバーライドに追加: `stage が "feedback" の指摘を優先的にトリアージする（current_meta.verification に Feedback 詳細あり）。` 見積起動プロンプトのオーバーライドに追加: `current_meta.verification の Feedback 内容を踏まえて見積。コストが膨らむ場合は Downgrade を検討。` 全件 Downgrade なら triage compile を実行し手順 2 をスキップして手順 3 へ。
 2. `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` を表示。respond スキル（2.3）を再実行。修正起動プロンプトのオーバーライドに追加: `current_meta.verification の Feedback 内容を踏まえて再修正。`
+   再実行した respond § ステップ 3 で非 null の `workflow_warning` を受け取った場合は、本ラウンドの記録値を更新する（後勝ち）。
 3. `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)` を表示。resolve スキル（2.4）を再実行。
 4. フィードバックが残っていれば手順 1 に戻る。3 回で解消しない場合はラウンドを終了する（残った 💬 Feedback は 2.6 で「未解決」としてカウント）。
 5. `--confirm-round` が有効で未解決が残っている場合、次ラウンドに進む前にユーザーの確認を待つ。
@@ -194,6 +196,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 - 修正数: respond compile Sub の `fixed_count`（Maintain 通常修正 + Alternative FIXME 付与の合計）
 - 未解決数: ステップ 2.5 最終試行後の resolve compile Sub の `feedback_count`
 - 解決数: resolve compile Sub の `resolved_count`
+- workflow_warning: 2.3 / 2.5 で保持した `workflow_warning`（フォーマット／ビルド手順未解決のラウンドのみ。それ以外は null）
 
 次のラウンドに進む条件: 以下の**すべて**を満たす場合に限り、ラウンドカウンターをインクリメントしてステップ 2.1 へ戻る:
 
@@ -214,7 +217,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 変数（テンプレート中の {{...}} placeholder を置換）:
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - round_doc_paths: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
-- round_stats: Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...
+- round_stats: Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...（workflow_warning が非 null のラウンドは末尾に workflow_warning="..." を付す）
 - template_path: {template_path}
 - report_path: {report_path}
 - language: ユーザーのチャット言語
