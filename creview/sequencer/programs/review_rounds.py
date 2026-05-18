@@ -158,6 +158,7 @@ _RESPOND_SCHEMA = {
         "fixed_count": {"type": "integer", "minimum": 0},
         "code_changed": {"type": "boolean"},
         "summary_line": {"type": "string", "maxLength": 500},
+        "workflow_warning": {"type": ["string", "null"]},
     },
     "required": ["fixed_count", "code_changed"],
     "additionalProperties": True,
@@ -183,6 +184,7 @@ _FEEDBACK_SCHEMA = {
         "feedback_count": {"type": "integer", "minimum": 0},
         "code_changed": {"type": "boolean"},
         "summary_line": {"type": "string", "maxLength": 500},
+        "workflow_warning": {"type": ["string", "null"]},
     },
     "required": ["unresolved_count", "code_changed"],
     "additionalProperties": True,
@@ -331,12 +333,16 @@ _TPL_RESPOND = textwrap.dedent("""\
     {{
       "fixed_count": <int>,
       "code_changed": <bool>,
-      "summary_line": "(<=200 chars one-line summary; copy verbatim from the aggregator sub-agent's return value)"
+      "summary_line": "(<=200 chars one-line summary; copy verbatim from the aggregator sub-agent's return value)",
+      "workflow_warning": "(warning when format / build procedure is undeclared; null if none)"
     }}
     - fixed_count: aggregator sub-agent's return value fixed_count
       (Maintain regular fixes + Alternative FIXME additions combined / 0 if no targets)
     - code_changed: aggregator sub-agent's return value code_changed
-    - summary_line: one-line summary for user notification\
+    - summary_line: one-line summary for user notification
+    - workflow_warning: the workflow_warning retained by the respond skill in Step 3
+      (set when the format / build procedure could not be resolved and only a visual
+      check was done; null when it was resolved)\
 """)
 
 _TPL_RESOLVE = textwrap.dedent("""\
@@ -387,13 +393,16 @@ _TPL_FEEDBACK = textwrap.dedent("""\
       "resolved_count": <int>,
       "feedback_count": <int>,
       "code_changed": <bool>,
-      "summary_line": "(<=200 chars one-line summary)"
+      "summary_line": "(<=200 chars one-line summary)",
+      "workflow_warning": "(warning when the Step 2.5.2 respond has an undeclared format / build procedure; null if none)"
     }}
     - unresolved_count: {resolve_skill} aggregator sub-agent's return value feedback_count after this attempt
     - resolved_count: same return value resolved_count
     - feedback_count: synonym for unresolved_count
     - code_changed: whether at least one line of source code was modified in this attempt
-    - summary_line: one-line summary for user notification\
+    - summary_line: one-line summary for user notification
+    - workflow_warning: the workflow_warning retained by {respond_skill} in Step 3 of
+      Step 2.5.2 (null when it was resolved or when respond was skipped)\
 """)
 
 _TPL_CONFIRM_ROUND = textwrap.dedent("""\
@@ -469,7 +478,7 @@ def _format_per_round_stats_block(round_records: list[dict]) -> str:
             f"crit={sev.get('critical', 0)},maj={sev.get('major', 0)},"
             f"min={sev.get('minor', 0)},info={sev.get('info', 0)}"
         )
-        lines.append(
+        line = (
             f"    - Round {r['round_num']}: "
             f"findings={r['findings_total']} ({sev_str}), "
             f"will_fix={r['will_fix_count']}, "
@@ -483,6 +492,10 @@ def _format_per_round_stats_block(round_records: list[dict]) -> str:
             f"unresolved={r['unresolved']}, "
             f"code_changed={r['code_changed']}"
         )
+        warning = r.get("workflow_warning")
+        if warning:
+            line += f', workflow_warning="{warning}"'
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -567,6 +580,7 @@ def run(ctx):
             "code_changed": False,
             "respond_summary_line": "",
             "resolve_summary_line": "",
+            "workflow_warning": None,
         }
 
         # ----- Convergence check 1: zero findings -----
@@ -645,6 +659,10 @@ def run(ctx):
                 round_record["respond_summary_line"] = respond_result[
                     "summary_line"
                 ]
+            if respond_result.get("workflow_warning"):
+                round_record["workflow_warning"] = respond_result[
+                    "workflow_warning"
+                ]
 
             # If fixed_count == 0, there is nothing to verify, so skip Step 2.4-2.5
             if respond_result["fixed_count"] > 0:
@@ -707,6 +725,10 @@ def run(ctx):
                     if feedback_result.get("summary_line"):
                         round_record["resolve_summary_line"] = feedback_result[
                             "summary_line"
+                        ]
+                    if feedback_result.get("workflow_warning"):
+                        round_record["workflow_warning"] = feedback_result[
+                            "workflow_warning"
                         ]
                     if feedback_result["code_changed"]:
                         round_record["code_changed"] = True

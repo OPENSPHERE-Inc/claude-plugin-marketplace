@@ -9,7 +9,7 @@ Fix the build errors. Read `{{plugin_root}}/rules/sub-agent.md` and observe the 
 Inputs (Read the build section of `{{tmp_dir}}/format-build-result.json`):
 
 - error_summary / error_files / fix_guidance / build_log_path
-- For the full build log, Read `{{tmp_dir}}/build.log` (only when needed).
+- For the full build log, Read `build_log_path` (usually `{{tmp_dir}}/build.log`) (only when needed). When `workflow_source` is `none` (visual check only), no build log exists; treat error_files and fix_guidance as the primary information.
 
 Procedure:
 

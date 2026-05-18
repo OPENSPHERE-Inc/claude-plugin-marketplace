@@ -1,7 +1,7 @@
 ---
 name: respond
 description: Fix the Will-Fix / Maintain / Alternative review findings, verify the build, and reflect the fix status into the review document
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(cmake:*), Bash(make:*), Bash(clang-format:*), Bash(cmake-format:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Respond (Fix)
@@ -138,14 +138,14 @@ Receive the return value from every fix agent (`{items: [{id, path}, ...], templ
 
 ## Step 3 — Format verification & build verification
 
-The leader (you) does not run the formatter or build commands directly and does not read source code. The format & build verification Sub performs only a single pass of format and build. On build failure, it reads the code, identifies the responsible specialist, and returns the result (it does not fix the code itself). The leader launches a specialist Sub to perform the fix, and orchestrates a loop that alternately relaunches the format & build verification Sub and the specialist Sub until the build passes.
+The leader (you) does not run the formatter or build commands directly and does not read source code. The format & build verification Sub resolves the destination project's format / build workflow in the order `.claude/rules/build-format.md` → `CLAUDE.md` → `README.md`, then performs only a single pass of format and build (if none can be resolved, it performs a visual check only and returns a warning). On build failure, it reads the code, identifies the responsible specialist, and returns the result (it does not fix the code itself). The leader launches a specialist Sub to perform the fix, and orchestrates a loop that alternately relaunches the format & build verification Sub and the specialist Sub until the build passes.
 
 ### Loop control (leader)
 
 Maximum attempts: 5. Repeat the following up to the maximum:
 
 1. Launch the format & build verification Sub via `Agent(subagent_type="review-helper", prompt=...)`.
-2. Receive the return value (`{path, success, format_violations_fixed, summary_line, template_id}`). Verify that `template_id` matches `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`; on mismatch, relaunch the Sub.
+2. Receive the return value (`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`). Verify that `template_id` matches `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`; on mismatch, relaunch the Sub. If `workflow_warning` is non-null, retain it for presentation in Step 5.
 3. If `success == true`, exit the loop.
 4. If `success == false`:
    a. Read `{tmp_dir}/format-build-result.json` and obtain `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `build_log_path` (operational data, not decision body; do not Read source code itself).
@@ -214,4 +214,4 @@ Include `template_id` (Read from the template's frontmatter) in the return value
 
 ## Step 5 — Summary
 
-The leader prints the `summary_line` received from the aggregator sub-agent to the console. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.
+The leader prints the `summary_line` received from the aggregator sub-agent to the console. If a `workflow_warning` was received in Step 3, present it as a warning line together with the `summary_line`. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.

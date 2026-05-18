@@ -1,7 +1,7 @@
 ---
 name: respond
 description: Will-Fix / Maintain / Alternative のレビュー指摘を修正し、ビルドを検証し、修正状況をレビュードキュメントに反映する
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(cmake:*), Bash(make:*), Bash(clang-format:*), Bash(cmake-format:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュー対応（修正）
@@ -138,14 +138,14 @@ fix: Add null check before accessing output pointer
 
 ## ステップ 3 — フォーマット検証 & ビルド検証
 
-リーダー（あなた）はフォーマッタやビルドコマンドを直接実行せず、ソースコードも読まない。フォーマット&ビルド検証 Sub は単発のフォーマット&ビルド実行のみ行う。ビルド失敗時はコードを読んで修正担当の専門家を判定して結果を返す（自分でコードは修正しない）。リーダーは専門家 Sub を起動して修正させ、ビルドが通るまでフォーマット&ビルド検証 Sub と専門家 Sub を交互に再起動するループをオーケストレートする。
+リーダー（あなた）はフォーマッタやビルドコマンドを直接実行せず、ソースコードも読まない。フォーマット&ビルド検証 Sub は反映先プロジェクトのフォーマット／ビルド手順を `.claude/rules/build-format.md` → `CLAUDE.md` → `README.md` の順で解決し、単発のフォーマット&ビルド実行のみ行う（いずれも解決できない場合は目視チェックのみとなり警告を返す）。ビルド失敗時はコードを読んで修正担当の専門家を判定して結果を返す（自分でコードは修正しない）。リーダーは専門家 Sub を起動して修正させ、ビルドが通るまでフォーマット&ビルド検証 Sub と専門家 Sub を交互に再起動するループをオーケストレートする。
 
 ### ループ制御（リーダー）
 
 最大試行回数: 5。以下を最大試行回数まで繰り返す:
 
 1. フォーマット&ビルド検証 Sub を `Agent(subagent_type="review-helper", prompt=...)` で起動する。
-2. 戻り値（`{path, success, format_violations_fixed, summary_line, template_id}`）を受け取る。`template_id` が `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46` と一致することを確認する。一致しない場合は Sub を再起動する。
+2. 戻り値（`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`template_id` が `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46` と一致することを確認する。一致しない場合は Sub を再起動する。`workflow_warning` が非 null の場合はステップ 5 で提示するため保持する。
 3. `success == true` ならループ終了。
 4. `success == false` の場合:
    a. `{tmp_dir}/format-build-result.json` を Read し、`suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `build_log_path` を取得する（判定本体ではない operational data。ただしソースコード本体は Read しない）。
@@ -214,4 +214,4 @@ fix: Add null check before accessing output pointer
 
 ## ステップ 5 — サマリー
 
-リーダーは編纂サブエージェントから受け取った `summary_line` をコンソールに表示する。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。
+リーダーは編纂サブエージェントから受け取った `summary_line` をコンソールに表示する。ステップ 3 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。

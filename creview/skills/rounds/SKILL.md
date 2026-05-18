@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: Automatically iterate review, triage, respond, and resolve across multiple rounds until no actionable findings remain
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(mkdir:*), Bash(cmake:*), Bash(make:*), Bash(clang-format:*), Bash(cmake-format:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*)
 ---
 
 # Automatic Review Round Execution
@@ -46,7 +46,7 @@ Write the review document in the user's chat language.
   - Estimate aggregator sub-agent (Step 2.2 / 2.5) — generates a summary of individual estimate results (triage § Step 2).
   - Select-fix-targets sub-agent (Step 2.3 / 2.5) — Reads the review document metadata and returns the fix targets grouped by assignee (respond § Step 1).
   - Individual fix (Step 2.3 / 2.5) — delegated to per-assignee specialist sub-agents; each Sub sequentially fixes its assigned ids (respond § Step 2).
-  - Format & build verification sub-agent (Step 2.3 / 2.5) — runs clang-format / cmake-format + build once; on failure, identifies the specialist via code analysis (does not perform fixes; returns recommendation only).
+  - Format & build verification sub-agent (Step 2.3 / 2.5) — resolves the destination project's format / build workflow and runs it once; on failure, identifies the specialist via code analysis (does not perform fixes; returns recommendation only).
   - Build-fix specialist sub-agent (Step 2.3 / 2.5) — fixes build errors as the specialist identified by the format & build verification Sub. After completion, the leader relaunches the format & build verification Sub (respond § Step 3).
   - Analysis sub-agent (Step 2.4 / 2.5) — Reads the review document and returns the verification assignment (by_assignee) (resolve § Step 1, no file output).
   - Verification sub-agent (Step 2.4 / 2.5) — launched in parallel per specialist; batch-verifies the assigned findings (resolve § Step 2, read-only).
@@ -159,6 +159,7 @@ Input document: {this round's file path} (triage / estimate already persisted by
 - Console output: at fix start `## Round {N} — Step 3: Respond (Fix & Verify)`.
 - Steps 1–4 — delegate to sub-agents per the respond § instructions. Parallelization and the format & build verification ⇄ build-fix re-execution loop are orchestrated by the leader per that SKILL. The respond compile persists `status` into the document at its Step 4.
 - If `fix_count == 0` (no Maintain / Alternative targets), the respond skill's compile reflects nothing; proceed to 2.4.
+- If a `workflow_warning` was received in respond § Step 3 (the warning when the format / build procedure could not be resolved and only a visual check was done; null when it was resolved), retain it for this round's record.
 
 ### 2.4 — Resolve (resolve skill)
 
@@ -181,6 +182,7 @@ Re-fix loop (max 3) — each attempt re-runs the triage skill flow, then the res
 
 1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run the triage skill (2.2). Add to the triage launch prompt overrides: `Triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` Add to the estimate launch prompt overrides: `Estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.` If all are Downgrade, run the triage compile and skip step 2; go to step 3.
 2. Display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)`. Re-run the respond skill (2.3). Add to the fix launch prompt overrides: `Re-fix based on the Feedback content in current_meta.verification.`
+   If the re-run respond § Step 3 returns a non-null `workflow_warning`, update this round's recorded value (last write wins).
 3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run the resolve skill (2.4).
 4. If feedback remains, return to step 1. If not resolved within 3 attempts, end the round (remaining 💬 Feedback are counted as "unresolved" in 2.6).
 5. When `--confirm-round` is enabled and unresolved findings remain, wait for user confirmation before proceeding to the next round.
@@ -194,6 +196,7 @@ Record the round's results. Each counter is obtained from sub-agent return value
 - Fixed count: respond compile Sub's `fixed_count` (sum of Maintain normal fixes + Alternative FIXME attachments)
 - Unresolved count: resolve compile Sub's `feedback_count` after the final attempt of Step 2.5
 - Resolved count: resolve compile Sub's `resolved_count`
+- workflow_warning: the `workflow_warning` retained in 2.3 / 2.5 (only for rounds where the format / build procedure was unresolved; null otherwise)
 
 Condition for proceeding to the next round: only when **all** of the following are met, increment the round counter and return to Step 2.1:
 
@@ -214,7 +217,7 @@ As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templat
 Variables (substitute into the template's {{...}} placeholders):
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - round_doc_paths: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
-- round_stats: Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...
+- round_stats: Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ... (for rounds whose workflow_warning is non-null, append workflow_warning="..." at the end)
 - template_path: {template_path}
 - report_path: {report_path}
 - language: user's chat language

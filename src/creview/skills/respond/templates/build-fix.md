@@ -9,7 +9,7 @@ template_id: 6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29
 入力（`{{tmp_dir}}/format-build-result.json` の build セクションを Read）:
 
 - error_summary / error_files / fix_guidance / build_log_path
-- ビルドログ全文は `{{tmp_dir}}/build.log` を Read（必要時のみ）
+- ビルドログ全文は `build_log_path`（通常 `{{tmp_dir}}/build.log`）を Read（必要時のみ）。`workflow_source` が `none`（目視チェックのみ）の場合ビルドログは存在せず、error_files と fix_guidance を一次情報とする。
 
 手順:
 
