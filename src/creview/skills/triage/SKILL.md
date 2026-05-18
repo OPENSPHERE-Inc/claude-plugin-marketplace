@@ -16,6 +16,10 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ユーザーはレビュードキュメント（markdown）へのパスを指定する。引数が `$ARGUMENTS` の場合、レビュードキュメントへのパスとして解釈する。
 
+## タイムスタンプ（`{timestamp}`）
+
+`{timestamp}` はステップ 1 の開始時に一度だけ決定する現在日時文字列（`YYYYMMDD-HHMMSS` 形式、例: `20240101-120000`）。以降の全ステップで同一値を使う。
+
 ## レビュードキュメント形式
 
 レビュードキュメントは `/creview:start` が生成し、各 finding にメタデータマーカー（`<!-- METADATA({finding-id}) -->` 〜 `<!-- /METADATA({finding-id}) -->`）を含む:
