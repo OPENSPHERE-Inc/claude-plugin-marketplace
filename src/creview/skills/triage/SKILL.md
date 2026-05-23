@@ -25,7 +25,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 レビュードキュメントは `/creview:start` が生成し、各 finding にメタデータマーカー（`<!-- METADATA({finding-id}) -->` 〜 `<!-- /METADATA({finding-id}) -->`）を含む:
 
 ```markdown
-### {finding-id} — `{location}`
+### {finding-id} — `{location}` [{categories}]
 
 - **Reviewer:** {reviewer name}
 
@@ -38,6 +38,8 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ---
 ```
+
+`{categories}` は `/` 区切りで連結された 1 つ以上のカテゴリラベル（例: `バグ`、`保守性/可読性`）。レビュアー出力にカテゴリが欠落していた場合は括弧自体が省略される。
 
 本スキルはマーカーの間に以下のフィールドを追加する:
 

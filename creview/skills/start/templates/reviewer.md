@@ -12,10 +12,12 @@ Rules:
 
 - Restrict tool use to Read / Glob / Grep / Bash(grep/ls/find). Re-running git diff/log/show is unnecessary (the diff is already consolidated in `{{diff_path}}`). Use Read when inspecting surrounding code as well.
 - Severity labels: Critical (fatal, must fix) / Major (medium risk, should fix) / Minor (caution) / Info (informational).
+- Category labels: assign one or more category labels indicating the nature of the finding. Presets: `Bug` / `Maintainability` / `Readability` / `Testing` / `Performance` / `Security` / `Style` / `Documentation` / `Design`. If no preset fits, create a new label (short noun phrase, must not contain `/` or `]`). When multiple apply, join with `/` inside a single `[ ]`. The label body itself may be written in `{{doc_lang}}` (preset names may be substituted with translations).
 - Read `{{plugin_root}}/rules/review.md` and follow it.
 
 Output:
 
-- Write only a numbered list in the format `[severity] file_path:line — Description of the issue and its importance.` to `{{output_path}}` (no preamble or postamble).
+- Write only a numbered list in the format `[severity] [category] file_path:line — Description of the issue and its importance.` to `{{output_path}}` (no preamble or postamble).
+  - Category examples: `[Bug]` / `[Maintainability/Readability]` / `[Testing]`.
 - Write the issue description in `{{doc_lang}}`. Keep `file_path:line` and the severity labels (Critical / Major / Minor / Info) as-is.
 - Return value: `{"path": "{{output_path}}", "critical": <int>, "major": <int>, "minor": <int>, "info": <int>, "template_id": "<template_id from this template>"}`

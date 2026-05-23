@@ -114,7 +114,7 @@ Launch all selected reviewers concurrently via the Agent tool. Each reviewer mus
 
 - One file per reviewer: `{tmp_dir}/reviews/{reviewer-name}.md`
 - Content is only the "numbered list of findings" (no greetings or overall summaries before or after)
-- Format: numbered list of `[severity] file_path:line — Description of the issue and its importance.`
+- Format: numbered list of `[severity] [category] file_path:line — Description of the issue and its importance.`. Assign one or more category labels; if multiple, join them with `/` inside a single `[ ]` (e.g., `[Bug/Maintainability]`). See the reviewer template for preset details.
 
 ### Agent Launch Prompt
 

@@ -21,7 +21,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 レビュードキュメントは /creview:start が生成し、各 finding にメタデータマーカーを含む。/creview:triage と /creview:respond によって `triage` / `estimate` / `status` フィールドが追記されている前提:
 
 ```markdown
-### {finding-id} — `{location}`
+### {finding-id} — `{location}` [{categories}]
 
 - **Reviewer:** {reviewer-name}
 
@@ -47,6 +47,8 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 - `Estimate: 🔻 Downgrade` → 見積段階で対応不要に倒れた。
 - `Estimate: 🚧 Alternative` で `Status:` なし → 見積段階で代替対応に倒れた、FIXME 付与未完了。
 - `Status: 🟢 Fixed` → 修正完了（Maintain 修正、または Alternative の FIXME 付与）。
+
+`{categories}` は `/` 区切りで連結された 1 つ以上のカテゴリラベル（例: `バグ`、`保守性/可読性`）。レビュアー出力にカテゴリが欠落していた場合は括弧自体が省略される。
 
 /creview:resolve は `verification` フィールドを以下のいずれかの形式で追記する:
 
