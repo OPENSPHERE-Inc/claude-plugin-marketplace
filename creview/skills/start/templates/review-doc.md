@@ -1,4 +1,4 @@
-<!-- Skeleton example. Write the prose and labels (Date / Scope / Reviewers / Summary / counts, etc.) in doc_lang. Do not change the severity headings, finding-id, or METADATA markers. -->
+<!-- Skeleton example. Write the prose and labels (Date / Scope / Reviewers / Summary / counts, etc.) in doc_lang. Do not change the severity headings, finding-id, or METADATA markers. Use the category labels exactly as written in the reviewer output. -->
 
 # Parallel Code Review Report — Round {N}
 
@@ -9,7 +9,7 @@
 
 ## Critical
 
-### C-1 — `file.cpp:42`
+### C-1 — `file.cpp:42` [Bug/Maintainability]
 
 - **Reviewers:** cpp-sensei, obs-sensei
 
@@ -24,7 +24,7 @@
 
 ## Major
 
-### M-1 — `other.cpp:120`
+### M-1 — `other.cpp:120` [Readability]
 
 - **Reviewers:** qt-sensei
 
