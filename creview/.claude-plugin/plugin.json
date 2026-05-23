@@ -1,6 +1,6 @@
 {
   "name": "creview",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Multi-agent parallel code review workflow: start → triage → respond → resolve, with an automatic multi-round driver. Reviewers and fixers are resolved from the destination project's .claude/agents.",
   "author": {
     "name": "OPENSPHERE Inc.",

@@ -8,13 +8,17 @@ As the review-scope analysis owner, Read `{{tmp_dir}}/diff.txt` to count lines a
 
 User-explicitly-requested reviewers: `{{user_requested}}` (may be an empty array)
 
-Reviewer pool: this skill does not bundle reviewer agents. Enumerate the destination project's agents with `ls .claude/agents/*.md` (relative to the working directory) and Read each file's frontmatter `name` / `description` to learn each agent's specialty. The `name` value is what another Agent call passes to `subagent_type`.
+Reviewer pool: enumerate `*.md` from the following scopes in priority order, and Read each file's frontmatter `name` / `description` to learn each agent's specialty. The `name` value is what another Agent call passes to `subagent_type`. When the same `name` exists in multiple scopes, adopt the higher-priority scope's entry. Skip any scope that does not exist.
+
+1. Project scope: `.claude/agents/**/*.md` (relative to the working directory)
+2. User scope: `~/.claude/agents/**/*.md`
+3. Plugin-bundled: `{{plugin_root}}/agents/**/*.md`
 
 Procedure:
 
 1. From the diff, determine the changed file kinds / paths / content areas (language, subsystem, build / CI, A/V, comments & FIXME / TODO, etc.) and a per-extension summary.
-2. For each enumerated agent, decide from its `description` whether its specialty is relevant to the diff. Add every relevant agent to `recommended` with a short `reason` citing the matching extension / path / content area.
-3. If no `.claude/agents/` directory exists, it is empty, or no agent is relevant, add a single entry `{name: "general-purpose", reason: "no matching specialist agent"}`.
+2. For each enumerated agent, decide from its `description` whether its specialty is relevant to the diff. Add every relevant agent to `recommended_reviewers` with a short `reason` citing the matching extension / path / content area.
+3. If no agent from any scope is relevant, add a single entry `{name: "general-purpose", reason: "no matching specialist agent"}`.
 4. Add any `user_requested` reviewers not already added (reason: `"user explicitly requested"`).
 5. `line_count` = total of +/- lines in the diff.
 
