@@ -1,6 +1,6 @@
 ---
 name: compile
-description: Prompt for the aggregator sub-agent that compiles fix statuses and reflects them into the markdown via events.jsonl in /creview:respond Step 4
+description: Prompt for the aggregator sub-agent that compiles fix statuses and reflects them into the markdown via events.jsonl in /creview:respond Step 5
 template_id: 3b7f1c5d-8a29-4e63-b1c8-9d3a7f5e2b41
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: build-fix
-description: /creview:respond ステップ 3 でビルドエラーを修正するビルド修正専門家サブエージェント向けプロンプト
+description: /creview:respond ステップ 4 でビルドエラーを修正するビルド修正専門家サブエージェント向けプロンプト
 template_id: 6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29
 ---
 

@@ -31,7 +31,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 - 粒度: 可能な限り指摘単位で 1 コミットとする。同じファイルに対する複数の指摘を順次修正する場合でも、各指摘の修正を個別にコミットする。
 - コミットメッセージ: 1〜3行で修正内容を簡潔に記述する。指摘 ID（`C-1`、`M-1` 等）は**含めない**。
 - ステージング: 修正に関連するソースコードファイルのみをステージングする（`git add -A` は使用しない）。**レビュードキュメントはコミットしない。**
-- ビルド検証との関係: コミットはステップ 3（ビルド検証）の後に行う。ビルドエラーが発生した場合、その修正も含めてからコミットする。
+- ビルド検証との関係: コミットはステップ 4（ビルド検証）の後に行う。ビルドエラーが発生した場合、その修正も含めてからコミットする。
 
 #### コミットメッセージの例
 
@@ -52,7 +52,7 @@ fix: Add null check before accessing output pointer
 
 本スキルは以下を追記する:
 
-- `status`（ステップ 3）— 値の形式: `🟢 Fixed — {修正内容の簡潔な説明}`。
+- `status`（ステップ 5）— 値の形式: `🟢 Fixed — {修正内容の簡潔な説明}`。
 
 ### 修正対象選別ルール
 
@@ -111,7 +111,7 @@ fix: Add null check before accessing output pointer
 
 戻り値（`{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}`）を受け取る。`template_id` が `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95` と一致することを確認する。一致しない場合はサブエージェントを再起動する。本文は読み込まない。
 
-`fix_count == 0` の場合、ステップ 2・3 をスキップしてステップ 4（編纂。反映するものなし → 「修正対象なし」を報告）へ進む。
+`fix_count == 0` の場合、ステップ 2・3・4 をスキップしてステップ 5（編纂。反映するものなし → 「修正対象なし」を報告）へ進む。
 
 ## ステップ 2 — 修正（専門家サブエージェントへ並列委譲）
 
@@ -136,7 +136,28 @@ fix: Add null check before accessing output pointer
 
 すべての修正エージェントから戻り値（`{items: [{id, path}, ...], template_id}`）を受け取る。`template_id` が `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14` と一致することを確認する。一致しない場合は当該エージェントを再起動する。`items` のみを集め、status 本文は読み込まない。
 
-## ステップ 3 — フォーマット検証 & ビルド検証
+## ステップ 3 — コメントレビュー（comment-sensei サブエージェントへ委譲）
+
+修正サブエージェントが追加・変更したコメントが `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` の規律に違反していないかを comment-sensei にレビューさせ、違反があれば修正させる。追加・変更されたコメントが無い場合、サブエージェントは何もせず終了してよい。
+
+`Agent(subagent_type="comment-sensei", prompt=...)` で起動する。タスク固有の指示は `templates/comment-review.md` 外部テンプレートに格納されている:
+
+```
+最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/comment-review.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
+
+変数（テンプレート中の {{...}} placeholder を置換）:
+- plugin_root: ${CLAUDE_PLUGIN_ROOT}
+- tmp_dir: {tmp_dir}
+
+ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
+- (該当なし)
+
+戻り値に template_id（テンプレートの frontmatter から Read）を含める。
+```
+
+戻り値（`{reviewed_paths, fix_count, template_id}`）を受け取る。`template_id` が `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
+
+## ステップ 4 — フォーマット検証 & ビルド検証
 
 リーダー（あなた）はフォーマッタやビルドコマンドを直接実行せず、ソースコードも読まない。フォーマット&ビルド検証 Sub は反映先プロジェクトのフォーマット／ビルド手順を `.claude/rules/build-format.md` → `CLAUDE.md` → `README.md` の順で解決し、単発のフォーマット&ビルド実行のみ行う（いずれも解決できない場合は目視チェックのみとなり警告を返す）。ビルド失敗時はコードを読んで修正担当の専門家を判定して結果を返す（自分でコードは修正しない）。リーダーは専門家 Sub を起動して修正させ、ビルドが通るまでフォーマット&ビルド検証 Sub と専門家 Sub を交互に再起動するループをオーケストレートする。
 
@@ -145,14 +166,14 @@ fix: Add null check before accessing output pointer
 最大試行回数: 5。以下を最大試行回数まで繰り返す:
 
 1. フォーマット&ビルド検証 Sub を `Agent(subagent_type="review-helper", prompt=...)` で起動する。
-2. 戻り値（`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`template_id` が `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46` と一致することを確認する。一致しない場合は Sub を再起動する。`workflow_warning` が非 null の場合はステップ 5 で提示するため保持する。
+2. 戻り値（`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`template_id` が `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46` と一致することを確認する。一致しない場合は Sub を再起動する。`workflow_warning` が非 null の場合はステップ 6 で提示するため保持する。
 3. `success == true` ならループ終了。
 4. `success == false` の場合:
    a. `{tmp_dir}/format-build-result.json` を Read し、`suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `build_log_path` を取得する（判定本体ではない operational data。ただしソースコード本体は Read しない）。
    b. `Agent(subagent_type=suggested_specialist, prompt=...)` でビルド修正専門家 Sub を起動する。
    c. 戻り値（`{description, template_id}`）を受け取り、`template_id` が `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29` と一致することを確認する。一致しない場合は当該 Sub を再起動する。
    d. ループの先頭に戻る（コードが書き変わっているのでフォーマット再確認が必要）。
-5. 試行回数上限に達してもビルドが通らない場合、ユーザーに `error_summary` を提示してループを抜け、ステップ 4 に進む。
+5. 試行回数上限に達してもビルドが通らない場合、ユーザーに `error_summary` を提示してループを抜け、ステップ 5 に進む。
 
 ### フォーマット&ビルド検証 Sub の起動プロンプト
 
@@ -185,7 +206,7 @@ fix: Add null check before accessing output pointer
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-## ステップ 4 — レビュードキュメントへの反映（編纂サブエージェントへ委譲）
+## ステップ 5 — レビュードキュメントへの反映（編纂サブエージェントへ委譲）
 
 リーダー（あなた）は判定本文を context に載せない。
 
@@ -212,6 +233,6 @@ fix: Add null check before accessing output pointer
    ${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}
    ```
 
-## ステップ 5 — サマリー
+## ステップ 6 — サマリー
 
-リーダーは編纂サブエージェントから受け取った `summary_line` をコンソールに表示する。ステップ 3 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。
+リーダーは編纂サブエージェントから受け取った `summary_line` をコンソールに表示する。ステップ 4 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。

@@ -333,7 +333,7 @@ _TPL_RESPOND = textwrap.dedent("""\
       （Maintain の通常修正 + Alternative の FIXME 付与の合算 / 対象なしなら 0）
     - code_changed: 編纂サブエージェントの戻り値 code_changed
     - summary_line: ユーザー通知用の 1 行サマリ
-    - workflow_warning: respond スキルがステップ 3 で保持した workflow_warning
+    - workflow_warning: respond スキルがステップ 4 で保持した workflow_warning
       （フォーマット／ビルド手順が解決できず目視チェックのみだった場合に設定。
       解決できた場合は null）\
 """)
@@ -394,7 +394,7 @@ _TPL_FEEDBACK = textwrap.dedent("""\
     - feedback_count: unresolved_count と同義
     - code_changed: 本試行で 1 行でもソースコードを修正したか
     - summary_line: ユーザー通知用の 1 行サマリ
-    - workflow_warning: Step 2.5.2 の {respond_skill} がステップ 3 で保持した
+    - workflow_warning: Step 2.5.2 の {respond_skill} がステップ 4 で保持した
       workflow_warning（解決できた場合や respond をスキップした場合は null）\
 """)
 

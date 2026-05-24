@@ -1,6 +1,6 @@
 ---
 name: compile
-description: /creview:respond ステップ 4 で修正状況を集約し events.jsonl 経由で markdown に反映する編纂サブエージェント向けプロンプト
+description: /creview:respond ステップ 5 で修正状況を集約し events.jsonl 経由で markdown に反映する編纂サブエージェント向けプロンプト
 template_id: 3b7f1c5d-8a29-4e63-b1c8-9d3a7f5e2b41
 ---
 

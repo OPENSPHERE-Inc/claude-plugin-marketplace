@@ -1,6 +1,6 @@
 ---
 name: format-build-verify
-description: /creview:respond ステップ 3 でフォーマット検証とビルド検証を 1 回実施するフォーマット&ビルド検証サブエージェント向けプロンプト
+description: /creview:respond ステップ 4 でフォーマット検証とビルド検証を 1 回実施するフォーマット&ビルド検証サブエージェント向けプロンプト
 template_id: 9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46
 ---
 

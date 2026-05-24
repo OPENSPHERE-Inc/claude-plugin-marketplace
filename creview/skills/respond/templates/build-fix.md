@@ -1,6 +1,6 @@
 ---
 name: build-fix
-description: Prompt for the build-fix specialist sub-agent that fixes build errors in /creview:respond Step 3
+description: Prompt for the build-fix specialist sub-agent that fixes build errors in /creview:respond Step 4
 template_id: 6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29
 ---
 
