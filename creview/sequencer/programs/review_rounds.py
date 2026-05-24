@@ -340,7 +340,7 @@ _TPL_RESPOND = textwrap.dedent("""\
       (Maintain regular fixes + Alternative FIXME additions combined / 0 if no targets)
     - code_changed: aggregator sub-agent's return value code_changed
     - summary_line: one-line summary for user notification
-    - workflow_warning: the workflow_warning retained by the respond skill in Step 3
+    - workflow_warning: the workflow_warning retained by the respond skill in Step 4
       (set when the format / build procedure could not be resolved and only a visual
       check was done; null when it was resolved)\
 """)
@@ -401,7 +401,7 @@ _TPL_FEEDBACK = textwrap.dedent("""\
     - feedback_count: synonym for unresolved_count
     - code_changed: whether at least one line of source code was modified in this attempt
     - summary_line: one-line summary for user notification
-    - workflow_warning: the workflow_warning retained by {respond_skill} in Step 3 of
+    - workflow_warning: the workflow_warning retained by {respond_skill} in Step 4 of
       Step 2.5.2 (null when it was resolved or when respond was skipped)\
 """)
 

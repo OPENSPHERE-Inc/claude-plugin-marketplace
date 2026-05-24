@@ -46,11 +46,12 @@ Write the review document in the user's chat language.
   - Estimate aggregator sub-agent (Step 2.2 / 2.5) — generates a summary of individual estimate results (triage § Step 2).
   - Select-fix-targets sub-agent (Step 2.3 / 2.5) — Reads the review document metadata and returns the fix targets grouped by assignee (respond § Step 1).
   - Individual fix (Step 2.3 / 2.5) — delegated to per-assignee specialist sub-agents; each Sub sequentially fixes its assigned ids (respond § Step 2).
+  - Comment-review sub-agent (Step 2.3 / 2.5) — reviews comments added or modified by the fix sub-agents against the discipline in comment.md and fixes violations (respond § Step 3).
   - Format & build verification sub-agent (Step 2.3 / 2.5) — resolves the destination project's format / build workflow and runs it once; on failure, identifies the specialist via code analysis (does not perform fixes; returns recommendation only).
-  - Build-fix specialist sub-agent (Step 2.3 / 2.5) — fixes build errors as the specialist identified by the format & build verification Sub. After completion, the leader relaunches the format & build verification Sub (respond § Step 3).
+  - Build-fix specialist sub-agent (Step 2.3 / 2.5) — fixes build errors as the specialist identified by the format & build verification Sub. After completion, the leader relaunches the format & build verification Sub (respond § Step 4).
   - Analysis sub-agent (Step 2.4 / 2.5) — Reads the review document and returns the verification assignment (by_assignee) (resolve § Step 1, no file output).
   - Verification sub-agent (Step 2.4 / 2.5) — launched in parallel per specialist; batch-verifies the assigned findings (resolve § Step 2, read-only).
-  - Aggregator (compile) sub-agent (Step 2.2 / 2.3 / 2.4 / 2.5) — generates events.jsonl from intermediate files and runs render-review.py (triage § Step 3 / respond § Step 4 / resolve § Step 3).
+  - Aggregator (compile) sub-agent (Step 2.2 / 2.3 / 2.4 / 2.5) — generates events.jsonl from intermediate files and runs render-review.py (triage § Step 3 / respond § Step 5 / resolve § Step 3).
   - Final report aggregator sub-agent (Step 3) — generates the final report from all rounds' review documents.
 - **What the orchestrator (you) directly handles is limited to the following:**
   - Control between Steps and round loop judgment (including the format & build verification Sub ⇄ build-fix specialist Sub re-execution loop. Operational data files from each Sub may be Read; source code itself is not read.).
@@ -157,9 +158,9 @@ The orchestrator (you) directly takes on the "respond leader" role of `/creview:
 Input document: {this round's file path} (triage / estimate already persisted by 2.2)
 
 - Console output: at fix start `## Round {N} — Step 3: Respond (Fix & Verify)`.
-- Steps 1–4 — delegate to sub-agents per the respond § instructions. Parallelization and the format & build verification ⇄ build-fix re-execution loop are orchestrated by the leader per that SKILL. The respond compile persists `status` into the document at its Step 4.
+- Steps 1–5 — delegate to sub-agents per the respond § instructions. Parallelization and the format & build verification ⇄ build-fix re-execution loop are orchestrated by the leader per that SKILL. The respond compile persists `status` into the document at its Step 5.
 - If `fix_count == 0` (no Maintain / Alternative targets), the respond skill's compile reflects nothing; proceed to 2.4.
-- If a `workflow_warning` was received in respond § Step 3 (the warning when the format / build procedure could not be resolved and only a visual check was done; null when it was resolved), retain it for this round's record.
+- If a `workflow_warning` was received in respond § Step 4 (the warning when the format / build procedure could not be resolved and only a visual check was done; null when it was resolved), retain it for this round's record.
 
 ### 2.4 — Resolve (resolve skill)
 
@@ -182,7 +183,7 @@ Re-fix loop (max 3) — each attempt re-runs the triage skill flow, then the res
 
 1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run the triage skill (2.2). Add to the triage launch prompt overrides: `Triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` Add to the estimate launch prompt overrides: `Estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.` If all are Downgrade, run the triage compile and skip step 2; go to step 3.
 2. Display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)`. Re-run the respond skill (2.3). Add to the fix launch prompt overrides: `Re-fix based on the Feedback content in current_meta.verification.`
-   If the re-run respond § Step 3 returns a non-null `workflow_warning`, update this round's recorded value (last write wins).
+   If the re-run respond § Step 4 returns a non-null `workflow_warning`, update this round's recorded value (last write wins).
 3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run the resolve skill (2.4).
 4. If feedback remains, return to step 1. If not resolved within 3 attempts, end the round (remaining 💬 Feedback are counted as "unresolved" in 2.6).
 5. When `--confirm-round` is enabled and unresolved findings remain, wait for user confirmation before proceeding to the next round.

@@ -1,6 +1,6 @@
 ---
 name: format-build-verify
-description: Prompt for the format & build verification sub-agent that performs format and build verification once in /creview:respond Step 3
+description: Prompt for the format & build verification sub-agent that performs format and build verification once in /creview:respond Step 4
 template_id: 9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46
 ---
 
