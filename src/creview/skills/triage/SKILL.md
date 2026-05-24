@@ -191,11 +191,11 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 2. 戻り値（`{fixed_count, code_changed, summary_line, template_id}`）を受け取る。`template_id` が `3b7f1c5d-8a29-4e63-b1c8-9d3a7f5e2b41` と一致することを確認する。一致しない場合はサブエージェントを再起動する。ここでは `fixed_count` は 0 である（本スキルは status を書き込まない）。`triage` / `estimate` フィールドのみ反映される。
 
+## ステップ 4 — サマリーと後片付け
+
+1. リーダーは見積集約サブエージェントから受け取った `summary_line` をコンソールに表示し、続けて次を表示する: 「トリアージ / 見積を `{document_path}` に永続化しました。Maintain / Alternative 指摘を修正するには `/creview:respond {document_path}` を実行してください。」
+2. 詳細テーブルが必要な場合のみ `summary_path` を Read する。
 3. リーダーが `{tmp_dir}` を一括削除する:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}
    ```
-
-## ステップ 4 — サマリー
-
-リーダーは見積集約サブエージェントから受け取った `summary_line` をコンソールに表示し、続けて次を表示する: 「トリアージ / 見積を `{document_path}` に永続化しました。Maintain / Alternative 指摘を修正するには `/creview:respond {document_path}` を実行してください。」 詳細テーブルが必要な場合のみ `summary_path` を Read する（`{tmp_dir}` 削除前に利用可能）。
