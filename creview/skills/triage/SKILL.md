@@ -191,11 +191,11 @@ Include `template_id` (Read from the template's frontmatter) in the return value
 
 2. Receive the return value (`{fixed_count, code_changed, summary_line, template_id}`). Verify that `template_id` matches `3b7f1c5d-8a29-4e63-b1c8-9d3a7f5e2b41`; on mismatch, relaunch the sub-agent. `fixed_count` is 0 here (no statuses written by this skill); only `triage` / `estimate` fields are reflected.
 
+## Step 4 — Summary and cleanup
+
+1. The leader prints the `summary_line` received from the estimate aggregator sub-agent to the console, followed by: "Triage / estimate persisted to `{document_path}`. Run `/creview:respond {document_path}` to fix the Maintain / Alternative findings."
+2. Only when a detailed table is needed, Read `summary_path`.
 3. The leader removes `{tmp_dir}` in one shot:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}
    ```
-
-## Step 4 — Summary
-
-The leader prints the `summary_line` received from the estimate aggregator sub-agent to the console, followed by: "Triage / estimate persisted to `{document_path}`. Run `/creview:respond {document_path}` to fix the Maintain / Alternative findings." Only when a detailed table is needed, Read `summary_path` (available before `{tmp_dir}` is removed).
