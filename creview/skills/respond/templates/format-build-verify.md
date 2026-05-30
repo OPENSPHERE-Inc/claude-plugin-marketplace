@@ -35,7 +35,7 @@ Procedure:
 
 5. Specialist identification on failure:
    - Read build.log and the error-producing files (in visual mode, the broken files), analyze the cause, and concisely organize the fix direction (fix_guidance).
-   - Specialist selection: enumerate the destination project's agents via `ls .claude/agents/*.md`, Read each frontmatter `name` / `description`, and set `suggested_specialist` to the `name` of the agent whose specialty best matches the error content (language / build system / subsystem). If `.claude/agents/` is absent / empty, or there is no match, use `general-purpose`.
+   - Specialist selection: resolve the agent via the procedure in `{{plugin_root}}/rules/agents-detection.md`. Match target is the error content (language / build system / subsystem); the result field is `suggested_specialist`.
 
 6. Write to `{{tmp_dir}}/format-build-result.json`.
 

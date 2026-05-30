@@ -22,10 +22,11 @@ Claude Code 向けのマルチエージェント並列コードレビューワ�
 ## レビュアー / 修正担当エージェント
 
 このプラグインは専門エージェントを同梱しません。triage / scope-analysis /
-analysis / format-build-verify の各サブエージェントが**移植先プロジェクトの**
-`.claude/agents/*.md` を列挙し、各エージェントの frontmatter の
-`name` / `description` を読み、指摘ごとに最適なものを選定します。
-`.claude/agents/` が無い（または一致が無い）場合は `general-purpose` に
+analysis / format-build-verify の各サブエージェントが**移植先プロジェクト**
+（`.claude/agents/`）→**ユーザー**（`~/.claude/agents/`）→**プラグイン同梱**の順に、
+サブディレクトリを含めて再帰的（`**/*.md`）にエージェントを列挙し、各エージェントの
+frontmatter の `name` / `description` を読み、指摘ごとに最適なものを選定します。
+一致が無い場合は `general-purpose` に
 フォールバックします。機械的な集約 / 編纂 / 検証を担うエージェント
 `review-helper` は同梱されています（`agents/review-helper.md`）。
 

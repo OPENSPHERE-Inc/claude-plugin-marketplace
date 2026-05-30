@@ -11,6 +11,6 @@ Targets to extract: Critical / Major / Minor (skip Info). Include all findings i
 Determining the verification assignee:
 
 - If the Triage line contains "(assignee: {specialist})", use that specialist.
-- If no assignee is present (markers empty / Triage is 🚫 Won't Fix with no assignee field, etc.), enumerate the destination project's agents with `ls .claude/agents/*.md` (relative to the working directory), Read each frontmatter `name` / `description`, and pick the agent whose specialty best matches the finding's `Reviewers` and content. If `.claude/agents/` is absent / empty or no agent matches, use `general-purpose` as the final fallback. Use the agent's `name` (the `subagent_type` value) as the assignee.
+- If no assignee is present (markers empty / Triage is 🚫 Won't Fix with no assignee field, etc.), resolve the agent via the procedure in `{{plugin_root}}/rules/agents-detection.md`. Match target is the finding's `Reviewers` and content; the result field is the assignee.
 
 Return value: `{total, by_assignee: [{assignee, ids: [id, ...]}], template_id}`. Include the `template_id` value Read from this template's frontmatter as-is.

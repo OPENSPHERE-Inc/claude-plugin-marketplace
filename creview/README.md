@@ -23,10 +23,11 @@ option.
 ## Reviewer / fixer agents
 
 This plugin does not bundle specialist agents. The triage / scope-analysis /
-analysis / format-build-verify sub-agents enumerate the **destination
-project's** `.claude/agents/*.md`, read each agent's frontmatter
-`name` / `description`, and pick the best match per finding. With no
-`.claude/agents/` (or no match), they fall back to `general-purpose`. The
+analysis / format-build-verify sub-agents enumerate agents recursively
+(`**/*.md`, including subdirectories) from the **destination project**
+(`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin bundle**, read
+each agent's frontmatter `name` / `description`, and pick the best match per
+finding. With no match, they fall back to `general-purpose`. The
 mechanical aggregation / compile / verification agent `review-helper` is
 bundled (`agents/review-helper.md`).
 

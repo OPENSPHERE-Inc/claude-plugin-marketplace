@@ -35,7 +35,7 @@ template_id: 9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46
 
 5. 失敗時の専門家判定:
    - build.log とエラー発生ファイル（目視モードでは破損ファイル）を Read して原因分析し、修正方向性 (fix_guidance) を簡潔に整理。
-   - 専門家選定: `ls .claude/agents/*.md` で反映先プロジェクトのエージェントを列挙し、各 frontmatter の `name` / `description` を Read し、エラー内容（言語・ビルドシステム・サブシステム）に最も専門が合致するエージェントの `name` を `suggested_specialist` に設定。`.claude/agents/` が無い／空、または合致なしの場合は `general-purpose`。
+   - 専門家選定: `{{plugin_root}}/rules/agents-detection.md` の手順でエージェントを解決する。マッチ対象はエラー内容（言語・ビルドシステム・サブシステム）、記録先は `suggested_specialist`。
 
 6. `{{tmp_dir}}/format-build-result.json` に Write。
 

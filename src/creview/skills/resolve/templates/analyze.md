@@ -11,6 +11,6 @@ template_id: 5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42
 検証担当 (assignee) の決定:
 
 - Triage 行に "(assignee: {specialist})" があれば、その specialist を使う。
-- assignee 不在の場合（マーカーが空 / Triage が 🚫 Won't Fix で assignee 行なし 等）、`ls .claude/agents/*.md`（作業ディレクトリ基準）で対象プロジェクトの agent を列挙し、各 frontmatter の `name` / `description` を Read し、当該指摘の `Reviewers` と内容に専門性が最も合致する agent を選ぶ。`.claude/agents/` が存在しない / 空、またはどの agent も合致しない場合は、最終フォールバックとして `general-purpose` を使う。assignee には agent の `name`（`subagent_type` の値）を用いる。
+- assignee 不在の場合（マーカーが空 / Triage が 🚫 Won't Fix で assignee 行なし 等）、`{{plugin_root}}/rules/agents-detection.md` の手順で agent を解決する。マッチ対象は当該指摘の `Reviewers` と内容、記録先は assignee。
 
 戻り値: `{total, by_assignee: [{assignee, ids: [id, ...]}], template_id}`。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

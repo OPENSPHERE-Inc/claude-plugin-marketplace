@@ -69,7 +69,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ### 専門家エージェントの解決
 
-本スキルは専門レビュアー / 修正エージェントを同梱しない。トリアージサブエージェントは**対象プロジェクト側**の `.claude/agents/*.md`（作業ディレクトリ基準）を列挙し、各エージェントの frontmatter の `name` / `description` を読み取り、指摘ごとに最も適したエージェントを割り当てる。適したエージェントが存在しない場合（または `.claude/agents/` が存在しない場合）、担当は `general-purpose` とする。リーダーは解決された担当エージェント名をステップ 2 の `subagent_type` にそのまま渡す。
+本スキルは専門レビュアー / 修正エージェントを同梱しない。トリアージサブエージェントは `${CLAUDE_PLUGIN_ROOT}/rules/agents-detection.md` の手順で指摘ごとに担当を解決する（マッチ対象＝指摘内容、記録先＝assignee）。リーダーは解決された担当エージェント名をステップ 2 の `subagent_type` にそのまま渡す。
 
 ## 内部処理（中間ファイル）
 
