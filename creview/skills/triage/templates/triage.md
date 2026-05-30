@@ -48,7 +48,7 @@ Won't Fix guideline (when any of the following applies):
 
 High-severity exception: For Critical / Major Won't Fix, explicitly state "recommend separate PR" in the reason field (e.g. "Won't Fix — Existing-code bug. Recommend fixing in a separate PR.").
 
-Specialist assignment (Will Fix only): Enumerate the destination project's agents with `ls .claude/agents/*.md` (relative to the working directory) and Read each file's frontmatter `name` / `description`. Choose the agent whose described expertise best matches the finding (language, subsystem, comment-discipline, build, etc.). When `.claude/agents/` is absent, empty, or no agent is a reasonable match, set the assignee to `general-purpose`. Use the agent's `name` (the value another Agent call passes to `subagent_type`) as the assignee.
+Specialist assignment (Will Fix only): Resolve the agent via the procedure in `{{plugin_root}}/rules/agents-detection.md`. Match target is the finding content (language, subsystem, comment-discipline, build, etc.); the result field is the assignee.
 
 `{{tmp_dir}}/triage.json` format: `{items: [{id, verdict, assignee (null for Won't Fix), reason, memo_value}], will_fix_count, wontfix_count, by_stage: {<stage>: <int>}}`
 

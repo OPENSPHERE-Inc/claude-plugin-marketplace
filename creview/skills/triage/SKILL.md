@@ -69,7 +69,7 @@ For launch-prompt-completeness rules, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent
 
 ### Specialist agent resolution
 
-This skill does not bundle specialist reviewer / fixer agents. The triage sub-agent enumerates the **destination project's** `.claude/agents/*.md` (relative to the working directory), reads each agent's frontmatter `name` / `description`, and assigns the most suitable agent per finding. When no suitable agent exists (or `.claude/agents/` is absent), the assignee is `general-purpose`. The leader passes the resolved assignee names through to Step 2's `subagent_type` verbatim.
+This skill does not bundle specialist reviewer / fixer agents. The triage sub-agent resolves the assignee per finding via the procedure in `${CLAUDE_PLUGIN_ROOT}/rules/agents-detection.md` (match target = finding content, result field = assignee). The leader passes the resolved assignee names through to Step 2's `subagent_type` verbatim.
 
 ## Internal processing (intermediate files)
 

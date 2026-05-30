@@ -19,5 +19,6 @@ template_id: 4d8c2e5b-1f73-4a96-b2e8-9c1d3a7f4b62
 
 - `{{output_path}}` に `[重要度] [カテゴリ] file_path:line — 問題の説明とその重要性。` 形式の番号付きリストのみ Write（前置き・後書き禁止）。
   - カテゴリ例: `[バグ]` / `[保守性/可読性]` / `[テスト]`。
+  - `line` は対象ファイルの実際の行番号。`{{diff_path}}` のハンクヘッダ（`@@ -a,b +c,d @@`）や diff 内の位置を行番号にしない（diff の行位置は実ファイル行番号と一致しない）。diff は変更箇所の特定にのみ使い、行番号は対象ファイルを Read し、Read 出力の行番号（＝実ファイル行番号）を採用する。追加・変更行は現在のファイルの該当行、削除行は最寄りの周辺行を指す。
 - 問題の説明は `{{doc_lang}}` で記述する。`file_path:line` と重要度ラベル（Critical / Major / Minor / Info）はそのまま。
 - 戻り値: `{"path": "{{output_path}}", "critical": <int>, "major": <int>, "minor": <int>, "info": <int>, "template_id": "<本テンプレートの template_id>"}`

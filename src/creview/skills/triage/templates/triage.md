@@ -48,7 +48,7 @@ Won't Fix ガイドライン（いずれか該当時）:
 
 高重要度例外: Won't Fix でも Critical / Major は理由欄に「別 PR 推奨」を明記（例: "Won't Fix — 既存コードのバグ。別 PR での修正を推奨"）。
 
-担当専門家割り当て（Will Fix のみ）: 対象プロジェクトのエージェントを `ls .claude/agents/*.md`（作業ディレクトリ基準）で列挙し、各ファイルの frontmatter の `name` / `description` を Read する。記述された専門性が指摘に最も適合するエージェント（言語、サブシステム、コメント規律、ビルド等）を選定する。`.claude/agents/` が存在しない、空、または妥当に適合するエージェントがない場合、担当を `general-purpose` とする。担当には当該エージェントの `name`（別の Agent 呼び出しが `subagent_type` に渡す値）を用いる。
+担当専門家割り当て（Will Fix のみ）: `{{plugin_root}}/rules/agents-detection.md` の手順でエージェントを解決する。マッチ対象は指摘内容（言語・サブシステム・コメント規律・ビルド等）、記録先は assignee。
 
 `{{tmp_dir}}/triage.json` 形式: `{items: [{id, verdict, assignee（Won't Fix は null）, reason, memo_value}], will_fix_count, wontfix_count, by_stage: {<stage>: <int>}}`
 

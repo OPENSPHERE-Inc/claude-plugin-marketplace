@@ -40,10 +40,11 @@ sequencer-driven variant of the multi-round review (see
 
 ## Reviewer / fixer agents
 
-`creview` does **not** bundle specialist reviewer agents. It enumerates the
-**destination project's** `.claude/agents/*.md`, reads each agent's
-`description`, and selects the most relevant agents per finding. When no
-suitable agent exists (or there is no `.claude/agents/`), it falls back to
+`creview` does **not** bundle specialist reviewer agents. It enumerates agents
+recursively (`**/*.md`, so subdirectories are included) from the **destination
+project** (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin
+bundle**, reads each agent's `description`, and selects the most relevant agents
+per finding. When no suitable agent exists, it falls back to
 `general-purpose`. The `review-helper` aggregation agent is bundled with the
 `creview` plugin.
 

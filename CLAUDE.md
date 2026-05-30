@@ -59,7 +59,7 @@ claude-plugin-marketplace/
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md
 │   ├── agents/review-helper.md   # Bundled mechanical aggregation/compile agent
-│   ├── rules/                    # comment.md, document.md, review.md, sub-agent.md
+│   ├── rules/                    # comment.md, document.md, review.md, sub-agent.md, agents-detection.md
 │   ├── scripts/                  # fetch-diff.sh, render-review.py, rm-tmp.sh
 │   └── sequencer/programs/
 │       ├── review_rounds.py      # agent-sequencer program (English, active)
@@ -113,9 +113,13 @@ When changing a plugin:
   - SKILL.md bodies / `allowed-tools` use `${CLAUDE_PLUGIN_ROOT}/...`.
   - `templates/*.md` (read by sub-agents) use the `{{plugin_root}}/...` launch variable.
 - **Agent-dispatch generalization**: skills do **not** bundle specialist reviewers. The
-  scope-analysis / triage / analyze / format-build-verify sub-agents enumerate the
-  **destination project's** `.claude/agents/*.md`, read each `description`, pick the best
-  match per finding, and fall back to `general-purpose`. Only `review-helper` is bundled.
+  single-best-match resolution mechanics (enumerate agents recursively `**/*.md` across
+  **destination project** → **user** → **plugin bundle** scopes, higher-priority scope wins
+  on duplicate `name`, fall back to `general-purpose`) live in the shared bundled rule
+  `rules/agents-detection.md`. The triage / analyze / format-build-verify sub-agents read it
+  and supply only their match target + result field. `scope-analysis` keeps its own inline
+  multi-select variant (it picks *all* relevant reviewers, not one). Only `review-helper` is
+  bundled.
 
 ---
 
@@ -340,9 +344,10 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 - **CRLF line endings** in skill/template files are inherited from upstream. Avoid global
   reflow/`autocrlf` churn so diffs stay reviewable.
 - **Bundled rule cross-references resolve relative to the file.** `creview/rules/sub-agent.md`
-  points at sibling `comment.md`/`document.md` "in the same directory"; the sequencer
-  report template uses `../../../rules/sub-agent.md`. Keep these relative forms — absolute
-  `.claude/...` paths would not resolve in the consuming project.
+  points at sibling `comment.md`/`document.md` "in the same directory"; `agents-detection.md`
+  resolves the plugin-bundled agent scope as `../agents/**/*.md` relative to itself; the
+  sequencer report template uses `../../../rules/sub-agent.md`. Keep these relative forms —
+  absolute `.claude/...` paths would not resolve in the consuming project.
 
 ---
 

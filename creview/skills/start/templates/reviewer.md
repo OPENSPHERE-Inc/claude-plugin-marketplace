@@ -19,5 +19,6 @@ Output:
 
 - Write only a numbered list in the format `[severity] [category] file_path:line — Description of the issue and its importance.` to `{{output_path}}` (no preamble or postamble).
   - Category examples: `[Bug]` / `[Maintainability/Readability]` / `[Testing]`.
+  - `line` is the actual line number in the target file. Do not use a hunk header (`@@ -a,b +c,d @@`) or a position within `{{diff_path}}` as the line number (diff positions do not match real file line numbers). Use the diff only to locate what changed; obtain the line number by Read-ing the target file and using the line number Read reports (which is the real file line number). Added/changed lines point to the matching line in the current file; deleted lines point to the nearest surrounding line.
 - Write the issue description in `{{doc_lang}}`. Keep `file_path:line` and the severity labels (Critical / Major / Minor / Info) as-is.
 - Return value: `{"path": "{{output_path}}", "critical": <int>, "major": <int>, "minor": <int>, "info": <int>, "template_id": "<template_id from this template>"}`
