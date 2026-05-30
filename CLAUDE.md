@@ -59,7 +59,7 @@ claude-plugin-marketplace/
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md
 │   ├── agents/review-helper.md   # Bundled mechanical aggregation/compile agent
-│   ├── rules/                    # comment.md, document.md, review.md, sub-agent.md, agents-detection.md
+│   ├── rules/                    # comment.md, document.md, review.md, sub-agent.md, agents-detection.md, build-format-detection.md
 │   ├── scripts/                  # fetch-diff.sh, render-review.py, rm-tmp.sh
 │   └── sequencer/programs/
 │       ├── review_rounds.py      # agent-sequencer program (English, active)
@@ -324,10 +324,13 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 ## Important Warnings
 
 - **Token-placement invariant.** `${CLAUDE_PLUGIN_ROOT}` appears only in SKILL.md bodies /
-  `allowed-tools` (resolved in plugin context). `{{plugin_root}}` appears only inside
-  `templates/*.md` (resolved by the leader and passed as a launch variable). A sub-agent
-  reading a template does **not** get `${CLAUDE_PLUGIN_ROOT}` expanded — never put it in a
-  template; never put `{{plugin_root}}` in a SKILL.
+  `allowed-tools` (resolved in plugin context). `{{plugin_root}}` appears inside
+  `templates/*.md` (resolved by the leader and passed as a launch variable) and inside the
+  detection rules `rules/agents-detection.md` / `rules/build-format-detection.md` — those are
+  always reached via a template's `{{plugin_root}}/rules/...` reference, so `plugin_root` is
+  already in the sub-agent's scope and it substitutes the same value. A sub-agent reading a
+  template does **not** get `${CLAUDE_PLUGIN_ROOT}` expanded — never put it in a template;
+  never put `{{plugin_root}}` in a SKILL.
 - **`template_id` must match.** The SKILL step's hard-coded UUID and the template's
   frontmatter `template_id` must be identical, or the leader will loop relaunching. The
   two `compile.md` templates (triage / respond) intentionally share one UUID because both
@@ -344,10 +347,11 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 - **CRLF line endings** in skill/template files are inherited from upstream. Avoid global
   reflow/`autocrlf` churn so diffs stay reviewable.
 - **Bundled rule cross-references resolve relative to the file.** `creview/rules/sub-agent.md`
-  points at sibling `comment.md`/`document.md` "in the same directory"; `agents-detection.md`
-  resolves the plugin-bundled agent scope as `../agents/**/*.md` relative to itself; the
-  sequencer report template uses `../../../rules/sub-agent.md`. Keep these relative forms —
-  absolute `.claude/...` paths would not resolve in the consuming project.
+  points at sibling `comment.md`/`document.md` "in the same directory"; the sequencer report
+  template uses `../../../rules/sub-agent.md`. Keep these relative forms — absolute
+  `.claude/...` paths would not resolve in the consuming project. (The detection rules
+  `agents-detection.md` / `build-format-detection.md` instead express their plugin-bundled
+  scope with the `{{plugin_root}}/...` launch variable; see the Token-placement invariant.)
 
 ---
 

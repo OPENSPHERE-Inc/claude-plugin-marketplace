@@ -12,11 +12,7 @@ template_id: 9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46
 
 実施内容:
 
-1. ワークフロー解決。次の優先順で解決し、最初に解決できた段で確定して以降の段は試さない。
-   - `.claude/rules/build-format.md` を Read。存在すれば記載のフォーマット／ビルドコマンドをそのまま採用（後述「記述子形式」）。`workflow_source = "build-format.md"`。
-   - 無ければ `CLAUDE.md` を Read し、ビルド手順節とフォーマット節を解釈してコマンドを導出。`workflow_source = "CLAUDE.md"`。
-   - 無ければ `README.md` を Read し、同様に導出。`workflow_source = "README.md"`。
-   - いずれからもコマンドを確定できない場合は自動実行を行わず `workflow_source = "none"` とし、手順 4 に入る。
+1. ワークフロー解決。`{{plugin_root}}/rules/build-format-detection.md` の手順でフォーマット／ビルドコマンドと `workflow_source` を解決する。`workflow_source == "none"` の場合は自動実行を行わず手順 4 に入る。
 
 2. フォーマット検証（`workflow_source != "none"`）:
    - git で変更ファイル一覧を取得。
@@ -38,13 +34,6 @@ template_id: 9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46
    - 専門家選定: `{{plugin_root}}/rules/agents-detection.md` の手順でエージェントを解決する。マッチ対象はエラー内容（言語・ビルドシステム・サブシステム）、記録先は `suggested_specialist`。
 
 6. `{{tmp_dir}}/format-build-result.json` に Write。
-
-記述子形式（`.claude/rules/build-format.md`）。反映先プロジェクトが置く宣言ファイルで、次を Markdown 見出し配下に記述する（プロジェクトルートを CWD とする相対コマンド）:
-
-- `## Format` — フォーマット適用コマンド。任意で検証（dry-run）コマンドと対象ファイルの選別規則。
-- `## Build` — ビルドコマンド。任意で先行する configure コマンドとプラットフォーム別選定規則。
-
-各コマンドはそのまま実行可能な形で記載されている前提とし、解釈せず literal に実行する。
 
 `{{tmp_dir}}/format-build-result.json` 形式:
 

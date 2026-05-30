@@ -4,11 +4,11 @@ Common procedure by which creview sub-agents resolve a single specialist agent f
 
 ## Enumeration
 
-Enumerate agent `**/*.md` from the following scopes in priority order and Read each file's frontmatter `name` / `description`. When the same `name` exists in multiple scopes, adopt the higher-priority scope's entry; skip any scope that does not exist.
+Enumerate agent `**/*.md` from the following scopes in priority order and Read each file's frontmatter `name` / `description`. When the same `name` exists in multiple scopes, adopt the higher-priority scope's entry; skip any scope that does not exist. `{{plugin_root}}` is the launch variable from the prompt that had you Read this rule (same value the calling template uses).
 
 1. Project scope: `.claude/agents/**/*.md` (relative to the working directory)
 2. User scope: `~/.claude/agents/**/*.md`
-3. Plugin-bundled: the `agents/` directory one level up from this file. Resolve `../agents/**/*.md` against the absolute path from which this file was Read.
+3. Plugin-bundled: `{{plugin_root}}/agents/**/*.md`
 
 ## Selection
 

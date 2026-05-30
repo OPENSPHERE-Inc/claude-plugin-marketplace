@@ -12,11 +12,7 @@ The command execution CWD is assumed to be the project root. Do not use absolute
 
 Procedure:
 
-1. Workflow resolution. Resolve in the following priority order, finalizing at the first stage that resolves and not trying later stages.
-   - Read `.claude/rules/build-format.md`. If it exists, adopt its format / build commands verbatim (see "Descriptor format" below). `workflow_source = "build-format.md"`.
-   - Otherwise Read `CLAUDE.md` and interpret its build-procedure and format sections to derive the commands. `workflow_source = "CLAUDE.md"`.
-   - Otherwise Read `README.md` and derive similarly. `workflow_source = "README.md"`.
-   - If no commands can be determined from any of them, do not run anything automatically; set `workflow_source = "none"` and enter step 4.
+1. Workflow resolution. Resolve the format / build commands and `workflow_source` via the procedure in `{{plugin_root}}/rules/build-format-detection.md`. If `workflow_source == "none"`, do not run anything automatically and enter step 4.
 
 2. Format verification (`workflow_source != "none"`):
    - Get the list of changed files via git.
@@ -38,13 +34,6 @@ Procedure:
    - Specialist selection: resolve the agent via the procedure in `{{plugin_root}}/rules/agents-detection.md`. Match target is the error content (language / build system / subsystem); the result field is `suggested_specialist`.
 
 6. Write to `{{tmp_dir}}/format-build-result.json`.
-
-Descriptor format (`.claude/rules/build-format.md`). A declaration file the destination project places, written under Markdown headings as follows (commands relative to the project root as CWD):
-
-- `## Format` — the format-apply command. Optionally a verification (dry-run) command and target-file selection rules.
-- `## Build` — the build command. Optionally a preceding configure command and per-platform selection rules.
-
-Each command is assumed to be written in a directly executable form; execute it literally without interpretation.
 
 `{{tmp_dir}}/format-build-result.json` format:
 

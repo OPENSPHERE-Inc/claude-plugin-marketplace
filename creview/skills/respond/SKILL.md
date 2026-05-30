@@ -159,7 +159,7 @@ Receive the return value (`{reviewed_paths, fix_count, template_id}`). Verify th
 
 ## Step 4 — Format verification & build verification
 
-The leader (you) does not run the formatter or build commands directly and does not read source code. The format & build verification Sub resolves the destination project's format / build workflow in the order `.claude/rules/build-format.md` → `CLAUDE.md` → `README.md`, then performs only a single pass of format and build (if none can be resolved, it performs a visual check only and returns a warning). On build failure, it reads the code, identifies the responsible specialist, and returns the result (it does not fix the code itself). The leader launches a specialist Sub to perform the fix, and orchestrates a loop that alternately relaunches the format & build verification Sub and the specialist Sub until the build passes.
+The leader (you) does not run the formatter or build commands directly and does not read source code. The format & build verification Sub resolves the destination project's format / build workflow via the procedure in `${CLAUDE_PLUGIN_ROOT}/rules/build-format-detection.md` (recursively search for a `build-format.md` descriptor across project → user → plugin-bundled scopes, else `CLAUDE.md` → `README.md`), then performs only a single pass of format and build (if none can be resolved, it performs a visual check only and returns a warning). On build failure, it reads the code, identifies the responsible specialist, and returns the result (it does not fix the code itself). The leader launches a specialist Sub to perform the fix, and orchestrates a loop that alternately relaunches the format & build verification Sub and the specialist Sub until the build passes.
 
 ### Loop control (leader)
 
