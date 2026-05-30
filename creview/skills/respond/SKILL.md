@@ -72,7 +72,7 @@ For launch-prompt-completeness rules, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent
 
 ### Specialist agent resolution
 
-This skill does not bundle specialist agents. Each finding's assignee is read from its `Triage:` metadata (`(assignee: {specialist})`), written by `/creview:triage` against the **destination project's** `.claude/agents/`. The leader passes those assignee names through to `subagent_type` verbatim. When an assignee is absent or unresolvable, use `general-purpose`. The build-fix specialist is resolved by the format & build verification Sub from the destination project's `.claude/agents/` (or `general-purpose`).
+This skill does not bundle specialist agents. Each finding's assignee is read from its `Triage:` metadata (`(assignee: {specialist})`), written by `/creview:triage` against the **destination project's** `.claude/agents/`. The leader passes those assignee names through to `subagent_type` verbatim. When an assignee is absent or unresolvable, use `general-purpose`. The build/test-fix specialist is resolved by the format / build / test verification Sub from the destination project's `.claude/agents/` (or `general-purpose`).
 
 ## Internal processing (intermediate files)
 
@@ -157,23 +157,23 @@ Include `template_id` (Read from the template's frontmatter) in the return value
 
 Receive the return value (`{reviewed_paths, fix_count, template_id}`). Verify that `template_id` matches `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68`; on mismatch, relaunch the sub-agent.
 
-## Step 4 — Format verification & build verification
+## Step 4 — Format / build / test verification
 
-The leader (you) does not run the formatter or build commands directly and does not read source code. The format & build verification Sub resolves the destination project's format / build workflow via the procedure in `${CLAUDE_PLUGIN_ROOT}/rules/build-format-detection.md` (recursively search for a `build-format.md` descriptor across project → user → plugin-bundled scopes, else `CLAUDE.md` → `README.md`), then performs only a single pass of format and build (if none can be resolved, it performs a visual check only and returns a warning). On build failure, it reads the code, identifies the responsible specialist, and returns the result (it does not fix the code itself). The leader launches a specialist Sub to perform the fix, and orchestrates a loop that alternately relaunches the format & build verification Sub and the specialist Sub until the build passes.
+The leader (you) does not run the formatter or build commands directly and does not read source code. The format / build / test verification Sub resolves the destination project's format / build / test workflow via the procedure in `${CLAUDE_PLUGIN_ROOT}/rules/build-format-detection.md` (recursively search for a `build-format.md` descriptor across project → user → plugin-bundled scopes, else `CLAUDE.md` → `README.md`), then performs only a single pass of format, build, and test (test only when a test procedure is resolved; if none can be resolved, it performs a visual check only and returns a warning). On build or test failure, it reads the code, identifies the responsible specialist, and returns the result (it does not fix the code itself). The leader launches a specialist Sub to perform the fix, and orchestrates a loop that alternately relaunches the verification Sub and the specialist Sub until build and test pass.
 
 ### Loop control (leader)
 
 Maximum attempts: 5. Repeat the following up to the maximum:
 
-1. Launch the format & build verification Sub via `Agent(subagent_type="review-helper", prompt=...)`.
+1. Launch the format / build / test verification Sub via `Agent(subagent_type="review-helper", prompt=...)`.
 2. Receive the return value (`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`). Verify that `template_id` matches `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`; on mismatch, relaunch the Sub. If `workflow_warning` is non-null, retain it for presentation in Step 6.
 3. If `success == true`, exit the loop.
 4. If `success == false`:
-   a. Read `{tmp_dir}/format-build-result.json` and obtain `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `build_log_path` (operational data, not decision body; do not Read source code itself).
-   b. Launch the build-fix specialist Sub via `Agent(subagent_type=suggested_specialist, prompt=...)`.
+   a. Read `{tmp_dir}/format-build-result.json` and obtain `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` from its `failure` section (operational data, not decision body; do not Read source code itself).
+   b. Launch the build/test-fix specialist Sub via `Agent(subagent_type=suggested_specialist, prompt=...)`.
    c. Receive the return value (`{description, template_id}`) and verify `template_id` matches `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`; on mismatch, relaunch that Sub.
    d. Return to the top of the loop (format must be rechecked because code changed).
-5. If the build still fails after the maximum attempts, present `error_summary` to the user, exit the loop, and proceed to Step 5.
+5. If the build or test still fails after the maximum attempts, present `error_summary` to the user, exit the loop, and proceed to Step 5.
 
 ### Format & build verification Sub launch prompt
 
@@ -191,7 +191,7 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-### Build-fix specialist Sub launch prompt
+### Build/test-fix specialist Sub launch prompt
 
 ```
 As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/build-fix.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.

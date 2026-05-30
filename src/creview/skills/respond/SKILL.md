@@ -72,7 +72,7 @@ fix: Add null check before accessing output pointer
 
 ### 専門家エージェントの解決
 
-本スキルは専門家エージェントを同梱しない。各指摘の assignee は `Triage:` メタデータ（`(assignee: {specialist})`）から読み取る。これは `/creview:triage` が**反映先プロジェクトの** `.claude/agents/` に対して記録したものである。リーダーはその assignee 名をそのまま `subagent_type` に渡す。assignee が存在しない、または解決できない場合は `general-purpose` を使う。ビルド修正専門家は、フォーマット&ビルド検証 Sub が反映先プロジェクトの `.claude/agents/`（または `general-purpose`）から解決する。
+本スキルは専門家エージェントを同梱しない。各指摘の assignee は `Triage:` メタデータ（`(assignee: {specialist})`）から読み取る。これは `/creview:triage` が**反映先プロジェクトの** `.claude/agents/` に対して記録したものである。リーダーはその assignee 名をそのまま `subagent_type` に渡す。assignee が存在しない、または解決できない場合は `general-purpose` を使う。ビルド／テスト修正専門家は、フォーマット・ビルド・テスト検証 Sub が反映先プロジェクトの `.claude/agents/`（または `general-purpose`）から解決する。
 
 ## 内部処理（中間ファイル）
 
@@ -157,25 +157,25 @@ fix: Add null check before accessing output pointer
 
 戻り値（`{reviewed_paths, fix_count, template_id}`）を受け取る。`template_id` が `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
 
-## ステップ 4 — フォーマット検証 & ビルド検証
+## ステップ 4 — フォーマット・ビルド・テスト検証
 
-リーダー（あなた）はフォーマッタやビルドコマンドを直接実行せず、ソースコードも読まない。フォーマット&ビルド検証 Sub は `${CLAUDE_PLUGIN_ROOT}/rules/build-format-detection.md` の手順（`build-format.md` 記述子をプロジェクト→ユーザー→プラグイン同梱スコープで再帰探索、無ければ `CLAUDE.md` → `README.md`）で反映先プロジェクトのフォーマット／ビルド手順を解決し、単発のフォーマット&ビルド実行のみ行う（いずれも解決できない場合は目視チェックのみとなり警告を返す）。ビルド失敗時はコードを読んで修正担当の専門家を判定して結果を返す（自分でコードは修正しない）。リーダーは専門家 Sub を起動して修正させ、ビルドが通るまでフォーマット&ビルド検証 Sub と専門家 Sub を交互に再起動するループをオーケストレートする。
+リーダー（あなた）はフォーマッタやビルドコマンドを直接実行せず、ソースコードも読まない。フォーマット・ビルド・テスト検証 Sub は `${CLAUDE_PLUGIN_ROOT}/rules/build-format-detection.md` の手順（`build-format.md` 記述子をプロジェクト→ユーザー→プラグイン同梱スコープで再帰探索、無ければ `CLAUDE.md` → `README.md`）で反映先プロジェクトのフォーマット／ビルド／テスト手順を解決し、単発のフォーマット・ビルド・テスト実行のみ行う（テストはテスト手順が解決された場合のみ。いずれも解決できない場合は目視チェックのみとなり警告を返す）。ビルド／テスト失敗時はコードを読んで修正担当の専門家を判定して結果を返す（自分でコードは修正しない）。リーダーは専門家 Sub を起動して修正させ、ビルドとテストが通るまで検証 Sub と専門家 Sub を交互に再起動するループをオーケストレートする。
 
 ### ループ制御（リーダー）
 
 最大試行回数: 5。以下を最大試行回数まで繰り返す:
 
-1. フォーマット&ビルド検証 Sub を `Agent(subagent_type="review-helper", prompt=...)` で起動する。
+1. フォーマット・ビルド・テスト検証 Sub を `Agent(subagent_type="review-helper", prompt=...)` で起動する。
 2. 戻り値（`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`template_id` が `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46` と一致することを確認する。一致しない場合は Sub を再起動する。`workflow_warning` が非 null の場合はステップ 6 で提示するため保持する。
 3. `success == true` ならループ終了。
 4. `success == false` の場合:
-   a. `{tmp_dir}/format-build-result.json` を Read し、`suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `build_log_path` を取得する（判定本体ではない operational data。ただしソースコード本体は Read しない）。
-   b. `Agent(subagent_type=suggested_specialist, prompt=...)` でビルド修正専門家 Sub を起動する。
+   a. `{tmp_dir}/format-build-result.json` を Read し、`failure` セクションから `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` を取得する（判定本体ではない operational data。ただしソースコード本体は Read しない）。
+   b. `Agent(subagent_type=suggested_specialist, prompt=...)` でビルド／テスト修正専門家 Sub を起動する。
    c. 戻り値（`{description, template_id}`）を受け取り、`template_id` が `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29` と一致することを確認する。一致しない場合は当該 Sub を再起動する。
    d. ループの先頭に戻る（コードが書き変わっているのでフォーマット再確認が必要）。
-5. 試行回数上限に達してもビルドが通らない場合、ユーザーに `error_summary` を提示してループを抜け、ステップ 5 に進む。
+5. 試行回数上限に達してもビルド／テストが通らない場合、ユーザーに `error_summary` を提示してループを抜け、ステップ 5 に進む。
 
-### フォーマット&ビルド検証 Sub の起動プロンプト
+### フォーマット・ビルド・テスト検証 Sub の起動プロンプト
 
 ```
 最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/format-build-verify.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
@@ -191,7 +191,7 @@ fix: Add null check before accessing output pointer
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-### ビルド修正専門家 Sub の起動プロンプト
+### ビルド／テスト修正専門家 Sub の起動プロンプト
 
 ```
 最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/build-fix.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
