@@ -138,7 +138,7 @@ Receive the return value from every fix agent (`{items: [{id, path}, ...], templ
 
 ## Step 3 — Comment review (delegate to the comment-sensei sub-agent)
 
-Have comment-sensei review whether comments added or modified by the fix sub-agents violate the discipline in `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` and fix any violations. If no added or modified comments exist, the sub-agent may finish without making any changes.
+Have comment-sensei review whether comments added or modified by the fix sub-agents violate the discipline in `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` and fix any violations. Pass comment-sensei the review document (`{document_path}`) so it adjusts comments only within bounds that do not distort each finding's intent. If no added or modified comments exist, the sub-agent may finish without making any changes.
 
 Launch via `Agent(subagent_type="comment-sensei", prompt=...)`. Task-specific instructions are stored in the `templates/comment-review.md` external template:
 
@@ -148,6 +148,7 @@ As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templa
 Variables (substitute into the template's {{...}} placeholders):
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - tmp_dir: {tmp_dir}
+- document_path: {document_path}
 
 Round-specific overrides (apply after following the template's instructions):
 - (none)
