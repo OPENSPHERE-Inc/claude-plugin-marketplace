@@ -1,7 +1,7 @@
 ---
 name: respond
 description: Will-Fix / Maintain / Alternative のレビュー指摘を修正し、ビルドを検証し、修正状況をレビュードキュメントに反映する
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュー対応（修正）
@@ -138,9 +138,9 @@ fix: Add null check before accessing output pointer
 
 ## ステップ 3 — コメントレビュー（comment-sensei サブエージェントへ委譲）
 
-修正サブエージェントが追加・変更したコメントが `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` の規律に違反していないかを comment-sensei にレビューさせ、違反があれば修正させる。comment-sensei にはレビュードキュメント（`{document_path}`）を渡し、各指摘の趣旨を棄損しない範囲でコメントを調整させる。追加・変更されたコメントが無い場合、サブエージェントは何もせず終了してよい。
+修正サブエージェントが追加・変更したコメントが `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` の規律に違反していないかを comment-sensei にレビューさせ、違反があれば修正させる。comment-sensei には今回の修正差分（`fetch-diff.sh` 出力）とレビュードキュメント（`{document_path}`）を渡し、変更されたコメントを把握しつつ各指摘の趣旨を棄損しない範囲で調整させる。追加・変更されたコメントが無い場合、サブエージェントは何もせず終了してよい。
 
-`Agent(subagent_type="comment-sensei", prompt=...)` で起動する。タスク固有の指示は `templates/comment-review.md` 外部テンプレートに格納されている:
+リーダーは起動前に `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` で修正差分を取得する。`Agent(subagent_type="comment-sensei", prompt=...)` で起動する。タスク固有の指示は `templates/comment-review.md` 外部テンプレートに格納されている:
 
 ```
 最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/comment-review.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
@@ -148,6 +148,7 @@ fix: Add null check before accessing output pointer
 変数（テンプレート中の {{...}} placeholder を置換）:
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - tmp_dir: {tmp_dir}
+- diff_path: {tmp_dir}/changes.txt
 - document_path: {document_path}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
@@ -160,13 +161,13 @@ fix: Add null check before accessing output pointer
 
 ## ステップ 4 — フォーマット・ビルド・テスト検証
 
-リーダー（あなた）はフォーマッタやビルドコマンドを直接実行せず、ソースコードも読まない。フォーマット・ビルド・テスト検証 Sub は `${CLAUDE_PLUGIN_ROOT}/rules/build-format-detection.md` の手順（`build-format.md` 記述子をプロジェクト→ユーザー→プラグイン同梱スコープで再帰探索、無ければ `CLAUDE.md` → `README.md`）で反映先プロジェクトのフォーマット／ビルド／テスト手順を解決し、単発のフォーマット・ビルド・テスト実行のみ行う（テストはテスト手順が解決された場合のみ。いずれも解決できない場合は目視チェックのみとなり警告を返す）。ビルド／テスト失敗時はコードを読んで修正担当の専門家を判定して結果を返す（自分でコードは修正しない）。リーダーは専門家 Sub を起動して修正させ、ビルドとテストが通るまで検証 Sub と専門家 Sub を交互に再起動するループをオーケストレートする。
+リーダー（あなた）はフォーマッタやビルドコマンドを直接実行せず、ソースコードも読まない。フォーマット・ビルド・テスト検証 Sub は `${CLAUDE_PLUGIN_ROOT}/rules/build-format-detection.md` の手順（`build-format.md` 記述子をプロジェクト→ユーザー→プラグイン同梱スコープで再帰探索、無ければ `CLAUDE.md` → `README.md`）で反映先プロジェクトのフォーマット／ビルド／テスト手順を解決し、単発のフォーマット・ビルド・テスト実行のみ行う（テストはテスト手順が解決された場合のみ。いずれも解決できない場合は目視チェックのみとなり警告を返す）。Sub には今回の修正差分（`fetch-diff.sh` 出力）を渡し、変更内容がビルド／テストの結果に影響し得ない場合（コメントのみ等）は当該ステージを省略できる。ビルド／テスト失敗時はコードを読んで修正担当の専門家を判定して結果を返す（自分でコードは修正しない）。リーダーは専門家 Sub を起動して修正させ、ビルドとテストが通るまで検証 Sub と専門家 Sub を交互に再起動するループをオーケストレートする。
 
 ### ループ制御（リーダー）
 
 最大試行回数: 5。以下を最大試行回数まで繰り返す:
 
-1. フォーマット・ビルド・テスト検証 Sub を `Agent(subagent_type="review-helper", prompt=...)` で起動する。
+1. `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` で現在の修正差分（作業ツリー）を取得し、フォーマット・ビルド・テスト検証 Sub を `Agent(subagent_type="review-helper", prompt=...)` で起動する。
 2. 戻り値（`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`template_id` が `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46` と一致することを確認する。一致しない場合は Sub を再起動する。`workflow_warning` が非 null の場合はステップ 6 で提示するため保持する。
 3. `success == true` ならループ終了。
 4. `success == false` の場合:
@@ -184,6 +185,7 @@ fix: Add null check before accessing output pointer
 変数（テンプレート中の {{...}} placeholder を置換）:
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - tmp_dir: {tmp_dir}
+- diff_path: {tmp_dir}/changes.txt
 - attempt_num: {attempt_num}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
