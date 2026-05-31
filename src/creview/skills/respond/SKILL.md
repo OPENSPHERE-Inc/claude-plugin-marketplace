@@ -138,7 +138,7 @@ fix: Add null check before accessing output pointer
 
 ## ステップ 3 — コメントレビュー（comment-sensei サブエージェントへ委譲）
 
-修正サブエージェントが追加・変更したコメントが `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` の規律に違反していないかを comment-sensei にレビューさせ、違反があれば修正させる。追加・変更されたコメントが無い場合、サブエージェントは何もせず終了してよい。
+修正サブエージェントが追加・変更したコメントが `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` の規律に違反していないかを comment-sensei にレビューさせ、違反があれば修正させる。comment-sensei にはレビュードキュメント（`{document_path}`）を渡し、各指摘の趣旨を棄損しない範囲でコメントを調整させる。追加・変更されたコメントが無い場合、サブエージェントは何もせず終了してよい。
 
 `Agent(subagent_type="comment-sensei", prompt=...)` で起動する。タスク固有の指示は `templates/comment-review.md` 外部テンプレートに格納されている:
 
@@ -148,6 +148,7 @@ fix: Add null check before accessing output pointer
 変数（テンプレート中の {{...}} placeholder を置換）:
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - tmp_dir: {tmp_dir}
+- document_path: {document_path}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
 - (該当なし)
