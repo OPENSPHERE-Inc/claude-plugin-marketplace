@@ -57,8 +57,8 @@ claude-plugin-marketplace/
 │   │   ├── respond/              # /creview:respond (review-respond: fix)
 │   │   ├── resolve/              # /creview:resolve (from review-resolve)
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
-│   │       └── <skill>/SKILL.md + templates/*.md
-│   ├── agents/review-helper.md   # Bundled mechanical aggregation/compile agent
+│   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
+│   ├── agents/review-helper.md   # Bundled mechanical aggregation agent
 │   ├── rules/                    # comment.md, document.md, review.md, sub-agent.md, agents-detection.md, build-format-detection.md
 │   ├── scripts/                  # fetch-diff.sh, render-review.py, rm-tmp.sh
 │   └── sequencer/programs/
@@ -185,9 +185,14 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
 /creview:rounds  → orchestrates the four phases per round + feedback re-fix inner loop
 ```
 
-`render-review.py` (bundled script) inserts metadata before each
-`<!-- /METADATA(id) -->` marker from a one-pass `events.jsonl`. Each `(id, field)` is
-written at most once per phase, so the split phases never produce duplicate metadata lines.
+Each skill's `skills/<skill>/scripts/compile-review.py` (run directly by the leader, not a
+sub-agent) aggregates the intermediate JSON (triage + estimate / status / verification) into
+`events.jsonl`, invokes `render-review.py`, and prints a result JSON (summary line + counts);
+the resolve variant also writes `resolve-summary.md`. `render-review.py` (bundled script)
+inserts metadata before each `<!-- /METADATA(id) -->` marker from a one-pass `events.jsonl`.
+Each `(id, field)` is written at most once per phase, so the split phases never produce
+duplicate metadata lines. `render-review.py` is also kept for ad-hoc metadata edits (e.g.
+adjusting a status / verification later in a chat).
 
 ### Sub-agent launch contract
 
@@ -332,9 +337,7 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   template does **not** get `${CLAUDE_PLUGIN_ROOT}` expanded — never put it in a template;
   never put `{{plugin_root}}` in a SKILL.
 - **`template_id` must match.** The SKILL step's hard-coded UUID and the template's
-  frontmatter `template_id` must be identical, or the leader will loop relaunching. The
-  two `compile.md` templates (triage / respond) intentionally share one UUID because both
-  SKILLs expect that same value for their compile step.
+  frontmatter `template_id` must be identical, or the leader will loop relaunching.
 - **src ↔ active parity is a contract.** Do not edit one side only. A structural
   divergence breaks the documented localization workflow.
 - **`src/` is not shipped.** It sits outside the plugin `source` dirs on purpose. Do not

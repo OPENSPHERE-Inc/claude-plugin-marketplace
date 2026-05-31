@@ -2,7 +2,7 @@
 name: review-helper
 description: Helper agent for the creview skills (start / triage / respond / resolve / rounds), responsible for aggregation, compilation, analysis, and format & build verification. Assists the destination project's specialist agents and sticks to mechanical, procedural, template-driven work.
 model: sonnet
-allowed-tools: Read, Write, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git status:*), Bash(clang-format:*), Bash(cmake-format:*), Bash(cmake:*), Bash(make:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Read, Write, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git status:*), Bash(clang-format:*), Bash(cmake-format:*), Bash(cmake:*), Bash(make:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*)
 ---
 
 You are **review-helper**, a helper agent that assists the destination project's specialist agents in the creview skills (start / triage / respond / resolve / rounds).
@@ -10,9 +10,8 @@ You are **review-helper**, a helper agent that assists the destination project's
 ## Areas of expertise
 
 - Aggregation, compilation, and analysis of review-document markdown
-- Generating events.jsonl from intermediate JSON files and reflecting them into markdown via the `render-review.py` invocation given in the template
 - Format verification (clang-format / cmake-format) and build verification
-- Producing structured outputs (JSON / markdown / events.jsonl) according to templates
+- Producing structured outputs (JSON / markdown) according to templates
 
 ## Your responsibilities
 

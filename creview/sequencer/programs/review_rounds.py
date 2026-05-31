@@ -333,12 +333,12 @@ _TPL_RESPOND = textwrap.dedent("""\
     {{
       "fixed_count": <int>,
       "code_changed": <bool>,
-      "summary_line": "(<=200 chars one-line summary; copy verbatim from the aggregator sub-agent's return value)",
+      "summary_line": "(<=200 chars one-line summary; copy verbatim from the respond compile step (compile-review.py) result)",
       "workflow_warning": "(warning when format / build procedure is undeclared; null if none)"
     }}
-    - fixed_count: aggregator sub-agent's return value fixed_count
+    - fixed_count: the compile step (compile-review.py) fixed_count
       (Maintain regular fixes + Alternative FIXME additions combined / 0 if no targets)
-    - code_changed: aggregator sub-agent's return value code_changed
+    - code_changed: the compile step (compile-review.py) code_changed
     - summary_line: one-line summary for user notification
     - workflow_warning: the workflow_warning retained by the respond skill in Step 4
       (set when the format / build procedure could not be resolved and only a visual
@@ -356,10 +356,10 @@ _TPL_RESOLVE = textwrap.dedent("""\
       "unresolved_count": <int>,
       "resolved_count": <int>,
       "feedback_count": <int>,
-      "summary_line": "(<=200 chars one-line summary; copy verbatim from the aggregator sub-agent's return value)"
+      "summary_line": "(<=200 chars one-line summary; copy verbatim from the resolve compile step (compile-review.py) result)"
     }}
-    - unresolved_count: aggregator sub-agent's return value feedback_count (findings whose Verification remains as 💬 Feedback)
-    - resolved_count: aggregator sub-agent's return value resolved_count
+    - unresolved_count: the compile step (compile-review.py) feedback_count (findings whose Verification remains as 💬 Feedback)
+    - resolved_count: the compile step (compile-review.py) resolved_count
     - feedback_count: synonym for unresolved_count
     - summary_line: one-line summary for user notification\
 """)
@@ -396,7 +396,7 @@ _TPL_FEEDBACK = textwrap.dedent("""\
       "summary_line": "(<=200 chars one-line summary)",
       "workflow_warning": "(warning when the Step 2.5.2 respond has an undeclared format / build procedure; null if none)"
     }}
-    - unresolved_count: {resolve_skill} aggregator sub-agent's return value feedback_count after this attempt
+    - unresolved_count: {resolve_skill} compile step (compile-review.py) feedback_count after this attempt
     - resolved_count: same return value resolved_count
     - feedback_count: synonym for unresolved_count
     - code_changed: whether at least one line of source code was modified in this attempt

@@ -326,12 +326,12 @@ _TPL_RESPOND = textwrap.dedent("""\
     {{
       "fixed_count": <int>,
       "code_changed": <bool>,
-      "summary_line": "(<=200 chars 1 行サマリ。編纂サブエージェントの戻り値をそのまま転記)",
+      "summary_line": "(<=200 chars 1 行サマリ。respond の compile ステップ (compile-review.py) の結果をそのまま転記)",
       "workflow_warning": "(フォーマット／ビルド手順未宣言時の警告。無ければ null)"
     }}
-    - fixed_count: 編纂サブエージェントの戻り値 fixed_count
+    - fixed_count: compile ステップ (compile-review.py) の fixed_count
       （Maintain の通常修正 + Alternative の FIXME 付与の合算 / 対象なしなら 0）
-    - code_changed: 編纂サブエージェントの戻り値 code_changed
+    - code_changed: compile ステップ (compile-review.py) の code_changed
     - summary_line: ユーザー通知用の 1 行サマリ
     - workflow_warning: respond スキルがステップ 4 で保持した workflow_warning
       （フォーマット／ビルド手順が解決できず目視チェックのみだった場合に設定。
@@ -349,10 +349,10 @@ _TPL_RESOLVE = textwrap.dedent("""\
       "unresolved_count": <int>,
       "resolved_count": <int>,
       "feedback_count": <int>,
-      "summary_line": "(<=200 chars 1 行サマリ。編纂サブエージェントの戻り値をそのまま転記)"
+      "summary_line": "(<=200 chars 1 行サマリ。resolve の compile ステップ (compile-review.py) の結果をそのまま転記)"
     }}
-    - unresolved_count: 編纂サブエージェントの戻り値 feedback_count（Verification が 💬 Feedback のまま残っている指摘数）
-    - resolved_count: 編纂サブエージェントの戻り値 resolved_count
+    - unresolved_count: compile ステップ (compile-review.py) の feedback_count（Verification が 💬 Feedback のまま残っている指摘数）
+    - resolved_count: compile ステップ (compile-review.py) の resolved_count
     - feedback_count: unresolved_count と同義
     - summary_line: ユーザー通知用の 1 行サマリ\
 """)
@@ -389,7 +389,7 @@ _TPL_FEEDBACK = textwrap.dedent("""\
       "summary_line": "(<=200 chars 1 行サマリ)",
       "workflow_warning": "(Step 2.5.2 の respond でフォーマット／ビルド手順未宣言時の警告。無ければ null)"
     }}
-    - unresolved_count: 本試行後の {resolve_skill} 編纂サブエージェント戻り値 feedback_count
+    - unresolved_count: 本試行後の {resolve_skill} compile ステップ (compile-review.py) の feedback_count
     - resolved_count: 同戻り値の resolved_count
     - feedback_count: unresolved_count と同義
     - code_changed: 本試行で 1 行でもソースコードを修正したか

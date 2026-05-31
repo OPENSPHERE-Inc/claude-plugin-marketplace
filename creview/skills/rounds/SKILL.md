@@ -51,7 +51,7 @@ Write the review document in the user's chat language.
   - Build-fix specialist sub-agent (Step 2.3 / 2.5) — fixes build errors as the specialist identified by the format & build verification Sub. After completion, the leader relaunches the format & build verification Sub (respond § Step 4).
   - Analysis sub-agent (Step 2.4 / 2.5) — Reads the review document and returns the verification assignment (by_assignee) (resolve § Step 1, no file output).
   - Verification sub-agent (Step 2.4 / 2.5) — launched in parallel per specialist; batch-verifies the assigned findings (resolve § Step 2, read-only).
-  - Aggregator (compile) sub-agent (Step 2.2 / 2.3 / 2.4 / 2.5) — generates events.jsonl from intermediate files and runs render-review.py (triage § Step 3 / respond § Step 5 / resolve § Step 3).
+  - Compile is run directly by each skill's leader via `compile-review.py` (no sub-agent; Step 2.2 / 2.3 / 2.4 / 2.5) — it generates events.jsonl from intermediate files and reflects them into the markdown via render-review.py (triage § Step 3 / respond § Step 5 / resolve § Step 3).
   - Final report aggregator sub-agent (Step 3) — generates the final report from all rounds' review documents.
 - **What the orchestrator (you) directly handles is limited to the following:**
   - Control between Steps and round loop judgment (including the format & build verification Sub ⇄ build-fix specialist Sub re-execution loop. Operational data files from each Sub may be Read; source code itself is not read.).
@@ -59,7 +59,7 @@ Write the review document in the user's chat language.
   - Final summary presentation to the user.
 - **The orchestrator does not put review finding bodies or judgment bodies into context.** It holds only file paths and lightweight counters; details are handled by sub-agents.
 - Each round's results are passed to the next Step / next round **only through the review document**. Intermediate data between sub-agents is self-contained within a Step and must not persist across Steps. (Within a round, triage / estimate are persisted into the document by the triage phase, so the respond phase reads them from the document.)
-- **Launch aggregator / compilation / analysis / select-fix-targets / format & build verification sub-agents via `subagent_type="review-helper"` (analysis / compile / estimate-summary / format-build-verify) or `subagent_type="general-purpose"` (triage / select-fix-targets).** `model: sonnet` is already specified in review-helper's agent definition. For reviewer / estimate / fix / verify / build-fix sub-agents, specify the assignee resolved from the destination project's `.claude/agents/` (or `general-purpose`) via `subagent_type`. Do not specify `model="..."` from the SKILL (the model follows each agent definition's frontmatter).
+- **Launch aggregator / analysis / select-fix-targets / format & build verification sub-agents via `subagent_type="review-helper"` (analysis / estimate-summary / format-build-verify) or `subagent_type="general-purpose"` (triage / select-fix-targets).** `model: sonnet` is already specified in review-helper's agent definition. For reviewer / estimate / fix / verify / build-fix sub-agents, specify the assignee resolved from the destination project's `.claude/agents/` (or `general-purpose`) via `subagent_type`. Do not specify `model="..."` from the SKILL (the model follows each agent definition's frontmatter).
 
 For the launch prompt completeness convention, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch prompt completeness.
 
@@ -76,22 +76,22 @@ Round 1 start
   │     ↳ if Will Fix is 0, persist Won't Fix triage and skip to 2.4
   │     [estimate Subs (per-assignee, parallel)] → estimates/{id}.json
   │     [estimate aggregator Sub] estimates/*.json → estimate-summary.md
-  │     [compile Sub] triage.json + estimates/*.json → events.jsonl → render-review.py (persists triage/estimate into round1.md)
+  │     [compile-review.py] triage.json + estimates/*.json → round1.md (persists triage/estimate)
   │     ↳ --confirm: present estimate summary, wait for confirmation
   ├─ 2.3 respond / fix (respond skill)
   │     [select-fix-targets Sub] round1.md metadata → targets.json (by_assignee)
   │     ↳ if no Maintain/Alternative target, skip to 2.4
   │     [fix Subs (per-assignee, parallel)] fix Maintain, attach FIXME for Alternative → statuses/{id}.json
   │     [format & build verification Sub] ⇄ [build-fix specialist Sub] loop (max 5, leader-controlled)
-  │     [compile Sub] statuses/*.json → events.jsonl → render-review.py (persists status)
+  │     [compile-review.py] statuses/*.json → persists status
   ├─ 2.4 resolve (resolve skill)
   │     [analysis Sub] round1.md → by_assignee (no file output)
   │     [verification Subs] per-specialist parallel → verifications/{id}.json
-  │     [compile Sub] verifications/*.json → events.jsonl → render-review.py (persists verification)
+  │     [compile-review.py] verifications/*.json → persists verification
   ├─ 2.5 feedback re-fix loop (max 3)
-  │     [triage Sub] → [estimate Subs] → [compile] → [select-fix-targets] → [fix Subs]
+  │     [triage Sub] → [estimate Subs] → [compile-review.py] → [select-fix-targets] → [fix Subs]
   │       → [format & build verification Sub] ⇄ [build-fix specialist Sub] loop
-  │       → [compile] → [analysis Sub] → [verification Subs] → [compile]
+  │       → [compile-review.py] → [analysis Sub] → [verification Subs] → [compile-review.py]
   └─ 2.6 round end → judge condition for proceeding to the next round
 Round 2 start (do not pass the previous round's review document)
   └─ ...

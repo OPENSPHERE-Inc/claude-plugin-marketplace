@@ -51,7 +51,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
   - ビルド修正専門家サブエージェント（ステップ 2.3 / 2.5） — フォーマット&ビルド検証 Sub が判定した専門家として、ビルドエラーを修正する。完了後リーダーがフォーマット&ビルド検証 Sub を再起動する（respond § ステップ 4）。
   - 解析サブエージェント（ステップ 2.4 / 2.5） — レビュードキュメントを Read して検証担当割当 (by_assignee) を返却（resolve § ステップ 1、ファイル出力なし）。
   - 検証サブエージェント（ステップ 2.4 / 2.5） — specialist 単位で並列起動し、担当指摘を一括検証（resolve § ステップ 2、読み取り専用）。
-  - 編纂（compile）サブエージェント（ステップ 2.2 / 2.3 / 2.4 / 2.5） — 中間ファイル群から events.jsonl を生成し render-review.py を実行（triage § ステップ 3 / respond § ステップ 5 / resolve § ステップ 3）。
+  - 編纂（compile）は各スキルのリーダーが `compile-review.py` を直接実行する（サブ起動なし。ステップ 2.2 / 2.3 / 2.4 / 2.5）。中間ファイル群から events.jsonl を生成し render-review.py で markdown に反映（triage § ステップ 3 / respond § ステップ 5 / resolve § ステップ 3）。
   - 最終レポート編纂サブエージェント（ステップ 3） — 全ラウンドのレビュードキュメントから最終レポートを生成。
 - **オーケストレーター（あなた自身）が直接担うのは以下に限定する**:
   - 各ステップ間の制御・ラウンドループ判定（フォーマット&ビルド検証 Sub ⇄ ビルド修正専門家 Sub の再実行ループ含む。各 Sub からの operational data ファイルは Read 可、ソースコード本体は読まない）。
@@ -59,7 +59,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
   - ユーザーへの最終的なサマリ提示。
 - **オーケストレーターはレビュー指摘や判定の本文を context に載せない**。ファイルパスと軽量カウンタのみを保持し、詳細はサブエージェントが扱う。
 - 各ラウンドの結果は**レビュードキュメントのみ**を通じて次ステップ／次ラウンドに引き継ぐ。サブエージェント間の中間データはステップ内で完結し、ステップを跨いで残してはならない。（ラウンド内では、トリアージ・見積は triage フェーズでドキュメントに永続化されるため、respond フェーズはそれをドキュメントから読み取る。）
-- **集約・編纂・解析・修正対象選定・フォーマット&ビルド検証サブエージェントは `subagent_type="review-helper"`（analysis / compile / estimate-summary / format-build-verify）または `subagent_type="general-purpose"`（triage / 修正対象選定）で起動する。** review-helper の agent 定義には `model: sonnet` が指定済み。レビュアー / 見積 / 修正 / 検証 / ビルド修正サブエージェントは、対象プロジェクトの `.claude/agents/`（または `general-purpose`）から解決した assignee を `subagent_type` で指定する。SKILL から `model="..."` 指定は行わない（モデルは各 agent 定義の frontmatter に従う）。
+- **集約・解析・修正対象選定・フォーマット&ビルド検証サブエージェントは `subagent_type="review-helper"`（analysis / estimate-summary / format-build-verify）または `subagent_type="general-purpose"`（triage / 修正対象選定）で起動する。** review-helper の agent 定義には `model: sonnet` が指定済み。レビュアー / 見積 / 修正 / 検証 / ビルド修正サブエージェントは、対象プロジェクトの `.claude/agents/`（または `general-purpose`）から解決した assignee を `subagent_type` で指定する。SKILL から `model="..."` 指定は行わない（モデルは各 agent 定義の frontmatter に従う）。
 
 起動プロンプトの完全性に関する規約は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動プロンプトの完全性を参照。
 
@@ -76,22 +76,22 @@ Round 1 開始
   │     ↳ Will Fix が 0 件なら Won't Fix トリアージを永続化し 2.4 へスキップ
   │     [見積 Sub 群（assignee 単位、並列）] → estimates/{id}.json
   │     [見積集約 Sub] estimates/*.json → estimate-summary.md
-  │     [編纂 Sub] triage.json + estimates/*.json → events.jsonl → render-review.py（トリアージ／見積を round1.md に永続化）
+  │     [compile-review.py] triage.json + estimates/*.json → round1.md（トリアージ／見積を永続化）
   │     ↳ --confirm: 見積サマリを提示し確認を待つ
   ├─ 2.3 respond / fix（respond スキル）
   │     [修正対象選定 Sub] round1.md のメタデータ → targets.json（by_assignee）
   │     ↳ Maintain / Alternative の対象がなければ 2.4 へスキップ
   │     [修正 Sub 群（assignee 単位、並列）] Maintain を修正、Alternative に FIXME 付与 → statuses/{id}.json
   │     [フォーマット&ビルド検証 Sub] ⇄ [ビルド修正専門家 Sub] ループ（最大 5 回、リーダー制御）
-  │     [編纂 Sub] statuses/*.json → events.jsonl → render-review.py（status を永続化）
+  │     [compile-review.py] statuses/*.json → status を永続化
   ├─ 2.4 resolve（resolve スキル）
   │     [解析 Sub] round1.md → by_assignee（ファイル出力なし）
   │     [検証 Sub 群] specialist 単位で並列 → verifications/{id}.json
-  │     [編纂 Sub] verifications/*.json → events.jsonl → render-review.py（verification を永続化）
+  │     [compile-review.py] verifications/*.json → verification を永続化
   ├─ 2.5 フィードバック再修正ループ（最大 3 回）
-  │     [トリアージ Sub] → [見積 Sub 群] → [編纂] → [修正対象選定] → [修正 Sub 群]
+  │     [トリアージ Sub] → [見積 Sub 群] → [compile-review.py] → [修正対象選定] → [修正 Sub 群]
   │       → [フォーマット&ビルド検証 Sub] ⇄ [ビルド修正専門家 Sub] ループ
-  │       → [編纂] → [解析 Sub] → [検証 Sub 群] → [編纂]
+  │       → [compile-review.py] → [解析 Sub] → [検証 Sub 群] → [compile-review.py]
   └─ 2.6 ラウンド終了 → 次ラウンドに進む条件を判定
 Round 2 開始（前ラウンドのレビュードキュメントは渡さない）
   └─ ...

@@ -27,7 +27,7 @@ analysis / format-build-verify の各サブエージェントが**移植先プ�
 サブディレクトリを含めて再帰的（`**/*.md`）にエージェントを列挙し、各エージェントの
 frontmatter の `name` / `description` を読み、指摘ごとに最適なものを選定します。
 一致が無い場合は `general-purpose` に
-フォールバックします。機械的な集約 / 編纂 / 検証を担うエージェント
+フォールバックします。機械的な集約 / 検証を担うエージェント
 `review-helper` は同梱されています（`agents/review-helper.md`）。
 
 ## 同梱サポートファイル
@@ -37,6 +37,9 @@ frontmatter の `name` / `description` を読み、指摘ごとに最適なも�
 - `scripts/` — `fetch-diff.sh`、`render-review.py`、`rm-tmp.sh`。スキルは
   `${CLAUDE_PLUGIN_ROOT}/scripts/...` 経由で呼び出し、サブエージェント
   テンプレートは起動変数 `{{plugin_root}}` で解決済みパスを受け取ります。
+- `skills/{triage,respond,resolve}/scripts/compile-review.py` — スキルごとの
+  compile ステップ（リーダーが実行）。中間 JSON を `events.jsonl` に集約し
+  `render-review.py` を呼び出します。
 - `sequencer/programs/review_rounds.py` — `/creview:rounds` の決定論的な
   シーケンサプログラム版。
 
