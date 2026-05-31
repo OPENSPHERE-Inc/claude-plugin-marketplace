@@ -1,7 +1,7 @@
 ---
 name: respond
 description: Fix the Will-Fix / Maintain / Alternative review findings, verify the build, and reflect the fix status into the review document
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Respond (Fix)
@@ -138,9 +138,9 @@ Receive the return value from every fix agent (`{items: [{id, path}, ...], templ
 
 ## Step 3 — Comment review (delegate to the comment-sensei sub-agent)
 
-Have comment-sensei review whether comments added or modified by the fix sub-agents violate the discipline in `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` and fix any violations. Pass comment-sensei the review document (`{document_path}`) so it adjusts comments only within bounds that do not distort each finding's intent. If no added or modified comments exist, the sub-agent may finish without making any changes.
+Have comment-sensei review whether comments added or modified by the fix sub-agents violate the discipline in `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` and fix any violations. Pass comment-sensei the current fix diff (`fetch-diff.sh` output) and the review document (`{document_path}`) so it sees the changed comments and adjusts them only within bounds that do not distort each finding's intent. If no added or modified comments exist, the sub-agent may finish without making any changes.
 
-Launch via `Agent(subagent_type="comment-sensei", prompt=...)`. Task-specific instructions are stored in the `templates/comment-review.md` external template:
+Before launching, the leader runs `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the fix diff. Launch via `Agent(subagent_type="comment-sensei", prompt=...)`. Task-specific instructions are stored in the `templates/comment-review.md` external template:
 
 ```
 As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/comment-review.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
@@ -148,6 +148,7 @@ As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templa
 Variables (substitute into the template's {{...}} placeholders):
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - tmp_dir: {tmp_dir}
+- diff_path: {tmp_dir}/changes.txt
 - document_path: {document_path}
 
 Round-specific overrides (apply after following the template's instructions):
@@ -160,13 +161,13 @@ Receive the return value (`{reviewed_paths, fix_count, template_id}`). Verify th
 
 ## Step 4 — Format / build / test verification
 
-The leader (you) does not run the formatter or build commands directly and does not read source code. The format / build / test verification Sub resolves the destination project's format / build / test workflow via the procedure in `${CLAUDE_PLUGIN_ROOT}/rules/build-format-detection.md` (recursively search for a `build-format.md` descriptor across project → user → plugin-bundled scopes, else `CLAUDE.md` → `README.md`), then performs only a single pass of format, build, and test (test only when a test procedure is resolved; if none can be resolved, it performs a visual check only and returns a warning). On build or test failure, it reads the code, identifies the responsible specialist, and returns the result (it does not fix the code itself). The leader launches a specialist Sub to perform the fix, and orchestrates a loop that alternately relaunches the verification Sub and the specialist Sub until build and test pass.
+The leader (you) does not run the formatter or build commands directly and does not read source code. The format / build / test verification Sub resolves the destination project's format / build / test workflow via the procedure in `${CLAUDE_PLUGIN_ROOT}/rules/build-format-detection.md` (recursively search for a `build-format.md` descriptor across project → user → plugin-bundled scopes, else `CLAUDE.md` → `README.md`), then performs only a single pass of format, build, and test (test only when a test procedure is resolved; if none can be resolved, it performs a visual check only and returns a warning). The Sub is given the current fix diff (`fetch-diff.sh` output) and may skip a stage when the changes cannot affect its outcome (e.g. comments only). On build or test failure, it reads the code, identifies the responsible specialist, and returns the result (it does not fix the code itself). The leader launches a specialist Sub to perform the fix, and orchestrates a loop that alternately relaunches the verification Sub and the specialist Sub until build and test pass.
 
 ### Loop control (leader)
 
 Maximum attempts: 5. Repeat the following up to the maximum:
 
-1. Launch the format / build / test verification Sub via `Agent(subagent_type="review-helper", prompt=...)`.
+1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the current fix diff (working tree), then launch the format / build / test verification Sub via `Agent(subagent_type="review-helper", prompt=...)`.
 2. Receive the return value (`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`). Verify that `template_id` matches `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`; on mismatch, relaunch the Sub. If `workflow_warning` is non-null, retain it for presentation in Step 6.
 3. If `success == true`, exit the loop.
 4. If `success == false`:
@@ -184,6 +185,7 @@ As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templa
 Variables (substitute into the template's {{...}} placeholders):
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - tmp_dir: {tmp_dir}
+- diff_path: {tmp_dir}/changes.txt
 - attempt_num: {attempt_num}
 
 Round-specific overrides (apply after following the template's instructions):
