@@ -19,9 +19,10 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/.claude-plugin/plugin.json` / `cprompt/.claude-plugin/plugin.json` — Plugin manifests.
 - `creview/skills/{start,triage,respond,resolve,rounds}/SKILL.md` — The 5 creview skills.
 - `creview/skills/*/templates/*.md` — Sub-agent prompt templates (each has a `template_id`).
-- `creview/agents/review-helper.md` — Bundled mechanical aggregation/compile agent.
+- `creview/agents/review-helper.md` — Bundled mechanical aggregation agent.
 - `creview/rules/` — comment / document / review / sub-agent rules referenced by skills.
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `rm-tmp.sh`.
+- `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
 - `creview/sequencer/programs/review_rounds.py` (+ `review_rounds/`) — agent-sequencer program (English).
 - `cprompt/skills/edit/SKILL.md` (+ `templates/`) — The `/cprompt:edit` skill.
 - `cprompt/rules/` — `prompt.md`, `document.md`.

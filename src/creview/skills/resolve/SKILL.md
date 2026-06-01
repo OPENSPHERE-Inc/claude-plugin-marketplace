@@ -1,7 +1,7 @@
 ---
 name: resolve
 description: レビュー指摘の解決状況を実際のソースコードと照合して検証し、検証メタデータを書き戻す
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュー検証
@@ -78,22 +78,20 @@ Unresolved の指摘には `verification` 値を書き込まない。
 {tmp_dir} = .claude/tmp/creview-resolve-{timestamp}/
 {tmp_dir}/diff.txt                 ← リーダーがステップ 1 で取得する差分（検証サブエージェント入力）
 {tmp_dir}/verifications/{id}.json  ← 検証サブエージェントの出力（指摘 1 件 1 ファイル）
-{tmp_dir}/events.jsonl             ← 編纂サブエージェントの出力（render-review.py 入力）
-{tmp_dir}/resolve-summary.md       ← 編纂サブエージェントの出力（検証レポート）
+{tmp_dir}/events.jsonl             ← compile-review.py の出力（render-review.py 入力）
+{tmp_dir}/resolve-summary.md       ← compile-review.py の出力（検証レポート）
 ```
 
 作成はステップ 1、削除はリーダーがステップ 4 で `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で行う。
 
 ### events.jsonl
 
-events.jsonl は `{tmp_dir}/events.jsonl` に置く。形式:
+events.jsonl は `compile-review.py` が `verifications/*.json` の `memo_value` から `{tmp_dir}/events.jsonl` に生成する。形式:
 
 ```jsonl
 {"id":"C-1","field":"verification","value":"✅ Verified — Null チェックの修正は正確"}
 {"id":"M-1","field":"verification","value":"💬 Feedback — 85 行目の else 分岐で LOG_ERROR が抜けている"}
 ```
-
-書き出しには **Write ツール**を使う。Bash の cat heredoc は値内のアポストロフィ（例: `Won't`）で外側のクォーティングが破綻するため使用不可。
 
 **Unresolved** の指摘（トリアージ未実施 / 見積未完了 / 修正未完了）は events.jsonl に書き込まない（verification を付ける段階にない）。
 
@@ -148,29 +146,17 @@ events.jsonl は `{tmp_dir}/events.jsonl` に置く。形式:
 
 各検証エージェントから戻り値（`{items: [{id, outcome}, ...], template_id}`）を受け取る。`template_id` が `8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94` と一致することを確認する。一致しない場合は当該エージェントを再起動する。**verification 本文は context に載せない**（戻り値は `items` のみ）。
 
-## ステップ 3 — 検証レポートと反映（編纂サブエージェントへ委譲）
+## ステップ 3 — 検証レポートと反映
 
-リーダー（あなた）は検証本文を context に載せない。
+リーダー（あなた）は検証本文を context に載せない。`compile-review.py` が `verifications/*.json` から検証レポート（`resolve-summary.md`）と events.jsonl を生成し、verification を markdown に反映する。
 
-起動手順:
+1. 次を実行する（CWD はプロジェクトルート）:
 
-1. `Agent(subagent_type="review-helper", prompt=...)` で新しいサブエージェントを起動する。タスク固有の指示は `templates/compile.md` 外部テンプレートに格納されている。起動プロンプト例:
+   ```bash
+   python ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py {tmp_dir} {document_path}
+   ```
 
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/compile.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-- document_path: {document_path}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (該当なし)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-2. 編纂サブエージェントから戻り値（`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count, template_id}`）を受け取る。`template_id` が `1c5e8b2f-7d34-4a96-b8c1-5e9a3f7d2c84` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
+2. stdout の結果 JSON（`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count}`）を受け取る。
 
 ## ステップ 4 — 完了報告とクリーンアップ
 

@@ -1,7 +1,7 @@
 ---
 name: respond
 description: Fix the Will-Fix / Maintain / Alternative review findings, verify the build, and reflect the fix status into the review document
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Respond (Fix)
@@ -76,7 +76,7 @@ This skill does not bundle specialist agents. Each finding's assignee is read fr
 
 ## Internal processing (intermediate files)
 
-Each decision is written to an intermediate file, and the aggregator sub-agent compiles them. The leader (you) does not load the body of any decision into context.
+Each decision is written to an intermediate file, and `compile-review.py` compiles them. The leader (you) does not load the body of any decision into context.
 
 ### Working directory
 
@@ -84,7 +84,7 @@ Each decision is written to an intermediate file, and the aggregator sub-agent c
 {tmp_dir} = .claude/tmp/creview-respond-{timestamp}/
 {tmp_dir}/targets.json         ← output of the select-fix-targets sub-agent
 {tmp_dir}/statuses/{id}.json   ← output of the fix sub-agents (one file per finding)
-{tmp_dir}/events.jsonl         ← output of the aggregator sub-agent (input to render-review.py)
+{tmp_dir}/events.jsonl         ← output of compile-review.py (input to render-review.py)
 ```
 
 Use the **Write tool** for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g. `Won't`) break the outer quoting.
@@ -209,27 +209,17 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-## Step 5 — Reflect into the review document (delegate to the aggregator sub-agent)
+## Step 5 — Reflect into the review document
 
-The leader (you) does not load decision bodies into context.
+The leader (you) does not load decision bodies into context. The fix `status` is aggregated by `compile-review.py` from `statuses/*.json` and reflected into the markdown via events.jsonl (`triage` / `estimate` were already persisted by `/creview:triage`).
 
-1. Launch a sub-agent via `Agent(subagent_type="review-helper", prompt=...)`. Task-specific instructions are stored in the `templates/compile.md` external template:
+1. Run (CWD = project root):
 
-```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/compile.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+   ```bash
+   python ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py {tmp_dir} {document_path}
+   ```
 
-Variables (substitute into the template's {{...}} placeholders):
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-- document_path: {document_path}
-
-Round-specific overrides (apply after following the template's instructions):
-- (none)
-
-Include `template_id` (Read from the template's frontmatter) in the return value.
-```
-
-2. Receive the return value (`{fixed_count, code_changed, summary_line, template_id}`). Verify that `template_id` matches `3b7f1c5d-8a29-4e63-b1c8-9d3a7f5e2b41`; on mismatch, relaunch the sub-agent.
+2. Receive the result JSON from stdout (`{fixed_count, code_changed, summary_line, maintain, alternative}`). `fixed_count` is the number of fixes (the count of statuses files).
 
 3. The leader removes `{tmp_dir}` in one shot:
    ```bash

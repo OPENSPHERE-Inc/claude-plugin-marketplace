@@ -1,7 +1,7 @@
 ---
 name: triage
 description: レビュー指摘事項のトリアージと修正コストの見積を行い、トリアージ / 見積メタデータをレビュードキュメントに永続化する（ソース修正は行わない）
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュートリアージ & 見積
@@ -73,7 +73,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## 内部処理（中間ファイル）
 
-各判定は中間ファイルに書き出し、編纂サブエージェントが集約する。リーダー（あなた）は判定結果本体を context に載せない。
+各判定は中間ファイルに書き出し、`compile-review.py` が集約する。リーダー（あなた）は判定結果本体を context に載せない。
 
 ### 作業用ディレクトリ
 
@@ -81,21 +81,19 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 {tmp_dir} = .claude/tmp/creview-triage-{timestamp}/
 {tmp_dir}/triage.json          ← トリアージサブエージェントの出力
 {tmp_dir}/estimates/{id}.json  ← 見積サブエージェントの出力（指摘 1 件 1 ファイル）
-{tmp_dir}/events.jsonl         ← 編纂サブエージェントの出力（render-review.py 入力）
+{tmp_dir}/events.jsonl         ← compile-review.py の出力（render-review.py 入力）
 ```
 
 各サブエージェントは description / location / 既存メタデータ等の指摘本体情報を、`id` をキーにレビュードキュメントの METADATA マーカー前後から直接 Read して取得する。
 
 ### events.jsonl
 
-最終的な markdown 反映には `{tmp_dir}/events.jsonl` を使う。生成は編纂サブエージェントが一括で行う。形式:
+最終的な markdown 反映には `{tmp_dir}/events.jsonl` を使う。生成は `compile-review.py` が中間 JSON（triage.json / estimates/*.json）の `memo_value` から行う。形式:
 
 ```jsonl
 {"id":"C-1","field":"triage","value":"🔧 Will Fix (assignee: cpp-sensei) — reason"}
 {"id":"C-1","field":"estimate","value":"▶️ Maintain — Cost: M, Future: S, Signals: b,d — Plan: (1) src/foo.cpp:42 — null チェック追加"}
 ```
-
-書き出しには **Write ツール**を使う。Bash の cat heredoc は値内のアポストロフィ（例: `Won't Fix`）でクォーティングが破綻するため使用不可。
 
 ### 一時ディレクトリの作成
 
@@ -169,27 +167,17 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 戻り値（`{summary_path, summary_line, maintain_count, downgrade_count, alternative_count, template_id}`）を受け取る。`template_id` が `5c1e9b7a-3d48-4a96-b8e2-7f3c5a1d4b29` と一致することを確認する。一致しない場合はサブエージェントを再起動する。リーダーは `summary_line` だけを context に保持し、テーブル本体は載せない。
 
-## ステップ 3 — レビュードキュメントへの反映（編纂サブエージェントへ委譲）
+## ステップ 3 — レビュードキュメントへの反映
 
-リーダー（あなた）は判定本体を context に載せない。
+リーダー（あなた）は判定本体を context に載せない。トリアージ / 見積判定は `compile-review.py` が中間 JSON から集約し events.jsonl 経由で markdown に反映する（`status` / `verification` は対象外）。
 
-1. `Agent(subagent_type="review-helper", prompt=...)` でサブエージェントを起動する。タスク固有の指示は `templates/compile.md` 外部テンプレートに格納されている:
+1. 次を実行する（CWD はプロジェクトルート）:
 
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/triage/templates/compile.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
+   ```bash
+   python ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py {tmp_dir} {document_path}
+   ```
 
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-- document_path: {document_path}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (none)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-2. 戻り値（`{fixed_count, code_changed, summary_line, template_id}`）を受け取る。`template_id` が `3b7f1c5d-8a29-4e63-b1c8-9d3a7f5e2b41` と一致することを確認する。一致しない場合はサブエージェントを再起動する。ここでは `fixed_count` は 0 である（本スキルは status を書き込まない）。`triage` / `estimate` フィールドのみ反映される。
+2. stdout の結果 JSON（`{fixed_count, code_changed, summary_line, will_fix, wont_fix, maintain, alternative, downgrade}`）を受け取る。`fixed_count` は常に 0（本スキルは status を書き込まない）。`triage` / `estimate` フィールドのみ反映される。
 
 ## ステップ 4 — サマリーと後片付け
 

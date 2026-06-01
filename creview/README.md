@@ -28,7 +28,7 @@ analysis / format-build-verify sub-agents enumerate agents recursively
 (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin bundle**, read
 each agent's frontmatter `name` / `description`, and pick the best match per
 finding. With no match, they fall back to `general-purpose`. The
-mechanical aggregation / compile / verification agent `review-helper` is
+mechanical aggregation / verification agent `review-helper` is
 bundled (`agents/review-helper.md`).
 
 ## Bundled support files
@@ -38,6 +38,9 @@ bundled (`agents/review-helper.md`).
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `rm-tmp.sh`. Skills invoke
   them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`; sub-agent templates receive the
   resolved path through the `{{plugin_root}}` launch variable.
+- `skills/{triage,respond,resolve}/scripts/compile-review.py` — the per-skill
+  compile step (leader-run): aggregates intermediate JSON into `events.jsonl`
+  and calls `render-review.py`.
 - `sequencer/programs/review_rounds.py` — a deterministic sequencer-program
   variant of `/creview:rounds`.
 

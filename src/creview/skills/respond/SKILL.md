@@ -1,7 +1,7 @@
 ---
 name: respond
 description: Will-Fix / Maintain / Alternative のレビュー指摘を修正し、ビルドを検証し、修正状況をレビュードキュメントに反映する
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュー対応（修正）
@@ -76,7 +76,7 @@ fix: Add null check before accessing output pointer
 
 ## 内部処理（中間ファイル）
 
-各判定は中間ファイルに書き出し、編纂サブエージェントが集約する。リーダー（あなた）は判定結果本文を context に載せない。
+各判定は中間ファイルに書き出し、`compile-review.py` が集約する。リーダー（あなた）は判定結果本文を context に載せない。
 
 ### 作業用ディレクトリ
 
@@ -84,7 +84,7 @@ fix: Add null check before accessing output pointer
 {tmp_dir} = .claude/tmp/creview-respond-{timestamp}/
 {tmp_dir}/targets.json         ← select-fix-targets サブエージェントの出力
 {tmp_dir}/statuses/{id}.json   ← 修正サブエージェントの出力（指摘 1 件 1 ファイル）
-{tmp_dir}/events.jsonl         ← 編纂サブエージェントの出力（render-review.py 入力）
+{tmp_dir}/events.jsonl         ← compile-review.py の出力（render-review.py 入力）
 ```
 
 書き出しには **Write ツール**を使う。Bash の cat heredoc は値内のアポストロフィ（例: `Won't`）でクォーティングが破綻するため使用不可。
@@ -209,27 +209,17 @@ fix: Add null check before accessing output pointer
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-## ステップ 5 — レビュードキュメントへの反映（編纂サブエージェントへ委譲）
+## ステップ 5 — レビュードキュメントへの反映
 
-リーダー（あなた）は判定本文を context に載せない。
+リーダー（あなた）は判定本文を context に載せない。修正状況（`status`）は `compile-review.py` が `statuses/*.json` から集約し events.jsonl 経由で markdown に反映する（`triage` / `estimate` は `/creview:triage` が永続化済み）。
 
-1. `Agent(subagent_type="review-helper", prompt=...)` でサブエージェントを起動する。タスク固有の指示は `templates/compile.md` 外部テンプレートに格納されている:
+1. 次を実行する（CWD はプロジェクトルート）:
 
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/compile.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
+   ```bash
+   python ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py {tmp_dir} {document_path}
+   ```
 
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-- document_path: {document_path}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (該当なし)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-2. 戻り値（`{fixed_count, code_changed, summary_line, template_id}`）を受け取る。`template_id` が `3b7f1c5d-8a29-4e63-b1c8-9d3a7f5e2b41` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
+2. stdout の結果 JSON（`{fixed_count, code_changed, summary_line, maintain, alternative}`）を受け取る。`fixed_count` は修正件数（statuses のファイル数）。
 
 3. リーダーが `{tmp_dir}` を一括削除:
    ```bash
