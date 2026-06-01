@@ -169,7 +169,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 入力ドキュメント: {今ラウンドのファイルパス}
 
 1. コンソールに表示: `## Round {N} — Step 4: Resolve`
-2. resolve § の手順に従い、解析 Sub → 検証 Sub 群（並列）→ 編纂 Sub の順で起動する。
+2. resolve § の手順に従い、解析 Sub → 検証 Sub 群（並列）を起動し、リーダーが compile-review.py を実行する（resolve § ステップ 3）。
 3. オーケストレーターは戻り値（`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count}`）のみ context に保持する。検証本文は読み込まない。
 
 ### 2.5 — フィードバック確認と再修正ループ
@@ -194,9 +194,9 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 - 要対応の指摘数: トリアージ Sub の `will_fix_count`
 - Maintain / Alternative / Downgrade 数: 見積集約 Sub の `maintain_count` / `alternative_count` / `downgrade_count`
-- 修正数: respond compile Sub の `fixed_count`（Maintain 通常修正 + Alternative FIXME 付与の合計）
-- 未解決数: ステップ 2.5 最終試行後の resolve compile Sub の `feedback_count`
-- 解決数: resolve compile Sub の `resolved_count`
+- 修正数: respond の compile-review.py の `fixed_count`（Maintain 通常修正 + Alternative FIXME 付与の合計）
+- 未解決数: ステップ 2.5 最終試行後の resolve の compile-review.py の `feedback_count`
+- 解決数: resolve の compile-review.py の `resolved_count`
 - workflow_warning: 2.3 / 2.5 で保持した `workflow_warning`（フォーマット／ビルド手順未解決のラウンドのみ。それ以外は null）
 
 次のラウンドに進む条件: 以下の**すべて**を満たす場合に限り、ラウンドカウンターをインクリメントしてステップ 2.1 へ戻る:

@@ -172,7 +172,7 @@ _RESOLVE_SCHEMA = {
         "feedback_count": {"type": "integer", "minimum": 0},
         "summary_line": {"type": "string", "maxLength": 500},
     },
-    "required": ["unresolved_count"],
+    "required": ["feedback_count"],
     "additionalProperties": True,
 }
 
@@ -186,7 +186,7 @@ _FEEDBACK_SCHEMA = {
         "summary_line": {"type": "string", "maxLength": 500},
         "workflow_warning": {"type": ["string", "null"]},
     },
-    "required": ["unresolved_count", "code_changed"],
+    "required": ["feedback_count", "code_changed"],
     "additionalProperties": True,
 }
 
@@ -353,14 +353,12 @@ _TPL_RESOLVE = textwrap.dedent("""\
 
     Report format (JSON):
     {{
-      "unresolved_count": <int>,
-      "resolved_count": <int>,
       "feedback_count": <int>,
+      "resolved_count": <int>,
       "summary_line": "(<=200 chars one-line summary; copy verbatim from the resolve compile step (compile-review.py) result)"
     }}
-    - unresolved_count: the compile step (compile-review.py) feedback_count (findings whose Verification remains as 💬 Feedback)
+    - feedback_count: the compile step (compile-review.py) feedback_count (findings whose Verification remains as 💬 Feedback; this drives the Step 2.5 feedback re-fix loop)
     - resolved_count: the compile step (compile-review.py) resolved_count
-    - feedback_count: synonym for unresolved_count
     - summary_line: one-line summary for user notification\
 """)
 
@@ -389,16 +387,14 @@ _TPL_FEEDBACK = textwrap.dedent("""\
 
     Report format (JSON):
     {{
-      "unresolved_count": <int>,
-      "resolved_count": <int>,
       "feedback_count": <int>,
+      "resolved_count": <int>,
       "code_changed": <bool>,
       "summary_line": "(<=200 chars one-line summary)",
       "workflow_warning": "(warning when the Step 2.5.2 respond has an undeclared format / build procedure; null if none)"
     }}
-    - unresolved_count: {resolve_skill} compile step (compile-review.py) feedback_count after this attempt
+    - feedback_count: {resolve_skill} compile step (compile-review.py) feedback_count after this attempt (findings whose Verification remains as 💬 Feedback; drives loop continuation)
     - resolved_count: same return value resolved_count
-    - feedback_count: synonym for unresolved_count
     - code_changed: whether at least one line of source code was modified in this attempt
     - summary_line: one-line summary for user notification
     - workflow_warning: the workflow_warning retained by {respond_skill} in Step 4 of
@@ -677,7 +673,7 @@ def run(ctx):
                     expect_schema=_RESOLVE_SCHEMA,
                     timeout_minutes=30,
                 )
-                round_record["unresolved"] = resolve_result["unresolved_count"]
+                round_record["unresolved"] = resolve_result["feedback_count"]
                 round_record["resolved_count"] = resolve_result.get(
                     "resolved_count", 0
                 )
@@ -717,7 +713,7 @@ def run(ctx):
                         timeout_minutes=120,
                     )
                     round_record["feedback_attempts"] += 1
-                    round_record["unresolved"] = feedback_result["unresolved_count"]
+                    round_record["unresolved"] = feedback_result["feedback_count"]
                     if "resolved_count" in feedback_result:
                         round_record["resolved_count"] = feedback_result[
                             "resolved_count"

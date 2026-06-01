@@ -170,7 +170,7 @@ _RESOLVE_SCHEMA = {
         "feedback_count": {"type": "integer", "minimum": 0},
         "summary_line": {"type": "string", "maxLength": 500},
     },
-    "required": ["unresolved_count"],
+    "required": ["feedback_count"],
     "additionalProperties": True,
 }
 
@@ -184,7 +184,7 @@ _FEEDBACK_SCHEMA = {
         "summary_line": {"type": "string", "maxLength": 500},
         "workflow_warning": {"type": ["string", "null"]},
     },
-    "required": ["unresolved_count", "code_changed"],
+    "required": ["feedback_count", "code_changed"],
     "additionalProperties": True,
 }
 
@@ -346,14 +346,12 @@ _TPL_RESOLVE = textwrap.dedent("""\
 
     報告フォーマット (JSON):
     {{
-      "unresolved_count": <int>,
-      "resolved_count": <int>,
       "feedback_count": <int>,
+      "resolved_count": <int>,
       "summary_line": "(<=200 chars 1 行サマリ。resolve の compile ステップ (compile-review.py) の結果をそのまま転記)"
     }}
-    - unresolved_count: compile ステップ (compile-review.py) の feedback_count（Verification が 💬 Feedback のまま残っている指摘数）
+    - feedback_count: compile ステップ (compile-review.py) の feedback_count（Verification が 💬 Feedback のまま残っている指摘数。ステップ 2.5 フィードバック再修正ループの起動判定に使う）
     - resolved_count: compile ステップ (compile-review.py) の resolved_count
-    - feedback_count: unresolved_count と同義
     - summary_line: ユーザー通知用の 1 行サマリ\
 """)
 
@@ -382,16 +380,14 @@ _TPL_FEEDBACK = textwrap.dedent("""\
 
     報告フォーマット (JSON):
     {{
-      "unresolved_count": <int>,
-      "resolved_count": <int>,
       "feedback_count": <int>,
+      "resolved_count": <int>,
       "code_changed": <bool>,
       "summary_line": "(<=200 chars 1 行サマリ)",
       "workflow_warning": "(Step 2.5.2 の respond でフォーマット／ビルド手順未宣言時の警告。無ければ null)"
     }}
-    - unresolved_count: 本試行後の {resolve_skill} compile ステップ (compile-review.py) の feedback_count
+    - feedback_count: 本試行後の {resolve_skill} compile ステップ (compile-review.py) の feedback_count（Verification が 💬 Feedback のまま残っている指摘数。ループ継続の判定に使う）
     - resolved_count: 同戻り値の resolved_count
-    - feedback_count: unresolved_count と同義
     - code_changed: 本試行で 1 行でもソースコードを修正したか
     - summary_line: ユーザー通知用の 1 行サマリ
     - workflow_warning: Step 2.5.2 の {respond_skill} がステップ 4 で保持した
@@ -670,7 +666,7 @@ def run(ctx):
                     expect_schema=_RESOLVE_SCHEMA,
                     timeout_minutes=30,
                 )
-                round_record["unresolved"] = resolve_result["unresolved_count"]
+                round_record["unresolved"] = resolve_result["feedback_count"]
                 round_record["resolved_count"] = resolve_result.get(
                     "resolved_count", 0
                 )
@@ -710,7 +706,7 @@ def run(ctx):
                         timeout_minutes=120,
                     )
                     round_record["feedback_attempts"] += 1
-                    round_record["unresolved"] = feedback_result["unresolved_count"]
+                    round_record["unresolved"] = feedback_result["feedback_count"]
                     if "resolved_count" in feedback_result:
                         round_record["resolved_count"] = feedback_result[
                             "resolved_count"

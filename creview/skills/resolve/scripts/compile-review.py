@@ -104,7 +104,10 @@ def main():
 
     summary_line = f"{len(resolved)} resolved"
     if feedback:
-        summary_line += f", {len(feedback)} feedback ({', '.join(v.get('id', '') for v in feedback)})"
+        # feedback is already sorted by severity; show the first few ids, capped.
+        fb_ids = [v.get("id", "") for v in feedback]
+        shown = ", ".join(fb_ids[:5]) + (", ..." if len(fb_ids) > 5 else "")
+        summary_line += f", {len(feedback)} feedback ({shown})"
     if unresolved:
         summary_line += f", {len(unresolved)} unresolved"
 

@@ -169,7 +169,7 @@ The orchestrator (you) directly takes on the "review verification leader" role o
 Input document: {this round's file path}
 
 1. Display in console: `## Round {N} — Step 4: Resolve`
-2. Per the resolve § procedure, launch in order: analysis Sub → verification Subs (parallel) → compile Sub.
+2. Per the resolve § procedure, launch analysis Sub → verification Subs (parallel); then the leader runs compile-review.py (resolve § Step 3).
 3. The orchestrator holds only the return values (`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count}`) in context. Do not read the verification body.
 
 ### 2.5 — Feedback confirmation and re-fix loop
@@ -194,9 +194,9 @@ Record the round's results. Each counter is obtained from sub-agent return value
 
 - Findings requiring action: triage Sub's `will_fix_count`
 - Maintain / Alternative / Downgrade counts: estimate aggregator Sub's `maintain_count` / `alternative_count` / `downgrade_count`
-- Fixed count: respond compile Sub's `fixed_count` (sum of Maintain normal fixes + Alternative FIXME attachments)
-- Unresolved count: resolve compile Sub's `feedback_count` after the final attempt of Step 2.5
-- Resolved count: resolve compile Sub's `resolved_count`
+- Fixed count: the respond compile-review.py `fixed_count` (sum of Maintain normal fixes + Alternative FIXME attachments)
+- Unresolved count: the resolve compile-review.py `feedback_count` after the final attempt of Step 2.5
+- Resolved count: the resolve compile-review.py `resolved_count`
 - workflow_warning: the `workflow_warning` retained in 2.3 / 2.5 (only for rounds where the format / build procedure was unresolved; null otherwise)
 
 Condition for proceeding to the next round: only when **all** of the following are met, increment the round counter and return to Step 2.1:
