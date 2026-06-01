@@ -1,7 +1,7 @@
 ---
 name: respond
 description: Will-Fix / Maintain / Alternative のレビュー指摘を修正し、ビルドを検証し、修正状況をレビュードキュメントに反映する
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュー対応（修正）
@@ -216,7 +216,7 @@ fix: Add null check before accessing output pointer
 1. 次を実行する（CWD はプロジェクトルート）:
 
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py {tmp_dir} {document_path}
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py {tmp_dir} {document_path}
    ```
 
 2. stdout の結果 JSON（`{fixed_count, code_changed, summary_line, maintain, alternative}`）を受け取る。`fixed_count` は修正件数（statuses のファイル数）。

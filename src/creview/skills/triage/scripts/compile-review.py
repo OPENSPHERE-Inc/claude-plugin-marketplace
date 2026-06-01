@@ -4,7 +4,7 @@ events.jsonl and persist the triage / estimate metadata into the review
 document via render-review.py.
 
 Usage:
-    python compile-review.py <tmp_dir> <document_path>
+    python3 compile-review.py <tmp_dir> <document_path>
 
 Reads <tmp_dir>/triage.json and <tmp_dir>/estimates/*.json (each carries a
 precomputed `memo_value`), writes <tmp_dir>/events.jsonl, runs the sibling

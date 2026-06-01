@@ -3,7 +3,7 @@
 persist the status metadata into the review document via render-review.py.
 
 Usage:
-    python compile-review.py <tmp_dir> <document_path>
+    python3 compile-review.py <tmp_dir> <document_path>
 
 Reads <tmp_dir>/statuses/*.json (each carries a precomputed `memo_value` and a
 `verdict` of Maintain | Alternative), writes <tmp_dir>/events.jsonl (empty when
