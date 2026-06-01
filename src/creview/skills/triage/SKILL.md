@@ -1,7 +1,7 @@
 ---
 name: triage
 description: レビュー指摘事項のトリアージと修正コストの見積を行い、トリアージ / 見積メタデータをレビュードキュメントに永続化する（ソース修正は行わない）
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュートリアージ & 見積
@@ -174,7 +174,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 1. 次を実行する（CWD はプロジェクトルート）:
 
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py {tmp_dir} {document_path}
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py {tmp_dir} {document_path}
    ```
 
 2. stdout の結果 JSON（`{fixed_count, code_changed, summary_line, will_fix, wont_fix, maintain, alternative, downgrade}`）を受け取る。`fixed_count` は常に 0（本スキルは status を書き込まない）。`triage` / `estimate` フィールドのみ反映される。

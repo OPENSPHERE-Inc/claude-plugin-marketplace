@@ -131,12 +131,12 @@ There is **no build step**. Validation is consistency-checking + a manual instal
 
 ```bash
 # JSON manifests parse
-python -c "import json,glob; [json.load(open(f,encoding='utf-8')) for f in \
+python3 -c "import json,glob; [json.load(open(f,encoding='utf-8')) for f in \
   ['.claude-plugin/marketplace.json','creview/.claude-plugin/plugin.json','cprompt/.claude-plugin/plugin.json']]; print('json ok')"
 
 # Sequencer programs are syntactically valid
-python -c "import ast; ast.parse(open('creview/sequencer/programs/review_rounds.py',encoding='utf-8').read())"
-python -c "import ast; ast.parse(open('src/creview/sequencer/programs/review_rounds.py',encoding='utf-8').read())"
+python3 -c "import ast; ast.parse(open('creview/sequencer/programs/review_rounds.py',encoding='utf-8').read())"
+python3 -c "import ast; ast.parse(open('src/creview/sequencer/programs/review_rounds.py',encoding='utf-8').read())"
 
 # Token-placement invariant: no ${CLAUDE_PLUGIN_ROOT} in templates, no {{plugin_root}} in SKILLs
 grep -rl 'CLAUDE_PLUGIN_ROOT' creview/skills/*/templates cprompt/skills/*/templates && echo BAD || echo ok

@@ -1,7 +1,7 @@
 ---
 name: resolve
 description: レビュー指摘の解決状況を実際のソースコードと照合して検証し、検証メタデータを書き戻す
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュー検証
@@ -153,7 +153,7 @@ events.jsonl は `compile-review.py` が `verifications/*.json` の `memo_value`
 1. 次を実行する（CWD はプロジェクトルート）:
 
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py {tmp_dir} {document_path}
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py {tmp_dir} {document_path}
    ```
 
 2. stdout の結果 JSON（`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count}`）を受け取る。

@@ -3,7 +3,7 @@
 in a parallel-review document, sourced from an events.jsonl event log.
 
 Usage:
-    python render-review.py <markdown-input> <events-jsonl> <markdown-output>
+    python3 render-review.py <markdown-input> <events-jsonl> <markdown-output>
 
 The output may be the same path as the input (in-place rewrite supported).
 If <events-jsonl> is empty (file exists but no events), the markdown is copied

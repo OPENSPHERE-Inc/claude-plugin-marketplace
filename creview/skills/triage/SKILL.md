@@ -1,7 +1,7 @@
 ---
 name: triage
 description: Triage and estimate the cost of review findings, then persist the triage / estimate metadata into the review document (no source fixes)
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Triage & Estimate
@@ -174,7 +174,7 @@ The leader (you) does not load decision bodies into context. `compile-review.py`
 1. Run (CWD = project root):
 
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py {tmp_dir} {document_path}
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py {tmp_dir} {document_path}
    ```
 
 2. Receive the result JSON from stdout (`{fixed_count, code_changed, summary_line, will_fix, wont_fix, maintain, alternative, downgrade}`). `fixed_count` is always 0 (no statuses written by this skill); only `triage` / `estimate` fields are reflected.

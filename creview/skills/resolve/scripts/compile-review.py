@@ -4,7 +4,7 @@ from verification results, and persist the verification metadata into the review
 document via render-review.py.
 
 Usage:
-    python compile-review.py <tmp_dir> <document_path>
+    python3 compile-review.py <tmp_dir> <document_path>
 
 Reads <tmp_dir>/verifications/*.json (each carries severity / trailing_field /
 outcome / reason / memo_value / feedback_detail), writes the human-facing report
