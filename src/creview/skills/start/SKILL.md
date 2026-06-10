@@ -1,6 +1,6 @@
 ---
 name: start
-description: 対象プロジェクトのエージェントから自動選定したレビュアーで並列コードレビューを起動する
+description: 対象プロジェクトのエージェントから自動選定したレビュアーで並列コードレビューを起動する。ユーザーが変更・ブランチ・PR のレビューを求めたとき（例「このコードをレビューして」）や、まとまった実装が完了した直後に能動的に使用する。
 allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*)
 ---
 

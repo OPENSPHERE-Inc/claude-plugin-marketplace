@@ -1,6 +1,6 @@
 ---
 name: triage
-description: レビュー指摘事項のトリアージと修正コストの見積を行い、トリアージ / 見積メタデータをレビュードキュメントに永続化する（ソース修正は行わない）
+description: レビュー指摘事項のトリアージと修正コストの見積を行い、トリアージ / 見積メタデータをレビュードキュメントに永続化する（ソース修正は行わない）。/creview:start のレビュードキュメントが存在し、どの指摘に対応するかの判断や修正コストの見積が次の作業となるときに能動的に使用する。
 allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 

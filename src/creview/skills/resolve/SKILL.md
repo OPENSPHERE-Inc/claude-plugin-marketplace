@@ -1,6 +1,6 @@
 ---
 name: resolve
-description: レビュー指摘の解決状況を実際のソースコードと照合して検証し、検証メタデータを書き戻す
+description: レビュー指摘の解決状況を実際のソースコードと照合して検証し、検証メタデータを書き戻す。レビュー修正の完了後（通常 /creview:respond の後）や、指摘が実際に解決されたかの確認を求められたときに能動的に使用する。
 allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 

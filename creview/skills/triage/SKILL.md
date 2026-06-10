@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Triage and estimate the cost of review findings, then persist the triage / estimate metadata into the review document (no source fixes)
+description: Triage and estimate the cost of review findings, then persist the triage / estimate metadata into the review document (no source fixes). Use proactively when a review document from /creview:start exists and the next step is deciding which findings to address or estimating their fix cost.
 allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 

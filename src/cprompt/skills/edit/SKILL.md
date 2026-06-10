@@ -1,6 +1,6 @@
 ---
 name: edit
-description: AI 向けプロンプト（agent / skill / rule / command 等）の新規作成と編集を行い、prompt.md ルールに照らしてセルフチェック・修正する
+description: AI 向けプロンプト（agent / skill / rule / command 等）の新規作成と編集を行い、prompt.md ルールに照らしてセルフチェック・修正する。タスクがエージェント定義・SKILL.md・ルール・スラッシュコマンド・サブエージェントプロンプトの作成や修正を含むときは、ユーザーがこのスキルを名指ししていなくても能動的に使用する。
 allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(ls:*), Bash(mkdir:*), Bash(find:*)
 ---
 

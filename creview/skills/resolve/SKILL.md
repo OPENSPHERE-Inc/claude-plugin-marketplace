@@ -1,6 +1,6 @@
 ---
 name: resolve
-description: Verify review finding resolutions against actual source code and write back verification metadata
+description: Verify review finding resolutions against actual source code and write back verification metadata. Use proactively after review fixes land (typically after /creview:respond) or when the user asks to confirm that review findings are actually resolved.
 allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
