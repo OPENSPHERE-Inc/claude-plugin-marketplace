@@ -1,6 +1,6 @@
 ---
 name: respond
-description: Fix the Will-Fix / Maintain / Alternative review findings, verify the build, and reflect the fix status into the review document
+description: Fix the Will-Fix / Maintain / Alternative review findings, verify the build, and reflect the fix status into the review document. Use proactively when a review document carrying triage / estimate metadata exists and the user wants the findings addressed (e.g. "fix the review findings").
 allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 

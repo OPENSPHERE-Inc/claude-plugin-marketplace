@@ -1,6 +1,6 @@
 ---
 name: edit
-description: Create and edit AI-facing prompts (agent / skill / rule / command, etc.) and self-check / fix them against prompt.md rules
+description: Create and edit AI-facing prompts (agent / skill / rule / command, etc.) and self-check / fix them against prompt.md rules. Use proactively whenever a task involves writing or modifying an agent definition, SKILL.md, rule, slash command, or sub-agent prompt, even if the user does not name this skill.
 allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(ls:*), Bash(mkdir:*), Bash(find:*)
 ---
 

@@ -1,6 +1,6 @@
 {
   "name": "cprompt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Create and edit AI-facing prompts (agent / skill / rule / command) and self-check / fix them against prompt-discipline rules.",
   "author": {
     "name": "OPENSPHERE Inc.",
