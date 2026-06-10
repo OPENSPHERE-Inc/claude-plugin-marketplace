@@ -42,13 +42,23 @@ for target in "$@"; do
         exit 1
     fi
 
-    # Reject the bare .claude/tmp/ root (must have at least one path
-    # component beneath it). Trailing slash is normalized away first.
-    stripped="${normalized%/}"
+    # Reject the bare .claude/tmp/ root (must have at least one real path
+    # component beneath it). Repeated slashes are collapsed and trailing
+    # '/' and '/.' segments stripped first, so disguised forms of the root
+    # such as '.claude/tmp//', '.claude/tmp/.' and '.claude/tmp/./' are
+    # all caught.
+    stripped="${normalized}"
+    while [[ "${stripped}" == *//* ]]; do
+        stripped="${stripped//\/\//\/}"
+    done
+    while [[ "${stripped}" == */ || "${stripped}" == */. ]]; do
+        stripped="${stripped%/.}"
+        stripped="${stripped%/}"
+    done
     if [[ "${stripped}" == "${ALLOWED_PREFIX%/}" ]]; then
         echo "Error: deleting the .claude/tmp/ root itself is not allowed: ${target}" >&2
         exit 1
     fi
 
-    rm -rf -- "${normalized}"
+    rm -rf -- "${stripped}"
 done
