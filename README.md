@@ -11,6 +11,7 @@ A Claude Code plugin marketplace maintained by OPENSPHERE Inc.
 | `creview` | Multi-agent parallel code review workflow: start → triage → respond → resolve, plus an automatic multi-round driver. |
 | `cprompt` | Create and edit AI-facing prompts and self-check them against prompt-discipline rules. |
 | `agent-sequencer` | External plugin ([OPENSPHERE-Inc/agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer)). Required to run `creview`'s `review_rounds.py` sequencer program. |
+| `hermes-tweet` | External plugin ([Xquik-dev/hermes-tweet](https://github.com/Xquik-dev/hermes-tweet)) for X/Twitter research, trend analysis, monitored context, and gated account actions. |
 
 ## Installation
 
@@ -22,9 +23,10 @@ Add this marketplace, then install the plugins:
 /plugin install cprompt@opensphere-inc
 ```
 
-`creview` and `cprompt` are self-contained. The optional `agent-sequencer`
-entry is resolved from its own GitHub repository and is only needed for the
-sequencer-driven variant of the multi-round review (see
+`creview` and `cprompt` are self-contained. The external `agent-sequencer`
+and `hermes-tweet` entries resolve from their own GitHub repositories.
+`agent-sequencer` is only needed for the sequencer-driven variant of the
+multi-round review (see
 [creview/README.md](creview/README.md)).
 
 ## Skill commands

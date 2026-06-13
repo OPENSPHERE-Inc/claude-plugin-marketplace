@@ -45,6 +45,23 @@
         "workflow",
         "sequencer"
       ]
+    },
+    {
+      "name": "hermes-tweet",
+      "source": {
+        "source": "github",
+        "repo": "Xquik-dev/hermes-tweet"
+      },
+      "description": "Hermes Agent plugin for X/Twitter research, trend analysis, monitored context, and gated account actions.",
+      "homepage": "https://github.com/Xquik-dev/hermes-tweet",
+      "license": "MIT",
+      "keywords": [
+        "hermes-agent",
+        "twitter",
+        "x",
+        "social-media",
+        "research"
+      ]
     }
   ]
 }
