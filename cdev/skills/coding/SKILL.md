@@ -10,8 +10,6 @@ As the **coding leader (team lead)**, you assemble a standing team of specialist
 
 The leader does not design, write, review, or fix code. The leader forms the team, creates and assigns tasks, sequences phases, and reports progress. The specialists are persistent teammates that retain context across phases and route feedback to each other directly.
 
-This skill is the implementation stage of the marketplace lifecycle; its in-loop reviews are quality gates, not an authoritative review. Run `/creview` for authoritative review.
-
 ## Requirements
 
 This skill uses agent-team tools (`TeamCreate`, `SendMessage`, `TaskCreate` / `TaskUpdate` / `TaskList`, `TeamDelete`) and runs only in a runtime where they are available.

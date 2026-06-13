@@ -10,8 +10,6 @@ allowed-tools: Agent, TeamCreate, SendMessage, TeamDelete, TaskCreate, TaskUpdat
 
 リーダーは設計・コード記述・レビュー・修正を行わない。リーダーはチームを編成し、タスクを作成・割り当て、フェーズを順序立て、進捗を報告する。専門家は、フェーズをまたいで文脈を保持し互いにフィードバックを直接ルーティングする常駐 teammate である。
 
-このスキルはマーケットプレースのライフサイクルの実装ステージである。インループのレビューは品質ゲートであって権威あるレビューではない。権威あるレビューは `/creview` で実施する。
-
 ## 動作要件
 
 このスキルはエージェントチームツール（`TeamCreate`、`SendMessage`、`TaskCreate` / `TaskUpdate` / `TaskList`、`TeamDelete`）を使用し、それらが利用可能なランタイムでのみ動作する。
