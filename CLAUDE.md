@@ -3,12 +3,14 @@
 ## Project Overview
 
 **opensphere-inc** is a Claude Code **plugin marketplace** maintained by **OPENSPHERE Inc.**
-under the MIT license. It publishes two first-party plugins and references one external plugin:
+under the MIT license. It publishes three first-party plugins and references one external plugin:
 
 - **creview** — a multi-agent parallel code review workflow (`start` → `triage` → `respond`
   → `resolve`, plus an automatic multi-round driver `rounds`).
 - **cprompt** — create / edit AI-facing prompts and self-check them against
   prompt-discipline rules.
+- **cdev** — a team-native multi-agent coding workflow (`coding`: a standing team runs design →
+  design review → coding → QA → code review, with feedback loops). Requires agent-team tools.
 - **agent-sequencer** — external plugin
   ([OPENSPHERE-Inc/agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer)),
   required only to run `creview`'s `review_rounds.py` sequencer program.
@@ -71,9 +73,18 @@ claude-plugin-marketplace/
 │   ├── skills/edit/              # /cprompt:edit (from prompt-editor) + templates/
 │   └── rules/                    # prompt.md, document.md
 │
+├── cdev/                         # Plugin: multi-agent coding workflow (active, English)
+│   ├── .claude-plugin/plugin.json
+│   ├── README.md / README_ja.md
+│   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, design, design-review, code, code-review, comment-review, qa)
+│   ├── agents/                   # comment-sensei.md, dev-helper.md
+│   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md
+│   └── scripts/                  # fetch-diff.sh, rm-tmp.sh
+│
 ├── src/                          # Japanese master, mirrors each plugin's tree 1:1
 │   ├── creview/...               # src/creview/<same tree as creview/>
-│   └── cprompt/...               # src/cprompt/<same tree as cprompt/>
+│   ├── cprompt/...               # src/cprompt/<same tree as cprompt/>
+│   └── cdev/...                  # src/cdev/<same tree as cdev/, minus .claude-plugin/README>
 │
 └── .claude/rules/                # Discipline rules for editing THIS repo
     ├── comment.md  commit.md  development.md
@@ -163,9 +174,9 @@ fallback), and `/cprompt:edit`.
 
 ### Marketplace
 
-`.claude-plugin/marketplace.json` (`name: opensphere-inc`) lists three plugins. `creview`
-and `cprompt` use `"source": "./<dir>"` (relative to the repo root). `agent-sequencer` uses
-an external `{"source":"github","repo":"OPENSPHERE-Inc/agent-sequencer"}` entry. The `src/`
+`.claude-plugin/marketplace.json` (`name: opensphere-inc`) lists four plugins. `creview`,
+`cprompt`, and `cdev` use `"source": "./<dir>"` (relative to the repo root). `agent-sequencer`
+uses an external `{"source":"github","repo":"OPENSPHERE-Inc/agent-sequencer"}` entry. The `src/`
 tree is **outside** the plugin source dirs, so it is not shipped with the installed plugins.
 
 ### Plugin skills
