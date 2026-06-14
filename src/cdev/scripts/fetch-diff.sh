@@ -12,6 +12,15 @@
 BASE="${1:?Error: base branch argument required}"
 OUT="${2:?Error: output file path argument required}"
 
+case "${BASE}" in
+    -*) echo "Error: base '${BASE}' must not start with '-'" >&2; exit 1 ;;
+esac
+
+if ! git rev-parse --verify --quiet "${BASE}^{commit}" >/dev/null 2>&1; then
+    echo "Error: base '${BASE}' does not resolve to a commit" >&2
+    exit 1
+fi
+
 OUT_DIR="$(dirname "${OUT}")"
 mkdir -p "${OUT_DIR}"
 

@@ -1,6 +1,6 @@
 ---
 name: qa
-description: cdev /coding ステップ 5 で反映先プロジェクトのフォーマット・ビルド・テストを 1 回実施し、失敗時に修正担当の専門家を判定する QA タスク（dev-helper）向けプロンプト
+description: cdev /coding ステップ 4 で反映先プロジェクトのフォーマット・ビルド・テストを 1 回実施し、失敗時に修正担当の専門家を判定する QA タスク（dev-helper）向けプロンプト
 template_id: 6a711cba-0da8-4177-a41f-ddb4cf2a6e1f
 ---
 

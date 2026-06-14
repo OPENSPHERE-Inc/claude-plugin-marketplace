@@ -1,6 +1,6 @@
 ---
 name: qa
-description: Prompt for the QA task (dev-helper) that runs the destination project's format, build, and test once and identifies the fix specialist on failure in cdev /coding Step 5
+description: Prompt for the QA task (dev-helper) that runs the destination project's format, build, and test once and identifies the fix specialist on failure in cdev /coding Step 4
 template_id: 6a711cba-0da8-4177-a41f-ddb4cf2a6e1f
 ---
 
