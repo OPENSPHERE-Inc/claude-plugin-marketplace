@@ -1,0 +1,19 @@
+{
+  "name": "cdev",
+  "version": "0.3.0",
+  "description": "Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. Architects, coders, and reviewers are resolved from the destination project's .claude/agents. Requires a runtime with agent-team tools.",
+  "author": {
+    "name": "OPENSPHERE Inc.",
+    "url": "https://github.com/OPENSPHERE-Inc"
+  },
+  "homepage": "https://github.com/OPENSPHERE-Inc/claude-plugin-marketplace",
+  "repository": "https://github.com/OPENSPHERE-Inc/claude-plugin-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "coding",
+    "ai-agent",
+    "workflow",
+    "design",
+    "qa"
+  ]
+}

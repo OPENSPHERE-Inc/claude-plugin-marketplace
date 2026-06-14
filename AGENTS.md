@@ -7,8 +7,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
 
 - **Content**: Markdown (AI-facing prompts), Bash, Python ≥ 3.11 (one sequencer program)
 - **Distribution**: Claude Code plugin marketplace (git-based), `name: opensphere-inc`
-- **Plugins**: `creview` (code review workflow), `cprompt` (prompt authoring); external
-  `agent-sequencer` referenced for `creview`'s sequencer program
+- **Plugins**: `creview` (code review workflow), `cprompt` (prompt authoring), `cdev`
+  (team-native coding workflow); external `agent-sequencer` referenced for `creview`'s sequencer program
 - **License**: MIT
 - **Maintainer**: OPENSPHERE Inc.
 - **No build step. No CI yet.** Validation = consistency checks + manual install.
@@ -26,6 +26,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/sequencer/programs/review_rounds.py` (+ `review_rounds/`) — agent-sequencer program (English).
 - `cprompt/skills/edit/SKILL.md` (+ `templates/`) — The `/cprompt:edit` skill.
 - `cprompt/rules/` — `prompt.md`, `document.md`.
+- `cdev/skills/coding/SKILL.md` (+ `templates/`) — The `/cdev:coding` team-native skill (7 teammate task templates, each with a `template_id`).
+- `cdev/agents/` — `comment-sensei.md`, `dev-helper.md` (bundled). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`. `cdev/scripts/` — `fetch-diff.sh`, `rm-tmp.sh`.
 - `src/<plugin>/...` — **Japanese master**, mirrors each plugin's tree 1:1.
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
 - `.claude/rules/*.md` — Discipline rules for editing this repo (prompt/document/comment/…).
