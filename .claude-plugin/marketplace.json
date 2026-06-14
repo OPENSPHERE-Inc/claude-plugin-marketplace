@@ -33,7 +33,7 @@
     {
       "name": "cdev",
       "source": "./cdev",
-      "description": "Team-native multi-agent coding workflow: a standing team runs design → design review → coding → QA → code review. Architects, coders, and reviewers are resolved from the destination project's .claude/agents. Requires a runtime with agent-team tools.",
+      "description": "Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. Architects, coders, and reviewers are resolved from the destination project's .claude/agents. Requires a runtime with agent-team tools.",
       "homepage": "https://github.com/OPENSPHERE-Inc/claude-plugin-marketplace",
       "license": "MIT",
       "keywords": [

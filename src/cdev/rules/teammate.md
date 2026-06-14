@@ -6,11 +6,11 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 - **ネスト禁止**: teammate はチームを作成したり、さらにエージェントを起動したりしてはならない（リーダーが唯一のオーケストレーターである）。
 - **出力スコープ / ソース編集**: teammate は自身のタスクが割り当てた対象にのみ書き込む:
-  - アーキテクト: タスクが割り当てた設計ドキュメントのセクションファイル（markdown）。ソースコードは編集しない。
-  - コーダー: 割り当てスコープ内のソースコード（実装、および QA / レビュー / コメントのフィードバック修正）。
+  - architect: タスクが割り当てた設計ドキュメントのセクションファイル（markdown）。ソースコードは編集しない。
+  - coder: 割り当てスコープ内のソースコード（実装、および QA / レビュー / コメントのフィードバック修正）。
   - コメントレビュー teammate（comment-sensei）: ソースファイル内のコメントのみ編集可。ロジックは変更しない。
   - QA teammate（dev-helper）: フォーマット / ビルド / テストコマンドとフォーマッタの自動修正のみ。手動のソース編集は不可。
-  - レビュアー: ソースおよび設計は Read のみ。編集はしない。
+  - reviewer: ソースおよび設計は Read のみ。編集はしない。
 
 ## ツール
 
@@ -24,7 +24,16 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 - **一度だけ起動し、永続する。** teammate は一度だけ起動され、フェーズをまたいでコンテキストを保持する。各タスクは、そのタスクで Read すべきテンプレートとその変数を指定したメッセージとして届く。そのテンプレートを Read し、当該タスクではそれに従う。
 - **リーダーへの報告は件数 / パス / 1 行サマリのみ。** 指摘本文、設計本文、ソースをリーダーへ送ってはならない。
-- **詳細な指摘はピアツーピアで送る。** レビュアーは、対応すべき（Critical / Major）指摘 — `file:line` と推奨する修正方針 — を、タスクの `scope_map` から特定した担当の `architect-{slug}` / `coder-{slug}` へ `SendMessage` で直接送る。
+- **詳細な指摘はピアツーピアで送る。** reviewer は、対応すべき（Critical / Major）指摘 — `file:line` と推奨する修正方針 — を、タスクの `scope_map` から特定した担当の `architect-{slug}` / `coder-{slug}` へ `SendMessage` で直接送る。
 - **各タスク完了時に `TaskUpdate` で完了とマークする。**
 - **アイドルは完了ではない。** teammate はターン間でアイドルになる。新たなメッセージがそれを起こす。
 - **シャットダウン。** `shutdown_request` メッセージを受けたら `shutdown_response` で応答する。
+
+## レビューセル
+
+セルは producer（architect / coder）を 1 名の reviewer とペアにし、そのペアが自律的に回し、reviewer がクローズする。
+
+- **producer**: 成果物を作成し、ペアの reviewer へ準備完了を DM する。reviewer が指摘を DM してきたら各指摘を triage し — 修正するか、1 行の理由で却下する — 修正を適用して、reviewer へ再レビューの準備完了を伝える。reviewer またはリーダーから求められた箇所には `FIXME:` を挿入する。
+- **reviewer**: 成果物をレビューし、対応すべき（Critical / Major）指摘 — 箇所、問題、推奨する修正方針 — を各々producer へ DM し、重大度別の件数をリーダーへ報告する。producer の triage 後に resolve する: 修正が妥当か、却下が合理的かを検証する。問題なければ `TaskUpdate` でセルタスクを完了とマークし、セルが resolve したことをリーダーへ伝える。レビュー ⇄ triage をリーダーが指定したラウンド上限まで繰り返す。
+- **判断の優先順位**（triage および resolve）: ①ユーザーの最初のタスク指示 → ②前段の設計意図。
+- **エスカレーション**: producer が `Critical` 指摘を却下し、reviewer がなお同意できない場合、reviewer は 1 段落のサマリ（指摘、producer の理由、reviewer の立場）を添えてリーダーへエスカレーションする。リーダーは判断の優先順位に基づき裁定する。解決しないままラウンド上限に達したら、reviewer はセルをクローズし、未解決の `Critical` については producer に当該箇所へ `FIXME:` を挿入させ、残課題をリーダーへ報告する。

@@ -1,23 +1,23 @@
 ---
 name: code
-description: cdev /coding ステップ 4-6 で設計を実装または修正フィードバックを反映する coder teammate 向け指示テンプレート
+description: cdev /coding ステップ 3-4 で設計を実装（または修正）し、ペアの reviewer とレビューセルを回す coder teammate 向け指示テンプレート
 template_id: 278bf9bd-53e2-4695-ad40-3fb91374519a
 ---
 
-割り当てられたファイルの coder として、自身のスコープ内で設計を実装する（または修正フィードバックを反映する）。
+割り当てられたファイルの coder として、設計を実装する（または修正フィードバックを反映する）。producer としてレビューセルを回す（`{{plugin_root}}/rules/teammate.md` § レビューセル を参照）。
 
 タスク: `{{task}}`
 設計セクション: `{{design_paths}}` 内のすべてのファイルを Read する。
 割り当てスコープ: `{{assigned_scope}}`（このスコープ内のファイルのみ編集する）。
 テスト駆動: `{{tdd}}`（プロジェクトにテストスイートがある場合に true）。
+ペア reviewer: `{{reviewer}}`
 
 手順:
 
 1. 設計セクションとスコープ内の既存コードを Read する。
-2. フィードバックを最優先で解消する:
-   - `{{feedback}}`（"(none)" でない場合）は QA のビルド / テスト失敗を示す — 参照先の結果 / ログを Read しエラーを修正する。
-   - メッセージで送られてきたレビュアーの指摘 — 自身のスコープ内の Critical / Major を解消する。
+2. `{{feedback}}` が "(none)" でない場合は最優先で扱う: QA のビルド / テスト失敗を示す — 参照先の結果 / ログを Read しエラーを修正する。
 3. 設計および任意のフィードバックを満たすようソースを実装または修正する。プロジェクトの規約と、コメントについては `{{plugin_root}}/rules/comment.md` に従う。`{{tdd}}` が true の場合はテストファーストで進める: 意図する振る舞いを捉えるテストを先に記述または拡張して失敗を確認し、次にそれが通るまで実装し、テストがグリーンの状態でリファクタする。既存テストを弱めたり削除したりして無理に通すことはしない。
-4. セルフレビュー: コードが設計に合致し、フィードバックが解消され、明らかな新規問題を持ち込んでいないことを確認する。
+4. コードコメントを追加または変更した場合は、`comment-sensei` に `{{plugin_root}}/skills/coding/templates/comment-review.md` を指定して DM する。その際 `changed_scope = {{assigned_scope}}` と `design_paths = {{design_paths}}` を渡す。comment-sensei がコメント違反を修正し、件数を報告し返す。
+5. `{{reviewer}}` に変更がレビュー可能になったことを DM し、変更したファイルを列挙する。セルを回す: reviewer から送られる各所見を triage する — 自身のスコープ内で修正するか、一行の理由を添えて却下する — そして再レビュー可能になったことを通知する。reviewer がセルを resolve しクローズする。
 
-リーダーへの報告（SendMessage 経由）: `{files_changed: ["path:summary", ...], has_comments: <bool>, summary}`。`has_comments` は、コードコメントを追加または変更した場合に true。`summary` は {{doc_lang}} で記述する。TaskUpdate でタスクを完了とマークする。
+リーダーへの報告（SendMessage 経由）: `{files_changed: ["path:summary", ...], has_comments: <bool>, summary}`（`summary` は {{doc_lang}} で記述）。

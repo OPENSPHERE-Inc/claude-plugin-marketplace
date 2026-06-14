@@ -25,23 +25,30 @@ lives in `creview`, `cdev` optimizes for speed and coherence instead.
 ## How it works
 
 The leader (team lead) calls `TeamCreate`, spawns each selected specialist once as a named,
-persistent teammate, and drives five phases over a shared task list, reporting progress to
-the console at each one:
+persistent teammate, pairs each producer with a reviewer, and drives two cell phases and a
+final QA gate, reporting progress to the console:
 
-1. **Design** — architect teammates write a design for their assigned area.
-2. **Design review** — reviewer teammates review the design; actionable findings
-   (Critical / Major) are sent straight to the owning architect, who revises (bounded loop).
-3. **Coding** — coder teammates implement the design within disjoint file scopes.
-4. **QA** — the build / format / test workflow runs once; on failure the identified
-   specialist fixes it and QA re-runs (bounded loop).
-5. **Code review** — reviewer teammates review the code (and `comment-sensei` reviews
-   comments when any were added); actionable findings go to the owning coder, after which
-   QA re-runs to keep the build green.
+1. **Design cells** — each architect writes a design for its area, then its **paired
+   reviewer** reviews it; the architect **triages** each finding (fix, or reject with a
+   reason) and the reviewer **resolves** and closes the cell.
+2. **Code cells** — each coder implements its scope (test-first when the project has a test
+   suite); `comment-sensei` fixes comment violations when comments are present; the **paired
+   reviewer** reviews, the coder triages, the reviewer resolves and closes the cell.
+3. **QA gate** — the build / format / test workflow runs once; on failure the responsible
+   coder fixes it, the fix goes through a review cell, and QA re-runs (bounded loop).
 
-Teammates persist across phases, so they keep their own context (an architect remembers its
-design rationale; a coder remembers what it wrote) and revise incrementally. Feedback flows
-**peer to peer** — reviewers message the owning architect / coder directly; the leader holds
-only the roster, task status, severity counts, paths, and the QA result, never the bodies.
+A cell runs autonomously: the producer (architect / coder) and its paired reviewer loop
+review ⇄ triage ⇄ resolve until the reviewer closes the cell. The leader sets up the cells,
+enforces the phase gates (all design cells close before coding; all code cells before QA),
+runs the QA gate, and arbitrates escalations. When a reviewer and a producer deadlock on a
+`Critical` finding, the reviewer escalates to the leader; if the leader cannot decide either,
+it asks the user and leaves a `FIXME:`. Judgment priority is the user's original task first,
+then the design intent. The authoritative review is `creview`, so unresolved items are left
+as `FIXME:`s rather than blocking.
+
+Teammates persist across phases, so they keep their own context and revise incrementally.
+Feedback flows **peer to peer**; the leader holds only the roster, pairings, task status,
+severity counts, paths, and the QA result, never the bodies.
 
 ## Requirements
 
@@ -51,9 +58,8 @@ trade-off favoring efficiency over the broad portability of a one-shot, stateles
 
 ## Options
 
-- `--design-rounds N` (default 2) — max design-review ⇄ revision iterations.
-- `--review-rounds N` (default 2) — max code-review ⇄ fix iterations.
-- `--qa-attempts N` (default 5) — max QA verify ⇄ coder-fix attempts.
+- `--review-rounds N` (default 2) — max review ⇄ triage iterations per cell.
+- `--qa-attempts N` (default 5) — max QA verify ⇄ fix attempts.
 - `--base {branch}` (default `main` / `master`) — base branch for diff capture.
 - `--commit` (default off) — commit the verified implementation in one commit.
 

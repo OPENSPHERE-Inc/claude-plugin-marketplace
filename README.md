@@ -10,7 +10,7 @@ A Claude Code plugin marketplace maintained by OPENSPHERE Inc.
 |--------|-------------|
 | `creview` | Multi-agent parallel code review workflow: start → triage → respond → resolve, plus an automatic multi-round driver. |
 | `cprompt` | Create and edit AI-facing prompts and self-check them against prompt-discipline rules. |
-| `cdev` | Team-native multi-agent coding workflow: a standing team runs design → design review → coding → QA → code review, with feedback loops. |
+| `cdev` | Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. |
 | `agent-sequencer` | External plugin ([OPENSPHERE-Inc/agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer)). Required to run `creview`'s `review_rounds.py` sequencer program. |
 
 ## Installation
@@ -39,7 +39,7 @@ sequencer-driven variant of the multi-round review (see
 | `/creview:resolve` | Verify fixes against the source; persist `verification`. |
 | `/creview:rounds` | Automatically iterate the four phases across multiple rounds. |
 | `/cprompt:edit` | Create or edit an AI-facing prompt and self-check it. |
-| `/cdev:coding` | Implement a coding task end to end: design → design review → coding → QA → code review. |
+| `/cdev:coding` | Implement a coding task end to end: design and coding as paired review cells, then a QA gate. |
 
 ## Reviewer / fixer agents
 

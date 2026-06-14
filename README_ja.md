@@ -10,7 +10,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 |--------|-------------|
 | `creview` | マルチエージェントによる並列コードレビューのワークフロー: start → triage → respond → resolve、および複数ラウンドの自動ドライバ。 |
 | `cprompt` | AI 向けプロンプトを作成・編集し、プロンプト規律ルールに照らしてセルフチェックする。 |
-| `cdev` | チームネイティブなマルチエージェントコーディングワークフロー: 常駐チームが設計 → 設計レビュー → コーディング → QA → コードレビューを実行（フィードバックループ付き）。 |
+| `cdev` | チームネイティブなマルチエージェントコーディングワークフロー: 常駐チームが設計とコーディングをペアレビューセルで実行し、最後に QA ゲートを通す。 |
 | `agent-sequencer` | 外部プラグイン（[OPENSPHERE-Inc/agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer)）。`creview` の `review_rounds.py` シーケンサプログラムの実行に必要。 |
 
 ## インストール
@@ -38,7 +38,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 | `/creview:resolve` | 修正をソースに照らして検証し、`verification` を永続化する。 |
 | `/creview:rounds` | 4 つのフェーズを複数ラウンドにわたって自動反復する。 |
 | `/cprompt:edit` | AI 向けプロンプトを作成・編集し、セルフチェックする。 |
-| `/cdev:coding` | コーディングタスクをエンドツーエンドで実装する: 設計 → 設計レビュー → コーディング → QA → コードレビュー。 |
+| `/cdev:coding` | コーディングタスクをエンドツーエンドで実装する: 設計とコーディングをペアレビューセルで行い、最後に QA ゲート。 |
 
 ## レビュアー / 修正担当エージェント
 

@@ -1,10 +1,10 @@
 ---
 name: team-analysis
-description: Prompt for the team-analysis task (dev-helper) in cdev /coding Step 1, which scopes the coding task and selects architect / coder / reviewer agents from the destination project's agents
+description: Prompt for the team-analysis task (dev-helper) in cdev /coding Step 1, which scopes the coding task, selects architect / coder / reviewer agents from the destination project's agents, and pairs each producer with a reviewer
 template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 ---
 
-Scope the coding task and assemble the specialist team.
+Scope the coding task, assemble the specialist team, and pair each producer with a reviewer.
 
 Task: `{{task}}`
 
@@ -18,10 +18,11 @@ Procedure:
 
 1. Understand the task: determine the target language(s), the subsystems / directories it touches, and the build / test surface. Determine whether the project has a test suite (a resolvable test command, a test framework, or a test directory) and set `has_test_suite`. Use Glob / Grep / Read on the existing codebase to ground this; read only enough to scope, and do not implement anything.
 2. Select the team from the pool, matching each agent's `description` specialty to the task:
-   - architects — one or more agents to own the design. One architect suffices for a single-subsystem task; use multiple only when the task spans clearly separable subsystems. Give each a `slug` (kebab-case) and a `scope` (the design area it owns).
+   - architects — one or more agents to own the design. One suffices for a single-subsystem task; use multiple only when the task spans clearly separable subsystems. Give each a `slug` (kebab-case) and a `scope`.
    - coders — one or more agents to implement. Give each a `slug` (kebab-case) and a `scope` of disjoint files / directories so two coders never edit the same file.
-   - reviewers — one or more agents to review both the design and the code.
+   - reviewers — one or more agents to review both the design and the code. Give each a `slug`.
 3. For a role with no matching specialist in any scope, use a single `general-purpose` entry for that role.
-4. Write `task_summary` as a self-contained restatement of the task (in {{doc_lang}}) that the architects / coders can act on without the original chat.
+4. Pair each architect and each coder with one reviewer: set its `reviewer` to a reviewer's `slug`. When reviewers are fewer than producers, pair one reviewer with several producers.
+5. Write `task_summary` as a self-contained restatement of the task (in {{doc_lang}}) that the architects / coders can act on without the original chat.
 
-Report to the leader (via SendMessage): `{task_summary, target_languages: [..], has_test_suite: <bool>, architects: [{name, slug, scope, reason}], coders: [{name, slug, scope, reason}], reviewers: [{name, reason}], rationale}`. Write `scope` / `reason` / `rationale` / `task_summary` in {{doc_lang}}; keep `name` / `slug` / language identifiers as-is. Mark the task done via TaskUpdate.
+Report to the leader (via SendMessage): `{task_summary, target_languages: [..], has_test_suite: <bool>, architects: [{name, slug, scope, reviewer, reason}], coders: [{name, slug, scope, reviewer, reason}], reviewers: [{name, slug, reason}], rationale}`. Write `scope` / `reason` / `rationale` / `task_summary` in {{doc_lang}}; keep `name` / `slug` / identifiers as-is. Mark the task done via TaskUpdate.
