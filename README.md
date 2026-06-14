@@ -1,4 +1,4 @@
-# opensphere-inc — Claude Code Plugin Marketplace
+# opensphere-inc - Claude Code Plugin Marketplace
 
 *[日本語版 README](README_ja.md)*
 
@@ -12,6 +12,7 @@ A Claude Code plugin marketplace maintained by OPENSPHERE Inc.
 | `cprompt` | Create and edit AI-facing prompts and self-check them against prompt-discipline rules. |
 | `cdev` | Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. |
 | `agent-sequencer` | External plugin ([OPENSPHERE-Inc/agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer)). Required to run `creview`'s `review_rounds.py` sequencer program. |
+| `x-twitter-scraper` | External Xquik plugin for X/Twitter data workflows with REST API, MCP, webhooks, SDKs, and extraction tasks. |
 
 ## Installation
 
@@ -22,6 +23,7 @@ Add this marketplace, then install the plugins:
 /plugin install creview@opensphere-inc
 /plugin install cprompt@opensphere-inc
 /plugin install cdev@opensphere-inc
+/plugin install x-twitter-scraper@opensphere-inc
 ```
 
 `creview`, `cprompt`, and `cdev` are self-contained. The optional `agent-sequencer`

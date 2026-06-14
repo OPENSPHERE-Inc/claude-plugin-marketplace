@@ -1,4 +1,4 @@
-# opensphere-inc — Claude Code プラグインマーケットプレース
+# opensphere-inc - Claude Code プラグインマーケットプレース
 
 *[English README](README.md)*
 
@@ -12,6 +12,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 | `cprompt` | AI 向けプロンプトを作成・編集し、プロンプト規律ルールに照らしてセルフチェックする。 |
 | `cdev` | チームネイティブなマルチエージェントコーディングワークフロー: 常駐チームが設計とコーディングをペアレビューセルで実行し、最後に QA ゲートを通す。 |
 | `agent-sequencer` | 外部プラグイン（[OPENSPHERE-Inc/agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer)）。`creview` の `review_rounds.py` シーケンサプログラムの実行に必要。 |
+| `x-twitter-scraper` | Xquik の外部プラグイン。X/Twitter データ取得、REST API、MCP、webhooks、SDK、抽出タスクに使う。 |
 
 ## インストール
 
@@ -22,6 +23,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 /plugin install creview@opensphere-inc
 /plugin install cprompt@opensphere-inc
 /plugin install cdev@opensphere-inc
+/plugin install x-twitter-scraper@opensphere-inc
 ```
 
 `creview`・`cprompt`・`cdev` は単体で完結します。任意の `agent-sequencer` エントリは
