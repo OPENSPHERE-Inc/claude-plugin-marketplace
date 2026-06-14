@@ -22,7 +22,7 @@ When editing source code, follow `comment.md` in the same directory as this file
 
 ## Team conventions
 
-- **Spawn once, persist.** A teammate is spawned once and keeps its context across phases. Each task arrives as a message that names the template to Read for that task plus its variables; Read that template and follow it for that task.
+- **Spawn once, persist.** A teammate is spawned once and keeps its context across steps. Each task arrives as a message that names the template to Read for that task plus its variables; Read that template and follow it for that task.
 - **Report to the leader = counts / paths / one-line summary only.** Never send finding bodies, design bodies, or source to the leader.
 - **Route detailed findings peer-to-peer.** A reviewer sends its actionable (Critical / Major) findings — `file:line` plus the recommended fix direction — by `SendMessage` directly to its paired producer (`architect-{slug}` / `coder-{slug}`).
 - **Mark tasks done with `TaskUpdate`** as each task completes.

@@ -25,7 +25,7 @@ lives in `creview`, `cdev` optimizes for speed and coherence instead.
 ## How it works
 
 The leader (team lead) calls `TeamCreate`, spawns each selected specialist once as a named,
-persistent teammate, pairs each producer with a reviewer, and drives two cell phases and a
+persistent teammate, pairs each producer with a reviewer, and drives two cell steps and a
 final QA gate, reporting progress to the console:
 
 1. **Design cells** — each architect writes a design for its area, then its **paired
@@ -39,14 +39,14 @@ final QA gate, reporting progress to the console:
 
 A cell runs autonomously: the producer (architect / coder) and its paired reviewer loop
 review ⇄ triage ⇄ resolve until the reviewer closes the cell. The leader sets up the cells,
-enforces the phase gates (all design cells close before coding; all code cells before QA),
+enforces the step gates (all design cells close before coding; all code cells before QA),
 runs the QA gate, and arbitrates escalations. When a reviewer and a producer deadlock on a
 `Critical` finding, the reviewer escalates to the leader; if the leader cannot decide either,
 it asks the user and leaves a `FIXME:`. Judgment priority is the user's original task first,
 then the design intent. The authoritative review is `creview`, so unresolved items are left
 as `FIXME:`s rather than blocking.
 
-Teammates persist across phases, so they keep their own context and revise incrementally.
+Teammates persist across steps, so they keep their own context and revise incrementally.
 Feedback flows **peer to peer**; the leader holds only the roster, pairings, task status,
 severity counts, paths, and the QA result, never the bodies.
 

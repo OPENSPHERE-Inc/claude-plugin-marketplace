@@ -1,12 +1,12 @@
 ---
 name: coding
-description: Orchestrate a coding task end to end with a standing agent team using paired review cells — a design cell phase, a coding cell phase, and a QA gate. Architects, coders, and reviewers are auto-selected from the destination project agents. Use proactively when the user asks to implement a feature, build a change, or carry out a coding task. Requires a runtime with agent-team tools (TeamCreate / SendMessage / Task tools).
+description: Orchestrate a coding task end to end with a standing agent team using paired review cells — a design cell step, a coding cell step, and a QA gate. Architects, coders, and reviewers are auto-selected from the destination project agents. Use proactively when the user asks to implement a feature, build a change, or carry out a coding task. Requires a runtime with agent-team tools (TeamCreate / SendMessage / Task tools).
 allowed-tools: Agent, TeamCreate, SendMessage, TeamDelete, TaskCreate, TaskUpdate, TaskList, Read, Glob, Grep, Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*)
 ---
 
 # Multi-Agent Coding
 
-As the **coding leader (team lead)**, you assemble a standing team and drive a coding task through two cell phases — design and coding — and a final QA gate. In a cell, a producer (an architect or a coder) and a paired reviewer run an autonomous review loop and close their own cell. You set up the cells, enforce the phase gates and the QA gate, and arbitrate escalations.
+As the **coding leader (team lead)**, you assemble a standing team and drive a coding task through two cell steps — design and coding — and a final QA gate. In a cell, a producer (an architect or a coder) and a paired reviewer run an autonomous review loop and close their own cell. You set up the cells, enforce the step gates and the QA gate, and arbitrate escalations.
 
 The leader does not design, write, review, or fix code.
 
@@ -35,7 +35,7 @@ Design documents and finding descriptions are written in the user's chat languag
 
 ## Team model
 
-`TeamCreate` creates a team and its shared task list (1:1). Each teammate is spawned once via the Agent tool with `team_name` and `name`, persists across phases, is addressed by `name` via `SendMessage`, goes idle between turns (a message wakes it), and marks its work via `TaskUpdate`.
+`TeamCreate` creates a team and its shared task list (1:1). Each teammate is spawned once via the Agent tool with `team_name` and `name`, persists across steps, is addressed by `name` via `SendMessage`, goes idle between turns (a message wakes it), and marks its work via `TaskUpdate`.
 
 Teammate names: `architect-{slug}`, `coder-{slug}`, `reviewer-{slug}`, `dev-helper`, `comment-sensei`.
 
@@ -82,7 +82,7 @@ Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE
 ## Step 1 — Form the team and pair
 
 1. Resolve `{timestamp}`, fix `{tmp_dir}`, and create it: `mkdir -p {tmp_dir}/design`.
-2. Console: `## Phase 0 — Team formation`.
+2. Console: `## Step 1 — Team formation`.
 3. `TeamCreate({team_name: "cdev-coding-{timestamp}"})`.
 4. Spawn `dev-helper` via `Agent(subagent_type="dev-helper", team_name, name="dev-helper", prompt=<spawn contract>)`. `TaskCreate` a team-analysis task (owner `dev-helper`) and `SendMessage(dev-helper, ...)` naming `templates/team-analysis.md` with variable `task = {task specification}`. Receive its report: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`. Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers).
 5. Spawn each roster member as a teammate via `Agent(subagent_type={name}, team_name, name={role-name}, prompt=<spawn contract>)`: `architect-{slug}`, `coder-{slug}`, `reviewer-{slug}`. Hold the roster, pairings, and `{task_summary}`.
@@ -90,7 +90,7 @@ Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE
 
 ## Step 2 — Design cells (設計)
 
-1. Console: `## Phase 1 — Design`.
+1. Console: `## Step 2 — Design`.
 2. For each architect, `TaskCreate` a design cell (id `design-{slug}`, owner `architect-{slug}`) and start the cell with two messages:
    - `SendMessage` `architect-{slug}` naming `templates/design.md` with `task = {task_summary}`, `assigned_scope = {its scope}`, `output_path = {tmp_dir}/design/{slug}.md`, `reviewer = reviewer-{its paired slug}`.
    - `SendMessage` the paired `reviewer-{slug}` naming `templates/design-review.md` with `task = {task_summary}`, `design_path = {tmp_dir}/design/{slug}.md`, `producer = architect-{slug}`, `cell_task = design-{slug}`, `review_rounds = {--review-rounds}`.
@@ -99,7 +99,7 @@ Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE
 
 ## Step 3 — Code cells (コーディング)
 
-1. Console: `## Phase 2 — Coding`. Spawn `comment-sensei` via the spawn contract with role `the comment reviewer; a coder DMs you to review comments per templates/comment-review.md` (available to the code cells).
+1. Console: `## Step 3 — Coding`. Spawn `comment-sensei` via the spawn contract with role `the comment reviewer; a coder DMs you to review comments per templates/comment-review.md` (available to the code cells).
 2. For each coder, `TaskCreate` a code cell (id `code-{slug}`, owner `coder-{slug}`) and start the cell with two messages:
    - `SendMessage` `coder-{slug}` naming `templates/code.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `assigned_scope = {its scope}`, `tdd = {has_test_suite}`, `feedback = (none)`, `reviewer = reviewer-{its paired slug}`.
    - `SendMessage` the paired `reviewer-{slug}` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = coder-{slug}`, `cell_task = code-{slug}`, `review_rounds = {--review-rounds}`.
@@ -110,7 +110,7 @@ Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE
 
 Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 
-1. Console: `## Phase 3 — QA (attempt {n})`.
+1. Console: `## Step 4 — QA (attempt {n})`.
 2. Capture the working-tree diff: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/changes.txt`.
 3. `TaskCreate` a QA task (owner `dev-helper`) and `SendMessage(dev-helper, ...)` naming `templates/qa.md` with `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {n}`. Receive `{success, format_violations_fixed, workflow_source, workflow_warning, build_ran, test_ran, suggested_specialist, error_summary, summary_line}`. If `workflow_warning` is non-null, retain it for Step 5.
 4. If `success == true`, exit the loop.
@@ -125,4 +125,4 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 1. If `--commit` is on and QA passed, commit the implementation: stage only the changed source files (not `.claude/tmp`), and commit once with a concise message (no finding IDs).
 2. Shut down the teammates: `SendMessage` each one `{type: "shutdown_request"}` and wait for shutdown. Then `TeamDelete`.
 3. Remove the working directory: `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`.
-4. Report to the console: the team roster with pairings, the cells resolved per phase, any escalations and the `FIXME:`s left for unresolved items, files changed, the QA result (`summary_line`, plus `workflow_warning` if any), and any unfixed QA failure.
+4. Report to the console: the team roster with pairings, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the QA result (`summary_line`, plus `workflow_warning` if any), and any unfixed QA failure.

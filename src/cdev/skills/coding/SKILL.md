@@ -1,12 +1,12 @@
 ---
 name: coding
-description: ペアレビューセルを用いて、設計セルフェーズ・コーディングセルフェーズ・QA ゲートでコーディングタスクをエンドツーエンドに統括する、常駐エージェントチーム方式のワークフロー。architect・coder・reviewer は対象プロジェクトのエージェントから自動選定する。ユーザーが機能の実装・変更の構築・コーディングタスクの遂行を求めたとき能動的に使用する。エージェントチームツール（TeamCreate / SendMessage / Task ツール）が利用可能なランタイムを要する。
+description: ペアレビューセルを用いて、設計セルステップ・コーディングセルステップ・QA ゲートでコーディングタスクをエンドツーエンドに統括する、常駐エージェントチーム方式のワークフロー。architect・coder・reviewer は対象プロジェクトのエージェントから自動選定する。ユーザーが機能の実装・変更の構築・コーディングタスクの遂行を求めたとき能動的に使用する。エージェントチームツール（TeamCreate / SendMessage / Task ツール）が利用可能なランタイムを要する。
 allowed-tools: Agent, TeamCreate, SendMessage, TeamDelete, TaskCreate, TaskUpdate, TaskList, Read, Glob, Grep, Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*)
 ---
 
 # マルチエージェントコーディング
 
-あなたは**コーディングリーダー（チームリード）**として、常駐チームを編成し、設計とコーディングの 2 つのセルフェーズと最終 QA ゲートを通してコーディングタスクを駆動する。セルでは、producer（architect または coder）とペアの reviewer が自律的なレビューループを回し、自分たちのセルを閉じる。あなたはセルを立ち上げ、フェーズゲートと QA ゲートを強制し、エスカレーションを裁定する。
+あなたは**コーディングリーダー（チームリード）**として、常駐チームを編成し、設計とコーディングの 2 つのセルステップと最終 QA ゲートを通してコーディングタスクを駆動する。セルでは、producer（architect または coder）とペアの reviewer が自律的なレビューループを回し、自分たちのセルを閉じる。あなたはセルを立ち上げ、ステップゲートと QA ゲートを強制し、エスカレーションを裁定する。
 
 リーダーは設計・コード記述・レビュー・修正を行わない。
 
@@ -35,7 +35,7 @@ allowed-tools: Agent, TeamCreate, SendMessage, TeamDelete, TaskCreate, TaskUpdat
 
 ## チームモデル
 
-`TeamCreate` はチームとその共有タスクリストを作成する（1 対 1）。各 teammate は Agent ツールで `team_name` と `name` を指定して一度だけ spawn し、フェーズをまたいで常駐し、`name` で `SendMessage` 宛先指定され、ターン間は idle になり（メッセージで起床）、自身の作業を `TaskUpdate` で記録する。
+`TeamCreate` はチームとその共有タスクリストを作成する（1 対 1）。各 teammate は Agent ツールで `team_name` と `name` を指定して一度だけ spawn し、ステップをまたいで常駐し、`name` で `SendMessage` 宛先指定され、ターン間は idle になり（メッセージで起床）、自身の作業を `TaskUpdate` で記録する。
 
 teammate 名: `architect-{slug}`、`coder-{slug}`、`reviewer-{slug}`、`dev-helper`、`comment-sensei`。
 
@@ -82,7 +82,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 ## ステップ 1 — チーム編成とペアリング
 
 1. `{timestamp}` を解決し、`{tmp_dir}` を確定して作成する: `mkdir -p {tmp_dir}/design`。
-2. コンソールに表示する: `## Phase 0 — Team formation`。
+2. コンソールに表示する: `## Step 1 — Team formation`。
 3. `TeamCreate({team_name: "cdev-coding-{timestamp}"})`。
 4. `dev-helper` を `Agent(subagent_type="dev-helper", team_name, name="dev-helper", prompt=<spawn 契約>)` で spawn する。team-analysis タスク（owner `dev-helper`）を `TaskCreate` し、`templates/team-analysis.md` を指定して変数 `task = {タスク指定}` を渡して `SendMessage(dev-helper, ...)`。その報告を受け取る: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`。各 producer の `reviewer` はペアの reviewer の `slug`（1 人の reviewer が複数の producer とペアになることもある）。
 5. ロスターの各メンバーを `Agent(subagent_type={name}, team_name, name={role 名}, prompt=<spawn 契約>)` で teammate として spawn する: `architect-{slug}`、`coder-{slug}`、`reviewer-{slug}`。ロスター、ペアリング、`{task_summary}` を保持する。
@@ -90,7 +90,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 ## ステップ 2 — 設計セル（設計）
 
-1. コンソールに表示する: `## Phase 1 — Design`。
+1. コンソールに表示する: `## Step 2 — Design`。
 2. 各 architect について、設計セル（id `design-{slug}`、owner `architect-{slug}`）を `TaskCreate` し、2 つのメッセージでセルを開始する:
    - `architect-{slug}` へ `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`output_path = {tmp_dir}/design/{slug}.md`、`reviewer = reviewer-{ペアの slug}` を渡して `SendMessage`。
    - ペアの `reviewer-{slug}` へ `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {tmp_dir}/design/{slug}.md`、`producer = architect-{slug}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
@@ -99,7 +99,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 ## ステップ 3 — コードセル（コーディング）
 
-1. コンソールに表示する: `## Phase 2 — Coding`。`comment-sensei` を spawn 契約で role `the comment reviewer; a coder DMs you to review comments per templates/comment-review.md` として spawn する（コードセルから利用可能）。
+1. コンソールに表示する: `## Step 3 — Coding`。`comment-sensei` を spawn 契約で role `the comment reviewer; a coder DMs you to review comments per templates/comment-review.md` として spawn する（コードセルから利用可能）。
 2. 各 coder について、コードセル（id `code-{slug}`、owner `coder-{slug}`）を `TaskCreate` し、2 つのメッセージでセルを開始する:
    - `coder-{slug}` へ `templates/code.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {そのスコープ}`、`tdd = {has_test_suite}`、`feedback = (none)`、`reviewer = reviewer-{ペアの slug}` を渡して `SendMessage`。
    - ペアの `reviewer-{slug}` へ `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = coder-{slug}`、`cell_task = code-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
@@ -110,7 +110,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 
-1. コンソールに表示する: `## Phase 3 — QA (attempt {n})`。
+1. コンソールに表示する: `## Step 4 — QA (attempt {n})`。
 2. ワーキングツリーの差分を取得する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/changes.txt`。
 3. QA タスク（owner `dev-helper`）を `TaskCreate` し、`templates/qa.md` を指定して `tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`attempt_num = {n}` を渡して `SendMessage(dev-helper, ...)`。`{success, format_violations_fixed, workflow_source, workflow_warning, build_ran, test_ran, suggested_specialist, error_summary, summary_line}` を受け取る。`workflow_warning` が非 null の場合、ステップ 5 のために保持する。
 4. `success == true` の場合、ループを抜ける。
@@ -125,4 +125,4 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 1. `--commit` が ON かつ QA が通過した場合、実装をコミットする: 変更されたソースファイルのみをステージし（`.claude/tmp` は除く）、簡潔なメッセージで 1 回コミットする（finding ID なし）。
 2. teammate をシャットダウンする: 各 teammate へ `SendMessage` で `{type: "shutdown_request"}` を送り、シャットダウンを待つ。その後 `TeamDelete`。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`。
-4. コンソールへ報告する: ペアリングを含むチームのロスター、フェーズごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、QA 結果（`summary_line`、あれば `workflow_warning`）、および未修正の QA 失敗。
+4. コンソールへ報告する: ペアリングを含むチームのロスター、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、QA 結果（`summary_line`、あれば `workflow_warning`）、および未修正の QA 失敗。
