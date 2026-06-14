@@ -10,6 +10,7 @@ A Claude Code plugin marketplace maintained by OPENSPHERE Inc.
 |--------|-------------|
 | `creview` | Multi-agent parallel code review workflow: start → triage → respond → resolve, plus an automatic multi-round driver. |
 | `cprompt` | Create and edit AI-facing prompts and self-check them against prompt-discipline rules. |
+| `cdev` | Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. |
 | `agent-sequencer` | External plugin ([OPENSPHERE-Inc/agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer)). Required to run `creview`'s `review_rounds.py` sequencer program. |
 | `hermes-tweet` | External plugin ([Xquik-dev/hermes-tweet](https://github.com/Xquik-dev/hermes-tweet)) for X/Twitter research, trend analysis, monitored context, and gated account actions. |
 
@@ -21,12 +22,13 @@ Add this marketplace, then install the plugins:
 /plugin marketplace add OPENSPHERE-Inc/claude-plugin-marketplace
 /plugin install creview@opensphere-inc
 /plugin install cprompt@opensphere-inc
+/plugin install cdev@opensphere-inc
 ```
 
-`creview` and `cprompt` are self-contained. The external `agent-sequencer`
-and `hermes-tweet` entries resolve from their own GitHub repositories.
-`agent-sequencer` is only needed for the sequencer-driven variant of the
-multi-round review (see
+`creview`, `cprompt`, and `cdev` are self-contained. The external
+`agent-sequencer` and `hermes-tweet` entries resolve from their own GitHub
+repositories. `agent-sequencer` is only needed for the sequencer-driven variant
+of the multi-round review (see
 [creview/README.md](creview/README.md)).
 
 ## Skill commands
@@ -39,6 +41,7 @@ multi-round review (see
 | `/creview:resolve` | Verify fixes against the source; persist `verification`. |
 | `/creview:rounds` | Automatically iterate the four phases across multiple rounds. |
 | `/cprompt:edit` | Create or edit an AI-facing prompt and self-check it. |
+| `/cdev:coding` | Implement a coding task end to end: design and coding as paired review cells, then a QA gate. |
 
 ## Reviewer / fixer agents
 
