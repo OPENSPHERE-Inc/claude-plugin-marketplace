@@ -39,7 +39,16 @@
 
 ## Minor
 
-No findings
+### mi-1 — `widget.cpp:88` [Style]
+
+- **Reviewers:** qt-sensei
+
+**Finding:**
+
+{description of the issue}
+
+<!-- METADATA(mi-1) -->
+<!-- /METADATA(mi-1) -->
 
 ---
 
