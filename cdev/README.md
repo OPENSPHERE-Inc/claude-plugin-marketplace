@@ -24,9 +24,9 @@ lives in `creview`, `cdev` optimizes for speed and coherence instead.
 
 ## How it works
 
-The leader (team lead) calls `TeamCreate`, spawns each selected specialist once as a named,
-persistent teammate, pairs each producer with a reviewer, and drives two cell steps and a
-final QA gate, reporting progress to the console:
+The leader (team lead) spawns each selected specialist once as a named, persistent
+background teammate (`Agent` with `run_in_background`), pairs each producer with a reviewer,
+and drives two cell steps and a final QA gate, reporting progress to the console:
 
 1. **Design cells** — each architect writes a design for its area, then its **paired
    reviewer** reviews it; the architect **triages** each finding (fix, or reject with a
@@ -47,14 +47,16 @@ then the design intent. The authoritative review is `creview`, so unresolved ite
 as `FIXME:`s rather than blocking.
 
 Teammates persist across steps, so they keep their own context and revise incrementally.
-Feedback flows **peer to peer**; the leader holds only the roster, pairings, task status,
-severity counts, paths, and the QA result, never the bodies.
+Feedback flows **peer to peer**; the leader holds only the roster, pairings, each cell's
+status, severity counts, paths, and the QA result, never the bodies.
 
 ## Requirements
 
-This skill uses agent-team tools (`TeamCreate`, `SendMessage`, `TaskCreate` / `TaskUpdate` /
-`TaskList`, `TeamDelete`). It runs only in a runtime where those are available — a deliberate
-trade-off favoring efficiency over the broad portability of a one-shot, stateless agent design.
+This skill uses background subagents (`Agent` with `run_in_background`) and `SendMessage`
+between named teammates. The session has a single implicit team — no explicit team creation
+or deletion, and no shared task list; the leader tracks each cell's status itself. It runs
+only in a runtime where these are available — a deliberate trade-off favoring efficiency over
+the broad portability of a one-shot, stateless agent design.
 
 ## Options
 

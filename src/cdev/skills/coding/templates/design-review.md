@@ -14,4 +14,4 @@ producer: `{{producer}}` | セルタスク: `{{cell_task}}`
 
 重要度ラベル: Critical（設計が誤っている、またはタスクを満たさない）/ Major（重大なギャップまたはリスク）/ Minor（改善）/ Info（参考）。対応すべきは Critical / Major。
 
-セルプロトコルに従う: 対応すべき指摘（セクション / 領域、問題、推奨する修正方針。{{doc_lang}} で、重要度ラベルはそのまま）を `{{producer}}` へ DM し、重要度別の件数 `{critical, major, minor, info}` をリーダーへ報告する。producer の triage 後に resolve し、`{{cell_task}}` を TaskUpdate で完了とマークする。なお同意できない却下された `Critical` はエスカレーションする。
+セルプロトコルに従う: 対応すべき指摘（セクション / 領域、問題、推奨する修正方針。{{doc_lang}} で、重要度ラベルはそのまま）を `{{producer}}` へ DM し、重要度別の件数 `{critical, major, minor, info}` をリーダーへ報告する。producer の triage 後に resolve し、セル `{{cell_task}}` の resolve を `SendMessage(to: "main")` でリーダーへ報告する。なお同意できない却下された `Critical` はエスカレーションする。

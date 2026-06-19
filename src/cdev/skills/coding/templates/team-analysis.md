@@ -25,4 +25,4 @@ template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 4. 各 architect と各 coder を 1 名の reviewer とペアにする: その `reviewer` を reviewer の `slug` に設定する。reviewer が producer より少ない場合は、1 名の reviewer を複数の producer とペアにする。
 5. `task_summary` を、architects / coders が元のチャットなしで動けるタスクの自己完結的な再記述（{{doc_lang}} で）として記述する。
 
-リーダーへの報告（SendMessage 経由）: `{task_summary, target_languages: [..], has_test_suite: <bool>, architects: [{name, slug, scope, reviewer, reason}], coders: [{name, slug, scope, reviewer, reason}], reviewers: [{name, slug, reason}], rationale}`。`scope` / `reason` / `rationale` / `task_summary` は {{doc_lang}} で記述し、`name` / `slug` / 識別子はそのまま。TaskUpdate でタスクを完了とマークする。
+リーダー（`SendMessage` の `to: "main"`）へ報告する: `{task_summary, target_languages: [..], has_test_suite: <bool>, architects: [{name, slug, scope, reviewer, reason}], coders: [{name, slug, scope, reviewer, reason}], reviewers: [{name, slug, reason}], rationale}`。`scope` / `reason` / `rationale` / `task_summary` は {{doc_lang}} で記述し、`name` / `slug` / 識別子はそのまま。この報告がタスク完了の通知を兼ねる。

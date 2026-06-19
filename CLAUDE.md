@@ -10,7 +10,8 @@ under the MIT license. It publishes three first-party plugins and references one
 - **cprompt** — create / edit AI-facing prompts and self-check them against
   prompt-discipline rules.
 - **cdev** — a team-native multi-agent coding workflow (`coding`: a standing team runs design
-  and coding as paired review cells, then a QA gate). Requires agent-team tools.
+  and coding as paired review cells, then a QA gate). Requires background subagents and
+  inter-agent messaging.
 - **agent-sequencer** — external plugin
   ([OPENSPHERE-Inc/agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer)),
   required only to run `creview`'s `review_rounds.py` sequencer program.

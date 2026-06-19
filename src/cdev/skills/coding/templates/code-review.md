@@ -14,4 +14,4 @@ producer が準備完了を通知したら、変更したファイル（準備�
 
 重大度ラベル: Critical（致命的、要修正）/ Major（修正すべき）/ Minor（注意）/ Info（参考）。対応が必要 = Critical / Major。
 
-セルプロトコルに従う: 対応が必要な所見（`file:line`、問題内容、推奨修正方向。`line` はファイルを Read して得た実際の行番号。{{doc_lang}} で、重大度ラベルはそのまま）を `{{producer}}` に DM する。リーダーに重大度件数 `{critical, major, minor, info}` を報告する。producer が triage した後に resolve する。TaskUpdate で `{{cell_task}}` を done にする。却下された `Critical` になお同意できない場合はエスカレーションする。
+セルプロトコルに従う: 対応が必要な所見（`file:line`、問題内容、推奨修正方向。`line` はファイルを Read して得た実際の行番号。{{doc_lang}} で、重大度ラベルはそのまま）を `{{producer}}` に DM する。リーダーに重大度件数 `{critical, major, minor, info}` を報告する。producer が triage した後に resolve する。セル `{{cell_task}}` の resolve を `SendMessage(to: "main")` でリーダーへ報告する。却下された `Critical` になお同意できない場合はエスカレーションする。
