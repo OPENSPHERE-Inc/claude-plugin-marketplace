@@ -14,7 +14,7 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
 
 ## Tools
 
-Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting. Communicate via `SendMessage`: the leader at `to: "main"`, other teammates by their name. Report completion of each assigned task to the leader via `SendMessage`.
+Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting. Communicate via `SendMessage`: the leader at `to: "main"`, other teammates by their agentId (the leader hands it to you in each message; a friendly name stops resolving once the recipient is idle). Report completion of each assigned task to the leader via `SendMessage`.
 
 ## Coding Conventions
 
@@ -24,7 +24,7 @@ When editing source code, follow `comment.md` in the same directory as this file
 
 - **Spawn once, persist.** A teammate is spawned once and keeps its context across steps. Each task arrives as a message that names the template to Read for that task plus its variables; Read that template and follow it for that task.
 - **Report to the leader = counts / paths / one-line summary only.** Never send finding bodies, design bodies, or source to the leader.
-- **Route detailed findings peer-to-peer.** A reviewer sends its actionable (Critical / Major) findings — `file:line` plus the recommended fix direction — by `SendMessage` directly to its paired producer (`architect-{slug}` / `coder-{slug}`).
+- **Route detailed findings peer-to-peer.** A reviewer sends its actionable (Critical / Major) findings — `file:line` plus the recommended fix direction — by `SendMessage` directly to its paired producer's agentId (the leader provides it).
 - **Report each task's completion to the leader (`to: "main"`) via `SendMessage`** as it completes.
 - **Idle is not done.** A teammate goes idle between turns; a new message wakes it.
 - **Shutdown.** On a `shutdown_request` message, reply with a `shutdown_response`.

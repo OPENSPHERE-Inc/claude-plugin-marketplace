@@ -1,6 +1,6 @@
 ---
 name: team-analysis
-description: Prompt for the team-analysis task (dev-helper) in cdev /coding Step 1, which scopes the coding task, selects architect / coder / reviewer agents from the destination project's agents, and pairs each producer with a reviewer
+description: Prompt for the team-analysis task (dev-helper) in cdev /coding Step 1, which scopes the coding task, selects reviewer agents from the destination project's agents (architects / coders run as general-purpose), and pairs each producer with a reviewer
 template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 ---
 
@@ -8,7 +8,7 @@ Scope the coding task, assemble the specialist team, and pair each producer with
 
 Task: `{{task}}`
 
-Agent pool: enumerate `*.md` from the following scopes in priority order, and Read each file's frontmatter `name` / `description` to learn each agent's specialty. The `name` value is what the leader passes to `subagent_type` when spawning a teammate. When the same `name` exists in multiple scopes, adopt the higher-priority scope's entry. Skip any scope that does not exist.
+Agent pool: enumerate `*.md` from the following scopes in priority order, and Read each file's frontmatter `name` / `description` to learn each agent's specialty. The `name` value is what the leader passes to `subagent_type` when spawning a teammate (for a plugin-bundled scope-3 agent, use the namespaced value, e.g. `cdev:comment-sensei`). When the same `name` exists in multiple scopes, adopt the higher-priority scope's entry. Skip any scope that does not exist.
 
 1. Project scope: `.claude/agents/**/*.md` (relative to the working directory)
 2. User scope: `~/.claude/agents/**/*.md`
@@ -18,11 +18,11 @@ Procedure:
 
 1. Understand the task: determine the target language(s), the subsystems / directories it touches, and the build / test surface. Determine whether the project has a test suite (a resolvable test command, a test framework, or a test directory) and set `has_test_suite`. Use Glob / Grep / Read on the existing codebase to ground this; read only enough to scope, and do not implement anything.
 2. Select the team from the pool, matching each agent's `description` specialty to the task:
-   - architects — one or more agents to own the design. One suffices for a single-subsystem task; use multiple only when the task spans clearly separable subsystems. Give each a `slug` (kebab-case) and a `scope`.
-   - coders — one or more agents to implement. Give each a `slug` (kebab-case) and a `scope` of disjoint files / directories so two coders never edit the same file.
-   - reviewers — one or more agents to review both the design and the code. Give each a `slug`.
-3. For a role with no matching specialist in any scope, use a single `general-purpose` entry for that role.
-4. Pair each architect and each coder with one reviewer: set its `reviewer` to a reviewer's `slug`. When reviewers are fewer than producers, pair one reviewer with several producers.
+   - architects — own the design. An architect always runs as `general-purpose` (`name` = `general-purpose`). One suffices for a single-subsystem task; use multiple only when the task spans clearly separable subsystems. Give each a `slug` (kebab-case) and a `scope`, and note the domain its scope concerns in `reason`.
+   - coders — agents to implement. A coder always runs as `general-purpose` (`name` = `general-purpose`), because some specialist agents emit tool calls as text and stall, so the implementation cannot continue. Split into one or more by implementation volume, each with a `slug` (kebab-case) and a `scope` of disjoint files / directories so two coders never edit the same file. In each coder's `reason`, note the domain / conventions its scope must follow (e.g. backend → Laravel).
+   - reviewers — agents to review the design and the code. Select them so each producer's domain is individually covered (when backend / frontend / E2E / security are mixed, ensure a reviewer for each area). Give each a `slug`.
+3. For a domain / role with no matching specialist in the pool, use `general-purpose` for that assignment.
+4. Pair each architect and each coder with one reviewer whose domain matches that producer: set its `reviewer` to a reviewer's `slug`. Share one reviewer across several producers only when they are in the same domain. For a producer with no domain-matching reviewer, assign a `general-purpose` reviewer (do not make an out-of-domain reviewer cover it).
 5. Write `task_summary` as a self-contained restatement of the task (in {{doc_lang}}) that the architects / coders can act on without the original chat.
 
 Report to the leader (SendMessage with `to: "main"`): `{task_summary, target_languages: [..], has_test_suite: <bool>, architects: [{name, slug, scope, reviewer, reason}], coders: [{name, slug, scope, reviewer, reason}], reviewers: [{name, slug, reason}], rationale}`. Write `scope` / `reason` / `rationale` / `task_summary` in {{doc_lang}}; keep `name` / `slug` / identifiers as-is. This report doubles as the task-completion signal.

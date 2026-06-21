@@ -8,7 +8,7 @@ template_id: 4abf814d-2e3e-4bec-8ff8-45c9a176b01f
 
 タスク: `{{task}}`
 設計セクション（意図する挙動）: `{{design_paths}}` の全ファイルを Read する。
-Producer: `{{producer}}` | セルタスク: `{{cell_task}}`
+Producer の agentId: `{{producer}}` | セルタスク: `{{cell_task}}`
 
 producer が準備完了を通知したら、変更したファイル（準備完了メッセージに列挙されている）を Read し、設計・タスクに対する正しさ、バグ、欠落したエッジケース / エラーハンドリング、セキュリティ、性能、保守性の観点でコードを判定する。`{{plugin_root}}/rules/review.md` を Read し従う。ツール使用は Read / Glob / Grep / Bash(grep/ls/find) に限定する。一切編集しない。
 

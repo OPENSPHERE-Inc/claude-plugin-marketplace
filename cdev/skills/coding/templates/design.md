@@ -8,7 +8,7 @@ As the architect for your assigned area, produce a design and run the review cel
 
 Task: `{{task}}`
 Assigned scope: `{{assigned_scope}}`
-Paired reviewer: `{{reviewer}}`
+Paired reviewer's agentId: `{{reviewer}}`
 
 Steps:
 
