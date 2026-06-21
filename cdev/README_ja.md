@@ -62,18 +62,19 @@ teammate 間の `SendMessage` を使用します。セッションは単一の�
 
 - `--review-rounds N`（既定 2）— セルごとの review ⇄ triage の最大反復回数。
 - `--qa-attempts N`（既定 5）— QA 検証 ⇄ コーダー修正の最大試行回数。
-- `--base {branch}`（既定 `main` / `master`）— 差分取得のベースブランチ。
 - `--commit`（既定 off）— 検証済みの実装を 1 コミットでコミットする。
 
 ## アーキテクト / コーダー / レビュアーエージェント
 
-このプラグインは専門のアーキテクト・コーダー・レビュアーを同梱しません。`team-analysis`
+このプラグインは専門のレビュアーを同梱しません。`team-analysis`
 タスクが**移植先プロジェクト**（`.claude/agents/`）→**ユーザー**（`~/.claude/agents/`）→
 **プラグイン同梱**の順に、サブディレクトリを含めて再帰的（`**/*.md`）にエージェントを列挙し、
-各エージェントの frontmatter の `name` / `description` を読み、各ロールに最適なものを割り
-当て（ロールごとに複数可）、それぞれを teammate として spawn します。あるロールに一致が
-無い場合は `general-purpose` にフォールバックします。QA タスクもビルド / テスト修正の
-専門家を同じ方法で解決します。
+各エージェントの frontmatter の `name` / `description` を読み、**レビュアー**ロールに最適な
+専門家を割り当てます（各レビュアーは producer のドメインを担当し、専門外の領域を 1 人に
+兼任させません）。**アーキテクトとコーダーは常に `general-purpose` で起動します**——一部の
+専門家エージェントがツールコールを誤整形して停止するため、かつ producer は割り当てスコープと
+プロジェクト規約に従って作業し、ドメインの正しさは専門家レビュアーがレビューで担保するため
+です。ドメインに一致する専門家が無い場合は `general-purpose` にフォールバックします。
 
 ## 同梱エージェントとサポートファイル
 
@@ -84,7 +85,7 @@ teammate 間の `SendMessage` を使用します。セッションは単一の�
   変更されたコメントを `rules/comment.md` に照らしてレビュー・修正する。
 - `rules/` — `teammate.md`（teammate 共通ルール）、`agents-detection.md`、
   `build-format-detection.md`、`comment.md`、`review.md`、`document.md`。
-- `scripts/` — `fetch-diff.sh`（QA / コードレビュー用の作業ツリー差分）、`rm-tmp.sh`
+- `scripts/` — `fetch-diff.sh`（コーディング開始前のツリーを記録し、開始以降の QA 差分を取得）、`rm-tmp.sh`
   （`.claude/tmp/` 配下の実行作業ディレクトリを削除）。スキルは
   `${CLAUDE_PLUGIN_ROOT}/scripts/...` 経由で呼び出し、teammate は変数 `{{plugin_root}}` で
   解決済みパスを受け取ります。

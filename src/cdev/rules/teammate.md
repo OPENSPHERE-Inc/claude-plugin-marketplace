@@ -14,7 +14,7 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 ## ツール
 
-ファイル出力は Write ツールを使用する。Bash の cat heredoc は値内のアポストロフィ（`Won't` 等）で外側のクォーティングが破綻するため使用不可。連絡は `SendMessage` で行う。リーダー宛は `to: "main"`、他の teammate 宛はその name。割り当てられた各タスクの完了はリーダーへ `SendMessage` で報告する。
+ファイル出力は Write ツールを使用する。Bash の cat heredoc は値内のアポストロフィ（`Won't` 等）で外側のクォーティングが破綻するため使用不可。連絡は `SendMessage` で行う。リーダー宛は `to: "main"`、他の teammate 宛はその agentId（リーダーが各メッセージで渡す。friendly な名前は相手が idle になると解決できない）。割り当てられた各タスクの完了はリーダーへ `SendMessage` で報告する。
 
 ## コーディング規約
 
@@ -24,7 +24,7 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 - **一度だけ起動し、永続する。** teammate は一度だけ起動され、ステップをまたいでコンテキストを保持する。各タスクは、そのタスクで Read すべきテンプレートとその変数を指定したメッセージとして届く。そのテンプレートを Read し、当該タスクではそれに従う。
 - **リーダーへの報告は件数 / パス / 1 行サマリのみ。** 指摘本文、設計本文、ソースをリーダーへ送ってはならない。
-- **詳細な指摘はピアツーピアで送る。** reviewer は、対応すべき（Critical / Major）指摘 — `file:line` と推奨する修正方針 — を、タスクの `scope_map` から特定した担当の `architect-{slug}` / `coder-{slug}` へ `SendMessage` で直接送る。
+- **詳細な指摘はピアツーピアで送る。** reviewer は、対応すべき（Critical / Major）指摘 — `file:line` と推奨する修正方針 — を、リーダーが渡した producer の agentId 宛に `SendMessage` で直接送る。
 - **各タスク完了時にリーダー（`to: "main"`）へ `SendMessage` で完了を報告する。**
 - **アイドルは完了ではない。** teammate はターン間でアイドルになる。新たなメッセージがそれを起こす。
 - **シャットダウン。** `shutdown_request` メッセージを受けたら `shutdown_response` で応答する。

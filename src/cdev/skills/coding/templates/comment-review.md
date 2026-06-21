@@ -17,4 +17,4 @@ coder が追加・変更したコメントを `{{plugin_root}}/rules/comment.md`
 2. 追加・変更されたコメントが 1 件もない場合は `fix_count: 0` で終了する。
 3. 規律に違反するコメント（複数段落の正当化、自明な what 言い換え、チャット文脈・移植経緯依存の記述、変更履歴的記述、冗長な FIXME / TODO）は、Edit で簡潔化・削除・短い FIXME 化のいずれかにより修正する。コードのロジックは変更せず、コードが要求する実質は保持する。
 
-起用元の coder への報告（SendMessage 経由）: `{reviewed_paths, fix_count}`。`reviewed_paths`: 追加・変更コメントが検出されレビューしたファイル一覧（空配列もあり）。`fix_count`: 修正したコメント件数。
+起用元の coder（この DM の送信元）への報告（`SendMessage` 経由）: `{reviewed_paths, fix_count}`。`reviewed_paths`: 追加・変更コメントが検出されレビューしたファイル一覧（空配列もあり）。`fix_count`: 修正したコメント件数。

@@ -1,47 +1,60 @@
 #!/usr/bin/env bash
-# fetch-diff.sh — Fetch all git diff sections for review / QA.
-# Usage: bash <path>/fetch-diff.sh <base-branch> <output-file>
+# fetch-diff.sh — capture the working-tree changes made since coding start, for QA.
 #
-# Writes the following sections to <output-file>:
-#   === Changed Files (<base>..HEAD) ===
-#   === Commit Log (<base>..HEAD) ===
-#   === Commit Diff (<base>..HEAD) ===
-#   === Staged Changes ===
-#   === Unstaged Changes ===
+# Modes:
+#   fetch-diff.sh snapshot <tree-out-file>
+#     Record a baseline tree of the current working tree (tracked + untracked,
+#     respecting .gitignore; excluding .claude/tmp) into <tree-out-file>.
+#     Run once before any coding, so the QA diff is exactly what this run changed.
+#
+#   fetch-diff.sh diff <baseline-tree-file> <out-file>
+#     Write the diff between that baseline and the current working tree to <out-file>,
+#     including new (untracked) files. Sections:
+#       === Changed Files (since coding start) ===
+#       === Diff (since coding start) ===
+#
+# Diffing against the baseline excludes pre-existing commits and pre-existing
+# uncommitted changes, so feature branches with prior commits do not bloat the diff.
 
-BASE="${1:?Error: base branch argument required}"
-OUT="${2:?Error: output file path argument required}"
+set -euo pipefail
 
-case "${BASE}" in
-    -*) echo "Error: base '${BASE}' must not start with '-'" >&2; exit 1 ;;
+# Tree object of the entire current working tree (tracked + untracked, .gitignore
+# respected, .claude/tmp excluded), built in a throwaway index seeded from the real
+# index to reuse its stat cache, without touching the real index or working tree.
+worktree_tree() {
+    local tmp_index
+    tmp_index="$(mktemp)"
+    cp -p "$(git rev-parse --git-path index)" "$tmp_index" 2>/dev/null || : > "$tmp_index"
+    GIT_INDEX_FILE="$tmp_index" git add -A -- . ':(exclude).claude/tmp'
+    GIT_INDEX_FILE="$tmp_index" git write-tree
+    rm -f "$tmp_index"
+}
+
+MODE="${1:?Error: mode (snapshot|diff) argument required}"
+
+case "${MODE}" in
+    snapshot)
+        OUT="${2:?Error: tree-out-file argument required}"
+        mkdir -p "$(dirname "${OUT}")"
+        worktree_tree > "${OUT}"
+        ;;
+    diff)
+        BASELINE_FILE="${2:?Error: baseline-tree-file argument required}"
+        OUT="${3:?Error: output file path argument required}"
+        BASELINE="$(cat "${BASELINE_FILE}")"
+        CURRENT="$(worktree_tree)"
+        mkdir -p "$(dirname "${OUT}")"
+        {
+            printf '=== Changed Files (since coding start) ===\n'
+            git diff --name-status "${BASELINE}" "${CURRENT}"
+            printf '\n'
+            printf '=== Diff (since coding start) ===\n'
+            git diff "${BASELINE}" "${CURRENT}"
+            printf '\n'
+        } > "${OUT}"
+        ;;
+    *)
+        echo "Error: unknown mode '${MODE}' (expected 'snapshot' or 'diff')" >&2
+        exit 1
+        ;;
 esac
-
-if ! git rev-parse --verify --quiet "${BASE}^{commit}" >/dev/null 2>&1; then
-    echo "Error: base '${BASE}' does not resolve to a commit" >&2
-    exit 1
-fi
-
-OUT_DIR="$(dirname "${OUT}")"
-mkdir -p "${OUT_DIR}"
-
-{
-    printf '=== Changed Files (%s..HEAD) ===\n' "${BASE}"
-    git diff --name-status "${BASE}..HEAD"
-    printf '\n'
-
-    printf '=== Commit Log (%s..HEAD) ===\n' "${BASE}"
-    git log "${BASE}..HEAD" --oneline
-    printf '\n'
-
-    printf '=== Commit Diff (%s..HEAD) ===\n' "${BASE}"
-    git diff "${BASE}..HEAD"
-    printf '\n'
-
-    printf '=== Staged Changes ===\n'
-    git diff --cached
-    printf '\n'
-
-    printf '=== Unstaged Changes ===\n'
-    git diff
-    printf '\n'
-} > "${OUT}"

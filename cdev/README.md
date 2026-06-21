@@ -62,18 +62,20 @@ the broad portability of a one-shot, stateless agent design.
 
 - `--review-rounds N` (default 2) — max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5) — max QA verify ⇄ fix attempts.
-- `--base {branch}` (default `main` / `master`) — base branch for diff capture.
 - `--commit` (default off) — commit the verified implementation in one commit.
 
 ## Architect / coder / reviewer agents
 
-This plugin does not bundle specialist architects, coders, or reviewers. The `team-analysis`
+This plugin does not bundle specialist reviewers. The `team-analysis`
 task enumerates agents recursively (`**/*.md`, including subdirectories) from the
 **destination project** (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin
-bundle**, reads each agent's frontmatter `name` / `description`, and assigns the best matches
-to each role (multiple per role); each is spawned as a teammate. With no match for a role, it
-falls back to `general-purpose`. The QA task resolves the build/test-fix specialist the same
-way.
+bundle**, reads each agent's frontmatter `name` / `description`, and assigns the best-matching
+specialists to the **reviewer** role — each reviewer covers a producer's domain, and an
+out-of-domain specialty is never bundled onto one reviewer. **Architects and coders always run
+as `general-purpose`**: some specialist agents emit malformed tool calls and stall, and a
+producer works to its assigned scope and the project conventions while the specialist reviewers
+enforce domain correctness. When no specialist matches a domain, the reviewer falls back to
+`general-purpose`.
 
 ## Bundled agents and support files
 
@@ -84,7 +86,7 @@ way.
   added or modified during coding, against `rules/comment.md`.
 - `rules/` — `teammate.md` (teammate common rules), `agents-detection.md`,
   `build-format-detection.md`, `comment.md`, `review.md`, `document.md`.
-- `scripts/` — `fetch-diff.sh` (working-tree diff for QA / code review), `rm-tmp.sh` (deletes
+- `scripts/` — `fetch-diff.sh` (snapshots the pre-coding tree, then captures the QA diff since coding start), `rm-tmp.sh` (deletes
   the run's working directory under `.claude/tmp/`). The skill invokes them via
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`; teammates receive the resolved path through the
   `{{plugin_root}}` variable.

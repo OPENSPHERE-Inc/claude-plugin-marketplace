@@ -1,6 +1,6 @@
 ---
 name: team-analysis
-description: cdev /coding ステップ 1 の team-analysis タスク（dev-helper）向けプロンプト。コーディングタスクのスコープを定め、対象プロジェクトの agents から architect / coder / reviewer を選定し、各 producer を reviewer とペアにする
+description: cdev /coding ステップ 1 の team-analysis タスク（dev-helper）向けプロンプト。コーディングタスクのスコープを定め、対象プロジェクトの agents から reviewer を選定し（architect / coder は general-purpose）、各 producer を reviewer とペアにする
 template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 ---
 
@@ -8,7 +8,7 @@ template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 
 タスク: `{{task}}`
 
-エージェントプール: 以下のスコープから優先順位順に `*.md` を列挙し、各ファイルの frontmatter の `name` / `description` を Read して各エージェントの専門性を把握する。`name` 値は、teammate 起動時にリーダーが `subagent_type` に渡す値である。同一 `name` が複数スコープに存在する場合は上位スコープのものを採用する。存在しないスコープはスキップする。
+エージェントプール: 以下のスコープから優先順位順に `*.md` を列挙し、各ファイルの frontmatter の `name` / `description` を Read して各エージェントの専門性を把握する。`name` 値は、teammate 起動時にリーダーが `subagent_type` に渡す値である（プラグイン同梱のスコープ 3 を採用する場合は名前空間付き、例 `cdev:comment-sensei`）。同一 `name` が複数スコープに存在する場合は上位スコープのものを採用する。存在しないスコープはスキップする。
 
 1. プロジェクトスコープ: `.claude/agents/**/*.md`（作業ディレクトリ基準）
 2. ユーザースコープ: `~/.claude/agents/**/*.md`
@@ -18,11 +18,11 @@ template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 
 1. タスクを理解する: 対象言語、関わるサブシステム / ディレクトリ、ビルド / テスト範囲を判定する。プロジェクトにテストスイート（解決可能なテストコマンド、テストフレームワーク、またはテストディレクトリ）があるかを判定し `has_test_suite` を設定する。既存コードベースに対し Glob / Grep / Read を用いてこれを裏付ける。スコープ判定に足る範囲のみ読み、実装は一切しない。
 2. プールからチームを選定し、各エージェントの `description` の専門性をタスクに合致させる:
-   - architects — 設計を担う 1 体以上のエージェント。単一サブシステムのタスクなら architect 1 体で足りる。明確に分離可能な複数サブシステムにまたがる場合のみ複数を用いる。各々に `slug`（kebab-case）と `scope` を付与する。
-   - coders — 実装を担う 1 体以上のエージェント。各々に `slug`（kebab-case）と、互いに素なファイル / ディレクトリの `scope` を付与し、2 人の coder が同一ファイルを編集しないようにする。
-   - reviewers — 設計とコードの双方をレビューする 1 体以上のエージェント。各々に `slug` を付与する。
-3. いずれのスコープにも合致する専門家がいない役割には、その役割に `general-purpose` を 1 件用いる。
-4. 各 architect と各 coder を 1 名の reviewer とペアにする: その `reviewer` を reviewer の `slug` に設定する。reviewer が producer より少ない場合は、1 名の reviewer を複数の producer とペアにする。
+   - architects — 設計を担う。architect は常に `general-purpose` とする（`name` = `general-purpose`）。単一サブシステムのタスクなら 1 体で足りる。明確に分離可能な複数サブシステムにまたがる場合のみ複数を用いる。各々に `slug`（kebab-case）と `scope` を付与し、`reason` にその scope が関わるドメインを記す。
+   - coders — 実装を担う。coder は常に `general-purpose` とする（`name` = `general-purpose`）。一部の専門家エージェントはツールコールをテキストとして出力して停止し実装を継続できないため。実装ボリュームに応じて 1 体以上に分け、各々に `slug`（kebab-case）と互いに素なファイル / ディレクトリの `scope` を付与し、2 人の coder が同一ファイルを編集しないようにする。各 coder の `reason` に、その scope が従うべきドメイン / 規約（例: backend なら Laravel）を記す。
+   - reviewers — 設計とコードをレビューする。各 producer のドメインを個別にカバーできるよう選定する（backend / frontend / E2E / security 等が混在するなら各領域に対応できる reviewer を確保する）。各々に `slug` を付与する。
+3. あるドメイン / 役割に合致する専門家がプールにいない場合、その担当には `general-purpose` を用いる。
+4. 各 architect と各 coder を、その producer のドメインに一致する 1 名の reviewer とペアにする: その `reviewer` を reviewer の `slug` に設定する。1 名の reviewer を複数の producer に共有してよいのは同一ドメインの producer に限る。ドメインが一致する reviewer がいない producer には `general-purpose` の reviewer を充てる（専門外の reviewer に兼任させない）。
 5. `task_summary` を、architects / coders が元のチャットなしで動けるタスクの自己完結的な再記述（{{doc_lang}} で）として記述する。
 
 リーダー（`SendMessage` の `to: "main"`）へ報告する: `{task_summary, target_languages: [..], has_test_suite: <bool>, architects: [{name, slug, scope, reviewer, reason}], coders: [{name, slug, scope, reviewer, reason}], reviewers: [{name, slug, reason}], rationale}`。`scope` / `reason` / `rationale` / `task_summary` は {{doc_lang}} で記述し、`name` / `slug` / 識別子はそのまま。この報告がタスク完了の通知を兼ねる。
