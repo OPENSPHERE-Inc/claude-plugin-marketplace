@@ -14,7 +14,7 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
 
 ## Tools
 
-Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting. Communicate via `SendMessage`: the leader at `to: "main"`, other teammates by their agentId (the leader hands it to you in each message; a friendly name stops resolving once the recipient is idle). Report completion of each assigned task to the leader via `SendMessage`.
+Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting. Communicate via `SendMessage`: the leader at `to: "main"`, other teammates by their agentId (the leader hands it to you in each message; a friendly name stops resolving once the recipient is idle). Report completion of each assigned task to the leader via `SendMessage`. SendMessage's `message` must be a string: serialize any structured report (the `{...}` shapes) to a JSON string in `message` and add a short `summary`. Only `shutdown_request` / `shutdown_response` may be sent as an object.
 
 ## Coding Conventions
 

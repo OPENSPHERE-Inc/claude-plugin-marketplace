@@ -21,4 +21,4 @@ Steps:
 4. If you added or modified any code comment, DM comment-sensei (agentId `{{comment_reviewer}}`) naming `{{plugin_root}}/skills/coding/templates/comment-review.md` with `changed_scope = {{assigned_scope}}` and `design_paths = {{design_paths}}`; it fixes comment violations and reports the count back to you.
 5. DM `{{reviewer}}` that your change is ready for review, listing the files you changed. Run the cell: triage each finding the reviewer sends — fix it in your scope, or reject it with a one-line reason — then signal ready for re-review. The reviewer resolves and closes the cell.
 
-Report to the leader (via SendMessage): `{files_changed: ["path:summary", ...], has_comments: <bool>, summary}` (`summary` in {{doc_lang}}).
+Report to the leader (via SendMessage) as a JSON string: `{files_changed: ["path:summary", ...], has_comments: <bool>, summary}` (`summary` in {{doc_lang}}).

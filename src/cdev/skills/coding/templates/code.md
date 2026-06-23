@@ -21,4 +21,4 @@ comment-sensei の agentId: `{{comment_reviewer}}`
 4. コードコメントを追加または変更した場合は、comment-sensei（agentId `{{comment_reviewer}}`）に `{{plugin_root}}/skills/coding/templates/comment-review.md` を指定して DM する。その際 `changed_scope = {{assigned_scope}}` と `design_paths = {{design_paths}}` を渡す。comment-sensei がコメント違反を修正し、件数を報告し返す。
 5. `{{reviewer}}` に変更がレビュー可能になったことを DM し、変更したファイルを列挙する。セルを回す: reviewer から送られる各所見を triage する — 自身のスコープ内で修正するか、一行の理由を添えて却下する — そして再レビュー可能になったことを通知する。reviewer がセルを resolve しクローズする。
 
-リーダーへの報告（SendMessage 経由）: `{files_changed: ["path:summary", ...], has_comments: <bool>, summary}`（`summary` は {{doc_lang}} で記述）。
+リーダーへの報告（SendMessage 経由、JSON 文字列）: `{files_changed: ["path:summary", ...], has_comments: <bool>, summary}`（`summary` は {{doc_lang}} で記述）。

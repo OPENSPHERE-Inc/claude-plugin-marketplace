@@ -25,4 +25,4 @@ template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 4. 各 architect と各 coder を、その producer のドメインに一致する 1 名の reviewer とペアにする: その `reviewer` を reviewer の `slug` に設定する。1 名の reviewer を複数の producer に共有してよいのは同一ドメインの producer に限る。ドメインが一致する reviewer がいない producer には `general-purpose` の reviewer を充てる（専門外の reviewer に兼任させない）。
 5. `task_summary` を、architects / coders が元のチャットなしで動けるタスクの自己完結的な再記述（{{doc_lang}} で）として記述する。
 
-リーダー（`SendMessage` の `to: "main"`）へ報告する: `{task_summary, target_languages: [..], has_test_suite: <bool>, architects: [{name, slug, scope, reviewer, reason}], coders: [{name, slug, scope, reviewer, reason}], reviewers: [{name, slug, reason}], rationale}`。`scope` / `reason` / `rationale` / `task_summary` は {{doc_lang}} で記述し、`name` / `slug` / 識別子はそのまま。この報告がタスク完了の通知を兼ねる。
+リーダー（`SendMessage` の `to: "main"`）へ JSON 文字列で報告する: `{task_summary, target_languages: [..], has_test_suite: <bool>, architects: [{name, slug, scope, reviewer, reason}], coders: [{name, slug, scope, reviewer, reason}], reviewers: [{name, slug, reason}], rationale}`。`scope` / `reason` / `rationale` / `task_summary` は {{doc_lang}} で記述し、`name` / `slug` / 識別子はそのまま。この報告がタスク完了の通知を兼ねる。

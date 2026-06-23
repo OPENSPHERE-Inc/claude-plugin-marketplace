@@ -14,7 +14,7 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 ## ツール
 
-ファイル出力は Write ツールを使用する。Bash の cat heredoc は値内のアポストロフィ（`Won't` 等）で外側のクォーティングが破綻するため使用不可。連絡は `SendMessage` で行う。リーダー宛は `to: "main"`、他の teammate 宛はその agentId（リーダーが各メッセージで渡す。friendly な名前は相手が idle になると解決できない）。割り当てられた各タスクの完了はリーダーへ `SendMessage` で報告する。
+ファイル出力は Write ツールを使用する。Bash の cat heredoc は値内のアポストロフィ（`Won't` 等）で外側のクォーティングが破綻するため使用不可。連絡は `SendMessage` で行う。リーダー宛は `to: "main"`、他の teammate 宛はその agentId（リーダーが各メッセージで渡す。friendly な名前は相手が idle になると解決できない）。割り当てられた各タスクの完了はリーダーへ `SendMessage` で報告する。`SendMessage` の `message` は文字列でなければならない。構造化レポート（`{...}` 形式）は JSON 文字列にシリアライズして `message` に入れ、短い `summary` を添える。オブジェクトのまま送れるのは `shutdown_request` / `shutdown_response` のみ。
 
 ## コーディング規約
 
