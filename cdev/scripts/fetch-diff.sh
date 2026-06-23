@@ -19,16 +19,21 @@
 set -euo pipefail
 
 # Tree object of the entire current working tree (tracked + untracked, .gitignore
-# respected, .claude/tmp excluded), built in a throwaway index seeded from the real
-# index to reuse its stat cache, without touching the real index or working tree.
+# respected), built in a throwaway index seeded from the real index to reuse its
+# stat cache, without touching the real index or working tree. The .claude/tmp
+# scratch dir is excluded at diff time (PATHSPEC below), not here: naming it in a
+# `git add` pathspec errors when the project gitignores it ("paths are ignored").
 worktree_tree() {
     local tmp_index
     tmp_index="$(mktemp)"
     cp -p "$(git rev-parse --git-path index)" "$tmp_index" 2>/dev/null || : > "$tmp_index"
-    GIT_INDEX_FILE="$tmp_index" git add -A -- . ':(exclude).claude/tmp'
+    GIT_INDEX_FILE="$tmp_index" git add -A
     GIT_INDEX_FILE="$tmp_index" git write-tree
     rm -f "$tmp_index"
 }
+
+# Keep the cdev scratch dir out of the diff whether or not the project gitignores it.
+PATHSPEC=(-- . ':(exclude).claude/tmp')
 
 MODE="${1:?Error: mode (snapshot|diff) argument required}"
 
@@ -46,10 +51,10 @@ case "${MODE}" in
         mkdir -p "$(dirname "${OUT}")"
         {
             printf '=== Changed Files (since coding start) ===\n'
-            git diff --name-status "${BASELINE}" "${CURRENT}"
+            git diff --name-status "${BASELINE}" "${CURRENT}" "${PATHSPEC[@]}"
             printf '\n'
             printf '=== Diff (since coding start) ===\n'
-            git diff "${BASELINE}" "${CURRENT}"
+            git diff "${BASELINE}" "${CURRENT}" "${PATHSPEC[@]}"
             printf '\n'
         } > "${OUT}"
         ;;
