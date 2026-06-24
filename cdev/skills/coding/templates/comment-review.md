@@ -17,4 +17,4 @@ Steps:
 2. If there are no added or modified comments, finish with `fix_count: 0`.
 3. For comments that violate the discipline (multi-paragraph justifications, trivial what-restatements, chat-context- or porting-history-dependent writing, change-history writing, verbose FIXME / TODO), use Edit to compress, delete, or convert to a short FIXME. Do not change code logic; preserve the substance the code requires.
 
-Report to the requesting coder (the sender of this DM) via SendMessage: `{reviewed_paths, fix_count}`. `reviewed_paths`: files reviewed because added or modified comments were found (may be empty). `fix_count`: number of comments fixed.
+Report to the requesting coder (the sender of this DM) via SendMessage as a JSON string: `{reviewed_paths, fix_count}`. `reviewed_paths`: files reviewed because added or modified comments were found (may be empty). `fix_count`: number of comments fixed.

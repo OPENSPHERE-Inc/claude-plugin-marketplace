@@ -36,7 +36,7 @@ allowed-tools: Agent, SendMessage, TodoWrite, Read, Glob, Grep, Bash(mkdir:*), B
 
 セッションは単一の暗黙チームを持つ。各 teammate はバックグラウンドの永続サブエージェントとして一度だけ起動し（起動要件は § Agent 種別と起動要件）、ステップをまたいで常駐し（コンテキストを保持）、ターン間は idle になり（メッセージで起床）、完了は `SendMessage(to: "main")` でリーダーへ報告する。
 
-teammate の宛先は spawn 結果で返る **agentId**。friendly な名前は teammate が一度 idle になると解決できなくなる（`No agent named X is currently addressable`）ため、宛先には常に agentId を使う。リーダーは roster を保持する: 各 teammate の `slug`（ロール識別子 `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` / `dev-helper` / `comment-sensei`）→ `{agentType, agentId}`。teammate どうしが DM する場合は、リーダーが各メッセージで相手の agentId を渡す。リーダー宛は `to: "main"`（常に到達可能）。
+teammate の宛先は spawn 結果で返る **agentId**。friendly な名前は teammate が一度 idle になると解決できなくなる（`No agent named X is currently addressable`）ため、宛先には常に agentId を使う。リーダーは roster を保持する: 各 teammate の `slug`（ロール識別子 `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` / `dev-helper` / `comment-sensei`）→ `{agentType, agentId}`。teammate どうしが DM する場合は、リーダーが各メッセージで相手の agentId を渡す。リーダー宛は `to: "main"`（常に到達可能）。`SendMessage` の `message` は常に文字列で送る（dispatch も報告も。構造化データは JSON 文字列）。オブジェクトのまま送るのは `shutdown_request` / `shutdown_response` のみ。
 
 リーダーは共有タスクリストを持たず、各セルの状態を roster とともに自身の作業状態で追跡する（`TodoWrite` でユーザーに可視化してよい）。
 
