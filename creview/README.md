@@ -35,9 +35,12 @@ bundled (`agents/review-helper.md`).
 
 - `rules/` — `comment.md`, `document.md`, `review.md`, `sub-agent.md`
   (only the rules the skills reference).
-- `scripts/` — `fetch-diff.sh`, `render-review.py`, `rm-tmp.sh`. Skills invoke
-  them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`; sub-agent templates receive the
-  resolved path through the `{{plugin_root}}` launch variable.
+- `scripts/` — `fetch-diff.sh`, `render-review.py`, `rm-tmp.sh`, and
+  `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
+  `fetch-diff.sh` / `rm-tmp.sh`). The scripts require `python3` (3.9 or later)
+  on the `PATH`. Skills invoke them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`;
+  sub-agent templates receive the resolved path through the `{{plugin_root}}`
+  launch variable.
 - `skills/{triage,respond,resolve}/scripts/compile-review.py` — the per-skill
   compile step (leader-run): aggregates intermediate JSON into `events.jsonl`
   and calls `render-review.py`.

@@ -34,7 +34,10 @@ frontmatter の `name` / `description` を読み、指摘ごとに最適なも�
 
 - `rules/` — `comment.md`、`document.md`、`review.md`、`sub-agent.md`
   （スキルが参照するルールのみ）。
-- `scripts/` — `fetch-diff.sh`、`render-review.py`、`rm-tmp.sh`。スキルは
+- `scripts/` — `fetch-diff.sh`、`render-review.py`、`rm-tmp.sh`、
+  `lib/scratch-guard.py`（`fetch-diff.sh` / `rm-tmp.sh` が共有する
+  `.claude/tmp/` 封じ込めチェック）。これらのスクリプトは `PATH` 上の
+  `python3`（3.9 以降）を必要とします。スキルは
   `${CLAUDE_PLUGIN_ROOT}/scripts/...` 経由で呼び出し、サブエージェント
   テンプレートは起動変数 `{{plugin_root}}` で解決済みパスを受け取ります。
 - `skills/{triage,respond,resolve}/scripts/compile-review.py` — スキルごとの
