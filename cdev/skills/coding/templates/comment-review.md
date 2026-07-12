@@ -8,7 +8,9 @@ Review the comments the coder added or modified against the discipline in `{{plu
 
 Input:
 
-- Changed scope: `{{changed_scope}}` (the files / directories the coder edited). Run `git diff -- {{changed_scope}}` to extract the added or modified comment lines (markers depend on the language: `//` / `#` / `/* */` / `<!-- -->`, etc.).
+- Changed scope: `{{changed_scope}}` (the files / directories the coder edited). Extract the added or modified comments via the two paths below (markers depend on the language: `//` / `#` / `/* */` / `<!-- -->`, etc.).
+  - Tracked files: run `git diff -- {{changed_scope}}` to extract the added or modified comment lines.
+  - Untracked (new) files: run `git status --porcelain -uall -- {{changed_scope}}` and list the paths of entries starting with `??`. Since `git diff` does not output untracked files, Read each file and target all comments it contains as added comments.
 - Read the design sections in `{{design_paths}}` to understand the intent the code implements, so comment adjustments do not distort it.
 
 Steps:
