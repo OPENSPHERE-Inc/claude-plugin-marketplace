@@ -58,6 +58,10 @@ teammate 間の `SendMessage` を使用します。セッションは単一の�
 これらが利用可能なランタイムでのみ動作します。これは使い捨て・ステートレスなエージェント方式の
 広い移植性よりも効率を優先した、意図的なトレードオフです。
 
+同梱の `fetch-diff.sh` / `rm-tmp.sh` スクリプトは、`PATH` 上の `python3`（3.9 以降）も
+必要とします。両者が共有する `.claude/tmp/` 封じ込めチェックは
+`scripts/lib/scratch-guard.py` に実装されています。
+
 ## オプション
 
 - `--review-rounds N`（既定 2）— セルごとの review ⇄ triage の最大反復回数。

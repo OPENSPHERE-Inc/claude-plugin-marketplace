@@ -21,13 +21,13 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/skills/*/templates/*.md` — Sub-agent prompt templates (each has a `template_id`).
 - `creview/agents/review-helper.md` — Bundled mechanical aggregation agent.
 - `creview/rules/` — comment / document / review / sub-agent rules referenced by skills.
-- `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `rm-tmp.sh`, `lib/scratch-guard.sh`.
+- `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `rm-tmp.sh`, `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
 - `creview/sequencer/programs/review_rounds.py` (+ `review_rounds/`) — agent-sequencer program (English).
 - `cprompt/skills/edit/SKILL.md` (+ `templates/`) — The `/cprompt:edit` skill.
 - `cprompt/rules/` — `prompt.md`, `document.md`.
 - `cdev/skills/coding/SKILL.md` (+ `templates/`) — The `/cdev:coding` team-native skill (7 teammate task templates, each with a `template_id`).
-- `cdev/agents/` — `comment-sensei.md`, `dev-helper.md` (bundled). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`. `cdev/scripts/` — `fetch-diff.sh`, `rm-tmp.sh`, `lib/scratch-guard.sh`.
+- `cdev/agents/` — `comment-sensei.md`, `dev-helper.md` (bundled). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`. `cdev/scripts/` — `fetch-diff.sh`, `rm-tmp.sh`, `lib/scratch-guard.py`.
 - `src/<plugin>/...` — **Japanese master**, mirrors each plugin's tree 1:1.
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
 - `.claude/rules/*.md` — Discipline rules for editing this repo (prompt/document/comment/…).
