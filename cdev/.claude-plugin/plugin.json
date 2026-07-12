@@ -1,6 +1,6 @@
 {
   "name": "cdev",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. Architects, coders, and reviewers are resolved from the destination project's .claude/agents. Requires a runtime with background subagents and inter-agent messaging.",
   "author": {
     "name": "OPENSPHERE Inc.",
