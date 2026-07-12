@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # fetch-diff.sh — Fetch all git diff sections for parallel-review.
-# Usage: bash <path>/fetch-diff.sh <base-branch> <output-file>
+# Usage: <path>/fetch-diff.sh <base-branch> <output-file>
 #
 # Writes the following sections to <output-file>:
 #   === Changed Files (<base>..HEAD) ===
@@ -9,11 +9,15 @@
 #   === Staged Changes ===
 #   === Unstaged Changes ===
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${SCRIPT_DIR}/lib/scratch-guard.sh"
+
 BASE="${1:?Error: base branch argument required}"
 OUT="${2:?Error: output file path argument required}"
 
-OUT_DIR="$(dirname "${OUT}")"
-mkdir -p "${OUT_DIR}"
+OUT="$(scratch_guard "${OUT}")" || exit 1
+mkdir -p "$(dirname "${OUT}")"
+OUT="$(scratch_guard -p "${OUT}")" || exit 1
 
 {
     printf '=== Changed Files (%s..HEAD) ===\n' "${BASE}"
