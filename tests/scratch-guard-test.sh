@@ -9,6 +9,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GUARD="${REPO_ROOT}/cdev/scripts/lib/scratch-guard.py"
 RM="${REPO_ROOT}/cdev/scripts/rm-tmp.sh"
 FD="${REPO_ROOT}/cdev/scripts/fetch-diff.sh"
+CFD="${REPO_ROOT}/creview/scripts/fetch-diff.sh"
 
 fail=0
 note() { printf '%s\n' "$*"; }
@@ -53,7 +54,7 @@ done
 
 # --- unit cases (sandbox) -------------------------------------------------------
 SANDBOX="$(mktemp -d)"
-trap 'rm -rf "${SANDBOX}"' EXIT
+trap 'cd / && rm -rf "${SANDBOX}"' EXIT
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GUARD}" \
     || { note "FAIL: python3 -m py_compile scratch-guard.py"; fail=1; }
 mkdir -p "${SANDBOX}/proj/.claude/tmp/sub" "${SANDBOX}/outside"
@@ -105,6 +106,9 @@ out="$(run_guard ./.claude/tmp//sub/. 2>/dev/null)"
 MSYS=winsymlinks:nativestrict ln -s ../../../outside .claude/tmp/esc 2>/dev/null || true
 if [[ -L .claude/tmp/esc ]]; then
     t 1 -p .claude/tmp/esc/victim.txt
+    # missing subpath under a symlinked ancestor must be rejected (rc=1),
+    # not reported as a creatable missing parent (rc=3)
+    t 1 -w .claude/tmp/esc/sub/out.txt
     MSYS=winsymlinks:nativestrict ln -s ../../../outside/victim.txt .claude/tmp/lnk 2>/dev/null || true
     if [[ -L .claude/tmp/lnk ]]; then
         t 1 -w .claude/tmp/lnk
@@ -150,6 +154,16 @@ check "fetch-diff snapshot ok" 0 "${rc}"
 [[ -s .claude/tmp/e2e/baseline ]] || { note "FAIL: snapshot wrote no baseline"; fail=1; }
 rc=0; bash "${FD}" snapshot "${SANDBOX}/outside/base" 2>/dev/null || rc=$?
 check "fetch-diff outside OUT rejected" 1 "${rc}"
+MSYS=winsymlinks:nativestrict ln -s ../../../outside .claude/tmp/esc 2>/dev/null || true
+if [[ -L .claude/tmp/esc ]]; then
+    rc=0; bash "${FD}" snapshot .claude/tmp/esc/sub/out.txt 2>/dev/null || rc=$?
+    check "fetch-diff OUT under symlinked ancestor rejected" 1 "${rc}"
+    [[ ! -e "${SANDBOX}/outside/sub" ]] \
+        || { note "FAIL: fetch-diff created a directory outside scratch via symlink"; fail=1; }
+    rm .claude/tmp/esc
+else
+    note "SKIP: fetch-diff symlinked OUT case (real symlinks unavailable on this platform)"
+fi
 echo changed > tracked.txt
 rc=0; bash "${FD}" diff .claude/tmp/e2e/baseline .claude/tmp/e2e/changes.txt 2>/dev/null || rc=$?
 check "fetch-diff diff ok" 0 "${rc}"
@@ -158,6 +172,20 @@ grep -q '=== Diff (since coding start) ===' .claude/tmp/e2e/changes.txt 2>/dev/n
 printf '%s\n' '--output=pwn' > .claude/tmp/e2e/bad-baseline
 rc=0; bash "${FD}" diff .claude/tmp/e2e/bad-baseline .claude/tmp/e2e/changes2.txt 2>/dev/null || rc=$?
 check "fetch-diff tampered baseline rejected" 1 "${rc}"
+
+# --- fetch-diff.sh (creview) end-to-end: base branch validation -------------------
+git -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
+    commit -q --allow-empty -m init
+rc=0; bash "${CFD}" HEAD .claude/tmp/e2e/review.txt 2>/dev/null || rc=$?
+check "creview fetch-diff valid base accepted" 0 "${rc}"
+grep -q '=== Commit Log' .claude/tmp/e2e/review.txt 2>/dev/null \
+    || { note "FAIL: creview fetch-diff output missing expected section"; fail=1; }
+rc=0; bash "${CFD}" no-such-ref .claude/tmp/e2e/review2.txt 2>/dev/null || rc=$?
+check "creview fetch-diff missing ref rejected" 1 "${rc}"
+rc=0; bash "${CFD}" --output=pwn .claude/tmp/e2e/review3.txt 2>/dev/null || rc=$?
+check "creview fetch-diff option-like base rejected" 1 "${rc}"
+rc=0; bash "${CFD}" HEAD..HEAD .claude/tmp/e2e/review4.txt 2>/dev/null || rc=$?
+check "creview fetch-diff range base rejected" 1 "${rc}"
 
 if [[ "${fail}" -eq 0 ]]; then
     note "PASS: all scratch-guard cases"
