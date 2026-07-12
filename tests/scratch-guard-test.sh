@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.sh and its consumers.
+# scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.py and its consumers.
 # Usage: bash tests/scratch-guard-test.sh
 # Prints one FAIL line per broken case and exits non-zero; exits 0 when all pass.
 
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LIB="${REPO_ROOT}/cdev/scripts/lib/scratch-guard.sh"
+GUARD="${REPO_ROOT}/cdev/scripts/lib/scratch-guard.py"
 RM="${REPO_ROOT}/cdev/scripts/rm-tmp.sh"
 FD="${REPO_ROOT}/cdev/scripts/fetch-diff.sh"
 
@@ -23,49 +23,63 @@ check() { # <name> <expected-rc> <actual-rc>
 same() {
     cmp -s "${REPO_ROOT}/$1" "${REPO_ROOT}/$2" || { note "FAIL: $1 and $2 differ"; fail=1; }
 }
-same cdev/scripts/lib/scratch-guard.sh src/cdev/scripts/lib/scratch-guard.sh
-same cdev/scripts/lib/scratch-guard.sh creview/scripts/lib/scratch-guard.sh
-same cdev/scripts/lib/scratch-guard.sh src/creview/scripts/lib/scratch-guard.sh
+same cdev/scripts/lib/scratch-guard.py src/cdev/scripts/lib/scratch-guard.py
+same cdev/scripts/lib/scratch-guard.py creview/scripts/lib/scratch-guard.py
+same cdev/scripts/lib/scratch-guard.py src/creview/scripts/lib/scratch-guard.py
 same cdev/scripts/rm-tmp.sh src/cdev/scripts/rm-tmp.sh
 same cdev/scripts/rm-tmp.sh creview/scripts/rm-tmp.sh
 same cdev/scripts/rm-tmp.sh src/creview/scripts/rm-tmp.sh
 same cdev/scripts/fetch-diff.sh src/cdev/scripts/fetch-diff.sh
 same creview/scripts/fetch-diff.sh src/creview/scripts/fetch-diff.sh
 
+# --- consumer scripts must carry the executable bit in the git index ----------
+mode_check() { # <repo-relative-script>
+    local entry mode
+    entry="$(git -C "${REPO_ROOT}" ls-files -s -- "$1")"
+    mode="${entry%% *}"
+    [[ "${mode}" == "100755" ]] \
+        || { note "FAIL: $1 git mode '${mode:-missing}' (expected 100755)"; fail=1; }
+}
+for d in cdev creview src/cdev src/creview; do
+    for s in fetch-diff.sh rm-tmp.sh; do
+        mode_check "${d}/scripts/${s}"
+    done
+done
+
 # --- syntax --------------------------------------------------------------------
-for f in cdev/scripts/lib/scratch-guard.sh cdev/scripts/rm-tmp.sh cdev/scripts/fetch-diff.sh \
-         creview/scripts/fetch-diff.sh; do
+for f in cdev/scripts/rm-tmp.sh cdev/scripts/fetch-diff.sh creview/scripts/fetch-diff.sh; do
     bash -n "${REPO_ROOT}/${f}" || { note "FAIL: bash -n ${f}"; fail=1; }
 done
 
 # --- unit cases (sandbox) -------------------------------------------------------
 SANDBOX="$(mktemp -d)"
 trap 'rm -rf "${SANDBOX}"' EXIT
+PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GUARD}" \
+    || { note "FAIL: python3 -m py_compile scratch-guard.py"; fail=1; }
 mkdir -p "${SANDBOX}/proj/.claude/tmp/sub" "${SANDBOX}/outside"
 : > "${SANDBOX}/proj/.claude/tmp/sub/file.txt"
 : > "${SANDBOX}/outside/victim.txt"
-cd "${SANDBOX}/proj"
+cd "${SANDBOX}/proj" || exit 1
 
-. "${LIB}"
+run_guard() { python3 "${GUARD}" "$@"; }
 
-guard_out=""
-t() { # <expected-rc> [scratch_guard args...]
+t() { # <expected-rc> [guard args...]
     local expected="$1" rc=0
     shift
-    guard_out="$(scratch_guard "$@" 2>/dev/null)" || rc=$?
-    check "scratch_guard $*" "${expected}" "${rc}"
+    run_guard "$@" >/dev/null 2>&1 || rc=$?
+    check "scratch-guard $*" "${expected}" "${rc}"
 }
 
 # accepted forms
 t 0 .claude/tmp/sub
 t 0 ./.claude/tmp/sub
 t 0 "${PWD}/.claude/tmp/sub"
+t 0 .claude/tmp/foo..bar
 # rejected: outside / traversal / spoofed prefixes / bare root disguises
 t 1 /etc/passwd
 t 1 "${SANDBOX}/outside/victim.txt"
 t 1 "C:/outside/victim.txt"
 t 1 .claude/tmp/../evil
-t 1 .claude/tmp/foo..bar
 t 1 .claude/tmpX/y
 t 1 .claude/tmp
 t 1 .claude/tmp/
@@ -77,18 +91,34 @@ t 1 ""
 t 0 -p .claude/tmp/sub/file.txt
 t 3 -p .claude/tmp/nonexistent/x
 t 1 -p .claude/tmp/sub/file.txt/child
+# write-target mode
+t 0 -w .claude/tmp/sub/file.txt
+t 0 -w .claude/tmp/sub/newfile
+t 3 -w .claude/tmp/nonexistent/x
 
 # normalization output
-out="$(scratch_guard ./.claude/tmp//sub/. 2>/dev/null)"
+out="$(run_guard ./.claude/tmp//sub/. 2>/dev/null)"
 [[ "${out}" == ".claude/tmp/sub" ]] \
     || { note "FAIL: normalization (got '${out}')"; fail=1; }
 
-# symlink escape (requires a real symlink; MSYS may create a copy instead — skip then)
+# symlink escapes (require real symlinks; MSYS may create a copy instead — skip then)
 MSYS=winsymlinks:nativestrict ln -s ../../../outside .claude/tmp/esc 2>/dev/null || true
 if [[ -L .claude/tmp/esc ]]; then
     t 1 -p .claude/tmp/esc/victim.txt
+    MSYS=winsymlinks:nativestrict ln -s ../../../outside/victim.txt .claude/tmp/lnk 2>/dev/null || true
+    if [[ -L .claude/tmp/lnk ]]; then
+        t 1 -w .claude/tmp/lnk
+    else
+        note "SKIP: -w symlink-to-file case (symlink creation failed)"
+    fi
+    MSYS=winsymlinks:nativestrict ln -s ../../../outside/gone .claude/tmp/dangling 2>/dev/null || true
+    if [[ -L .claude/tmp/dangling ]]; then
+        t 1 -w .claude/tmp/dangling
+    else
+        note "SKIP: -w dangling-symlink case (symlink creation failed)"
+    fi
 else
-    note "SKIP: symlink escape case (real symlinks unavailable on this platform)"
+    note "SKIP: symlink escape cases (real symlinks unavailable on this platform)"
 fi
 
 # --- rm-tmp.sh end-to-end --------------------------------------------------------
@@ -104,6 +134,13 @@ check "rm-tmp missing parent skipped" 0 "${rc}"
 rc=0; bash "${RM}" "${SANDBOX}/outside/victim.txt" 2>/dev/null || rc=$?
 check "rm-tmp outside rejected" 1 "${rc}"
 [[ -e "${SANDBOX}/outside/victim.txt" ]] || { note "FAIL: rm-tmp deleted outside file"; fail=1; }
+if [[ -L .claude/tmp/esc ]]; then
+    rc=0; bash "${RM}" .claude/tmp/esc 2>/dev/null || rc=$?
+    check "rm-tmp symlink entry delete" 0 "${rc}"
+    [[ ! -L .claude/tmp/esc ]] || { note "FAIL: rm-tmp left the symlink entry"; fail=1; }
+    [[ -e "${SANDBOX}/outside/victim.txt" ]] \
+        || { note "FAIL: rm-tmp followed the symlink and deleted its target"; fail=1; }
+fi
 
 # --- fetch-diff.sh (cdev) end-to-end ----------------------------------------------
 git init -q .

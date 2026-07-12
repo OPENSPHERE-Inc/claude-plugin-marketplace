@@ -9,15 +9,22 @@
 #   === Staged Changes ===
 #   === Unstaged Changes ===
 
+set -euo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-. "${SCRIPT_DIR}/lib/scratch-guard.sh"
+GUARD="${SCRIPT_DIR}/lib/scratch-guard.py"
 
 BASE="${1:?Error: base branch argument required}"
 OUT="${2:?Error: output file path argument required}"
 
-OUT="$(scratch_guard "${OUT}")" || exit 1
+if ! git rev-parse --verify --quiet --end-of-options "${BASE}^{commit}" >/dev/null; then
+    echo "Error: invalid base branch: ${BASE}" >&2
+    exit 1
+fi
+
+OUT="$(python3 "${GUARD}" "${OUT}")" || exit 1
 mkdir -p "$(dirname "${OUT}")"
-OUT="$(scratch_guard -p "${OUT}")" || exit 1
+OUT="$(python3 "${GUARD}" -w "${OUT}")" || exit 1
 
 {
     printf '=== Changed Files (%s..HEAD) ===\n' "${BASE}"

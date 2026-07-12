@@ -19,7 +19,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-. "${SCRIPT_DIR}/lib/scratch-guard.sh"
+GUARD="${SCRIPT_DIR}/lib/scratch-guard.py"
 
 # Tree object of the entire current working tree (tracked + untracked, .gitignore
 # respected), built in a throwaway index seeded from the real index to reuse its
@@ -57,17 +57,17 @@ MODE="${1:?Error: mode (snapshot|diff) argument required}"
 case "${MODE}" in
     snapshot)
         OUT="${2:?Error: tree-out-file argument required}"
-        OUT="$(scratch_guard "${OUT}")"
+        OUT="$(python3 "${GUARD}" "${OUT}")"
         mkdir -p "$(dirname "${OUT}")"
-        OUT="$(scratch_guard -p "${OUT}")"
+        OUT="$(python3 "${GUARD}" -w "${OUT}")"
         worktree_tree > "${OUT}"
         ;;
     diff)
         BASELINE_FILE="${2:?Error: baseline-tree-file argument required}"
         OUT="${3:?Error: output file path argument required}"
-        OUT="$(scratch_guard "${OUT}")"
+        OUT="$(python3 "${GUARD}" "${OUT}")"
         mkdir -p "$(dirname "${OUT}")"
-        OUT="$(scratch_guard -p "${OUT}")"
+        OUT="$(python3 "${GUARD}" -w "${OUT}")"
         BASELINE="$(cat "${BASELINE_FILE}")"
         # Allow only a bare tree hash so a tampered baseline file cannot inject
         # git options (e.g. --output).
