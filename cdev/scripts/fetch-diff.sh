@@ -41,18 +41,52 @@ worktree_tree() {
 # Keep the cdev scratch dir out of the diff whether or not the project gitignores it.
 PATHSPEC=(-- ':(top)' ':(top,exclude).claude/tmp')
 
+# Restrict output paths to .claude/tmp/ (same policy as rm-tmp.sh) so this
+# allowlisted script cannot overwrite arbitrary files.
+validate_out() {
+    local target="$1" cwd normalized
+    if [[ "${target}" == /* ]]; then
+        cwd="$(pwd)"
+        if [[ "${target}" == "${cwd}/"* ]]; then
+            normalized="${target#"${cwd}/"}"
+        else
+            echo "Error: absolute path is outside the current project: ${target}" >&2
+            exit 1
+        fi
+    else
+        normalized="${target#./}"
+    fi
+    if [[ "${normalized}" == *..* ]]; then
+        echo "Error: path containing '..' is not allowed: ${target}" >&2
+        exit 1
+    fi
+    if [[ "${normalized}" != .claude/tmp/* ]]; then
+        echo "Error: path is not under .claude/tmp/: ${target}" >&2
+        exit 1
+    fi
+    printf '%s\n' "${normalized}"
+}
+
 MODE="${1:?Error: mode (snapshot|diff) argument required}"
 
 case "${MODE}" in
     snapshot)
         OUT="${2:?Error: tree-out-file argument required}"
+        OUT="$(validate_out "${OUT}")"
         mkdir -p "$(dirname "${OUT}")"
         worktree_tree > "${OUT}"
         ;;
     diff)
         BASELINE_FILE="${2:?Error: baseline-tree-file argument required}"
         OUT="${3:?Error: output file path argument required}"
+        OUT="$(validate_out "${OUT}")"
         BASELINE="$(cat "${BASELINE_FILE}")"
+        # Allow only a bare tree hash so a tampered baseline file cannot inject
+        # git options (e.g. --output).
+        [[ "${BASELINE}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || {
+            echo "Error: baseline-tree file does not contain a valid tree hash: ${BASELINE_FILE}" >&2
+            exit 1
+        }
         CURRENT="$(worktree_tree)"
         mkdir -p "$(dirname "${OUT}")"
         {

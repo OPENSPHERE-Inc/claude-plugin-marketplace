@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # rm-tmp.sh — Delete files or directories under .claude/tmp/ only.
-# Usage: bash <path>/rm-tmp.sh <path> [<path> ...]
+# Usage: <path>/rm-tmp.sh <path> [<path> ...]
 #
 # Restricts deletion to paths under the project's .claude/tmp/ directory
 # so that Bash(rm:*) need not be added to the permission allowlist.
@@ -77,6 +77,9 @@ for target in "$@"; do
             ;;
         esac
         rm -rf -- "${stripped}"
+    elif [[ -e "${parent}" ]]; then
+        echo "Error: parent directory exists but cannot be entered: ${target}" >&2
+        exit 1
     fi
     # A non-existent parent means the target is already gone; skip silently.
 done
