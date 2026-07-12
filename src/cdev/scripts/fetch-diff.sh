@@ -18,6 +18,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${SCRIPT_DIR}/lib/scratch-guard.sh"
+
 # Tree object of the entire current working tree (tracked + untracked, .gitignore
 # respected), built in a throwaway index seeded from the real index to reuse its
 # stat cache, without touching the real index or working tree. The .claude/tmp
@@ -26,7 +29,9 @@ set -euo pipefail
 worktree_tree() {
     local tmp_index tree rc=0
     tmp_index="$(mktemp)"
-    cp -p "$(git rev-parse --git-path index)" "$tmp_index" 2>/dev/null || : > "$tmp_index"
+    # No real index (fresh repo): remove the temp file — git rejects a 0-byte
+    # index but creates a missing GIT_INDEX_FILE as an empty one.
+    cp -p "$(git rev-parse --git-path index)" "$tmp_index" 2>/dev/null || rm -f "$tmp_index"
     if GIT_INDEX_FILE="$tmp_index" git add -A; then
         tree="$(GIT_INDEX_FILE="$tmp_index" git write-tree)" || rc=$?
     else
@@ -47,45 +52,22 @@ qa_diff() {
 # exclude .claude/tmp at both the repo root and the CWD (the skill may run in a monorepo subdir).
 PATHSPEC=(-- ':(top)' ':(top,exclude).claude/tmp' ':(exclude).claude/tmp')
 
-# Restrict output paths to .claude/tmp/ (same policy as rm-tmp.sh) so this
-# allowlisted script cannot overwrite arbitrary files.
-validate_out() {
-    local target="$1" cwd normalized
-    if [[ "${target}" == /* ]]; then
-        cwd="$(pwd)"
-        if [[ "${target}" == "${cwd}/"* ]]; then
-            normalized="${target#"${cwd}/"}"
-        else
-            echo "Error: absolute path is outside the current project: ${target}" >&2
-            exit 1
-        fi
-    else
-        normalized="${target#./}"
-    fi
-    if [[ "${normalized}" == *..* ]]; then
-        echo "Error: path containing '..' is not allowed: ${target}" >&2
-        exit 1
-    fi
-    if [[ "${normalized}" != .claude/tmp/* ]]; then
-        echo "Error: path is not under .claude/tmp/: ${target}" >&2
-        exit 1
-    fi
-    printf '%s\n' "${normalized}"
-}
-
 MODE="${1:?Error: mode (snapshot|diff) argument required}"
 
 case "${MODE}" in
     snapshot)
         OUT="${2:?Error: tree-out-file argument required}"
-        OUT="$(validate_out "${OUT}")"
+        OUT="$(scratch_guard "${OUT}")"
         mkdir -p "$(dirname "${OUT}")"
+        OUT="$(scratch_guard -p "${OUT}")"
         worktree_tree > "${OUT}"
         ;;
     diff)
         BASELINE_FILE="${2:?Error: baseline-tree-file argument required}"
         OUT="${3:?Error: output file path argument required}"
-        OUT="$(validate_out "${OUT}")"
+        OUT="$(scratch_guard "${OUT}")"
+        mkdir -p "$(dirname "${OUT}")"
+        OUT="$(scratch_guard -p "${OUT}")"
         BASELINE="$(cat "${BASELINE_FILE}")"
         # Allow only a bare tree hash so a tampered baseline file cannot inject
         # git options (e.g. --output).
@@ -94,7 +76,6 @@ case "${MODE}" in
             exit 1
         }
         CURRENT="$(worktree_tree)"
-        mkdir -p "$(dirname "${OUT}")"
         {
             printf '=== Changed Files (since coding start) ===\n'
             qa_diff --name-status "${BASELINE}" "${CURRENT}" "${PATHSPEC[@]}"
