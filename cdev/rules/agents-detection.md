@@ -16,4 +16,4 @@ Match each agent's `description`-stated specialty against the match target suppl
 
 ## Result
 
-Store the selected agent's `name` (the value another Agent call passes to `subagent_type`) into the result field designated by the caller.
+Store the selected agent's `name` (the value another Agent call passes to `subagent_type`) into the result field designated by the caller. For a plugin-bundled (scope 3) agent, store the namespaced value (e.g. `cdev:comment-sensei`).
