@@ -38,8 +38,14 @@ worktree_tree() {
     printf '%s\n' "$tree"
 }
 
-# Keep the cdev scratch dir out of the diff whether or not the project gitignores it.
-PATHSPEC=(-- ':(top)' ':(top,exclude).claude/tmp')
+qa_diff() {
+    git -c diff.noprefix=false -c diff.mnemonicPrefix=false \
+        diff --no-ext-diff --no-textconv --no-color "$@"
+}
+
+# Keep the cdev scratch dir out of the diff whether or not the project gitignores it:
+# exclude .claude/tmp at both the repo root and the CWD (the skill may run in a monorepo subdir).
+PATHSPEC=(-- ':(top)' ':(top,exclude).claude/tmp' ':(exclude).claude/tmp')
 
 # Restrict output paths to .claude/tmp/ (same policy as rm-tmp.sh) so this
 # allowlisted script cannot overwrite arbitrary files.
@@ -91,10 +97,10 @@ case "${MODE}" in
         mkdir -p "$(dirname "${OUT}")"
         {
             printf '=== Changed Files (since coding start) ===\n'
-            git diff --name-status "${BASELINE}" "${CURRENT}" "${PATHSPEC[@]}"
+            qa_diff --name-status "${BASELINE}" "${CURRENT}" "${PATHSPEC[@]}"
             printf '\n'
             printf '=== Diff (since coding start) ===\n'
-            git diff "${BASELINE}" "${CURRENT}" "${PATHSPEC[@]}"
+            qa_diff "${BASELINE}" "${CURRENT}" "${PATHSPEC[@]}"
             printf '\n'
         } > "${OUT}"
         ;;
