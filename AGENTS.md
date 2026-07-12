@@ -11,7 +11,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
   (team-native coding workflow); external `agent-sequencer` referenced for `creview`'s sequencer program
 - **License**: MIT
 - **Maintainer**: OPENSPHERE Inc.
-- **No build step. No CI yet.** Validation = consistency checks + manual install.
+- **No build step. No CI yet.** Validation = consistency checks +
+  `bash tests/scratch-guard-test.sh` + manual install.
 
 ## Key Files
 
@@ -29,6 +30,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `cdev/skills/coding/SKILL.md` (+ `templates/`) — The `/cdev:coding` team-native skill (7 teammate task templates, each with a `template_id`).
 - `cdev/agents/` — `comment-sensei.md`, `dev-helper.md` (bundled). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`. `cdev/scripts/` — `fetch-diff.sh`, `rm-tmp.sh`, `lib/scratch-guard.py`.
 - `src/<plugin>/...` — **Japanese master**, mirrors each plugin's tree 1:1.
+- `tests/scratch-guard-test.sh` — repo-level self-test: containment + byte-parity of the
+  shared `lib/scratch-guard.py` / `rm-tmp.sh` copies (not shipped).
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
 - `.claude/rules/*.md` — Discipline rules for editing this repo (prompt/document/comment/…).
 
@@ -37,7 +40,10 @@ see **[CLAUDE.md](CLAUDE.md)**.
 1. **Language policy is not "English only".** Active plugin files = English;
    `src/**` = Japanese master; `*_ja.md` = Japanese. Top-level docs = English.
 2. **`src/` is the editing master.** Edit `src/<plugin>/X` and active `<plugin>/X` as a
-   translation-paired change; keep them structurally 1:1.
+   translation-paired change; keep them structurally 1:1. Exception:
+   `scripts/lib/scratch-guard.py` / `scripts/rm-tmp.sh` are byte-identical across all four
+   copies (`creview/`, `cdev/`, and their `src/` mirrors) — the `src/` copies stay English;
+   see CLAUDE.md.
 3. **Token-placement invariant.** `${CLAUDE_PLUGIN_ROOT}` only in SKILL.md
    bodies/`allowed-tools`; `{{plugin_root}}` only inside `templates/*.md` (passed as a
    launch variable). Never cross them.

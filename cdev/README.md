@@ -90,8 +90,10 @@ enforce domain correctness. When no specialist matches a domain, the reviewer fa
   added or modified during coding, against `rules/comment.md`.
 - `rules/` — `teammate.md` (teammate common rules), `agents-detection.md`,
   `build-format-detection.md`, `comment.md`, `review.md`, `document.md`.
-- `scripts/` — `fetch-diff.sh` (snapshots the pre-coding tree, then captures the QA diff since coding start), `rm-tmp.sh` (deletes
-  the run's working directory under `.claude/tmp/`). The skill invokes them via
+- `scripts/` — `fetch-diff.sh` (snapshots the pre-coding tree, then captures the QA diff since
+  coding start), `rm-tmp.sh` (deletes the run's working directory under `.claude/tmp/`), and
+  `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by both; requires
+  `python3` — see Requirements). The skill invokes them via
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`; teammates receive the resolved path through the
   `{{plugin_root}}` variable.
 

@@ -89,10 +89,11 @@ teammate 間の `SendMessage` を使用します。セッションは単一の�
   変更されたコメントを `rules/comment.md` に照らしてレビュー・修正する。
 - `rules/` — `teammate.md`（teammate 共通ルール）、`agents-detection.md`、
   `build-format-detection.md`、`comment.md`、`review.md`、`document.md`。
-- `scripts/` — `fetch-diff.sh`（コーディング開始前のツリーを記録し、開始以降の QA 差分を取得）、`rm-tmp.sh`
-  （`.claude/tmp/` 配下の実行作業ディレクトリを削除）。スキルは
-  `${CLAUDE_PLUGIN_ROOT}/scripts/...` 経由で呼び出し、teammate は変数 `{{plugin_root}}` で
-  解決済みパスを受け取ります。
+- `scripts/` — `fetch-diff.sh`（コーディング開始前のツリーを記録し、開始以降の QA 差分を
+  取得）、`rm-tmp.sh`（`.claude/tmp/` 配下の実行作業ディレクトリを削除）、
+  `lib/scratch-guard.py`（両者が共有する `.claude/tmp/` 封じ込めチェック。`python3` が必要 —
+  動作要件参照）。スキルは `${CLAUDE_PLUGIN_ROOT}/scripts/...` 経由で呼び出し、teammate は
+  変数 `{{plugin_root}}` で解決済みパスを受け取ります。
 
 ## ビルド / テスト検出
 
