@@ -24,16 +24,22 @@ set -euo pipefail
 # scratch dir is excluded at diff time (PATHSPEC below), not here: naming it in a
 # `git add` pathspec errors when the project gitignores it ("paths are ignored").
 worktree_tree() {
-    local tmp_index
+    local tmp_index tree rc=0
     tmp_index="$(mktemp)"
     cp -p "$(git rev-parse --git-path index)" "$tmp_index" 2>/dev/null || : > "$tmp_index"
-    GIT_INDEX_FILE="$tmp_index" git add -A
-    GIT_INDEX_FILE="$tmp_index" git write-tree
+    if GIT_INDEX_FILE="$tmp_index" git add -A; then
+        tree="$(GIT_INDEX_FILE="$tmp_index" git write-tree)" || rc=$?
+    else
+        rc=$?
+    fi
+    # Remove the throwaway index on every path: errexit would skip a trailing rm on failure.
     rm -f "$tmp_index"
+    [[ $rc -eq 0 ]] || return "$rc"
+    printf '%s\n' "$tree"
 }
 
 # Keep the cdev scratch dir out of the diff whether or not the project gitignores it.
-PATHSPEC=(-- . ':(exclude).claude/tmp')
+PATHSPEC=(-- ':(top)' ':(top,exclude).claude/tmp')
 
 MODE="${1:?Error: mode (snapshot|diff) argument required}"
 
