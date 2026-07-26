@@ -8,7 +8,7 @@ template_id: 740fa1cf-fa38-40a0-85d0-4c9a99eab5de
 
 タスク: `{{task}}`
 割り当てスコープ: `{{assigned_scope}}`
-ペアの reviewer の agentId: `{{reviewer}}`
+ペアの reviewer: `{{reviewer}}`
 
 手順:
 
@@ -16,4 +16,4 @@ template_id: 740fa1cf-fa38-40a0-85d0-4c9a99eab5de
 2. 設計セクションを `{{output_path}}`（markdown）に Write する。内容: アプローチ、追加 / 変更するファイル / モジュール、主要なインターフェースとデータ形状、エッジケースとエラー処理、テスト / ビルドへの影響。`{{plugin_root}}/rules/document.md` に従う。コードは完全なリストではなく短いシグネチャに留める。
 3. `{{output_path}}` の設計がレビュー準備完了であることを `{{reviewer}}` へ DM する。セルを回す: reviewer が送る各指摘を triage し — `{{output_path}}` で修正するか、1 行の理由で却下する — 再レビューの準備完了を伝える。reviewer が resolve しセルをクローズする。
 
-リーダーへの報告（SendMessage 経由、JSON 文字列）: `{path: "{{output_path}}", summary}`（`summary` は {{doc_lang}} で 1〜2 文）。
+リーダーへの報告（SendMessage 経由）: パス `{{output_path}}` と、設計が扱う範囲を {{doc_lang}} で 1〜2 文。

@@ -40,7 +40,7 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 
 セッションは単一の暗黙チームを持つ。各 teammate はバックグラウンドの永続サブエージェントとして一度だけ起動し（起動要件は § Agent 種別と起動要件）、ステップをまたいで常駐し（コンテキストを保持）、ターン間は idle になり（メッセージで起床）、完了は `SendMessage(to: "main")` でリーダーへ報告する。
 
-teammate の宛先は spawn 結果で返る **agentId**。friendly な名前は teammate が一度 idle になると解決できなくなる（`No agent named X is currently addressable`）ため、宛先には常に agentId を使う。リーダーは roster を保持する: 各 teammate の `slug`（ロール識別子 `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` / `dev-helper` / `comment-sensei`）→ `{agentType, agentId}`。teammate どうしが DM する場合は、リーダーが各メッセージで相手の agentId を渡す。リーダー宛は `to: "main"`（常に到達可能）。`SendMessage` の `message` は常に文字列で送る（dispatch も報告も。構造化データは JSON 文字列）。オブジェクトのまま送るのは `shutdown_request` / `shutdown_response` のみ。
+teammate の宛先は起動時に付けた **name**、すなわちロール識別子 `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` / `dev-helper` / `comment-sensei`。name は teammate が idle になっても完了しても解決し続け、送信によりトランスクリプトから再開される。同名は最後に起動したものが勝つため、1 セッション内で同じ name を 2 体に付けない。リーダーは roster を保持する: 各 teammate の name → `agentType`。teammate どうしが DM する場合は、リーダーが各メッセージで相手の name を渡す。リーダー宛は `to: "main"`。`SendMessage` の `message` は常に散文の文字列で `summary` を添えて送る（dispatch も報告も）。構造化された結果はファイル経由で渡し、`message` には入れない。例外はプロトコルオブジェクトのみ（`${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` § ツール）。
 
 リーダーは共有タスクリストを持たず、各セルの状態を roster とともに自身の作業状態で追跡する（`TodoWrite` でユーザーに可視化してよい）。
 
@@ -48,7 +48,7 @@ teammate の宛先は spawn 結果で返る **agentId**。friendly な名前は 
 
 ## Agent 種別と起動要件
 
-teammate は Agent ツールで起動する。厳密な引数列を写経するのではなく、以下の要件を満たすこと: バックグラウンドの永続サブエージェントとして起動し（再メッセージで継続できる）、prompt に spawn 契約を渡し、`description` を指定し、返る agentId を roster に記録する。
+teammate は Agent ツールで起動する。厳密な引数列を写経するのではなく、以下の要件を満たすこと: バックグラウンドの永続サブエージェントとして起動し（再メッセージで継続できる）、prompt に spawn 契約を渡し、`description` を指定し、`name` にロール識別子を設定し、その name を roster に記録する。
 
 agent 種別（subagent_type）:
 
@@ -61,7 +61,7 @@ agent 種別（subagent_type）:
 各 teammate は以下のプロンプトで一度だけ spawn する。これはロールと報告プロトコルを確定し、以降の各メッセージがそのタスクで Read すべきテンプレートを指定する。共通禁止事項とセルプロトコルは `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` を参照。
 
 ```
-あなたはチームに {role} として参加する。私が割り当てる各タスクでは、`${CLAUDE_PLUGIN_ROOT}/skills/coding/templates/` 配下のテンプレートを指定し変数を渡すので、そのテンプレートを Read してそのタスクで従う。全タスク共通の変数: plugin_root = ${CLAUDE_PLUGIN_ROOT}、doc_lang = {doc_lang}。各タスクの結果はリーダー（`SendMessage` の `to: "main"`）へ報告し（カウント / パス / 一行サマリのみ）、詳細な指摘はテンプレートの指示どおりに、相手の agentId 宛 `SendMessage` で peer-to-peer ルーティングする（相手の agentId は私が各メッセージで渡す）。`${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` を Read し共通禁止事項とレビューセルプロトコルを遵守する。
+あなたはチームに {role} として参加する。私が割り当てる各タスクでは、`${CLAUDE_PLUGIN_ROOT}/skills/coding/templates/` 配下のテンプレートを指定し変数を渡すので、そのテンプレートを Read してそのタスクで従う。全タスク共通の変数: plugin_root = ${CLAUDE_PLUGIN_ROOT}、doc_lang = {doc_lang}。各タスクの結果はそのタスクを割り当てた相手へ報告し（リーダーは `SendMessage` の `to: "main"`、それ以外は依頼元 teammate の name。カウント / パス / 一行サマリのみ）、詳細な指摘はテンプレートの指示どおりに、相手の name 宛 `SendMessage` で peer-to-peer ルーティングする（相手の name は私が各メッセージで渡す）。`${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` を Read し共通禁止事項とレビューセルプロトコルを遵守する。
 ```
 
 ## レビューセルプロトコル
@@ -78,16 +78,17 @@ triage と裁定の判断優先度: (1) ユーザーの元のタスク指示、�
 
 ## エスカレーション
 
-reviewer が `Critical` の不一致をエスカレーションした場合、リーダーは上記の判断優先度で裁定する。リーダーもいずれとも判断できない場合、対立をユーザーへ要約して提示し、producer に当該箇所へ `FIXME:` を挿入させる（producer の agentId 宛 `SendMessage` で依頼）。ユーザーの回答は待たずに進行し、未解決項目として下流の権威あるレビューのために記録する。
+reviewer が `Critical` の不一致をエスカレーションした場合、リーダーは上記の判断優先度で裁定する。リーダーもいずれとも判断できない場合、対立をユーザーへ要約して提示し、producer に当該箇所へ `FIXME:` を挿入させる（producer の name 宛 `SendMessage` で依頼）。ユーザーの回答は待たずに進行し、未解決項目として下流の権威あるレビューのために記録する。
 
 ## リーダーのスコープ（本体の隔離）
 
-リーダーが保持するのは、roster（各 teammate の slug → agentType / agentId）、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA 結果のみ。設計本体・ソース・指摘本体は teammate 側に留まり、指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
+リーダーが保持するのは、roster（各 teammate の name → agentType）、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA 結果のみ。設計本体・ソース・指摘本体は teammate 側に留まり、指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
 
 ## 作業用ディレクトリ
 
 ```
 {tmp_dir} = .claude/tmp/cdev-coding-{timestamp}/
+{tmp_dir}/team.json          ← team-analysis の結果（roster。リーダーが読む）
 {tmp_dir}/design/{slug}.md   ← architect ごとに 1 つの設計セクション（reviewer と coder が読む）
 {tmp_dir}/baseline-tree      ← コーディング開始前の作業ツリースナップショット（QA 差分の基点）
 {tmp_dir}/changes.txt        ← コーディング開始以降の差分（QA の入力）
@@ -102,25 +103,25 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 1. 作業ツリーを検査する: `git status --porcelain` を実行し、出力が非空（ステージ済み・未ステージ・未追跡のいずれかが存在）ならエラーメッセージをコンソールに表示してスキルを終了する。本スキルはクリーンな作業ツリーでのみ動作する。
 2. `{timestamp}` を解決し、`{tmp_dir}` を確定して作成する（`mkdir -p {tmp_dir}/design`）。続いてコーディング開始前のベースラインを記録する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`。
 3. コンソールに表示する: `## Step 1 — Team formation`。
-4. `dev-helper`（種別 `cdev:dev-helper`）を起動要件どおりに起動し、返る agentId を roster に記録する。その agentId 宛に `templates/team-analysis.md` を指定し変数 `task = {タスク指定}` を渡して `SendMessage`。その報告（`to: "main"`）を受け取る: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`（`name` は起動時の subagent_type。architect と coder の `name` は `general-purpose`）。各 producer の `reviewer` はペアの reviewer の `slug`（1 人の reviewer が複数の producer とペアになることもあるが、ドメインが一致する範囲に限る）。
-5. ロスターの各メンバー（`architect-{slug}` / `coder-{slug}` / `reviewer-{slug}`）を起動要件どおりに起動する。種別は team-analysis が返す `name` を用いる（architect と coder は `general-purpose`）。各 teammate の agentId を roster（slug → agentType / agentId）に記録し、ペアリングと `{task_summary}` を保持する。
+4. `dev-helper`（種別 `cdev:dev-helper`、name `dev-helper`）を起動要件どおりに起動し roster に記録する。`dev-helper` 宛に `templates/team-analysis.md` を指定し `task = {タスク指定}`、`output_path = {tmp_dir}/team.json` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team.json` を Read する: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`（`name` は起動時の subagent_type。architect と coder の `name` は `general-purpose`）。各 producer の `reviewer` はペアの reviewer の `slug`（1 人の reviewer が複数の producer とペアになることもあるが、ドメインが一致する範囲に限る）。
+5. ロスターの各メンバーを起動要件どおりに起動する。name は `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}`、種別は team-analysis が返す `name` を用いる（architect と coder は `general-purpose`）。roster（name → agentType）を記録し、ペアリングと `{task_summary}` を保持する。producer のペア reviewer の宛先は `reviewer-{その producer の reviewer slug}`。
 6. コンソールに表示する: 各 producer のペアの reviewer と一行の理由を含むロスター。
 
 ## ステップ 2 — 設計セル（設計）
 
 1. コンソールに表示する: `## Step 2 — Design`。
-2. 各 architect について、設計セル `design-{slug}` を 2 つのメッセージで開始する（宛先は roster の agentId）:
-   - architect の agentId 宛に `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`output_path = {tmp_dir}/design/{slug}.md`、`reviewer = {ペア reviewer の agentId}` を渡して `SendMessage`。
-   - ペア reviewer の agentId 宛に `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {tmp_dir}/design/{slug}.md`、`producer = {architect の agentId}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
+2. 各 architect について、設計セル `design-{slug}` を 2 つのメッセージで開始する（宛先は roster の name）:
+   - `architect-{slug}` 宛に `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`output_path = {tmp_dir}/design/{slug}.md`、`reviewer = {ペア reviewer の name}` を渡して `SendMessage`。
+   - ペア reviewer の name 宛に `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {tmp_dir}/design/{slug}.md`、`producer = architect-{slug}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
    ペアはセルを自律的に回し（レビュー ⇄ triage ⇄ resolve）、reviewer は resolve 時にセル id を添えてリーダーへ resolve を報告するか、エスカレーションする。
 3. 全設計セルの resolve 報告を受信するまで（届いたエスカレーションを随時裁定しつつ）待つ。受信したクローズ報告の数を数えてゲートする。セクションパスを `{design_paths}` として収集する。すべての設計セルが閉じるまでステップ 3 を開始しない。
 
 ## ステップ 3 — コードセル（コーディング）
 
-1. コンソールに表示する: `## Step 3 — Coding`。`comment-sensei`（種別 `cdev:comment-sensei`）を起動要件どおりに起動する（role `the comment reviewer; a coder DMs you to review comments per templates/comment-review.md`）。返る agentId を roster に記録する（コードセルから利用可能）。
-2. 各 coder について、コードセル `code-{slug}` を 2 つのメッセージで開始する（宛先は roster の agentId）:
-   - coder の agentId 宛に `templates/code.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {そのスコープ}`、`tdd = {has_test_suite}`、`feedback = (none)`、`reviewer = {ペア reviewer の agentId}`、`comment_reviewer = {comment-sensei の agentId}` を渡して `SendMessage`。
-   - ペア reviewer の agentId 宛に `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = {coder の agentId}`、`cell_task = code-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
+1. コンソールに表示する: `## Step 3 — Coding`。`comment-sensei`（種別 `cdev:comment-sensei`）を起動要件どおりに起動する（role `the comment reviewer; a coder DMs you to review comments per templates/comment-review.md`、name は `comment-sensei`）。roster に記録する（コードセルから利用可能）。
+2. 各 coder について、コードセル `code-{slug}` を 2 つのメッセージで開始する（宛先は roster の name）:
+   - `coder-{slug}` 宛に `templates/code.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {そのスコープ}`、`tdd = {has_test_suite}`、`feedback = (none)`、`reviewer = {ペア reviewer の name}`、`comment_reviewer = comment-sensei` を渡して `SendMessage`。
+   - ペア reviewer の name 宛に `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = coder-{slug}`、`cell_task = code-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
    coder は自スコープを実装する（`tdd` が true のときテストファースト）。変更がコメントを追加・変更する場合、coder はセル内で `comment-sensei` へも DM してコメントをレビュー・修正させる。ペアはセルを回し、reviewer は resolve 時にセル id を添えてリーダーへ resolve を報告するか、エスカレーションする。
 3. 全コードセルの resolve 報告を受信するまで（エスカレーションを裁定しつつ）待つ。すべてのコードセルが閉じるまでステップ 4 を開始しない。
 
@@ -130,17 +131,17 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 
 1. コンソールに表示する: `## Step 4 — QA (attempt {n})`。
 2. コーディング開始以降の差分を取得する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh diff {tmp_dir}/baseline-tree {tmp_dir}/changes.txt`。
-3. `dev-helper` の agentId 宛に `templates/qa.md` を指定して `tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`attempt_num = {n}` を渡して `SendMessage`。その報告（`to: "main"`）`{success, format_violations_fixed, workflow_source, workflow_warning, build_ran, test_ran, suggested_specialist, error_summary, summary_line}` を受け取る。`workflow_warning` が非 null の場合、ステップ 5 のために保持する。
+3. `dev-helper` 宛に `templates/qa.md` を指定して `tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`attempt_num = {n}` を渡して `SendMessage`。その 1 行の完了報告を `{summary_line}` として保持し、`{tmp_dir}/qa-result.json` を Read する: `{success}` は `failure == null`、`{suggested_specialist}` / `{error_summary}` は `failure` の対応フィールド。`workflow_warning` が非 null の場合、ステップ 5 のために保持する。
 4. `success == true` の場合、ループを抜ける。
 5. `success == false` かつ試行回数が残っている場合、QA 修正セルを回す:
-   a. 失敗スコープを担当する general-purpose coder を用意する（既存のものを再利用、なければ general-purpose で起動し agentId を roster に記録）。ペアの reviewer は、roster 内の既存 reviewer に失敗ドメイン（`{suggested_specialist}` をヒントとする）と一致する者がいればそれを再利用する。いなければ新規に起動して agentId を roster に記録する。subagent_type は `{suggested_specialist}` が § Agent 種別と起動要件の登録名として存在する場合はそれを用い、存在しなければ `general-purpose` とする。
-   b. coder の agentId 宛に `templates/code.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {失敗したファイル}`、`tdd = {has_test_suite}`、`feedback = QA failure — Read {tmp_dir}/qa-result.json (failure section) and {tmp_dir}/build.log; fix the build/test error.`、`reviewer = {ペア reviewer の agentId}`、`comment_reviewer = {comment-sensei の agentId}` を渡して `SendMessage`。そして reviewer の agentId 宛に `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = {coder の agentId}`、`cell_task = code-qa-{n}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。ペアは再 QA の前にセルを回す（レビュー ⇄ triage ⇄ resolve）。
+   a. 失敗スコープを担当する general-purpose coder を用意する（既存のものを再利用、なければ roster にない `coder-{slug}` を name として general-purpose で起動し記録）。ペアの reviewer は、roster 内の既存 reviewer に失敗ドメイン（`{suggested_specialist}` をヒントとする）と一致する者がいればそれを再利用する。いなければ未使用の `reviewer-{slug}` を name として新規に起動し記録する。subagent_type は `{suggested_specialist}` が § Agent 種別と起動要件の登録名として存在する場合はそれを用い、存在しなければ `general-purpose` とする。
+   b. coder の name 宛に `templates/code.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {失敗したファイル}`、`tdd = {has_test_suite}`、`feedback = QA failure — Read {tmp_dir}/qa-result.json (failure section) and {tmp_dir}/build.log; fix the build/test error.`、`reviewer = {ペア reviewer の name}`、`comment_reviewer = comment-sensei` を渡して `SendMessage`。そして reviewer の name 宛に `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = {coder の name}`、`cell_task = code-qa-{n}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。ペアは再 QA の前にセルを回す（レビュー ⇄ triage ⇄ resolve）。
    c. reviewer の resolve 報告を受信したら、このループのステップ 1 へ戻る（再 QA）。
 6. 最大試行回数を超えてもなお失敗する場合、`error_summary` をコンソールに提示してステップ 5 へ進む。
 
 ## ステップ 5 — クリーンアップと報告
 
 1. `--commit` が ON かつ QA が通過した場合、実装をコミットする: 変更されたソースファイルのみをステージし（`.claude/tmp` は除く）、簡潔なメッセージで 1 回コミットする（finding ID なし）。
-2. teammate をシャットダウンする: 各 teammate の agentId 宛に `SendMessage` で `{type: "shutdown_request"}` を送り、シャットダウンを待つ。
+2. teammate をシャットダウンする: 各 teammate の name 宛に `SendMessage` で `{type: "shutdown_request"}` を送り、シャットダウンを待つ。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`。
 4. コンソールへ報告する: ペアリングを含むチームのロスター、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、QA 結果（`summary_line`、あれば `workflow_warning`）、および未修正の QA 失敗。

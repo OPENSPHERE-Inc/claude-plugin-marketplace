@@ -13,7 +13,7 @@ template_id: 6a711cba-0da8-4177-a41f-ddb4cf2a6e1f
 手順:
 
 1. `{{plugin_root}}/rules/build-format-detection.md` の手順でフォーマット／ビルド／テストコマンドと `workflow_source` を解決する。`workflow_source == "none"` の場合は何も実行せず手順 5 に進む。
-2. `{{diff_path}}` を Read し変更内容を分類する。あるステージの結果に影響し得ない変更のみ（コメント／ドキュメント／非ソースのみ）の場合、当該ステージをスキップ対象とする（`ran = false`、`summary_line` にスキップを記載）。判断に迷う場合は実行する。
+2. `{{diff_path}}` を Read し変更内容を分類する。あるステージの結果に影響し得ない変更のみ（コメント／ドキュメント／非ソースのみ）の場合、当該ステージをスキップ対象とする（`ran = false`、完了報告にスキップを記載）。判断に迷う場合は実行する。
 3. フォーマット（format コマンドが解決された場合のみ）: 検証（dry-run）形式があれば実行し違反時は自動修正形式を適用、無ければ変更ファイルに自動修正形式を適用する。対象選別は解決した記述子に従う。
 4. ビルド、続いてテスト:
    - ビルド（build コマンドが解決され、ステージがスキップ対象でない場合。`build_ran = true`）: configure コマンドがあれば先に実行し、続いてビルドを実行、出力を `{{tmp_dir}}/build.log` へリダイレクトする。configure かビルドが非ゼロ終了した時点で `failure.stage = "build"` を設定し手順 6 へ。
@@ -28,4 +28,4 @@ template_id: 6a711cba-0da8-4177-a41f-ddb4cf2a6e1f
 {"workflow_source": "build-format.md | CLAUDE.md | README.md | none", "workflow_warning": <string|null>, "format": {"format_violations_fixed": <int>}, "build": {"ran": <bool>, "success": <bool>}, "test": {"ran": <bool>, "success": <bool>}, "failure": {"stage": "build|test|visual", "error_summary": <string|null>, "error_files": ["src/foo:42", ...]|null, "suggested_specialist": <string|null>, "fix_guidance": <string|null>, "log_path": "{{tmp_dir}}/build.log"}|null}
 ```
 
-リーダー（`SendMessage` の `to: "main"`）へ JSON 文字列で報告する: `{success, format_violations_fixed, workflow_source, workflow_warning, build_ran, test_ran, suggested_specialist, error_summary, summary_line}`。`success` は `failure == null`。`ran = false` のステージは成功扱い。`summary_line` は <=200 chars（例: "build-format.md / format ok / build ok / test ok"）。この報告がタスク完了の通知を兼ねる。
+リーダー（`SendMessage` の `to: "main"`）へ完了を 1 行 <=200 chars で報告する（例: "build-format.md / format ok / build ok / test ok"）。

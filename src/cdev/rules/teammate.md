@@ -14,7 +14,15 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 ## ツール
 
-ファイル出力は Write ツールを使用する。Bash の cat heredoc は値内のアポストロフィ（`Won't` 等）で外側のクォーティングが破綻するため使用不可。連絡は `SendMessage` で行う。リーダー宛は `to: "main"`、他の teammate 宛はその agentId（リーダーが各メッセージで渡す。friendly な名前は相手が idle になると解決できない）。割り当てられた各タスクの完了はリーダーへ `SendMessage` で報告する。`SendMessage` の `message` は文字列でなければならない。構造化レポート（`{...}` 形式）は JSON 文字列にシリアライズして `message` に入れ、短い `summary` を添える。オブジェクトのまま送れるのは `shutdown_request` / `shutdown_response` のみ。
+ファイル出力は Write ツールを使用する。Bash の cat heredoc は値内のアポストロフィ（`Won't` 等）で外側のクォーティングが破綻するため使用不可。
+
+連絡は `SendMessage` で行う。リーダー宛は `to: "main"`、他の teammate 宛はその name（リーダーが各メッセージで渡す）。
+
+`SendMessage` の呼び出し規約:
+
+- `message` は常に散文の文字列。ランタイムはそれ以外のオブジェクトを拒否する。受理されるオブジェクトは `shutdown_request` / `shutdown_response` / `plan_approval_response` のみ。
+- 文字列の `message` には毎回 `summary`（5〜10 語）を添える。
+- 構造化データを `message` に入れない（シリアライズしたものも含む）。タスクの結果が構造化されている場合は、タスクが指定するファイルへ Write し、そのパスと 1 行サマリを送る。
 
 ## コーディング規約
 
@@ -24,8 +32,8 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 - **一度だけ起動し、永続する。** teammate は一度だけ起動され、ステップをまたいでコンテキストを保持する。各タスクは、そのタスクで Read すべきテンプレートとその変数を指定したメッセージとして届く。そのテンプレートを Read し、当該タスクではそれに従う。
 - **リーダーへの報告は件数 / パス / 1 行サマリのみ。** 指摘本文、設計本文、ソースをリーダーへ送ってはならない。
-- **詳細な指摘はピアツーピアで送る。** reviewer は、対応すべき（Critical / Major）指摘 — `file:line` と推奨する修正方針 — を、リーダーが渡した producer の agentId 宛に `SendMessage` で直接送る。
-- **各タスク完了時にリーダー（`to: "main"`）へ `SendMessage` で完了を報告する。**
+- **詳細な指摘はピアツーピアで送る。** reviewer は、対応すべき（Critical / Major）指摘 — `file:line` と推奨する修正方針 — を、リーダーが渡した producer の name 宛に `SendMessage` で直接送る。
+- **各タスクの完了は、そのタスクを割り当てた相手へ** `SendMessage` で報告する: リーダーが割り当てたタスクはリーダー（`to: "main"`）へ、それ以外は依頼元 teammate の name へ。
 - **アイドルは完了ではない。** teammate はターン間でアイドルになる。新たなメッセージがそれを起こす。
 - **シャットダウン。** `shutdown_request` メッセージを受けたら `shutdown_response` で応答する。
 

@@ -7,6 +7,7 @@ template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 コーディングタスクのスコープを定め、専門家チームを編成し、各 producer を reviewer とペアにする。
 
 タスク: `{{task}}`
+出力先: `{{output_path}}`
 
 エージェントプール: 以下のスコープから優先順位順に `*.md` を列挙し、各ファイルの frontmatter の `name` / `description` を Read して各エージェントの専門性を把握する。`name` 値は、teammate 起動時にリーダーが `subagent_type` に渡す値である（プラグイン同梱のスコープ 3 を採用する場合は名前空間付き、例 `cdev:comment-sensei`）。同一 `name` が複数スコープに存在する場合は上位スコープのものを採用する。存在しないスコープはスキップする。
 
@@ -24,5 +25,12 @@ template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 3. あるドメイン / 役割に合致する専門家がプールにいない場合、その担当には `general-purpose` を用いる。
 4. 各 architect と各 coder を、その producer のドメインに一致する 1 名の reviewer とペアにする: その `reviewer` を reviewer の `slug` に設定する。1 名の reviewer を複数の producer に共有してよいのは同一ドメインの producer に限る。ドメインが一致する reviewer がいない producer には `general-purpose` の reviewer を充てる（専門外の reviewer に兼任させない）。
 5. `task_summary` を、architects / coders が元のチャットなしで動けるタスクの自己完結的な再記述（{{doc_lang}} で）として記述する。
+6. 結果を `{{output_path}}` へ Write する。`scope` / `reason` / `rationale` / `task_summary` は {{doc_lang}} で記述し、`name` / `slug` / 識別子はそのまま。
 
-リーダー（`SendMessage` の `to: "main"`）へ JSON 文字列で報告する: `{task_summary, target_languages: [..], has_test_suite: <bool>, architects: [{name, slug, scope, reviewer, reason}], coders: [{name, slug, scope, reviewer, reason}], reviewers: [{name, slug, reason}], rationale}`。`scope` / `reason` / `rationale` / `task_summary` は {{doc_lang}} で記述し、`name` / `slug` / 識別子はそのまま。この報告がタスク完了の通知を兼ねる。
+`{{output_path}}` の形式:
+
+```
+{"task_summary": <string>, "target_languages": [<string>, ...], "has_test_suite": <bool>, "architects": [{"name": <string>, "slug": <string>, "scope": <string>, "reviewer": <string>, "reason": <string>}], "coders": [{"name": <string>, "slug": <string>, "scope": <string>, "reviewer": <string>, "reason": <string>}], "reviewers": [{"name": <string>, "slug": <string>, "reason": <string>}], "rationale": <string>}
+```
+
+リーダー（`SendMessage` の `to: "main"`）へ完了を 1 行で報告する。`{{output_path}}` とチーム規模（architect / coder / reviewer の人数）を記す。
