@@ -83,6 +83,14 @@ PARAMS_SCHEMA = {
             "(equivalent to /creview:respond --commit)."
         ),
     },
+    "adversarial": {
+        "type": "boolean",
+        "default": False,
+        "description": (
+            "If True, run the review phase in adversarial mode "
+            "(equivalent to /creview:start --adversarial)."
+        ),
+    },
 }
 
 _START_SKILL = "/creview:start"
@@ -217,6 +225,7 @@ _TPL_REVIEW_INIT = textwrap.dedent("""\
     [Round 1/{max_rounds} Step 2.1: review (with initialization)]
     Skill: {skill}
     Run {skill} against the branch diff of {base_clause}.
+    {adversarial_clause}
     The orchestrator (you) must not put finding bodies into context.
 
     Initialization:
@@ -249,6 +258,7 @@ _TPL_REVIEW = textwrap.dedent("""\
     [Round {round_num}/{max_rounds} Step 2.1: review]
     Skill: {skill}
     Run {skill} against the branch diff of {base_clause}.
+    {adversarial_clause}
     The orchestrator (you) must not put finding bodies into context.
 
     File naming convention:
@@ -503,6 +513,7 @@ def run(ctx):
     confirm = ctx.params.get("confirm", False)
     confirm_round = ctx.params.get("confirm_round", False)
     commit = ctx.params.get("commit", False)
+    adversarial = ctx.params.get("adversarial", False)
 
     base_clause = (
         f"base branch {base}"
@@ -513,6 +524,11 @@ def run(ctx):
         "Option: --commit enabled (perform an aggregate git commit after fixing)."
         if commit
         else "Option: --commit disabled (do not commit)."
+    )
+    adversarial_clause = (
+        "Option: --adversarial enabled (pass --adversarial to the skill invocation)."
+        if adversarial
+        else "Option: --adversarial disabled (standard review)."
     )
 
     branch_dir: str | None = None
@@ -536,6 +552,7 @@ def run(ctx):
                     max_rounds=max_rounds,
                     skill=_START_SKILL,
                     base_clause=base_clause,
+                    adversarial_clause=adversarial_clause,
                     output_base=output_base,
                 ),
                 expect_schema=_REVIEW_INIT_SCHEMA,
@@ -549,6 +566,7 @@ def run(ctx):
                     max_rounds=max_rounds,
                     skill=_START_SKILL,
                     base_clause=base_clause,
+                    adversarial_clause=adversarial_clause,
                     output_base=output_base,
                     branch_dir=branch_dir,
                 ),

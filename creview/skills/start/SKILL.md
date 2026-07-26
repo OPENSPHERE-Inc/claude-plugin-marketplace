@@ -31,6 +31,14 @@ If the argument is `$ARGUMENTS`, interpret it as the review target specification
 
 - `--base {branch}` — Specify the base branch. Defaults to `main` or `master`.
 - `--output {path}` — Specify the final report output path (`{final_doc_path}`).
+- `--adversarial` (default OFF) — Run the Step 2 reviewers with the adversarial reviewer template.
+
+### Adversarial Mode Values
+
+`--adversarial` fixes the following values, used in Step 2 and Step 3:
+
+- OFF (default): `{reviewer_template}` = `reviewer.md`, `{reviewer_template_id}` = `4d8c2e5b-1f73-4a96-b2e8-9c1d3a7f4b62`, `{review_mode}` = `standard`
+- ON: `{reviewer_template}` = `adversarial-reviewer.md`, `{reviewer_template_id}` = `2e68714d-36e4-4a4c-a557-d34a81661cb1`, `{review_mode}` = `adversarial`
 
 ### Default Review Target
 
@@ -118,10 +126,10 @@ Launch all selected reviewers concurrently via the Agent tool. Each reviewer mus
 
 ### Agent Launch Prompt
 
-When launching via the Agent tool, specify `subagent_type={name}` (the name resolved by the scope-analysis Sub from the destination project's `.claude/agents/`, or `general-purpose`). The agent definition's persona and perspective load automatically; do not include the persona / perspective in the launch prompt. Task-specific instructions are stored in the `templates/reviewer.md` external template.
+When launching via the Agent tool, specify `subagent_type={name}` (the name resolved by the scope-analysis Sub from the destination project's `.claude/agents/`, or `general-purpose`). The agent definition's persona and perspective load automatically; do not include the persona / perspective in the launch prompt. Task-specific instructions are stored in the `templates/{reviewer_template}` external template.
 
 ```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/reviewer.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/{reviewer_template}`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
 
 Variables (substitute into the template's {{...}} placeholders):
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
@@ -137,7 +145,7 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-Receive the return value (`{path, critical, major, minor, info, template_id}`) from each reviewer. Verify that `template_id` matches `4d8c2e5b-1f73-4a96-b2e8-9c1d3a7f4b62`. If it does not match, re-launch that reviewer.
+Receive the return value (`{path, critical, major, minor, info, template_id}`) from each reviewer. Verify that `template_id` matches `{reviewer_template_id}`. If it does not match, re-launch that reviewer.
 
 ## Step 3 — Consolidate the Report (Delegate to Aggregator Sub-Agent)
 
@@ -161,6 +169,7 @@ Variables (substitute into the template's {{...}} placeholders):
 - round_num_or_omitted: {round_num_or_omitted}
 - targets_description: {targets_description}
 - reviewer_names_csv: {reviewer_names_csv}
+- review_mode: {review_mode}
 - doc_lang: {doc_lang}
 
 Round-specific overrides (apply after following the template's instructions):

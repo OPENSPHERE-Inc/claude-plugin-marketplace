@@ -79,7 +79,10 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ```
 {tmp_dir} = .claude/tmp/creview-triage-{timestamp}/
-{tmp_dir}/triage.json          ← トリアージサブエージェントの出力
+{tmp_dir}/triage-draft.json    ← 一次判定（トリアージサブエージェント）
+{tmp_dir}/challenge.json       ← 反証サブエージェント（トリアージ Sub がネスト起動）の出力
+{tmp_dir}/adjudication.json    ← 裁定サブエージェント（トリアージ Sub がネスト起動）の出力
+{tmp_dir}/triage.json          ← 最終判定（トリアージサブエージェント）
 {tmp_dir}/estimates/{id}.json  ← 見積サブエージェントの出力（指摘 1 件 1 ファイル）
 {tmp_dir}/events.jsonl         ← compile-review.py の出力（render-review.py 入力）
 ```
@@ -99,9 +102,9 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ステップ 1 開始時にリーダー（あなた）が `mkdir -p {tmp_dir}/estimates` で `{tmp_dir}` を作成し、各サブエージェントに `{tmp_dir}` を渡す。
 
-## ステップ 1 — トリアージ（トリアージサブエージェントへ委譲）
+## ステップ 1 — 敵対的トリアージ（トリアージサブエージェントへ委譲）
 
-トリアージは**修正作業を行う専門エージェントとは別個の単一サブエージェント**に委譲する（バイアス分離のため）。トリアージ Sub はレビュードキュメントを直接 Read して指摘抽出とステージ判定およびトリアージ判定を一段で行う。判定結果は**ファイルに Write** させ、リーダーの context に判定本体を載せない。
+トリアージは**修正作業を行う専門エージェントとは別個の単一サブエージェント**に委譲する（バイアス分離のため）。トリアージ Sub はレビュードキュメントを直接 Read して指摘抽出とステージ判定を行い、トリアージ判定を提案 → 反証 → 裁定の三段（敵対的トリアージ）で行う。一次判定は自身で行い、反証 Sub と裁定 Sub を自らネスト起動し、最終判定を自ら `triage.json` に反映する。ネスト Sub の `template_id` 照合と不一致時の再起動はトリアージ Sub が担う。判定結果は**ファイルに Write** させ、リーダーの context に判定本体を載せない。
 
 1. `Agent(subagent_type="general-purpose", prompt=...)` でサブエージェントを起動する。モデル指定はしない。タスク固有の指示は `templates/triage.md` 外部テンプレートに格納されている。起動プロンプト例:
 
@@ -120,9 +123,9 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-2. 戻り値（`{path, will_fix_count, wontfix_count, by_stage, by_assignee, template_id}`）を受け取る。triage の本文は読み込まない。
+2. 戻り値（`{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}`）を受け取る。triage の本文は読み込まない。戻り値に `error` が含まれる場合はステップ 2 以降に進まず、失敗をユーザーに報告して中断する。
 3. `template_id` が `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
-4. トリアージサマリ（件数）をユーザーに提示する。
+4. トリアージサマリ（件数。裁定で反転した件数 `flipped_count` を含む）をユーザーに提示する。
 
 `will_fix_count == 0` の場合、ステップ 2 をスキップしてステップ 3（編纂。Won't Fix の triage 値のみ永続化）へ進む。
 

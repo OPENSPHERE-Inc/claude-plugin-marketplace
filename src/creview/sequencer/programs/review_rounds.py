@@ -82,6 +82,14 @@ PARAMS_SCHEMA = {
             "（/creview:respond --commit 相当）。"
         ),
     },
+    "adversarial": {
+        "type": "boolean",
+        "default": False,
+        "description": (
+            "True の場合、review フェーズを敵対的モードで実行する"
+            "（/creview:start --adversarial 相当）。"
+        ),
+    },
 }
 
 _START_SKILL = "/creview:start"
@@ -215,6 +223,7 @@ _TPL_REVIEW_INIT = textwrap.dedent("""\
     [Round 1/{max_rounds} Step 2.1: review (初期化込み)]
     スキル: {skill}
     {base_clause} のブランチ差分に対して {skill} を実行する。
+    {adversarial_clause}
     オーケストレーター（あなた）はレビュー指摘本体を context に載せない。
 
     初期化:
@@ -247,6 +256,7 @@ _TPL_REVIEW = textwrap.dedent("""\
     [Round {round_num}/{max_rounds} Step 2.1: review]
     スキル: {skill}
     {base_clause} のブランチ差分に対して {skill} を実行する。
+    {adversarial_clause}
     オーケストレーター（あなた）はレビュー指摘本体を context に載せない。
 
     ファイル命名規約:
@@ -496,6 +506,7 @@ def run(ctx):
     confirm = ctx.params.get("confirm", False)
     confirm_round = ctx.params.get("confirm_round", False)
     commit = ctx.params.get("commit", False)
+    adversarial = ctx.params.get("adversarial", False)
 
     base_clause = (
         f"ベースブランチ {base}"
@@ -506,6 +517,11 @@ def run(ctx):
         "オプション: --commit を有効化（修正後に集約 git commit を行う）。"
         if commit
         else "オプション: --commit は無効（コミットしない）。"
+    )
+    adversarial_clause = (
+        "オプション: --adversarial を有効化（スキル起動時に --adversarial を渡す）。"
+        if adversarial
+        else "オプション: --adversarial は無効（標準レビュー）。"
     )
 
     branch_dir: str | None = None
@@ -529,6 +545,7 @@ def run(ctx):
                     max_rounds=max_rounds,
                     skill=_START_SKILL,
                     base_clause=base_clause,
+                    adversarial_clause=adversarial_clause,
                     output_base=output_base,
                 ),
                 expect_schema=_REVIEW_INIT_SCHEMA,
@@ -542,6 +559,7 @@ def run(ctx):
                     max_rounds=max_rounds,
                     skill=_START_SKILL,
                     base_clause=base_clause,
+                    adversarial_clause=adversarial_clause,
                     output_base=output_base,
                     branch_dir=branch_dir,
                 ),

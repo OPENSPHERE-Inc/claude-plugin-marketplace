@@ -19,6 +19,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 - `--commit`（デフォルト OFF）— 各指摘の修正後に git commit を行う（respond フェーズにそのまま渡す）。
 - `--max-rounds N`（デフォルト 5、範囲 1〜10）— 外側ループの最大ラウンド数を変更する。
 - `--base {branch}`（デフォルト `main` または `master`）— ベースブランチを指定する（review フェーズに渡される）。
+- `--adversarial`（デフォルト OFF）— review フェーズを敵対的モードで実行する（review フェーズにそのまま渡す）。
 
 ## レビュードキュメントのファイル命名
 
@@ -36,7 +37,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 ## サブエージェント利用ルール
 
 - **共通禁止事項は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` を参照**。
-- **各フェーズはフェーズリーダーサブエージェント（`subagent_type="review-leader"`）へ丸ごと委譲する**。フェーズ Sub は対応するスキルを起動し、そのスキルのサブエージェント群・compile ステップ・内部の再実行ループを含めて最後まで実行する。フェーズ Sub 自身がさらにサブエージェントを起動するため、ネスト起動の深度 2 以上が必要。
+- **各フェーズはフェーズリーダーサブエージェント（`subagent_type="review-leader"`）へ丸ごと委譲する**。フェーズ Sub は対応するスキルを起動し、そのスキルのサブエージェント群・compile ステップ・内部の再実行ループを含めて最後まで実行する。フェーズ Sub 自身がさらにサブエージェントを起動し、triage Sub がさらに反証 / 裁定 Sub を起動するため、ネスト起動の深度 3 以上が必要。
   - レビューフェーズ（ステップ 2.1） — `creview:start`
   - トリアージ&見積フェーズ（ステップ 2.2 / 2.5） — `creview:triage`
   - 対応フェーズ（ステップ 2.3 / 2.5） — `creview:respond`
@@ -103,7 +104,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 1. コンソールに表示: `## Round {N} — Step 1: Review`
 2. `templates/phase-review.md`（`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`）でフェーズ Sub を起動する。
-   - 変数: `base`（`--base` の値）、`document_path`（今ラウンドのファイルパス）、`language`（ユーザーのチャット言語）
+   - 変数: `base`（`--base` の値）、`document_path`（今ラウンドのファイルパス）、`language`（ユーザーのチャット言語）、`adversarial`（`--adversarial` の状態）
    - オーバーライド: (該当なし)
 3. 戻り値（`{doc_path, findings_total, severity_counts}`）のみ context に保持する。
 

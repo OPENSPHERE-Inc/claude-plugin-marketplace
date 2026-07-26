@@ -1,14 +1,14 @@
 ---
 name: triage
-description: Prompt for the triage sub-agent that performs stage classification and triage decisions for each finding in /creview:triage Step 1
+description: Prompt for the triage sub-agent that performs stage classification and adversarial triage (propose → challenge → adjudicate) for each finding in /creview:triage Step 1
 template_id: 1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15
 ---
 
-As the initial-triage owner of the review document, Read `{{document_path}}`, perform stage classification and the triage decision for each finding, and Write the result to `{{tmp_dir}}/triage.json`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
+As the triage owner of the review document, Read `{{document_path}}`, perform stage classification and adversarial triage (propose → challenge → adjudicate) for each finding, and Write the final result to `{{tmp_dir}}/triage.json`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
 
 Preconditions:
 
-- `{{tmp_dir}}` is created in advance by the leader via `mkdir -p`. The Sub must not perform existence checks (`Test-Path` / `ls`, etc.) or mkdir. The only filesystem write is triage.json.
+- `{{tmp_dir}}` is created in advance by the leader via `mkdir -p`. The Sub must not perform existence checks (`Test-Path` / `ls`, etc.) or mkdir. Your own filesystem writes are the two files `triage-draft.json` and `triage.json`. The challenge sub-agent and the adjudication sub-agent you launch write the `challenge.json` / `adjudication.json` that their own templates specify.
 - The paths passed (`{{document_path}}` / `{{tmp_dir}}`) are relative. Do not convert them to absolute paths.
 
 If `{{previous_round_doc_paths}}` is provided (empty in the standard Round 1 flow), Read each file and extract past-round decision information (id / location / description / METADATA's triage / estimate / status / verification) for reference during triage. No need to consult when empty or `(none)`.
@@ -48,9 +48,55 @@ Won't Fix guideline (when any of the following applies):
 
 High-severity exception: For Critical / Major Won't Fix, explicitly state "recommend separate PR" in the reason field (e.g. "Won't Fix — Existing-code bug. Recommend fixing in a separate PR.").
 
-Specialist assignment (Will Fix only): Resolve the agent via the procedure in `{{plugin_root}}/rules/agents-detection.md`. Match target is the finding content (language, subsystem, comment-discipline, build, etc.); the result field is the assignee.
+Procedure:
+
+1. Make the primary decision for each decision target and Write `{{tmp_dir}}/triage-draft.json`. Do not resolve the assignee at this stage.
+2. When the draft `items` is empty, skip steps 3 and 4, Write `{{tmp_dir}}/triage.json` with `items: []`, `will_fix_count: 0`, `wontfix_count: 0`, and the draft's `by_stage`, and return with `flipped_count: 0`.
+3. Launch the challenge sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`. Do not specify the model. Fill the values you received into the launch prompt:
+
+```
+As your first action, you MUST Read `{{plugin_root}}/skills/triage/templates/triage-challenge.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+Variables (substitute into the template's {{...}} placeholders):
+- plugin_root: {{plugin_root}}
+- document_path: {{document_path}}
+- tmp_dir: {{tmp_dir}}
+- previous_round_doc_paths: {{previous_round_doc_paths}}
+
+Round-specific overrides (apply after following the template's instructions):
+- (none)
+
+Include `template_id` (Read from the template's frontmatter) in the return value.
+```
+
+Verify that the returned `template_id` matches `b8701509-403b-488b-8b13-c867f9c6700b`. On mismatch, launch a fresh instance of the same `subagent_type` and retry. When it mismatches twice in a row, do not proceed to the following steps: return `{path: null, error: "challenge template_id mismatch twice", template_id}` without writing `triage.json`.
+
+4. Launch the adjudication sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`. Do not specify the model. Fill the values you received into the launch prompt:
+
+```
+As your first action, you MUST Read `{{plugin_root}}/skills/triage/templates/triage-adjudicate.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+Variables (substitute into the template's {{...}} placeholders):
+- plugin_root: {{plugin_root}}
+- document_path: {{document_path}}
+- tmp_dir: {{tmp_dir}}
+- previous_round_doc_paths: {{previous_round_doc_paths}}
+
+Round-specific overrides (apply after following the template's instructions):
+- (none)
+
+Include `template_id` (Read from the template's frontmatter) in the return value.
+```
+
+Verify that the returned `template_id` matches `1921777f-3486-44ff-bc18-2b859ce75122`. On mismatch, launch a fresh instance of the same `subagent_type` and retry. When it mismatches twice in a row, do not proceed to step 5: return `{path: null, error: "adjudicate template_id mismatch twice", template_id}` without writing `triage.json`.
+
+5. Adopt the `verdict` and `reason` of `{{tmp_dir}}/adjudication.json` as-is (do not rework the reason), resolve the assignee for the confirmed Will Fix set only via the procedure in `{{plugin_root}}/rules/agents-detection.md` (match target is the finding content — language, subsystem, comment-discipline, build, etc.; the result field is the assignee), and Write `{{tmp_dir}}/triage.json`. For an id missing from `adjudication.json`, or whose `verdict` is neither `Will Fix` nor `Won't Fix`, adopt the draft's `verdict` and `reason` and count it as not flipped.
+
+`{{tmp_dir}}/triage-draft.json` format: `{items: [{id, severity, location, stage, verdict (Will Fix | Won't Fix), reason}], by_stage: {<stage>: <int>}}` (settle Needs Investigation into either verdict before writing)
 
 `{{tmp_dir}}/triage.json` format: `{items: [{id, verdict, assignee (null for Won't Fix), reason, memo_value}], will_fix_count, wontfix_count, by_stage: {<stage>: <int>}}`
+
+Counting basis: `will_fix_count` / `wontfix_count` / `by_assignee` / `memo_value` follow the final verdicts. `by_stage` carries over from the draft. `flipped_count` is the number of items with `flipped == true` in `adjudication.json`.
 
 Write the `reason` and `memo_value` prose in the same language as the existing Finding descriptions in `{{document_path}}` (the `🔧 Will Fix` / `🚫 Won't Fix` labels and emoji, and `(assignee: ...)`, stay fixed).
 
@@ -59,4 +105,4 @@ memo_value format:
 - Will Fix: `🔧 Will Fix (assignee: {assignee}) — {reason}`
 - Won't Fix: `🚫 Won't Fix — {reason}`
 
-Return value: `{path, will_fix_count, wontfix_count, by_stage, by_assignee: [{assignee, ids: [id, ...]}], template_id}` (by_assignee groups Will Fix only by assignee. Do not include reason / memo_value or other body content in the return value). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.
+Return value: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee: [{assignee, ids: [id, ...]}], template_id}` (by_assignee groups Will Fix only by assignee. Do not include reason / memo_value or other body content in the return value). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

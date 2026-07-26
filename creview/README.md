@@ -20,10 +20,21 @@ first; review the persisted decisions in the document; then run
 the split itself is the review gate. `/creview:respond` keeps the `--commit`
 option.
 
+`/creview:start` takes an `--adversarial` option (default OFF) that runs the
+reviewers in adversarial mode, where every Critical / Major finding must state
+a concrete failure scenario; `/creview:rounds` accepts the same flag and passes
+it through to `/creview:start`. `/creview:triage` is adversarial
+unconditionally: the triage sub-agent proposes a verdict, a challenge sub-agent
+argues the opposite where it can, and an adjudication sub-agent decides the
+final verdict.
+
 `/creview:rounds` runs each phase in a phase leader sub-agent, which in turn
-spawns that phase's own sub-agents, so it needs nested sub-agent spawning
-(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` of 2 or more; the default is 3). A long
-run also consumes many subagent slots — raise
+spawns that phase's own sub-agents, and the triage sub-agent spawns its own
+challenge / adjudication sub-agents, so it needs nested sub-agent spawning
+(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` of 3 or more; the default is 3). Run on
+its own, `/creview:triage` needs a depth of 2 or more, since its triage
+sub-agent spawns the challenge / adjudication sub-agents. A long run also
+consumes many subagent slots — raise
 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
 session) when using a high `--max-rounds`.
 

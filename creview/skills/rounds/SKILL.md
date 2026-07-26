@@ -19,6 +19,7 @@ The user may optionally specify an output base path. When the argument is `$ARGU
 - `--commit` (default OFF) — Perform a git commit after each finding is fixed (passed through to the respond phase).
 - `--max-rounds N` (default 5, range 1–10) — Change the maximum number of rounds for the outer loop.
 - `--base {branch}` (default `main` or `master`) — Specify the base branch (passed to the review phase).
+- `--adversarial` (default OFF) — Run the review phase in adversarial mode (passed through to the review phase).
 
 ## Review document file naming
 
@@ -36,7 +37,7 @@ Write the review document in the user's chat language.
 ## Sub-agent usage rules
 
 - **For common prohibitions, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`.**
-- **Each phase is delegated whole to a phase leader sub-agent** (`subagent_type="review-leader"`). The phase sub-agent invokes the corresponding skill and runs it end to end — that skill's own sub-agents, its compile step, and its internal re-execution loops. The phase sub-agent in turn spawns sub-agents, so a nested spawn depth of 2 or more is required.
+- **Each phase is delegated whole to a phase leader sub-agent** (`subagent_type="review-leader"`). The phase sub-agent invokes the corresponding skill and runs it end to end — that skill's own sub-agents, its compile step, and its internal re-execution loops. The phase sub-agent in turn spawns sub-agents, and the triage sub-agent spawns its own challenge / adjudication sub-agents, so a nested spawn depth of 3 or more is required.
   - Review phase (Step 2.1) — `creview:start`
   - Triage & estimate phase (Step 2.2 / 2.5) — `creview:triage`
   - Respond phase (Step 2.3 / 2.5) — `creview:respond`
@@ -103,7 +104,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
 
 1. Display in console: `## Round {N} — Step 1: Review`
 2. Launch the phase sub-agent with `templates/phase-review.md` (`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`).
-   - Variables: `base` (`--base` value), `document_path` (this round's file path), `language` (user's chat language)
+   - Variables: `base` (`--base` value), `document_path` (this round's file path), `language` (user's chat language), `adversarial` (`--adversarial` state)
    - Overrides: (none)
 3. Hold only the return value (`{doc_path, findings_total, severity_counts}`) in context.
 
