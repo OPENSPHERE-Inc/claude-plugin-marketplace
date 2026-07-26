@@ -297,8 +297,8 @@ _TPL_TRIAGE = textwrap.dedent("""\
     Additional constraints:
     - When launching the triage sub-agent, pass the following as the
       previous_round_doc_paths variable (Round 1: (none); Round N: doc_paths
-      of Round 1..N-1). For decision behavior, see the Won't Fix guideline in
-      the triage skill's templates/triage.md:
+      of Round 1..N-1). For decision behavior, see the Won't Fix guidelines in
+      the creview plugin's rules/wontfix.md:
 {previous_round_doc_paths_block}
     - Do not pass the previous round's review document to the estimate sub-agent (bias avoidance)
     - Confirm Will Fix count via the triage sub-agent's return value (state explicitly even if 0)
@@ -390,7 +390,7 @@ _TPL_FEEDBACK = textwrap.dedent("""\
         Append to estimate prompt: estimate based on Feedback content in current_meta.verification.
         Consider Downgrade if cost balloons.
         When launching triage, pass the following as the previous_round_doc_paths variable
-        (for decision behavior, see the Won't Fix guideline in the triage skill's templates/triage.md):
+        (for decision behavior, see the Won't Fix guidelines in the creview plugin's rules/wontfix.md):
 {previous_round_doc_paths_block}
 
     Step 2.5.{attempt}.2 Feedback fix

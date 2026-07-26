@@ -4,7 +4,7 @@ description: /creview:triage ステップ 1 で一次判定の全件に反論を
 template_id: b8701509-403b-488b-8b13-c867f9c6700b
 ---
 
-一次トリアージ判定の反証担当として、`{{tmp_dir}}/triage-draft.json` を Read し、`items` の全件に反論を試み、結果を `{{tmp_dir}}/challenge.json` に Write する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
+一次トリアージ判定の反証担当として、`{{tmp_dir}}/triage-draft.json` を Read し、`items` の全件に反論を試み、結果を `{{tmp_dir}}/challenge.json` に Write する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。本文で引く Won't Fix ガイドライン番号は `{{plugin_root}}/rules/wontfix.md` を Read して参照する。
 
 前提:
 

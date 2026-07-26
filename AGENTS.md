@@ -22,7 +22,7 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/skills/*/templates/*.md` — Sub-agent prompt templates (each has a `template_id`).
 - `creview/agents/` — bundled mechanical agents: `review-helper.md`,
   `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader).
-- `creview/rules/` — comment / document / review / sub-agent rules referenced by skills.
+- `creview/rules/` — comment / document / review / wontfix / sub-agent rules referenced by skills.
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `rm-tmp.sh`, `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
 - `creview/sequencer/programs/review_rounds.py` (+ `review_rounds/`) — agent-sequencer program (English).

@@ -4,7 +4,7 @@ description: Prompt for the challenge sub-agent that argues against every primar
 template_id: b8701509-403b-488b-8b13-c867f9c6700b
 ---
 
-As the challenge owner of the primary triage decisions, Read `{{tmp_dir}}/triage-draft.json`, attempt an objection to every item, and Write the result to `{{tmp_dir}}/challenge.json`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
+As the challenge owner of the primary triage decisions, Read `{{tmp_dir}}/triage-draft.json`, attempt an objection to every item, and Write the result to `{{tmp_dir}}/challenge.json`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions. Read `{{plugin_root}}/rules/wontfix.md` for the Won't Fix guideline numbers cited below.
 
 Preconditions:
 

@@ -293,7 +293,7 @@ _TPL_TRIAGE = textwrap.dedent("""\
     追加の制約:
     - トリアージサブエージェント起動時に previous_round_doc_paths 変数として
       下記を渡す（Round 1: (なし)、Round N: Round 1〜N-1 の doc_path）。
-      判定挙動は triage スキルの templates/triage.md の Won't Fix ガイドライン参照:
+      判定挙動は creview プラグインの rules/wontfix.md の Won't Fix ガイドライン参照:
 {previous_round_doc_paths_block}
     - 見積サブエージェントには前ラウンドのレビュードキュメントを渡さない（バイアス回避）
     - トリアージサブエージェントの戻り値で Will Fix 件数を確認すること（0 件でも明示）
@@ -383,7 +383,7 @@ _TPL_FEEDBACK = textwrap.dedent("""\
         見積プロンプトに追記: current_meta.verification の Feedback 内容を踏まえて見積。
         コストが膨らむ場合は Downgrade を検討。
         トリアージ起動時に previous_round_doc_paths 変数として下記を渡す
-        （判定挙動は triage スキルの templates/triage.md の Won't Fix ガイドライン参照）:
+        （判定挙動は creview プラグインの rules/wontfix.md の Won't Fix ガイドライン参照）:
 {previous_round_doc_paths_block}
 
     Step 2.5.{attempt}.2 フィードバック修正
