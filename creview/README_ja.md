@@ -19,6 +19,14 @@ Claude Code 向けのマルチエージェント並列コードレビューワ�
 を実行します。どちらのスキルにも確認プロンプトはありません — 分割そのものが
 レビューゲートです。`/creview:respond` は `--commit` オプションを保持します。
 
+`/creview:rounds` は各フェーズをフェーズリーダーサブエージェントで実行し、
+そのサブエージェントがさらに当該フェーズのサブエージェントを起動します。
+このためネスト起動が有効である必要があります
+（`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` が 2 以上。デフォルトは 3）。
+長時間の実行はサブエージェントの枠を多く消費するため、`--max-rounds` を
+大きくする場合は `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`
+（デフォルト 200、セッション累積）の引き上げを検討してください。
+
 ## レビュアー / 修正担当エージェント
 
 このプラグインは専門エージェントを同梱しません。triage / scope-analysis /
@@ -27,8 +35,9 @@ analysis / format-build-verify の各サブエージェントが**移植先プ�
 サブディレクトリを含めて再帰的（`**/*.md`）にエージェントを列挙し、各エージェントの
 frontmatter の `name` / `description` を読み、指摘ごとに最適なものを選定します。
 一致が無い場合は `general-purpose` に
-フォールバックします。機械的な集約 / 検証を担うエージェント
-`review-helper` は同梱されています（`agents/review-helper.md`）。
+フォールバックします。同梱エージェントは `review-helper`（機械的な集約 / 検証）、
+`comment-sensei`（コメント規律レビュー）、`review-leader`（`/creview:rounds` の
+フェーズリーダー）の 3 つです。
 
 ## 同梱サポートファイル
 

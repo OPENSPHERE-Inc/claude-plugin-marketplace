@@ -61,7 +61,7 @@ claude-plugin-marketplace/
 │   │   ├── resolve/              # /creview:resolve (from review-resolve)
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
-│   ├── agents/review-helper.md   # Bundled mechanical aggregation agent
+│   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md
 │   ├── rules/                    # comment.md, document.md, review.md, sub-agent.md, agents-detection.md, build-format-detection.md
 │   ├── scripts/                  # fetch-diff.sh, render-review.py, rm-tmp.sh, lib/scratch-guard.py
 │   └── sequencer/programs/
@@ -132,8 +132,8 @@ When changing a plugin:
   on duplicate `name`, fall back to `general-purpose`) live in the shared bundled rule
   `rules/agents-detection.md`. The triage / analyze / format-build-verify sub-agents read it
   and supply only their match target + result field. `scope-analysis` keeps its own inline
-  multi-select variant (it picks *all* relevant reviewers, not one). Only `review-helper` is
-  bundled.
+  multi-select variant (it picks *all* relevant reviewers, not one). Only the mechanical
+  helpers (`review-helper`, `comment-sensei`, `review-leader`) are bundled.
 
 ---
 
@@ -200,7 +200,8 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
                     format&build-verify ⇄ build-fix loop → compile → persist status
 /creview:resolve → analyze + verify Subs → compile → persist verification
-/creview:rounds  → orchestrates the four phases per round + feedback re-fix inner loop
+/creview:rounds  → launches one review-leader Sub per phase per round (each Sub invokes
+                    the phase's skill and runs it whole) + feedback re-fix inner loop
 ```
 
 Each skill's `skills/<skill>/scripts/compile-review.py` (run directly by the leader, not a

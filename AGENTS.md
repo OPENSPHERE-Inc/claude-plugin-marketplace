@@ -20,7 +20,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/.claude-plugin/plugin.json` / `cprompt/.claude-plugin/plugin.json` — Plugin manifests.
 - `creview/skills/{start,triage,respond,resolve,rounds}/SKILL.md` — The 5 creview skills.
 - `creview/skills/*/templates/*.md` — Sub-agent prompt templates (each has a `template_id`).
-- `creview/agents/review-helper.md` — Bundled mechanical aggregation agent.
+- `creview/agents/` — bundled mechanical agents: `review-helper.md`,
+  `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader).
 - `creview/rules/` — comment / document / review / sub-agent rules referenced by skills.
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `rm-tmp.sh`, `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
@@ -50,7 +51,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
 4. **`template_id` must match** the per-step UUID hard-coded in the SKILL that launches it.
 5. **No bundled specialist reviewers.** Skills resolve reviewers/fixers from the
    destination project's `.claude/agents/`, falling back to `general-purpose`. Only
-   `review-helper` is bundled.
+   the mechanical helpers (`review-helper`, `comment-sensei`, `review-leader`) are
+   bundled.
 6. **review-respond split**: `/creview:triage` persists `triage`+`estimate` into the
    review doc; `/creview:respond` reads them back from the doc. The split is the review
    gate — no `--no-confirm`. The handoff is the document, not a shared temp dir.
