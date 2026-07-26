@@ -8,7 +8,7 @@ template_id: 740fa1cf-fa38-40a0-85d0-4c9a99eab5de
 
 タスク: `{{task}}`
 割り当てスコープ: `{{assigned_scope}}`
-ペアの reviewer の agentId: `{{reviewer}}`
+ペアの reviewer: `{{reviewer}}`
 
 手順:
 

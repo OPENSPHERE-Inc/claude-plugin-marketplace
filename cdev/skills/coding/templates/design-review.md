@@ -8,7 +8,7 @@ Review the design produced by `{{producer}}` and resolve the cell as the reviewe
 
 Task: `{{task}}`
 Design section: `{{design_path}}`
-Producer's agentId: `{{producer}}` | Cell task: `{{cell_task}}`
+Producer: `{{producer}}` | Cell task: `{{cell_task}}`
 
 Judge the design for correctness and completeness against the task, feasibility, missing edge cases / error handling, interface and data-shape soundness, testability, and risk to existing code. Read `{{plugin_root}}/rules/review.md` and follow it. Restrict tool use to Read / Glob / Grep / Bash(grep/ls/find); do not edit anything.
 

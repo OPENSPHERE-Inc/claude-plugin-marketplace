@@ -8,7 +8,7 @@ Review the code produced by `{{producer}}` and resolve the cell as the reviewer 
 
 Task: `{{task}}`
 Design sections (intended behavior): Read every file in `{{design_paths}}`.
-Producer's agentId: `{{producer}}` | Cell task: `{{cell_task}}`
+Producer: `{{producer}}` | Cell task: `{{cell_task}}`
 
 When the producer signals ready, Read the files it changed (it lists them in its ready message) and judge the code for correctness against the design and task, bugs, missing edge cases / error handling, security, performance, and maintainability. Read `{{plugin_root}}/rules/review.md` and follow it. Restrict tool use to Read / Glob / Grep / Bash(grep/ls/find); do not edit anything.
 
