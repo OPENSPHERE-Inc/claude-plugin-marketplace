@@ -83,6 +83,14 @@ PARAMS_SCHEMA = {
             "(equivalent to /creview:respond --commit)."
         ),
     },
+    "adversarial": {
+        "type": "boolean",
+        "default": False,
+        "description": (
+            "If True, run the review phase in adversarial mode "
+            "(equivalent to /creview:start --adversarial)."
+        ),
+    },
 }
 
 _START_SKILL = "/creview:start"
@@ -142,9 +150,11 @@ _TRIAGE_SCHEMA = {
     "properties": {
         "will_fix_count": {"type": "integer", "minimum": 0},
         "wontfix_count": {"type": "integer", "minimum": 0},
+        "flipped_count": {"type": "integer", "minimum": 0},
         "maintain_count": {"type": "integer", "minimum": 0},
         "alternative_count": {"type": "integer", "minimum": 0},
         "downgrade_count": {"type": "integer", "minimum": 0},
+        "error": {"type": ["string", "null"]},
         "summary_line": {"type": "string", "maxLength": 500},
     },
     "required": ["will_fix_count", "wontfix_count"],
@@ -217,6 +227,7 @@ _TPL_REVIEW_INIT = textwrap.dedent("""\
     [Round 1/{max_rounds} Step 2.1: review (with initialization)]
     Skill: {skill}
     Run {skill} against the branch diff of {base_clause}.
+    {adversarial_clause}
     The orchestrator (you) must not put finding bodies into context.
 
     Initialization:
@@ -249,6 +260,7 @@ _TPL_REVIEW = textwrap.dedent("""\
     [Round {round_num}/{max_rounds} Step 2.1: review]
     Skill: {skill}
     Run {skill} against the branch diff of {base_clause}.
+    {adversarial_clause}
     The orchestrator (you) must not put finding bodies into context.
 
     File naming convention:
@@ -298,13 +310,17 @@ _TPL_TRIAGE = textwrap.dedent("""\
     {{
       "will_fix_count": <int>,
       "wontfix_count": <int>,
+      "flipped_count": <int>,
       "maintain_count": <int>,
       "alternative_count": <int>,
       "downgrade_count": <int>,
+      "error": "(message when the triage phase aborted; null if none)",
       "summary_line": "(<=200 chars one-line summary; copy verbatim from the estimate aggregator sub-agent's return value)"
     }}
     - will_fix_count / wontfix_count: triage sub-agent's return values
+    - flipped_count: number of decisions the adjudication stage overturned (triage sub-agent's return value)
     - maintain_count / alternative_count / downgrade_count: estimate aggregator sub-agent's return values
+    - error: the message when the triage phase could not complete (report every count as 0; null on success)
     - summary_line: one-line summary for user notification (only this single line goes into the leader's context)\
 """)
 
@@ -478,6 +494,7 @@ def _format_per_round_stats_block(round_records: list[dict]) -> str:
             f"    - Round {r['round_num']}: "
             f"findings={r['findings_total']} ({sev_str}), "
             f"will_fix={r['will_fix_count']}, "
+            f"flipped={r.get('flipped_count', 0)}, "
             f"maintain={r.get('maintain_count', 0)}, "
             f"alternative={r.get('alternative_count', 0)}, "
             f"downgrade={r.get('downgrade_count', 0)}, "
@@ -503,6 +520,7 @@ def run(ctx):
     confirm = ctx.params.get("confirm", False)
     confirm_round = ctx.params.get("confirm_round", False)
     commit = ctx.params.get("commit", False)
+    adversarial = ctx.params.get("adversarial", False)
 
     base_clause = (
         f"base branch {base}"
@@ -513,6 +531,11 @@ def run(ctx):
         "Option: --commit enabled (perform an aggregate git commit after fixing)."
         if commit
         else "Option: --commit disabled (do not commit)."
+    )
+    adversarial_clause = (
+        "Option: --adversarial enabled (pass --adversarial to the skill invocation)."
+        if adversarial
+        else "Option: --adversarial disabled (standard review)."
     )
 
     branch_dir: str | None = None
@@ -536,6 +559,7 @@ def run(ctx):
                     max_rounds=max_rounds,
                     skill=_START_SKILL,
                     base_clause=base_clause,
+                    adversarial_clause=adversarial_clause,
                     output_base=output_base,
                 ),
                 expect_schema=_REVIEW_INIT_SCHEMA,
@@ -549,6 +573,7 @@ def run(ctx):
                     max_rounds=max_rounds,
                     skill=_START_SKILL,
                     base_clause=base_clause,
+                    adversarial_clause=adversarial_clause,
                     output_base=output_base,
                     branch_dir=branch_dir,
                 ),
@@ -567,6 +592,7 @@ def run(ctx):
             "will_fix_count": 0,
             "fixed_count": 0,
             "wontfix_count": 0,
+            "flipped_count": 0,
             "maintain_count": 0,
             "alternative_count": 0,
             "downgrade_count": 0,
@@ -603,8 +629,18 @@ def run(ctx):
             timeout_minutes=120,
         )
 
+        if triage_result.get("error"):
+            yield Abort(
+                reason=(
+                    f"Round {round_num} triage phase aborted: "
+                    f"{triage_result['error']}"
+                )
+            )
+            return
+
         round_record["will_fix_count"] = triage_result["will_fix_count"]
         round_record["wontfix_count"] = triage_result["wontfix_count"]
+        round_record["flipped_count"] = triage_result.get("flipped_count", 0)
         round_record["maintain_count"] = triage_result.get("maintain_count", 0)
         round_record["alternative_count"] = triage_result.get(
             "alternative_count", 0
@@ -779,6 +815,7 @@ def run(ctx):
     total_will_fix = sum(r["will_fix_count"] for r in round_records)
     total_fixed = sum(r["fixed_count"] for r in round_records)
     total_wontfix = sum(r["wontfix_count"] for r in round_records)
+    total_flipped = sum(r.get("flipped_count", 0) for r in round_records)
     total_maintain = sum(r.get("maintain_count", 0) for r in round_records)
     total_alternative = sum(r.get("alternative_count", 0) for r in round_records)
     total_downgrade = sum(r.get("downgrade_count", 0) for r in round_records)
@@ -795,6 +832,7 @@ def run(ctx):
         "total_will_fix": total_will_fix,
         "total_fixed": total_fixed,
         "total_wontfix": total_wontfix,
+        "total_flipped": total_flipped,
         "total_maintain": total_maintain,
         "total_alternative": total_alternative,
         "total_downgrade": total_downgrade,

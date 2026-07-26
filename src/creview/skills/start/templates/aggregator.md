@@ -11,6 +11,7 @@ template_id: 7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54
 ラウンド番号: `{{round_num_or_omitted}}`
 レビュー対象: `{{targets_description}}`
 レビュアー一覧: `{{reviewer_names_csv}}`
+レビューモード: `{{review_mode}}`
 出力言語: `{{doc_lang}}`
 
 統合手順:
@@ -29,5 +30,6 @@ template_id: 7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54
 - 指摘と指摘の間は `---` の水平線で区切る。Status 行は出力しない（本スキルの責務外）。
 - 該当指摘がない重要度セクション（`## Critical` / `## Major` / `## Minor` / `## Info`）も見出しを省略せず、本文に「指摘無し」相当を `{{doc_lang}}` で記載する。
 - 散文（指摘の説明、サマリ本文、メタデータの見出しラベル）は `{{doc_lang}}` で記述する。構造アンカー（重要度見出し `## Critical` / `## Major` / `## Minor` / `## Info`、finding-id、`<!-- METADATA(...) -->` マーカー）は後工程の解析対象のため `{{doc_lang}}` に関わらず変更しない。カテゴリラベル自体はレビュアー出力の表記をそのまま採用する。
+- `{{review_mode}}` が `adversarial` の場合、レポートヘッダの箇条書きに `- **モード:** adversarial` をラウンドの箇条書きの直後（ラウンド番号が省略されている場合は日付の箇条書きの直後）に追加する。ラベルは `{{doc_lang}}` に従い、値 `adversarial` はそのまま。それ以外の場合は箇条書きを出力しない。
 
 戻り値: `{doc_path, findings_total, severity_counts: {critical, major, minor, info}, duplicates_merged, template_id}`。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

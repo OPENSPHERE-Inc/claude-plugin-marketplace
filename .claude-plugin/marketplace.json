@@ -8,7 +8,7 @@
     {
       "name": "creview",
       "source": "./creview",
-      "description": "Multi-agent parallel code review workflow: start → triage → respond → resolve, with an automatic multi-round driver. Reviewers and fixers are resolved from the destination project's .claude/agents. The multi-round driver runs each phase in a sub-agent, so it requires a runtime with nested sub-agent spawning.",
+      "description": "Multi-agent parallel code review workflow: start → triage → respond → resolve, with an automatic multi-round driver. Reviewers and fixers are resolved from the destination project's .claude/agents. Triage is adversarial (propose → challenge → adjudicate) and the multi-round driver runs each phase in a sub-agent, so both require a runtime with nested sub-agent spawning.",
       "homepage": "https://github.com/OPENSPHERE-Inc/claude-plugin-marketplace",
       "license": "MIT",
       "keywords": [

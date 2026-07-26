@@ -31,6 +31,14 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch
 
 - `--base {branch}` — ベースブランチを指定する。デフォルトは `main` または `master`。
 - `--output {path}` — 最終レポートの出力先パス (`{final_doc_path}`) を指定する。
+- `--adversarial`（デフォルト OFF）— ステップ 2 のレビュアーを敵対的レビュアーテンプレートで実行する。
+
+### 敵対的モードの値
+
+`--adversarial` は以下の値を確定する。ステップ 2 とステップ 3 で使用する:
+
+- OFF（デフォルト）: `{reviewer_template}` = `reviewer.md`、`{reviewer_template_id}` = `4d8c2e5b-1f73-4a96-b2e8-9c1d3a7f4b62`、`{review_mode}` = `standard`
+- ON: `{reviewer_template}` = `adversarial-reviewer.md`、`{reviewer_template_id}` = `2e68714d-36e4-4a4c-a557-d34a81661cb1`、`{review_mode}` = `adversarial`
 
 ### デフォルトのレビュー対象
 
@@ -118,10 +126,10 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch
 
 ### エージェント起動プロンプト
 
-Agent ツール起動時は `subagent_type={name}`（スコープ解析 Sub が対象プロジェクトの `.claude/agents/` から解決した名前、または `general-purpose`）を指定する。agent 定義の persona と観点は自動でロードされる。起動プロンプトに persona / 観点は含めない。タスク固有の指示は `templates/reviewer.md` 外部テンプレートに格納されている。
+Agent ツール起動時は `subagent_type={name}`（スコープ解析 Sub が対象プロジェクトの `.claude/agents/` から解決した名前、または `general-purpose`）を指定する。agent 定義の persona と観点は自動でロードされる。起動プロンプトに persona / 観点は含めない。タスク固有の指示は `templates/{reviewer_template}` 外部テンプレートに格納されている。
 
 ```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/reviewer.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
+最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/{reviewer_template}` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
 
 変数（テンプレート中の {{...}} placeholder を置換）:
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
@@ -137,7 +145,7 @@ Agent ツール起動時は `subagent_type={name}`（スコープ解析 Sub が�
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-各レビュアーから戻り値（`{path, critical, major, minor, info, template_id}`）を受け取る。`template_id` が `4d8c2e5b-1f73-4a96-b2e8-9c1d3a7f4b62` と一致することを確認する。一致しない場合は当該レビュアーを再起動する。
+各レビュアーから戻り値（`{path, critical, major, minor, info, template_id}`）を受け取る。`template_id` が `{reviewer_template_id}` と一致することを確認する。一致しない場合は当該レビュアーを再起動する。
 
 ## ステップ 3 — レポートの統合（集約サブエージェントへ委譲）
 
@@ -161,6 +169,7 @@ Agent ツール起動時は `subagent_type={name}`（スコープ解析 Sub が�
 - round_num_or_omitted: {round_num_or_omitted}
 - targets_description: {targets_description}
 - reviewer_names_csv: {reviewer_names_csv}
+- review_mode: {review_mode}
 - doc_lang: {doc_lang}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
