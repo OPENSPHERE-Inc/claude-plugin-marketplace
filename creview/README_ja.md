@@ -53,7 +53,7 @@ frontmatter の `name` / `description` を読み、指摘ごとに最適なも�
 
 ## 同梱サポートファイル
 
-- `rules/` — `comment.md`、`document.md`、`review.md`、`sub-agent.md`
+- `rules/` — `comment.md`、`document.md`、`review.md`、`wontfix.md`、`sub-agent.md`
   （スキルが参照するルールのみ）。
 - `scripts/` — `fetch-diff.sh`、`render-review.py`、`rm-tmp.sh`、
   `lib/scratch-guard.py`（`fetch-diff.sh` / `rm-tmp.sh` が共有する

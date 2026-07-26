@@ -62,7 +62,7 @@ claude-plugin-marketplace/
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
 │   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md
-│   ├── rules/                    # comment.md, document.md, review.md, sub-agent.md, agents-detection.md, build-format-detection.md
+│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md
 │   ├── scripts/                  # fetch-diff.sh, render-review.py, rm-tmp.sh, lib/scratch-guard.py
 │   └── sequencer/programs/
 │       ├── review_rounds.py      # agent-sequencer program (English, active)
@@ -355,6 +355,8 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   already in the sub-agent's scope and it substitutes the same value. A sub-agent reading a
   template does **not** get `${CLAUDE_PLUGIN_ROOT}` expanded — never put it in a template;
   never put `{{plugin_root}}` in a SKILL.
+  `rules/wontfix.md` carries `{{previous_round_doc_paths}}` on the same basis: every
+  template that references it receives that launch variable.
 - **`template_id` must match.** The SKILL step's hard-coded UUID and the template's
   frontmatter `template_id` must be identical, or the leader will loop relaunching.
 - **src ↔ active parity is a contract.** Do not edit one side only. A structural

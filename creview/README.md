@@ -55,7 +55,7 @@ bundled agents are `review-helper` (mechanical aggregation / verification),
 
 ## Bundled support files
 
-- `rules/` — `comment.md`, `document.md`, `review.md`, `sub-agent.md`
+- `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`
   (only the rules the skills reference).
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `rm-tmp.sh`, and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
