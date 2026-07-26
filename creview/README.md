@@ -20,6 +20,13 @@ first; review the persisted decisions in the document; then run
 the split itself is the review gate. `/creview:respond` keeps the `--commit`
 option.
 
+`/creview:rounds` runs each phase in a phase leader sub-agent, which in turn
+spawns that phase's own sub-agents, so it needs nested sub-agent spawning
+(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` of 2 or more; the default is 3). A long
+run also consumes many subagent slots — raise
+`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
+session) when using a high `--max-rounds`.
+
 ## Reviewer / fixer agents
 
 This plugin does not bundle specialist agents. The triage / scope-analysis /
@@ -28,8 +35,9 @@ analysis / format-build-verify sub-agents enumerate agents recursively
 (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin bundle**, read
 each agent's frontmatter `name` / `description`, and pick the best match per
 finding. With no match, they fall back to `general-purpose`. The
-mechanical aggregation / verification agent `review-helper` is
-bundled (`agents/review-helper.md`).
+bundled agents are `review-helper` (mechanical aggregation / verification),
+`comment-sensei` (comment-discipline review), and `review-leader` (the
+`/creview:rounds` phase leader).
 
 ## Bundled support files
 

@@ -4,13 +4,13 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
 
 ## Prohibitions
 
-- **No nesting**: A teammate must not create a team or spawn further agents (the leader is the sole orchestrator).
 - **Output scope / source editing**: A teammate writes only to the target its task assigns:
   - Architect: the design-document section file the task assigns (markdown). No source-code edits.
   - Coder: source code (implementation, plus fixes for QA / review / comment feedback) within its assigned scope.
   - Comment-review teammate (comment-sensei): comment-only edits in source files; no logic changes.
   - QA teammate (dev-helper): format / build / test commands and formatter auto-fixes only; no manual source edits.
   - Reviewers: Read-only on sources and design; they do not edit.
+- **Inherited scope**: An agent a teammate launches is bound by the same restrictions as that teammate. It is not in the leader's roster, so the teammate that launched it shuts it down before reporting its own task complete.
 
 ## Tools
 

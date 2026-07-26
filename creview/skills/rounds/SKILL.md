@@ -1,12 +1,12 @@
 ---
 name: rounds
 description: Automatically iterate review, triage, respond, and resolve across multiple rounds until no actionable findings remain
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*)
+allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(mkdir:*)
 ---
 
 # Automatic Review Round Execution
 
-You act as the **review round orchestrator**, automatically iterating a flow equivalent to `/creview:start` → `/creview:triage` → `/creview:respond` → `/creview:resolve` across multiple rounds to comprehensively discover and fix significant issues. You do not take on the role of a reviewer or fix author yourself; everything is delegated to sub-agents. See "Sub-agent usage rules" for detailed responsibility allocation.
+You act as the **review round orchestrator**, automatically iterating a flow equivalent to `/creview:start` → `/creview:triage` → `/creview:respond` → `/creview:resolve` across multiple rounds to comprehensively discover and fix significant issues. Each phase is run by a phase leader sub-agent; you control the round loop and aggregate the phases' return values. See "Sub-agent usage rules" for detailed responsibility allocation.
 
 ## Input
 
@@ -36,62 +36,51 @@ Write the review document in the user's chat language.
 ## Sub-agent usage rules
 
 - **For common prohibitions, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`.**
-- **The prompt body for each sub-agent is stored in an external template (`templates/*.md`, with `template_id` in the frontmatter).** When launching a sub-agent via the Agent tool, the orchestrator passes a launch prompt that says "Read the template and follow its instructions," with variable values (including `plugin_root: ${CLAUDE_PLUGIN_ROOT}`) and round-specific overrides filled in. The sub-agent includes `template_id` in its return value. The orchestrator verifies that the returned `template_id` matches the UUID specified in each Step (hard-coded per Step in the referenced SKILLs), and relaunches the sub-agent if it does not match. The UUIDs are documented in the `${CLAUDE_PLUGIN_ROOT}/skills/{start,triage,respond,resolve}/SKILL.md` SKILLs.
-- **Sub-agent nesting is prohibited** — when you yourself are launched as a sub-agent, you cannot launch further sub-agents from there.
-- **Most work, including aggregation and compilation, is delegated to sub-agents** (one level of nesting is allowed):
-  - Individual reviewers (Step 2.1) — launch the reviewers selected by the scope-analysis Sub from the destination project's `.claude/agents/` (or `general-purpose`) in parallel. Each reviewer Writes findings to a file; return value is path and counts only.
-  - Aggregator sub-agent (Step 2.1) — Reads each individual reviewer's output file and merges them into the review document (start § Step 3).
-  - Triage sub-agent (Step 2.2 / 2.5) — judging in a separate context to avoid bias, directly Reads the review document and performs finding extraction and judgment in a single stage (triage § Step 1).
-  - Individual estimate (Step 2.2 / 2.5) — delegated in parallel to per-assignee specialist sub-agents; each Sub batch-estimates its assigned ids (triage § Step 2, read-only).
-  - Estimate aggregator sub-agent (Step 2.2 / 2.5) — generates a summary of individual estimate results (triage § Step 2).
-  - Select-fix-targets sub-agent (Step 2.3 / 2.5) — Reads the review document metadata and returns the fix targets grouped by assignee (respond § Step 1).
-  - Individual fix (Step 2.3 / 2.5) — delegated to per-assignee specialist sub-agents; each Sub sequentially fixes its assigned ids (respond § Step 2).
-  - Comment-review sub-agent (Step 2.3 / 2.5) — reviews comments added or modified by the fix sub-agents against the discipline in comment.md and fixes violations (respond § Step 3).
-  - Format & build verification sub-agent (Step 2.3 / 2.5) — resolves the destination project's format / build workflow and runs it once; on failure, identifies the specialist via code analysis (does not perform fixes; returns recommendation only).
-  - Build-fix specialist sub-agent (Step 2.3 / 2.5) — fixes build errors as the specialist identified by the format & build verification Sub. After completion, the leader relaunches the format & build verification Sub (respond § Step 4).
-  - Analysis sub-agent (Step 2.4 / 2.5) — Reads the review document and returns the verification assignment (by_assignee) (resolve § Step 1, no file output).
-  - Verification sub-agent (Step 2.4 / 2.5) — launched in parallel per specialist; batch-verifies the assigned findings (resolve § Step 2, read-only).
-  - Compile is run directly by each skill's leader via `compile-review.py` (no sub-agent; Step 2.2 / 2.3 / 2.4 / 2.5) — it generates events.jsonl from intermediate files and reflects them into the markdown via render-review.py (triage § Step 3 / respond § Step 5 / resolve § Step 3).
-  - Final report aggregator sub-agent (Step 3) — generates the final report from all rounds' review documents.
-- **What the orchestrator (you) directly handles is limited to the following:**
-  - Control between Steps and round loop judgment (including the format & build verification Sub ⇄ build-fix specialist Sub re-execution loop. Operational data files from each Sub may be Read; source code itself is not read.).
-  - Sub-agent launch and aggregation of return values (lightweight counters, paths, and one-line summaries).
+- **Each phase is delegated whole to a phase leader sub-agent** (`subagent_type="review-leader"`). The phase sub-agent invokes the corresponding skill and runs it end to end — that skill's own sub-agents, its compile step, and its internal re-execution loops. The phase sub-agent in turn spawns sub-agents, so a nested spawn depth of 2 or more is required.
+  - Review phase (Step 2.1) — `creview:start`
+  - Triage & estimate phase (Step 2.2 / 2.5) — `creview:triage`
+  - Respond phase (Step 2.3 / 2.5) — `creview:respond`
+  - Resolve phase (Step 2.4 / 2.5) — `creview:resolve`
+- **Final report aggregator sub-agent (Step 3)** — `subagent_type="review-helper"`; generates the final report from all rounds' review documents.
+- **What you handle directly is limited to the following:**
+  - Console headings, round loop control, and the feedback re-fix loop.
+  - Phase sub-agent launch and aggregation of their return values (counters, paths, one-line summaries).
+  - User interaction for `--confirm` / `--confirm-round`. A phase sub-agent cannot reach the user, so every wait for confirmation happens here, between phases.
   - Final summary presentation to the user.
-- **The orchestrator does not put review finding bodies or judgment bodies into context.** It holds only file paths and lightweight counters; details are handled by sub-agents.
-- Each round's results are passed to the next Step / next round **only through the review document**. Intermediate data between sub-agents is self-contained within a Step and must not persist across Steps. (Within a round, triage / estimate are persisted into the document by the triage phase, so the respond phase reads them from the document.)
-- **Launch aggregator / analysis / select-fix-targets / format & build verification sub-agents via `subagent_type="review-helper"` (analysis / estimate-summary / format-build-verify) or `subagent_type="general-purpose"` (triage / select-fix-targets).** `model: sonnet` is already specified in review-helper's agent definition. For reviewer / estimate / fix / verify / build-fix sub-agents, specify the assignee resolved from the destination project's `.claude/agents/` (or `general-purpose`) via `subagent_type`. Do not specify `model="..."` from the SKILL (the model follows each agent definition's frontmatter).
+- **Do not put review finding bodies or judgment bodies into context.** Hold only file paths and counters; the details stay inside each phase.
+- Each round's results are passed to the next Step / next round **only through the review document**.
+- Do not specify `model="..."` when launching (the model follows each agent definition's frontmatter).
 
-For the launch prompt completeness convention, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch prompt completeness.
+## Phase sub-agent launch
+
+Launch every phase via `Agent(subagent_type="review-leader", prompt=...)`:
+
+```
+As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/{template}`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+Variables (substitute into the template's {{...}} placeholders):
+- plugin_root: ${CLAUDE_PLUGIN_ROOT}
+- {the variables the Step lists}
+
+Round-specific overrides (apply after following the template's instructions):
+- {the overrides the Step lists, or (none)}
+
+Include `template_id` (Read from the template's frontmatter) in the return value.
+```
+
+Verify that the returned `template_id` matches the UUID the Step specifies; relaunch the phase sub-agent on mismatch. The same convention applies to the Step 3 sub-agent; see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch prompt completeness.
 
 ## Flow overview
 
 ```
 Round 1 start
-  ├─ 2.1 review (start skill)
-  │     [scope-analysis Sub] selects reviewers from destination .claude/agents
-  │     [reviewers] parallel → each Writes reviews/{name}.md
-  │     [aggregator Sub] reviews/*.md → round1.md (no triage yet)
-  ├─ 2.2 triage + estimate (triage skill)
-  │     [triage Sub] round1.md → triage.json (includes by_assignee)
-  │     ↳ if Will Fix is 0, persist Won't Fix triage and skip to 2.4
-  │     [estimate Subs (per-assignee, parallel)] → estimates/{id}.json
-  │     [estimate aggregator Sub] estimates/*.json → estimate-summary.md
-  │     [compile-review.py] triage.json + estimates/*.json → round1.md (persists triage/estimate)
-  │     ↳ --confirm: present estimate summary, wait for confirmation
-  ├─ 2.3 respond / fix (respond skill)
-  │     [select-fix-targets Sub] round1.md metadata → targets.json (by_assignee)
-  │     ↳ if no Maintain/Alternative target, skip to 2.4
-  │     [fix Subs (per-assignee, parallel)] fix Maintain, attach FIXME for Alternative → statuses/{id}.json
-  │     [format & build verification Sub] ⇄ [build-fix specialist Sub] loop (max 5, leader-controlled)
-  │     [compile-review.py] statuses/*.json → persists status
-  ├─ 2.4 resolve (resolve skill)
-  │     [analysis Sub] round1.md → by_assignee (no file output)
-  │     [verification Subs] per-specialist parallel → verifications/{id}.json
-  │     [compile-review.py] verifications/*.json → persists verification
-  ├─ 2.5 feedback re-fix loop (max 3)
-  │     [triage Sub] → [estimate Subs] → [compile-review.py] → [select-fix-targets] → [fix Subs]
-  │       → [format & build verification Sub] ⇄ [build-fix specialist Sub] loop
-  │       → [compile-review.py] → [analysis Sub] → [verification Subs] → [compile-review.py]
+  ├─ 2.1 review          [phase Sub] creview:start   → round1.md
+  ├─ 2.2 triage+estimate  [phase Sub] creview:triage  → persists triage / estimate
+  │     ↳ --confirm: present the estimate summary, wait for confirmation
+  ├─ 2.3 respond / fix    [phase Sub] creview:respond → persists status
+  │     ↳ skipped when there is no Maintain / Alternative target
+  ├─ 2.4 resolve          [phase Sub] creview:resolve → persists verification
+  ├─ 2.5 feedback re-fix loop (max 3) → re-run 2.2 → 2.3 → 2.4 with feedback overrides
   └─ 2.6 round end → judge condition for proceeding to the next round
 Round 2 start (do not pass the previous round's review document)
   └─ ...
@@ -110,99 +99,73 @@ Final step
 
 While the round counter is at most `--max-rounds`, repeat the following.
 
-### 2.1 — Run review (start skill)
-
-The orchestrator (you) directly takes on the "review leader" role of `/creview:start`. Follow the procedure, templates, and format in `${CLAUDE_PLUGIN_ROOT}/skills/start/SKILL.md`.
-
-Procedure:
+### 2.1 — Review phase (start skill)
 
 1. Display in console: `## Round {N} — Step 1: Review`
-2. Per start § Step 1, prepare the working directory and diff file, and launch the scope-analysis sub-agent. Hold only the return values (`line_count` / `recommended_reviewers`) in context.
-3. Launch each `name` in `recommended_reviewers` in parallel via `Agent(subagent_type=name, prompt=...)`. Each reviewer Writes findings to `{tmp_dir}/reviews/{name}.md`; return value is `{path, severity counts}` only.
-4. Per start § Step 3, launch the aggregator sub-agent to generate the review document (output path: {this round's file path}, language: user's chat language). Hold only the aggregator sub-agent's return value (`{doc_path, findings_total, severity_counts}`) in context.
-5. Per start § Step 4, delete `{tmp_dir}`.
+2. Launch the phase sub-agent with `templates/phase-review.md` (`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`).
+   - Variables: `base` (`--base` value), `document_path` (this round's file path), `language` (user's chat language)
+   - Overrides: (none)
+3. Hold only the return value (`{doc_path, findings_total, severity_counts}`) in context.
 
-Round-specific overrides (apply after following the template's instructions):
+### 2.2 — Triage & estimate phase (triage skill)
 
-- Do not pass the previous round's review document to reviewers (bias avoidance).
-- Do not perform deduplication against the previous round.
-- Convergence-induction prevention:
-  - **The following must NEVER be included in the reviewer's prompt:**
-    - Past round finding counts, count trends, or trend information such as "appears to be converging."
-    - Past round finding IDs (`C-1`, `M-1`, etc.).
-    - Statistics such as Fixed / Won't Fix counts from past rounds.
-  - It is prohibited to omit parts of the reviewer prompt template or to add instructions in an attempt to adjust the finding count.
-  - The review orchestrator itself is prohibited from adding findings other than those submitted by the reviewers.
+1. Display in console: `## Round {N} — Step 2: Triage & Estimate`
+2. Launch the phase sub-agent with `templates/phase-triage.md` (`template_id`: `6d2a8f4c-1e93-4b57-9c8a-3f7b2d6e1a95`).
+   - Variables: `document_path` (this round's file path), `previous_round_doc_paths` (Round 1: `(none)`; Round N: doc_paths of Round 1..N-1)
+   - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
+3. Hold only the return value (`{will_fix_count, wontfix_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line}`) in context.
+4. Round loop control: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4.
+5. `--confirm`: when at least one Maintain / Alternative exists, Read `summary_path`, present it to the user, and wait for confirmation before 2.3.
 
-### 2.2 — Triage & estimate (triage skill)
+### 2.3 — Respond phase (respond skill)
 
-The orchestrator (you) directly takes on the "triage leader" role of `/creview:triage`. Follow the procedure and templates in `${CLAUDE_PLUGIN_ROOT}/skills/triage/SKILL.md`.
+1. Display in console: `## Round {N} — Step 3: Respond (Fix & Verify)`
+2. Launch the phase sub-agent with `templates/phase-respond.md` (`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`).
+   - Variables: `document_path`, `commit_flag` (`--commit` state)
+   - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
+3. Hold only the return value (`{fix_count, fixed_count, code_changed, workflow_warning, summary_line}`) in context. When `workflow_warning` is non-null, retain it for this round's record.
 
-Input document: {this round's file path}
-
-- Steps 1–3 — delegate to sub-agents per the triage § instructions. The triage skill persists `triage` / `estimate` into the document at its Step 3 (compile).
-
-Round-specific overrides (apply after following the template's instructions):
-
-- Console output: at triage start `## Round {N} — Step 2: Triage`; at estimate start `## Round {N} — Step 2.5: Estimate`.
-- Triage sub-agent: pass the list of doc_paths for all past rounds as the `previous_round_doc_paths` variable (Round 1: `(none)`; Round N: doc_paths of Round 1..N-1). For decision behavior, see the Won't Fix guideline in `${CLAUDE_PLUGIN_ROOT}/skills/triage/templates/triage.md`. State the Will Fix count explicitly in the triage report (also when 0).
-- Estimate sub-agent: do not reference the previous round's review document (bias avoidance). When determining diffusion signal e (Will Fix originating from FIXME), verify whether the finding originates from a `FIXME:` / `TODO:` in the review body or target file.
-- Round loop control after triage: Will Fix == 0 → run the triage compile (persist Won't Fix), then skip 2.3 and proceed to 2.4.
-- Round loop control after estimate: when both Maintain and Alternative are 0 (all Downgrade), run the triage compile, skip 2.3, and proceed to 2.4.
-- `--confirm`: after the triage compile completes and at least one Maintain / Alternative exists, Read the estimate aggregator's `summary_path`, present it to the user, and wait for confirmation before 2.3.
-
-### 2.3 — Respond / fix (respond skill)
-
-The orchestrator (you) directly takes on the "respond leader" role of `/creview:respond`. Follow the procedure and templates in `${CLAUDE_PLUGIN_ROOT}/skills/respond/SKILL.md`. Pass `--commit` through when the round option is enabled.
-
-Input document: {this round's file path} (triage / estimate already persisted by 2.2)
-
-- Console output: at fix start `## Round {N} — Step 3: Respond (Fix & Verify)`.
-- Steps 1–5 — delegate to sub-agents per the respond § instructions. Parallelization and the format & build verification ⇄ build-fix re-execution loop are orchestrated by the leader per that SKILL. The respond compile persists `status` into the document at its Step 5.
-- If `fix_count == 0` (no Maintain / Alternative targets), the respond skill's compile reflects nothing; proceed to 2.4.
-- If a `workflow_warning` was received in respond § Step 4 (the warning when the format / build procedure could not be resolved and only a visual check was done; null when it was resolved), retain it for this round's record.
-
-### 2.4 — Resolve (resolve skill)
-
-The orchestrator (you) directly takes on the "review verification leader" role of `/creview:resolve`. Follow the procedure and templates in `${CLAUDE_PLUGIN_ROOT}/skills/resolve/SKILL.md`.
-
-Input document: {this round's file path}
+### 2.4 — Resolve phase (resolve skill)
 
 1. Display in console: `## Round {N} — Step 4: Resolve`
-2. Per the resolve § procedure, launch analysis Sub → verification Subs (parallel); then the leader runs compile-review.py (resolve § Step 3).
-3. The orchestrator holds only the return values (`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count}`) in context. Do not read the verification body.
+2. Launch the phase sub-agent with `templates/phase-resolve.md` (`template_id`: `2f9c6a1e-7b53-4d84-8e2b-5a1f9d3c7b26`).
+   - Variables: `document_path`, `base` (`--base` value)
+   - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
+3. Hold only the return value (`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count}`) in context.
 
 ### 2.5 — Feedback confirmation and re-fix loop
 
-From the Step 2.4 return value (`feedback_count`), determine whether there are findings that "require feedback." Do not Read the review document body directly.
+From the Step 2.4 return value (`feedback_count`), determine whether findings that "require feedback" remain. Do not Read the review document body.
 
 - `feedback_count == 0`: end the round (proceed to 2.6).
 - `feedback_count > 0`: enter the re-fix loop (max 3).
 
-Re-fix loop (max 3) — each attempt re-runs the triage skill flow, then the respond skill flow, then the resolve skill flow. In each sub-agent's launch prompt, add a "Feedback finding priority" constraint to the "Round-specific overrides" section.
+Each attempt re-runs 2.2 → 2.3 → 2.4, passing the text below as the phase sub-agent's `overrides` variable:
 
-1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run the triage skill (2.2). Add to the triage launch prompt overrides: `Triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` Add to the estimate launch prompt overrides: `Estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.` If all are Downgrade, run the triage compile and skip step 2; go to step 3.
-2. Display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)`. Re-run the respond skill (2.3). Add to the fix launch prompt overrides: `Re-fix based on the Feedback content in current_meta.verification.`
-   If the re-run respond § Step 4 returns a non-null `workflow_warning`, update this round's recorded value (last write wins).
-3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run the resolve skill (2.4).
+1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.` When all are Downgrade, skip step 2 and go to step 3.
+2. Display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)`. Re-run 2.3 with the override `Fix sub-agent: re-fix based on the Feedback content in current_meta.verification.` When the returned `workflow_warning` is non-null, update this round's recorded value (last write wins).
+3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run 2.4 with overrides `(none)`.
 4. If feedback remains, return to step 1. If not resolved within 3 attempts, end the round (remaining 💬 Feedback are counted as "unresolved" in 2.6).
 5. When `--confirm-round` is enabled and unresolved findings remain, wait for user confirmation before proceeding to the next round.
 
 ### 2.6 — Round end
 
-Record the round's results. Each counter is obtained from sub-agent return values (do not Read the review document body to count):
+Record the round's results. Each counter is obtained from phase sub-agent return values (do not Read the review document body to count):
 
-- Findings requiring action: triage Sub's `will_fix_count`
-- Maintain / Alternative / Downgrade counts: estimate aggregator Sub's `maintain_count` / `alternative_count` / `downgrade_count`
-- Fixed count: the respond compile-review.py `fixed_count` (sum of Maintain normal fixes + Alternative FIXME attachments)
-- Unresolved count: the resolve compile-review.py `feedback_count` after the final attempt of Step 2.5
-- Resolved count: the resolve compile-review.py `resolved_count`
+- Total findings: the review phase's `findings_total`
+- Findings requiring action: the triage phase's `will_fix_count`
+- Won't Fix count: the triage phase's `wontfix_count`
+- Maintain / Alternative / Downgrade counts: the triage phase's `maintain_count` / `alternative_count` / `downgrade_count`
+- Fixed count: the respond phase's `fixed_count` (sum of Maintain normal fixes + Alternative FIXME attachments)
+- Unresolved count: the resolve phase's `feedback_count` after the final attempt of Step 2.5
+- Resolved count: the resolve phase's `resolved_count`
+- Feedback attempts: the number of Step 2.5 attempts performed in this round
 - workflow_warning: the `workflow_warning` retained in 2.3 / 2.5 (only for rounds where the format / build procedure was unresolved; null otherwise)
 
 Condition for proceeding to the next round: only when **all** of the following are met, increment the round counter and return to Step 2.1:
 
 1. The round counter is at most `--max-rounds`.
-2. At least one line of source code has changed in this round.
+2. The respond phase's `code_changed` is true for this round. Treat it as false when Step 2.3 was skipped.
 
 If not met, proceed to final report generation.
 
