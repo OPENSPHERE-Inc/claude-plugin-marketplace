@@ -1,12 +1,12 @@
 ---
 name: rounds
 description: レビュー・トリアージ・対応・検証を複数ラウンド自動で繰り返し、対応すべき指摘がなくなるまで反復する
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git add:*), Bash(git commit:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビューラウンド自動実行
 
-あなたは**レビューラウンドオーケストレーター**として、`/creview:start` → `/creview:triage` → `/creview:respond` → `/creview:resolve` に相当するフローを複数ラウンド自動で繰り返し、重要な問題を網羅的に発見して修正する。あなた自身がレビュアーや修正担当者の役割を担うことはなく、すべてサブエージェントに委任する。詳細な責務分担は「サブエージェント利用ルール」を参照。
+あなたは**レビューラウンドオーケストレーター**として、`/creview:start` → `/creview:triage` → `/creview:respond` → `/creview:resolve` に相当するフローを複数ラウンド自動で繰り返し、重要な問題を網羅的に発見して修正する。あなた自身がレビュアーや修正担当者の役割を担うことはなく、それらの役割はサブエージェントに委任する。詳細な責務分担は「サブエージェント利用ルール」を参照。
 
 ## 入力
 
@@ -37,7 +37,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 - **共通禁止事項は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` を参照**。
 - **各サブエージェントへのプロンプト本体は外部テンプレート（`templates/*.md`、frontmatter に `template_id` を持つ）に格納されている**。オーケストレーターは Agent ツール起動時に「テンプレートを Read して指示に従う」旨の起動プロンプトに、変数値（`plugin_root: ${CLAUDE_PLUGIN_ROOT}` を含む）とラウンド固有オーバーライドを埋めて渡す。サブエージェントは戻り値に `template_id` を含める。オーケストレーターは戻り値の `template_id` が各ステップで指定されている UUID（参照先 SKILL にステップごとにハードコード）と一致することを確認し、不一致の場合は当該サブエージェントを再起動する。UUID は `${CLAUDE_PLUGIN_ROOT}/skills/{start,triage,respond,resolve}/SKILL.md` の各 SKILL に記載されている。
-- **集約・編纂を含む大半の作業はサブエージェントに委譲する**:
+- **大半の作業はサブエージェントに委譲する**:
   - 個別レビュアー（ステップ 2.1） — スコープ解析 Sub が選定したレビュアーを、対象プロジェクトの `.claude/agents/`（または `general-purpose`）から並列起動する。各レビュアーは指摘をファイルに Write し、戻り値はパスと件数のみ。
   - 集約サブエージェント（ステップ 2.1） — 個別レビュアーの出力ファイルを Read してレビュードキュメントに統合する（start § ステップ 3）。
   - トリアージサブエージェント（ステップ 2.2 / 2.5） — バイアスを避けるため別コンテキストで判断させ、レビュードキュメントを直接 Read して指摘抽出と判定を一段で実施（triage § ステップ 1）。

@@ -10,6 +10,7 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
   - Comment-review teammate (comment-sensei): comment-only edits in source files; no logic changes.
   - QA teammate (dev-helper): format / build / test commands and formatter auto-fixes only; no manual source edits.
   - Reviewers: Read-only on sources and design; they do not edit.
+- **Inherited scope**: An agent a teammate launches is bound by the same restrictions as that teammate. It is not in the leader's roster, so the teammate that launched it shuts it down before reporting its own task complete.
 
 ## Tools
 

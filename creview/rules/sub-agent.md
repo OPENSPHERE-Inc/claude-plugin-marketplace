@@ -7,7 +7,12 @@ Common prohibitions that sub-agents of the creview skills (start / triage / resp
 - **Output scope**: Writing to any file other than the output file specified by the SKILL is prohibited. The following are allowed only for the responsible sub-agent (prohibited for any sub-agent that is not the responsible one):
   - Build commands (cmake / make / build.ps1 / pwsh build scripts, etc.): format & build verification sub-agent.
   - Formatters (clang-format / cmake-format): format & build verification sub-agent.
-- **Source editing**: Permitted only for the fix sub-agent and the build-fix specialist sub-agent (other sub-agents may only Read sources).
+- **Source editing**: Permitted only for the following sub-agents, each within its stated scope (all others may only Read sources):
+  - Fix sub-agent: source edits for its assigned findings.
+  - Build-fix specialist sub-agent: source edits for the build / test errors it was given.
+  - Comment review sub-agent: comments only; no logic changes.
+  - Format & build verification sub-agent: formatter auto-fixes only.
+- **Inherited scope**: An agent a sub-agent launches is bound by the same restrictions as the sub-agent that launched it.
 
 ## Tools
 

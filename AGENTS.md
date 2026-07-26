@@ -63,6 +63,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
    from active skills.
 10. **Keep README EN ↔ JA in sync**, including the H1 cross-link line.
 11. **CRLF** in skill/template files is inherited from upstream; avoid global reflow churn.
+12. **Agent frontmatter uses `tools:`**, not `allowed-tools:` (that key is for skills /
+    commands and is ignored in `agents/*.md`, leaving the agent unrestricted).
 
 For architecture, the localization workflow, common tasks, and warnings, refer to
 **[CLAUDE.md](CLAUDE.md)**.

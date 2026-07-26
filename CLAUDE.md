@@ -377,6 +377,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   copies** (`creview/`, `cdev/`, and their `src/` mirrors); each plugin ships its own copy
   because plugins install independently. Edit one copy and replicate to the other three;
   `tests/scratch-guard-test.sh` fails on any drift.
+- **Agent definitions use `tools:`; skills / commands use `allowed-tools:`.** `allowed-tools`
+  is not a supported sub-agent frontmatter field, so a tool list written under that key in
+  `<plugin>/agents/*.md` is ignored and the agent runs with every tool.
 
 ---
 

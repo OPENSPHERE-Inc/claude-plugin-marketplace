@@ -10,6 +10,7 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
   - コメントレビュー teammate（comment-sensei）: ソースファイル内のコメントのみ編集可。ロジックは変更しない。
   - QA teammate（dev-helper）: フォーマット / ビルド / テストコマンドとフォーマッタの自動修正のみ。手動のソース編集は不可。
   - reviewer: ソースおよび設計は Read のみ。編集はしない。
+- **スコープの継承**: teammate が起動したエージェントは、起動元の teammate と同じ制限を受ける。リーダーの roster には登録されないため、起動元の teammate が自身のタスク完了を報告する前に shutdown する。
 
 ## ツール
 
