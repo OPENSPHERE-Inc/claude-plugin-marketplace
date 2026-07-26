@@ -14,7 +14,15 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
 
 ## Tools
 
-Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting. Communicate via `SendMessage`: the leader at `to: "main"`, other teammates by their agentId (the leader hands it to you in each message; a friendly name stops resolving once the recipient is idle). Report completion of each assigned task to the leader via `SendMessage`. SendMessage's `message` must be a string: serialize any structured report (the `{...}` shapes) to a JSON string in `message` and add a short `summary`. Only `shutdown_request` / `shutdown_response` may be sent as an object.
+Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting.
+
+Communicate via `SendMessage`: the leader at `to: "main"`, other teammates by their agentId (the leader hands it to you in each message; a friendly name stops resolving once the recipient is idle).
+
+`SendMessage` call rules:
+
+- `message` is always a string of prose. The runtime rejects any other object; the only accepted objects are `shutdown_request` / `shutdown_response` / `plan_approval_response`.
+- Send `summary` (5-10 words) alongside every string `message`.
+- Never put a structured payload in `message`, serialized or otherwise. When a task's result is structured, Write it to the file the task names and send the path plus a one-line summary.
 
 ## Coding Conventions
 
@@ -25,7 +33,7 @@ When editing source code, follow `comment.md` in the same directory as this file
 - **Spawn once, persist.** A teammate is spawned once and keeps its context across steps. Each task arrives as a message that names the template to Read for that task plus its variables; Read that template and follow it for that task.
 - **Report to the leader = counts / paths / one-line summary only.** Never send finding bodies, design bodies, or source to the leader.
 - **Route detailed findings peer-to-peer.** A reviewer sends its actionable (Critical / Major) findings — `file:line` plus the recommended fix direction — by `SendMessage` directly to its paired producer's agentId (the leader provides it).
-- **Report each task's completion to the leader (`to: "main"`) via `SendMessage`** as it completes.
+- **Report each task's completion to whoever assigned it** via `SendMessage`, as it completes: the leader at `to: "main"` for a leader-assigned task, otherwise the requesting teammate's agentId.
 - **Idle is not done.** A teammate goes idle between turns; a new message wakes it.
 - **Shutdown.** On a `shutdown_request` message, reply with a `shutdown_response`.
 

@@ -40,7 +40,7 @@ Design documents and finding descriptions are written in the user's chat languag
 
 The session has a single implicit team. Each teammate is spawned once as a background, persistent subagent (spawn requirements in § Agent types and spawn requirements), persists across steps (its context is retained), goes idle between turns (a message wakes it), and reports completion to the leader via `SendMessage(to: "main")`.
 
-A teammate is addressed by the **agentId** returned in its spawn result. A friendly name stops resolving once the teammate goes idle (`No agent named X is currently addressable`), so always address by agentId. The leader keeps a roster: each teammate's `slug` (the role label `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` / `dev-helper` / `comment-sensei`) → `{agentType, agentId}`. When teammates DM each other, the leader hands each the other's agentId in the dispatch message. The leader is reached at `to: "main"` (always addressable). Every SendMessage `message` is a string (dispatches and reports alike; structured data as a JSON string); only `shutdown_request` / `shutdown_response` are sent as objects.
+A teammate is addressed by the **agentId** returned in its spawn result. A friendly name stops resolving once the teammate goes idle (`No agent named X is currently addressable`), so always address by agentId. The leader keeps a roster: each teammate's `slug` (the role label `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` / `dev-helper` / `comment-sensei`) → `{agentType, agentId}`. When teammates DM each other, the leader hands each the other's agentId in the dispatch message. The leader is reached at `to: "main"` (always addressable). Every SendMessage `message` is a string of prose sent with a `summary` (dispatches and reports alike); structured results travel as files, never inside `message`. The protocol objects are the only exception (`${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` § Tools).
 
 The leader holds no shared task list; it tracks each cell's status, alongside the roster, in its own working state (and may surface it to the user via `TodoWrite`).
 
@@ -61,7 +61,7 @@ Agent type (subagent_type):
 Spawn each teammate once with the prompt below. It fixes the role and the reporting protocol; each later message names the template to Read for that task. For common prohibitions and the cell protocol, see `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md`.
 
 ```
-You are joining the team as {role}. For each task I assign, I name a template under `${CLAUDE_PLUGIN_ROOT}/skills/coding/templates/` and give its variables; Read that template and follow it for that task. Common variables: plugin_root = ${CLAUDE_PLUGIN_ROOT}, doc_lang = {doc_lang}. Report each task result to the leader (SendMessage with to: "main") — counts / paths / one-line summary only; route detailed findings peer-to-peer to the recipient's agentId via SendMessage (I hand you each recipient's agentId), as the template directs. Read `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` and observe the common prohibitions and the review-cell protocol.
+You are joining the team as {role}. For each task I assign, I name a template under `${CLAUDE_PLUGIN_ROOT}/skills/coding/templates/` and give its variables; Read that template and follow it for that task. Common variables: plugin_root = ${CLAUDE_PLUGIN_ROOT}, doc_lang = {doc_lang}. Report each task result to whoever assigned it — the leader at to: "main", or the requesting teammate's agentId — counts / paths / one-line summary only; route detailed findings peer-to-peer to the recipient's agentId via SendMessage (I hand you each recipient's agentId), as the template directs. Read `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` and observe the common prohibitions and the review-cell protocol.
 ```
 
 ## Review cell protocol
@@ -88,6 +88,7 @@ The leader holds only the roster (each teammate's slug → agentType / agentId),
 
 ```
 {tmp_dir} = .claude/tmp/cdev-coding-{timestamp}/
+{tmp_dir}/team.json          ← team-analysis result (roster; read by the leader)
 {tmp_dir}/design/{slug}.md   ← one design section per architect (read by reviewers and coders)
 {tmp_dir}/baseline-tree      ← pre-coding working-tree snapshot (baseline for the QA diff)
 {tmp_dir}/changes.txt        ← diff since coding start (input to QA)
@@ -102,7 +103,7 @@ Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE
 1. Inspect the working tree: run `git status --porcelain`; if the output is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill. This skill operates only on a clean working tree.
 2. Resolve `{timestamp}`, fix `{tmp_dir}`, and create it (`mkdir -p {tmp_dir}/design`). Then record the pre-coding baseline: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`.
 3. Console: `## Step 1 — Team formation`.
-4. Spawn `dev-helper` (type `cdev:dev-helper`) per the spawn requirements, and record its agentId in the roster. To its agentId, `SendMessage` naming `templates/team-analysis.md` with variable `task = {task specification}`. Receive its report (`to: "main"`): `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn; an architect's and coder's `name` is `general-purpose`). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).
+4. Spawn `dev-helper` (type `cdev:dev-helper`) per the spawn requirements, and record its agentId in the roster. To its agentId, `SendMessage` naming `templates/team-analysis.md` with `task = {task specification}`, `output_path = {tmp_dir}/team.json`. On its completion report, Read `{tmp_dir}/team.json`: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn; an architect's and coder's `name` is `general-purpose`). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).
 5. Spawn each roster member (`architect-{slug}` / `coder-{slug}` / `reviewer-{slug}`) per the spawn requirements, using the `name` team-analysis returns as the type (architects and coders use `general-purpose`). Record each teammate's agentId in the roster (slug → agentType / agentId), and hold the pairings and `{task_summary}`.
 6. Console: the roster with each producer's paired reviewer and one-line reasons.
 
@@ -130,7 +131,7 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 
 1. Console: `## Step 4 — QA (attempt {n})`.
 2. Capture the diff since coding start: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh diff {tmp_dir}/baseline-tree {tmp_dir}/changes.txt`.
-3. To dev-helper's agentId, `SendMessage` naming `templates/qa.md` with `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {n}`. Receive its report (`to: "main"`) `{success, format_violations_fixed, workflow_source, workflow_warning, build_ran, test_ran, suggested_specialist, error_summary, summary_line}`. If `workflow_warning` is non-null, retain it for Step 5.
+3. To dev-helper's agentId, `SendMessage` naming `templates/qa.md` with `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {n}`. Retain its one-line completion report as `{summary_line}`, then Read `{tmp_dir}/qa-result.json`: `{success}` is `failure == null`; `{suggested_specialist}` / `{error_summary}` are the corresponding `failure` fields. If `workflow_warning` is non-null, retain it for Step 5.
 4. If `success == true`, exit the loop.
 5. If `success == false` and attempts remain, run a QA-fix cell:
    a. Ensure a general-purpose coder covers the failing scope (reuse an existing one, or spawn a `general-purpose` coder and record its agentId in the roster). For the paired reviewer, reuse an existing reviewer in the roster if one matches the failing domain (with `{suggested_specialist}` as the hint). If none does, spawn a new one and record its agentId in the roster. Use `{suggested_specialist}` as the subagent_type when it exists as a registered name per § Agent types and spawn requirements; otherwise use `general-purpose`.

@@ -7,6 +7,7 @@ template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 Scope the coding task, assemble the specialist team, and pair each producer with a reviewer.
 
 Task: `{{task}}`
+Output: `{{output_path}}`
 
 Agent pool: enumerate `*.md` from the following scopes in priority order, and Read each file's frontmatter `name` / `description` to learn each agent's specialty. The `name` value is what the leader passes to `subagent_type` when spawning a teammate (for a plugin-bundled scope-3 agent, use the namespaced value, e.g. `cdev:comment-sensei`). When the same `name` exists in multiple scopes, adopt the higher-priority scope's entry. Skip any scope that does not exist.
 
@@ -24,5 +25,12 @@ Procedure:
 3. For a domain / role with no matching specialist in the pool, use `general-purpose` for that assignment.
 4. Pair each architect and each coder with one reviewer whose domain matches that producer: set its `reviewer` to a reviewer's `slug`. Share one reviewer across several producers only when they are in the same domain. For a producer with no domain-matching reviewer, assign a `general-purpose` reviewer (do not make an out-of-domain reviewer cover it).
 5. Write `task_summary` as a self-contained restatement of the task (in {{doc_lang}}) that the architects / coders can act on without the original chat.
+6. Write the result to `{{output_path}}`. Write `scope` / `reason` / `rationale` / `task_summary` in {{doc_lang}}; keep `name` / `slug` / identifiers as-is.
 
-Report to the leader (SendMessage with `to: "main"`) as a JSON string: `{task_summary, target_languages: [..], has_test_suite: <bool>, architects: [{name, slug, scope, reviewer, reason}], coders: [{name, slug, scope, reviewer, reason}], reviewers: [{name, slug, reason}], rationale}`. Write `scope` / `reason` / `rationale` / `task_summary` in {{doc_lang}}; keep `name` / `slug` / identifiers as-is. This report doubles as the task-completion signal.
+`{{output_path}}` format:
+
+```
+{"task_summary": <string>, "target_languages": [<string>, ...], "has_test_suite": <bool>, "architects": [{"name": <string>, "slug": <string>, "scope": <string>, "reviewer": <string>, "reason": <string>}], "coders": [{"name": <string>, "slug": <string>, "scope": <string>, "reviewer": <string>, "reason": <string>}], "reviewers": [{"name": <string>, "slug": <string>, "reason": <string>}], "rationale": <string>}
+```
+
+Report completion to the leader (SendMessage with `to: "main"`) as one line naming `{{output_path}}` and the team size (architects / coders / reviewers).

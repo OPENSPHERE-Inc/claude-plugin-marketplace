@@ -13,7 +13,7 @@ The command CWD is the project root. Use relative paths only. Do not pipe throug
 Procedure:
 
 1. Resolve the format / build / test commands and `workflow_source` via `{{plugin_root}}/rules/build-format-detection.md`. If `workflow_source == "none"`, run nothing and go to step 5.
-2. Read `{{diff_path}}` and classify the changes. If a stage's outcome cannot be affected by them (comments / docs / non-source only), mark that stage skip-eligible (`ran = false`, note the skip in `summary_line`). When in doubt, run it.
+2. Read `{{diff_path}}` and classify the changes. If a stage's outcome cannot be affected by them (comments / docs / non-source only), mark that stage skip-eligible (`ran = false`, note the skip in the completion report). When in doubt, run it.
 3. Format (only when a format command resolved): if it has a verification (dry-run) form, run it and apply the auto-fix form on violations; otherwise apply the auto-fix form to the changed files. Follow the resolved descriptor for target selection.
 4. Build, then test:
    - Build (when a build command resolved and the stage is not skip-eligible; `build_ran = true`): run any configure command first, then the build, redirecting output to `{{tmp_dir}}/build.log`. The moment configure or build exits non-zero, set `failure.stage = "build"` and go to step 6.
@@ -28,4 +28,4 @@ Procedure:
 {"workflow_source": "build-format.md | CLAUDE.md | README.md | none", "workflow_warning": <string|null>, "format": {"format_violations_fixed": <int>}, "build": {"ran": <bool>, "success": <bool>}, "test": {"ran": <bool>, "success": <bool>}, "failure": {"stage": "build|test|visual", "error_summary": <string|null>, "error_files": ["src/foo:42", ...]|null, "suggested_specialist": <string|null>, "fix_guidance": <string|null>, "log_path": "{{tmp_dir}}/build.log"}|null}
 ```
 
-Report to the leader (SendMessage with `to: "main"`) as a JSON string: `{success, format_violations_fixed, workflow_source, workflow_warning, build_ran, test_ran, suggested_specialist, error_summary, summary_line}`. `success` is `failure == null`; a stage with `ran = false` counts as passing. `summary_line` is <=200 chars (e.g. "build-format.md / format ok / build ok / test ok"). This report doubles as the task-completion signal.
+Report completion to the leader (SendMessage with `to: "main"`) as one line of <=200 chars (e.g. "build-format.md / format ok / build ok / test ok").

@@ -14,4 +14,4 @@ Judge the design for correctness and completeness against the task, feasibility,
 
 Severity labels: Critical (design is wrong or will not meet the task) / Major (significant gap or risk) / Minor (improvement) / Info (note); actionable = Critical / Major.
 
-Per the cell protocol: DM actionable findings (the section / area, the issue, the recommended fix direction; in {{doc_lang}}, severity labels as-is) to `{{producer}}`; report severity counts to the leader as a JSON string `{critical, major, minor, info}`; resolve after the producer triages; report cell `{{cell_task}}` resolved to the leader via `SendMessage(to: "main")`; and escalate a rejected `Critical` you still disagree with.
+Per the cell protocol: DM actionable findings (the section / area, the issue, the recommended fix direction; in {{doc_lang}}, severity labels as-is) to `{{producer}}`; report the severity counts to the leader as one line (`Critical N / Major N / Minor N / Info N`); resolve after the producer triages; report cell `{{cell_task}}` resolved to the leader via `SendMessage(to: "main")`; and escalate a rejected `Critical` you still disagree with.
