@@ -37,8 +37,7 @@ Write the review document in the user's chat language.
 
 - **For common prohibitions, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`.**
 - **The prompt body for each sub-agent is stored in an external template (`templates/*.md`, with `template_id` in the frontmatter).** When launching a sub-agent via the Agent tool, the orchestrator passes a launch prompt that says "Read the template and follow its instructions," with variable values (including `plugin_root: ${CLAUDE_PLUGIN_ROOT}`) and round-specific overrides filled in. The sub-agent includes `template_id` in its return value. The orchestrator verifies that the returned `template_id` matches the UUID specified in each Step (hard-coded per Step in the referenced SKILLs), and relaunches the sub-agent if it does not match. The UUIDs are documented in the `${CLAUDE_PLUGIN_ROOT}/skills/{start,triage,respond,resolve}/SKILL.md` SKILLs.
-- **Sub-agent nesting is prohibited** — when you yourself are launched as a sub-agent, you cannot launch further sub-agents from there.
-- **Most work, including aggregation and compilation, is delegated to sub-agents** (one level of nesting is allowed):
+- **Most work, including aggregation and compilation, is delegated to sub-agents**:
   - Individual reviewers (Step 2.1) — launch the reviewers selected by the scope-analysis Sub from the destination project's `.claude/agents/` (or `general-purpose`) in parallel. Each reviewer Writes findings to a file; return value is path and counts only.
   - Aggregator sub-agent (Step 2.1) — Reads each individual reviewer's output file and merges them into the review document (start § Step 3).
   - Triage sub-agent (Step 2.2 / 2.5) — judging in a separate context to avoid bias, directly Reads the review document and performs finding extraction and judgment in a single stage (triage § Step 1).

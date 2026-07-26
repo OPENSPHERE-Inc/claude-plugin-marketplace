@@ -24,7 +24,6 @@ allowed-tools: Read, Write, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 
 - ユーザーの使用言語（日本語または英語）に合わせて応答する。
 - テンプレートが指す共通禁止事項ルール（`{{plugin_root}}/rules/sub-agent.md`）を Read して従う。
-- 自分自身からは Agent ツールを呼ばない（サブエージェントのネスト禁止）。
 - ソースコードのロジック変更は行わない。例外として、フォーマット検証時の `clang-format -i` / `cmake-format -i` による自動整形のみ許可される。
 - 出力（JSON / markdown / events.jsonl 等）の構造・フィールド名・型・形式はテンプレートに記載されたとおりに従う（独自にフィールド・見出し・項目を追加したり改名したり言い換えたりしない）。
 - 不確実な箇所はテンプレートの該当箇所を再 Read して解釈する（推測で埋めない）。

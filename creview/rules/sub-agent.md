@@ -4,7 +4,6 @@ Common prohibitions that sub-agents of the creview skills (start / triage / resp
 
 ## Prohibitions
 
-- **No nesting**: Sub-agents must not launch further sub-agents via the Agent tool (the leader is the sole orchestrator).
 - **Output scope**: Writing to any file other than the output file specified by the SKILL is prohibited. The following are allowed only for the responsible sub-agent (prohibited for any sub-agent that is not the responsible one):
   - Build commands (cmake / make / build.ps1 / pwsh build scripts, etc.): format & build verification sub-agent.
   - Formatters (clang-format / cmake-format): format & build verification sub-agent.
