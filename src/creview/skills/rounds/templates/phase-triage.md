@@ -20,5 +20,6 @@ template_id: 6d2a8f4c-1e93-4b57-9c8a-3f7b2d6e1a95
    - 見積サブエージェント: 過去ラウンドのレビュードキュメントは参照しない（バイアス回避）。拡散シグナル e（FIXME 起源の Will Fix）を判定する際、当該指摘がレビュー本文や対象ファイル中の `FIXME:` / `TODO:` を起点としているかを確認する。
    - `{{overrides}}` の各項目: 項目が名指しするサブエージェントの起動プロンプトに付す。名指しが無い項目は全サブエージェントに付す。
 3. `will_fix_count` が 0 の場合も compile ステップを実行する（Won't Fix のトリアージ値を永続化するため）。
+4. `creview:triage` のステップ 1 の戻り値に `error` が含まれる場合は、見積・compile ステップを実行せず、各カウントを 0、`summary_path` を null、`error` に受領したメッセージを設定して戻る。
 
-戻り値: `{will_fix_count, wontfix_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, template_id}`。見積ステージをスキップした場合、`maintain_count` / `alternative_count` / `downgrade_count` は 0、`summary_path` は null として報告する。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
+戻り値: `{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, error, template_id}`。`flipped_count` は裁定段が反転した判定の件数で、トリアージサブエージェントの戻り値をそのまま転記する。`error` は成功時 null。見積ステージをスキップした場合、`maintain_count` / `alternative_count` / `downgrade_count` は 0、`summary_path` は null として報告する。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

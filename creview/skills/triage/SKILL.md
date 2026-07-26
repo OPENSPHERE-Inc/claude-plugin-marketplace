@@ -123,7 +123,7 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-2. Receive the return value (`{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}`). Do not load the triage body. When the return value carries `error`, do not proceed to Step 2 or beyond: report the failure to the user and abort.
+2. Receive the return value (`{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}`). Do not load the triage body. When the return value carries `error`, do not proceed to Step 2 or beyond: remove the working directory with `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`, report the failure to the user, and abort.
 3. Verify that `template_id` matches `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15`. On mismatch, relaunch the sub-agent.
 4. Present the triage summary (counts, including `flipped_count` — the number of decisions overturned by adjudication) to the user.
 

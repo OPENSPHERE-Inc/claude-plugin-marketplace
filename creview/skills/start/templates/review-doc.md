@@ -4,7 +4,7 @@
 
 - **Date:** YYYY-MM-DD
 - **Round:** {N}
-- **Mode:** adversarial
+- **Mode:** adversarial  <!-- output only for an adversarial run -->
 - **Scope:** {description of the review target}
 - **Reviewers:** {comma-separated list of all reviewers used}
 

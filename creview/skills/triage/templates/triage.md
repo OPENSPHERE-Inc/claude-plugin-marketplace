@@ -48,6 +48,8 @@ Won't Fix guideline (when any of the following applies):
 
 High-severity exception: For Critical / Major Won't Fix, explicitly state "recommend separate PR" in the reason field (e.g. "Won't Fix — Existing-code bug. Recommend fixing in a separate PR.").
 
+Apply guideline 7 only to findings whose `stage` is `pending_triage`. A finding whose `stage` is `feedback` was processed in a past round and then received 💬 Feedback from verification, so having been processed already is its premise; guideline 7 does not apply to it.
+
 Procedure:
 
 1. Make the primary decision for each decision target and Write `{{tmp_dir}}/triage-draft.json`. Do not resolve the assignee at this stage.
@@ -69,9 +71,9 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-Verify that the returned `template_id` matches `b8701509-403b-488b-8b13-c867f9c6700b`. On mismatch, launch a fresh instance of the same `subagent_type` and retry. When it mismatches twice in a row, do not proceed to the following steps: return `{path: null, error: "challenge template_id mismatch twice", template_id}` without writing `triage.json`.
+Verify that the returned `template_id` matches `b8701509-403b-488b-8b13-c867f9c6700b`. On mismatch, launch a fresh instance of the same `subagent_type` and retry. When it mismatches twice in a row, do not proceed to the following steps: return `{path: null, error: "challenge template_id mismatch twice", template_id}` without writing `triage.json`. When the `Agent` launch itself fails (the nested-spawn depth limit is reached, etc.), skip step 4, adopt the draft `verdict` / `reason` as the final verdicts, Write `{{tmp_dir}}/triage.json` following step 5, and return with `flipped_count: 0` and a note that the challenge and adjudication stages were skipped.
 
-4. Launch the adjudication sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`. Do not specify the model. Fill the values you received into the launch prompt:
+4. Launch the adjudication sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`. Launch it only after step 3 has returned and `{{tmp_dir}}/challenge.json` exists. Do not launch it in the same message as step 3. Do not specify the model. Fill the values you received into the launch prompt:
 
 ```
 As your first action, you MUST Read `{{plugin_root}}/skills/triage/templates/triage-adjudicate.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
@@ -88,9 +90,9 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-Verify that the returned `template_id` matches `1921777f-3486-44ff-bc18-2b859ce75122`. On mismatch, launch a fresh instance of the same `subagent_type` and retry. When it mismatches twice in a row, do not proceed to step 5: return `{path: null, error: "adjudicate template_id mismatch twice", template_id}` without writing `triage.json`.
+Verify that the returned `template_id` matches `1921777f-3486-44ff-bc18-2b859ce75122`. On mismatch, launch a fresh instance of the same `subagent_type` and retry. When it mismatches twice in a row, do not proceed to step 5: return `{path: null, error: "adjudicate template_id mismatch twice", template_id}` without writing `triage.json`. When the `Agent` launch itself fails, adopt the draft `verdict` / `reason` as the final verdicts, Write `{{tmp_dir}}/triage.json` following step 5, and return with `flipped_count: 0` and a note that the adjudication stage was skipped.
 
-5. Adopt the `verdict` and `reason` of `{{tmp_dir}}/adjudication.json` as-is (do not rework the reason), resolve the assignee for the confirmed Will Fix set only via the procedure in `{{plugin_root}}/rules/agents-detection.md` (match target is the finding content — language, subsystem, comment-discipline, build, etc.; the result field is the assignee), and Write `{{tmp_dir}}/triage.json`. For an id missing from `adjudication.json`, or whose `verdict` is neither `Will Fix` nor `Won't Fix`, adopt the draft's `verdict` and `reason` and count it as not flipped.
+5. Adopt the `verdict` and `reason` of `{{tmp_dir}}/adjudication.json` as-is (do not rework the reason), resolve the assignee for the confirmed Will Fix set only via the procedure in `{{plugin_root}}/rules/agents-detection.md` (match target is the finding content — language, subsystem, comment-discipline, build, etc.; the result field is the assignee), and Write `{{tmp_dir}}/triage.json`. For an id missing from `adjudication.json`, or whose `verdict` is neither `Will Fix` nor `Won't Fix`, adopt the draft's `verdict` and `reason` and count it as not flipped. When the Read of `{{tmp_dir}}/adjudication.json` fails (the file does not exist, etc.), adopt the draft `verdict` and `reason` for all ids as the final verdicts, resolve the assignee for the Will Fix set as usual, Write `{{tmp_dir}}/triage.json`, and set `flipped_count: 0`.
 
 `{{tmp_dir}}/triage-draft.json` format: `{items: [{id, severity, location, stage, verdict (Will Fix | Won't Fix), reason}], by_stage: {<stage>: <int>}}` (settle Needs Investigation into either verdict before writing)
 

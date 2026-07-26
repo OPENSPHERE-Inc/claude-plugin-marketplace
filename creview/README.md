@@ -28,13 +28,16 @@ unconditionally: the triage sub-agent proposes a verdict, a challenge sub-agent
 argues the opposite where it can, and an adjudication sub-agent decides the
 final verdict.
 
-`/creview:rounds` runs each phase in a phase leader sub-agent, which in turn
-spawns that phase's own sub-agents, and the triage sub-agent spawns its own
-challenge / adjudication sub-agents, so it needs nested sub-agent spawning
-(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` of 3 or more; the default is 3). Run on
-its own, `/creview:triage` needs a depth of 2 or more, since its triage
-sub-agent spawns the challenge / adjudication sub-agents. A long run also
-consumes many subagent slots — raise
+Nested sub-agent spawning is required
+(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; the default is 3):
+
+- `/creview:rounds` — 3 or more. Each phase runs in a phase leader
+  sub-agent, which spawns that phase's own sub-agents, and the triage
+  sub-agent spawns the challenge / adjudication sub-agents.
+- `/creview:triage` on its own — 2 or more. The triage sub-agent spawns
+  the challenge / adjudication sub-agents.
+
+A long run also consumes many subagent slots — raise
 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
 session) when using a high `--max-rounds`.
 
@@ -73,7 +76,9 @@ the [agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer) MCP
 server instead of the `/creview:rounds` skill. It depends on the
 `agent-sequencer` plugin / MCP server (registered in this marketplace as an
 external plugin). Place the program in the agent-sequencer programs directory.
-Its Instruction prompts are written in Japanese; the skills it invokes
+The orchestrator itself is the triage leader here, so this variant needs a
+spawn depth of 2 or more — not the 3 that `/creview:rounds` needs.
+Its Instruction prompts are written in English; the skills it invokes
 (`/creview:start|triage|respond|resolve`) drive the review in the user's chat
 language.
 

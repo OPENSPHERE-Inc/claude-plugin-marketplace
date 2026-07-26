@@ -148,9 +148,11 @@ _TRIAGE_SCHEMA = {
     "properties": {
         "will_fix_count": {"type": "integer", "minimum": 0},
         "wontfix_count": {"type": "integer", "minimum": 0},
+        "flipped_count": {"type": "integer", "minimum": 0},
         "maintain_count": {"type": "integer", "minimum": 0},
         "alternative_count": {"type": "integer", "minimum": 0},
         "downgrade_count": {"type": "integer", "minimum": 0},
+        "error": {"type": ["string", "null"]},
         "summary_line": {"type": "string", "maxLength": 500},
     },
     "required": ["will_fix_count", "wontfix_count"],
@@ -302,13 +304,17 @@ _TPL_TRIAGE = textwrap.dedent("""\
     {{
       "will_fix_count": <int>,
       "wontfix_count": <int>,
+      "flipped_count": <int>,
       "maintain_count": <int>,
       "alternative_count": <int>,
       "downgrade_count": <int>,
+      "error": "(トリアージフェーズが中断した場合のメッセージ。無ければ null)",
       "summary_line": "(<=200 chars 1 行サマリ。見積編纂サブエージェントの戻り値をそのまま転記)"
     }}
     - will_fix_count / wontfix_count: トリアージサブエージェントの戻り値
+    - flipped_count: 裁定段が反転した判定の件数（トリアージサブエージェントの戻り値）
     - maintain_count / alternative_count / downgrade_count: 見積編纂サブエージェントの戻り値
+    - error: トリアージフェーズを完走できなかった場合のメッセージ（各カウントは 0 で報告。成功時は null）
     - summary_line: ユーザー通知用の 1 行サマリ（リーダー context にはこの 1 行のみ載せる）\
 """)
 
@@ -481,6 +487,7 @@ def _format_per_round_stats_block(round_records: list[dict]) -> str:
             f"    - Round {r['round_num']}: "
             f"findings={r['findings_total']} ({sev_str}), "
             f"will_fix={r['will_fix_count']}, "
+            f"flipped={r.get('flipped_count', 0)}, "
             f"maintain={r.get('maintain_count', 0)}, "
             f"alternative={r.get('alternative_count', 0)}, "
             f"downgrade={r.get('downgrade_count', 0)}, "
@@ -578,6 +585,7 @@ def run(ctx):
             "will_fix_count": 0,
             "fixed_count": 0,
             "wontfix_count": 0,
+            "flipped_count": 0,
             "maintain_count": 0,
             "alternative_count": 0,
             "downgrade_count": 0,
@@ -614,8 +622,18 @@ def run(ctx):
             timeout_minutes=120,
         )
 
+        if triage_result.get("error"):
+            yield Abort(
+                reason=(
+                    f"Round {round_num} のトリアージフェーズが中断: "
+                    f"{triage_result['error']}"
+                )
+            )
+            return
+
         round_record["will_fix_count"] = triage_result["will_fix_count"]
         round_record["wontfix_count"] = triage_result["wontfix_count"]
+        round_record["flipped_count"] = triage_result.get("flipped_count", 0)
         round_record["maintain_count"] = triage_result.get("maintain_count", 0)
         round_record["alternative_count"] = triage_result.get(
             "alternative_count", 0
@@ -790,6 +808,7 @@ def run(ctx):
     total_will_fix = sum(r["will_fix_count"] for r in round_records)
     total_fixed = sum(r["fixed_count"] for r in round_records)
     total_wontfix = sum(r["wontfix_count"] for r in round_records)
+    total_flipped = sum(r.get("flipped_count", 0) for r in round_records)
     total_maintain = sum(r.get("maintain_count", 0) for r in round_records)
     total_alternative = sum(r.get("alternative_count", 0) for r in round_records)
     total_downgrade = sum(r.get("downgrade_count", 0) for r in round_records)
@@ -806,6 +825,7 @@ def run(ctx):
         "total_will_fix": total_will_fix,
         "total_fixed": total_fixed,
         "total_wontfix": total_wontfix,
+        "total_flipped": total_flipped,
         "total_maintain": total_maintain,
         "total_alternative": total_alternative,
         "total_downgrade": total_downgrade,

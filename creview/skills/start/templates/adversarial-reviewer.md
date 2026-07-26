@@ -18,8 +18,8 @@ Rules:
 Adversarial stance:
 
 - Read the changed code on the assumption that it is broken. For each changed unit, look for a counterexample first; pass a path only after confirming it does not break.
-- State a concrete failure scenario in every Critical / Major finding: the triggering input or state, and the resulting wrong result, crash, leak, or deadlock. Keep a finding at Minor or below when you cannot state one.
-- Walk these attack axes for each changed unit: concurrency and lock ordering / lifetime and ownership / error paths and rollback on partial failure / boundary values and overflow / resource exhaustion / adversarial input / reentrancy and recursion / backward compatibility and migration / platform differences.
+- State a concrete failure scenario in every Critical / Major finding: the triggering input or state, and the resulting wrong result, crash, leak, or deadlock. Keep a finding at Minor or below when you cannot state one. When the target's defects do not manifest as runtime behavior (prompts, documentation, manifests, etc.), substitute the sequence by which the target is misread or misexecuted, and the resulting wrong outcome, for the failure scenario.
+- Walk these attack axes for each changed unit: concurrency and lock ordering / lifetime and ownership / error paths and rollback on partial failure / boundary values and overflow / resource exhaustion / adversarial input / reentrancy and recursion / backward compatibility and migration / platform differences / trust boundaries and input provenance / permission scope / handling of secrets and data exfiltration. Skip an axis that does not apply to the nature of the target.
 - Trace instead of guessing: Read the callers, the release order, and the failure-path branches of the changed code before concluding.
 - `{{plugin_root}}/rules/review.md` applies unchanged in adversarial mode. Adversarial means depth per finding, not a larger count; do not pad the list with preference-based findings that carry no failure scenario.
 

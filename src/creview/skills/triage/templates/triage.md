@@ -48,6 +48,8 @@ Won't Fix ガイドライン（いずれか該当時）:
 
 高重要度例外: Won't Fix でも Critical / Major は理由欄に「別 PR 推奨」を明記（例: "Won't Fix — 既存コードのバグ。別 PR での修正を推奨"）。
 
+ガイドライン 7 は `stage` が `pending_triage` の指摘にのみ適用する。`stage` が `feedback` の指摘は、過去ラウンドで処理されたうえで検証が 💬 Feedback を返した対象であり、処理済みであること自体が前提のため適用しない。
+
 手順:
 
 1. 判定対象ごとに一次判定を行い `{{tmp_dir}}/triage-draft.json` に Write する。この段では assignee を解決しない。
@@ -69,9 +71,9 @@ Won't Fix ガイドライン（いずれか該当時）:
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-戻り値の `template_id` が `b8701509-403b-488b-8b13-c867f9c6700b` と一致することを確認する。不一致の場合は同一 `subagent_type` の新規インスタンスを起動して再試行する。2 回連続で不一致となった場合は以降の手順に進まず、`triage.json` を Write せずに `{path: null, error: "challenge template_id mismatch twice", template_id}` を返す。
+戻り値の `template_id` が `b8701509-403b-488b-8b13-c867f9c6700b` と一致することを確認する。不一致の場合は同一 `subagent_type` の新規インスタンスを起動して再試行する。2 回連続で不一致となった場合は以降の手順に進まず、`triage.json` を Write せずに `{path: null, error: "challenge template_id mismatch twice", template_id}` を返す。Agent の起動自体が失敗した場合（ネスト起動の深度上限到達等）は、手順 4 をスキップし、draft の `verdict` / `reason` をそのまま最終判定として手順 5 の要領で `{{tmp_dir}}/triage.json` を Write し、`flipped_count: 0` と反証・裁定を省略した旨を返す。
 
-4. 裁定 Sub を `Agent(subagent_type="general-purpose", prompt=...)` で起動する。モデル指定はしない。受け取った変数値を埋めた起動プロンプト:
+4. 裁定 Sub を `Agent(subagent_type="general-purpose", prompt=...)` で起動する。手順 3 の戻り値を受け取り `{{tmp_dir}}/challenge.json` の生成を確認してから起動する。手順 3 と同一メッセージで並列起動しない。モデル指定はしない。受け取った変数値を埋めた起動プロンプト:
 
 ```
 最初の行動として `{{plugin_root}}/skills/triage/templates/triage-adjudicate.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
@@ -88,9 +90,9 @@ Won't Fix ガイドライン（いずれか該当時）:
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-戻り値の `template_id` が `1921777f-3486-44ff-bc18-2b859ce75122` と一致することを確認する。不一致の場合は同一 `subagent_type` の新規インスタンスを起動して再試行する。2 回連続で不一致となった場合は手順 5 に進まず、`triage.json` を Write せずに `{path: null, error: "adjudicate template_id mismatch twice", template_id}` を返す。
+戻り値の `template_id` が `1921777f-3486-44ff-bc18-2b859ce75122` と一致することを確認する。不一致の場合は同一 `subagent_type` の新規インスタンスを起動して再試行する。2 回連続で不一致となった場合は手順 5 に進まず、`triage.json` を Write せずに `{path: null, error: "adjudicate template_id mismatch twice", template_id}` を返す。Agent の起動自体が失敗した場合は、draft の `verdict` / `reason` をそのまま最終判定として手順 5 の要領で `{{tmp_dir}}/triage.json` を Write し、`flipped_count: 0` と裁定を省略した旨を返す。
 
-5. `{{tmp_dir}}/adjudication.json` の `verdict` と `reason` をそのまま採用し（reason は加工しない）、確定した Will Fix 集合に対してのみ `{{plugin_root}}/rules/agents-detection.md` の手順で assignee を解決し（マッチ対象は指摘内容（言語・サブシステム・コメント規律・ビルド等）、記録先は assignee）、`{{tmp_dir}}/triage.json` を Write する。`adjudication.json` に欠けている id、および `verdict` が `Will Fix` / `Won't Fix` 以外の id は、draft の `verdict` と `reason` を採用し反転なしとして数える。
+5. `{{tmp_dir}}/adjudication.json` の `verdict` と `reason` をそのまま採用し（reason は加工しない）、確定した Will Fix 集合に対してのみ `{{plugin_root}}/rules/agents-detection.md` の手順で assignee を解決し（マッチ対象は指摘内容（言語・サブシステム・コメント規律・ビルド等）、記録先は assignee）、`{{tmp_dir}}/triage.json` を Write する。`adjudication.json` に欠けている id、および `verdict` が `Will Fix` / `Won't Fix` 以外の id は、draft の `verdict` と `reason` を採用し反転なしとして数える。`{{tmp_dir}}/adjudication.json` の Read に失敗した場合（ファイルが存在しない等）は、全 id について draft の `verdict` と `reason` を最終判定として採用し、Will Fix 集合の assignee は通常どおり解決して `{{tmp_dir}}/triage.json` を Write し、`flipped_count: 0` とする。
 
 `{{tmp_dir}}/triage-draft.json` 形式: `{items: [{id, severity, location, stage, verdict（Will Fix | Won't Fix）, reason}], by_stage: {<stage>: <int>}}`（Needs Investigation は Write 前にいずれかの verdict へ決着させる）
 

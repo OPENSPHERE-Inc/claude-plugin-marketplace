@@ -123,7 +123,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-2. 戻り値（`{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}`）を受け取る。triage の本文は読み込まない。戻り値に `error` が含まれる場合はステップ 2 以降に進まず、失敗をユーザーに報告して中断する。
+2. 戻り値（`{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}`）を受け取る。triage の本文は読み込まない。戻り値に `error` が含まれる場合はステップ 2 以降に進まず、`${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で作業ディレクトリを削除し、失敗をユーザーに報告して中断する。
 3. `template_id` が `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
 4. トリアージサマリ（件数。裁定で反転した件数 `flipped_count` を含む）をユーザーに提示する。
 

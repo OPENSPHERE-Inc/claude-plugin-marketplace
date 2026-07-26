@@ -114,9 +114,10 @@ While the round counter is at most `--max-rounds`, repeat the following.
 2. Launch the phase sub-agent with `templates/phase-triage.md` (`template_id`: `6d2a8f4c-1e93-4b57-9c8a-3f7b2d6e1a95`).
    - Variables: `document_path` (this round's file path), `previous_round_doc_paths` (Round 1: `(none)`; Round N: doc_paths of Round 1..N-1)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
-3. Hold only the return value (`{will_fix_count, wontfix_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line}`) in context.
-4. Round loop control: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4.
-5. `--confirm`: when at least one Maintain / Alternative exists, Read `summary_path`, present it to the user, and wait for confirmation before 2.3.
+3. Hold only the return value (`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, error}`) in context.
+4. When `error` is non-null, do not proceed to 2.3 or beyond: report the failure to the user and end the round loop.
+5. Round loop control: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4.
+6. `--confirm`: when at least one Maintain / Alternative exists, Read `summary_path`, present it to the user, and wait for confirmation before 2.3.
 
 ### 2.3 — Respond phase (respond skill)
 
@@ -156,6 +157,7 @@ Record the round's results. Each counter is obtained from phase sub-agent return
 - Total findings: the review phase's `findings_total`
 - Findings requiring action: the triage phase's `will_fix_count`
 - Won't Fix count: the triage phase's `wontfix_count`
+- Flipped count: the triage phase's `flipped_count`
 - Maintain / Alternative / Downgrade counts: the triage phase's `maintain_count` / `alternative_count` / `downgrade_count`
 - Fixed count: the respond phase's `fixed_count` (sum of Maintain normal fixes + Alternative FIXME attachments)
 - Unresolved count: the resolve phase's `feedback_count` after the final attempt of Step 2.5
@@ -182,7 +184,7 @@ As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templat
 Variables (substitute into the template's {{...}} placeholders):
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - round_doc_paths: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
-- round_stats: Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ... (for rounds whose workflow_warning is non-null, append workflow_warning="..." at the end)
+- round_stats: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ... (for rounds whose workflow_warning is non-null, append workflow_warning="..." at the end)
 - template_path: {template_path}
 - report_path: {report_path}
 - language: user's chat language

@@ -114,9 +114,10 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 2. `templates/phase-triage.md`（`template_id`: `6d2a8f4c-1e93-4b57-9c8a-3f7b2d6e1a95`）でフェーズ Sub を起動する。
    - 変数: `document_path`（今ラウンドのファイルパス）、`previous_round_doc_paths`（Round 1: `(なし)`、Round N: Round 1〜N-1 の doc_path）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの
-3. 戻り値（`{will_fix_count, wontfix_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line}`）のみ context に保持する。
-4. ラウンドループ制御: `will_fix_count` が 0、または `maintain_count` と `alternative_count` がともに 0 の場合、2.3 をスキップして 2.4 に進む。
-5. `--confirm`: Maintain / Alternative が 1 件以上ある場合、`summary_path` を Read してユーザーに提示し、2.3 の前に確認を待つ。
+3. 戻り値（`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, error}`）のみ context に保持する。
+4. `error` が非 null の場合は 2.3 以降に進まず、失敗をユーザーに報告してラウンドループを終了する。
+5. ラウンドループ制御: `will_fix_count` が 0、または `maintain_count` と `alternative_count` がともに 0 の場合、2.3 をスキップして 2.4 に進む。
+6. `--confirm`: Maintain / Alternative が 1 件以上ある場合、`summary_path` を Read してユーザーに提示し、2.3 の前に確認を待つ。
 
 ### 2.3 — 対応フェーズ（respond スキル）
 
@@ -156,6 +157,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 - 総指摘数: レビューフェーズの `findings_total`
 - 要対応の指摘数: トリアージフェーズの `will_fix_count`
 - Won't Fix 数: トリアージフェーズの `wontfix_count`
+- 反転数: トリアージフェーズの `flipped_count`
 - Maintain / Alternative / Downgrade 数: トリアージフェーズの `maintain_count` / `alternative_count` / `downgrade_count`
 - 修正数: 対応フェーズの `fixed_count`（Maintain 通常修正 + Alternative FIXME 付与の合計）
 - 未解決数: ステップ 2.5 最終試行後の検証フェーズの `feedback_count`
@@ -182,7 +184,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 変数（テンプレート中の {{...}} placeholder を置換）:
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - round_doc_paths: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
-- round_stats: Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...（workflow_warning が非 null のラウンドは末尾に workflow_warning="..." を付す）
+- round_stats: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...（workflow_warning が非 null のラウンドは末尾に workflow_warning="..." を付す）
 - template_path: {template_path}
 - report_path: {report_path}
 - language: ユーザーのチャット言語
