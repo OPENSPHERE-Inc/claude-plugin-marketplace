@@ -12,7 +12,7 @@ The leader does not design, write, review, or fix code.
 
 ## Requirements
 
-This skill uses background subagents (`Agent` with `run_in_background`) and inter-teammate messaging (`SendMessage`), and runs only in a runtime where they are available. If either is unavailable, do not proceed — report the unmet requirement to the user and abort. The session has a single implicit team; no explicit team creation or deletion. There is no shared task list.
+This skill uses background subagents (`Agent` with `run_in_background`) and inter-teammate messaging (`SendMessage`), and runs only in a runtime where they are available. If either is unavailable, do not proceed — report the unmet requirement to the user and abort.
 
 ## Trust premise
 
@@ -38,13 +38,16 @@ Design documents and finding descriptions are written in the user's chat languag
 
 ## Team model
 
-The session has a single implicit team. Each teammate is spawned once as a background, persistent subagent (spawn requirements in § Agent types and spawn requirements), persists across steps (its context is retained), goes idle between turns (a message wakes it), and reports completion to the leader via `SendMessage(to: "main")`.
+The session has a single implicit team (no explicit creation or deletion). Each teammate is spawned once as a background, persistent subagent, keeps its context across steps, goes idle between turns (a message wakes it), and reports each task's completion to whoever assigned it.
 
-A teammate is addressed by the **name** it was spawned with — its role label `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` / `dev-helper` / `comment-sensei`. A name keeps resolving after the teammate goes idle or completes; the send resumes it from its transcript. The newest holder of a name wins, so never spawn two teammates under the same name in a session. The leader keeps a roster: each teammate's name → `agentType`. When teammates DM each other, the leader hands each the other's name in the dispatch message. The leader is reached at `to: "main"`. Every SendMessage `message` is a string of prose sent with a `summary` (dispatches and reports alike); structured results travel as files, never inside `message`. The protocol objects are the only exception (`${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` § Tools).
+Addressing contract:
 
-The leader holds no shared task list; it tracks each cell's status, alongside the roster, in its own working state (and may surface it to the user via `TodoWrite`).
+- A teammate is addressed by the **name** it was spawned with — its role label `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` / `dev-helper` / `comment-sensei`. A name keeps resolving after the teammate goes idle or completes; the send resumes it from its transcript.
+- The newest holder of a name wins, so never spawn two teammates under the same name in a session.
+- The leader is reached at `to: "main"`. When teammates DM each other, the leader hands each the other's name in the dispatch message.
+- Every `SendMessage` `message` is a string of prose sent with a `summary` (dispatches and reports alike); structured results travel as files, never inside `message`. The protocol objects are the only exception (`${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` § Tools).
 
-The leader runs event-driven: after dispatching a cell or task it ends its turn and is re-invoked by teammate messages (`to: "main"`). It updates its tracking state on each message and starts the next step once the step's gate condition is met.
+The leader runs event-driven and holds no shared task list: it dispatches, ends its turn, and is re-invoked by teammate messages (`to: "main"`). It tracks the roster (each teammate's name → `agentType`), the pairings, and each cell's status in its own working state (and may surface it to the user via `TodoWrite`), and starts the next step once the step's gate condition is met.
 
 ## Agent types and spawn requirements
 
@@ -66,13 +69,9 @@ You are joining the team as {role}. For each task I assign, I name a template un
 
 ## Review cell protocol
 
-A cell pairs a producer (an architect or a coder) with one reviewer. The full protocol is in `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` § Review cell. In outline:
+A cell pairs a producer (an architect or a coder) with one reviewer, who run the protocol in `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` § Review cell autonomously: the producer creates its output, the reviewer DMs its actionable (`Critical` / `Major`) findings to the producer and reports severity counts to the leader, the producer triages each finding, and review ⇄ triage repeats up to `--review-rounds`.
 
-1. The producer creates its output (a design section or code) and DMs the paired reviewer to review.
-2. The reviewer reviews, DMs its actionable (`Critical` / `Major`) findings to the producer, and reports severity counts to the leader.
-3. The producer triages each finding — fix it, or reject it with a one-line reason — applies the fixes, and tells the reviewer it is ready.
-4. The reviewer resolves: it verifies the triage (fixes adequate, rejections reasonable). When satisfied, it reports the cell resolved to the leader via `SendMessage(to: "main")` (naming the cell id). If it still disagrees on a `Critical` finding, it escalates to the leader.
-5. Steps 2–4 repeat up to `--review-rounds`; on exhaustion the reviewer closes the cell (reporting to the leader), having the producer insert a `FIXME:` at the location for any unresolved `Critical`.
+Gate on closure: every cell ends in one closure report to `to: "main"` naming the cell id — resolved, or closed on round-cap exhaustion with a `FIXME:` left at any unresolved `Critical`. A `Critical` disagreement reaches the leader as an escalation before that closure.
 
 Triage and arbitration judgment priority: (1) the user's original task instructions, then (2) the upstream design intent.
 
@@ -100,11 +99,11 @@ Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE
 
 ## Step 1 — Form the team and pair
 
-1. Inspect the working tree: run `git status --porcelain`; if the output is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill. This skill operates only on a clean working tree.
+1. This skill operates only on a clean working tree: run `git status --porcelain`, and if the output is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill.
 2. Resolve `{timestamp}`, fix `{tmp_dir}`, and create it (`mkdir -p {tmp_dir}/design`). Then record the pre-coding baseline: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`.
 3. Console: `## Step 1 — Team formation`.
-4. Spawn `dev-helper` (type `cdev:dev-helper`, name `dev-helper`) per the spawn requirements and record it in the roster. To `dev-helper`, `SendMessage` naming `templates/team-analysis.md` with `task = {task specification}`, `output_path = {tmp_dir}/team.json`. On its completion report, Read `{tmp_dir}/team.json`: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn; an architect's and coder's `name` is `general-purpose`). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).
-5. Spawn each roster member per the spawn requirements, naming it `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` and using the `name` team-analysis returns as the type (architects and coders use `general-purpose`). Record the roster (name → agentType), and hold the pairings and `{task_summary}`. A producer's paired reviewer is addressed as `reviewer-{the producer's reviewer slug}`.
+4. Spawn `dev-helper` (type `cdev:dev-helper`, name `dev-helper`). To it, `SendMessage` naming `templates/team-analysis.md` with `task = {task specification}`, `output_path = {tmp_dir}/team.json`. On its completion report, Read `{tmp_dir}/team.json`: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).
+5. Spawn each roster member, naming it `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` and using the `name` team-analysis returns as the type (architects and coders use `general-purpose`). Hold the pairings and `{task_summary}`. A producer's paired reviewer is addressed as `reviewer-{the producer's reviewer slug}`.
 6. Console: the roster with each producer's paired reviewer and one-line reasons.
 
 ## Step 2 — Design cells (設計)
@@ -113,17 +112,15 @@ Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE
 2. For each architect, start the design cell `design-{slug}` with two messages (addressed to roster names):
    - To `architect-{slug}`, `SendMessage` naming `templates/design.md` with `task = {task_summary}`, `assigned_scope = {its scope}`, `output_path = {tmp_dir}/design/{slug}.md`, `reviewer = {paired reviewer's name}`.
    - To the paired reviewer's name, `SendMessage` naming `templates/design-review.md` with `task = {task_summary}`, `design_path = {tmp_dir}/design/{slug}.md`, `producer = architect-{slug}`, `cell_task = design-{slug}`, `review_rounds = {--review-rounds}`.
-   The pair runs the cell autonomously (review ⇄ triage ⇄ resolve); on resolve the reviewer reports the cell resolved to the leader (naming the cell id), or escalates.
-3. Wait until you have received a resolve report for every design cell, arbitrating any escalation as it arrives; gate by counting the closure reports. Collect the section paths as `{design_paths}`. Do not start Step 3 until all design cells are closed.
+3. Gate: one closure report per design cell, arbitrating any escalation as it arrives. Collect the section paths as `{design_paths}`.
 
 ## Step 3 — Code cells (コーディング)
 
-1. Console: `## Step 3 — Coding`. Spawn `comment-sensei` (type `cdev:comment-sensei`) per the spawn requirements with role `the comment reviewer; a coder DMs you to review comments per templates/comment-review.md`, naming it `comment-sensei`, and record it in the roster (available to the code cells).
+1. Console: `## Step 3 — Coding`. Spawn `comment-sensei` (type `cdev:comment-sensei`, name `comment-sensei`) with role `the comment reviewer; a coder DMs you to review comments per templates/comment-review.md`.
 2. For each coder, start the code cell `code-{slug}` with two messages (addressed to roster names):
    - To `coder-{slug}`, `SendMessage` naming `templates/code.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `assigned_scope = {its scope}`, `tdd = {has_test_suite}`, `feedback = (none)`, `reviewer = {paired reviewer's name}`, `comment_reviewer = comment-sensei`.
    - To the paired reviewer's name, `SendMessage` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = coder-{slug}`, `cell_task = code-{slug}`, `review_rounds = {--review-rounds}`.
-   The coder implements its scope (test-first when `tdd` is true). When its change adds or modifies comments, the coder also DMs `comment-sensei` to review and fix the comments within the cell. The pair runs the cell; on resolve the reviewer reports the cell resolved to the leader (naming the cell id), or escalates.
-3. Wait until you have received a resolve report for every code cell, arbitrating any escalation. Do not start Step 4 until all code cells are closed.
+3. Gate: one closure report per code cell, arbitrating any escalation.
 
 ## Step 4 — QA gate
 
@@ -134,9 +131,9 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 3. To `dev-helper`, `SendMessage` naming `templates/qa.md` with `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {n}`. Retain its one-line completion report as `{summary_line}`, then Read `{tmp_dir}/qa-result.json`: `{success}` is `failure == null`; `{suggested_specialist}` / `{error_summary}` are the corresponding `failure` fields. If `workflow_warning` is non-null, retain it for Step 5.
 4. If `success == true`, exit the loop.
 5. If `success == false` and attempts remain, run a QA-fix cell:
-   a. Ensure a general-purpose coder covers the failing scope (reuse an existing one, or spawn a `general-purpose` coder under a `coder-{slug}` name not already in the roster, and record it). For the paired reviewer, reuse an existing reviewer in the roster if one matches the failing domain (with `{suggested_specialist}` as the hint). If none does, spawn a new one under an unused `reviewer-{slug}` name and record it. Use `{suggested_specialist}` as the subagent_type when it exists as a registered name per § Agent types and spawn requirements; otherwise use `general-purpose`.
-   b. To the coder's name, `SendMessage` naming `templates/code.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `assigned_scope = {the failing files}`, `tdd = {has_test_suite}`, `feedback = QA failure — Read {tmp_dir}/qa-result.json (failure section) and {tmp_dir}/build.log; fix the build/test error.`, `reviewer = {paired reviewer's name}`, `comment_reviewer = comment-sensei`; and to the reviewer's name, `SendMessage` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = {the coder's name}`, `cell_task = code-qa-{n}`, `review_rounds = {--review-rounds}`. The pair runs the cell (review ⇄ triage ⇄ resolve) before re-QA.
-   c. When you receive the reviewer's resolve report, return to step 1 of this loop (re-QA).
+   a. Cover the failing scope with a `general-purpose` coder and a paired reviewer whose domain matches the failure (`{suggested_specialist}` is the hint). Reuse roster members that fit; otherwise spawn under a `coder-{slug}` / `reviewer-{slug}` name not already in the roster. A newly spawned reviewer uses `{suggested_specialist}` as its subagent_type when that exists as a registered name per § Agent types and spawn requirements, otherwise `general-purpose`.
+   b. To the coder's name, `SendMessage` naming `templates/code.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `assigned_scope = {the failing files}`, `tdd = {has_test_suite}`, `feedback = QA failure — Read {tmp_dir}/qa-result.json (failure section) and {tmp_dir}/build.log; fix the build/test error.`, `reviewer = {paired reviewer's name}`, `comment_reviewer = comment-sensei`; and to the reviewer's name, `SendMessage` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = {the coder's name}`, `cell_task = code-qa-{n}`, `review_rounds = {--review-rounds}`.
+   c. When you receive the reviewer's closure report for that cell, return to step 1 of this loop (re-QA).
 6. If still failing after the max attempts, present `error_summary` to the console and proceed to Step 5.
 
 ## Step 5 — Clean up and report

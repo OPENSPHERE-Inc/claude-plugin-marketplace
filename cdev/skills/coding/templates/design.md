@@ -14,6 +14,6 @@ Steps:
 
 1. Read the existing code in your scope (Glob / Grep / Read) to ground the design. Do not edit source.
 2. Write the design section to `{{output_path}}` (markdown): the approach, the files / modules to add or change, key interfaces and data shapes, edge cases and error handling, and the impact on tests / build. Follow `{{plugin_root}}/rules/document.md`. Keep code to short signatures, not full listings.
-3. DM `{{reviewer}}` that the design at `{{output_path}}` is ready for review. Run the cell: triage each finding the reviewer sends — fix it in `{{output_path}}`, or reject it with a one-line reason — then signal ready for re-review. The reviewer resolves and closes the cell.
+3. DM `{{reviewer}}` that the design at `{{output_path}}` is ready for review, and run the cell as the producer (fixes go into `{{output_path}}`; the reviewer closes the cell).
 
 Report to the leader via SendMessage: the path `{{output_path}}` and 1-2 sentences on what the design covers (in {{doc_lang}}).

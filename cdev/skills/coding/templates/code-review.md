@@ -14,4 +14,4 @@ When the producer signals ready, Read the files it changed (it lists them in its
 
 Severity labels: Critical (fatal, must fix) / Major (should fix) / Minor (caution) / Info (note); actionable = Critical / Major.
 
-Per the cell protocol: DM actionable findings (`file:line`, the issue, the recommended fix direction; `line` is the real line number from Read-ing the file; in {{doc_lang}}, severity labels as-is) to `{{producer}}`; report the severity counts to the leader as one line (`Critical N / Major N / Minor N / Info N`); resolve after the producer triages; report cell `{{cell_task}}` resolved to the leader via `SendMessage(to: "main")`; and escalate a rejected `Critical` you still disagree with.
+Run the cell protocol on cell `{{cell_task}}`: DM each actionable finding to `{{producer}}` as `file:line` plus the issue and the recommended fix direction (`line` is the real line number from Read-ing the file; prose in {{doc_lang}}, severity labels as-is), and report the severity counts to the leader as one line (`Critical N / Major N / Minor N / Info N`).
