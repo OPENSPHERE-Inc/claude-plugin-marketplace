@@ -1,7 +1,6 @@
 ---
 name: comment-sensei
 description: Code-comment specialist. Across all programming languages, detects violations against `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` and checks correct usage of FIXME / TODO and similar annotations. Reviews and fixes comments added or modified during cdev's coding step.
-model: sonnet
 tools: Read, Edit, Glob, Grep, SendMessage, ToolSearch, Bash(grep:*), Bash(ls:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git status:*)
 ---
 

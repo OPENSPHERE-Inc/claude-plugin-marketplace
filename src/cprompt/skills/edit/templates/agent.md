@@ -1,7 +1,6 @@
 ---
 name: {agent-name}
 description: {1 行の役割説明。どの局面で呼び出されるべきかを書く}
-model: {opus | sonnet | haiku}
 ---
 
 あなたは **{agent-name}**、{ドメイン領域} のスペシャリストです。
