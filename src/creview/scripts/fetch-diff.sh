@@ -8,6 +8,7 @@
 #   === Commit Diff (<base>..HEAD) ===
 #   === Staged Changes ===
 #   === Unstaged Changes ===
+#   === Untracked Files ===
 
 set -euo pipefail
 
@@ -49,6 +50,40 @@ review_diff() {
         diff --no-ext-diff --no-textconv --no-color "$@"
 }
 
+# git diff reports no untracked file in any of its modes. Register them in a
+# throwaway index with --intent-to-add so a plain diff renders them as new files;
+# the real index is never touched. Runs from the repo root to keep the listing
+# repo-wide the way git diff already is whatever the CWD. The scratch dir is
+# excluded by path at both the root and the invoking CWD — a project need not
+# gitignore it, and this script's own output file lives there.
+untracked_diff() (
+    local f rc=0 prefix tmp_dir tmp_index
+    prefix="$(git rev-parse --show-prefix)"
+    cd "$(git rev-parse --show-toplevel)"
+
+    local -a paths=()
+    while IFS= read -r -d '' f; do
+        paths+=("${f}")
+    done < <(git ls-files --others --exclude-standard -z -- \
+        ':(exclude).claude/tmp' ":(exclude)${prefix}.claude/tmp")
+    [[ "${#paths[@]}" -gt 0 ]] || return 0
+
+    # mktemp -d gives a mode-0700 private dir, so the index path inside it
+    # cannot be pre-planted with a symlink by another local user.
+    tmp_dir="$(mktemp -d)"
+    tmp_index="${tmp_dir}/index"
+    if GIT_INDEX_FILE="${tmp_index}" git add -N -- "${paths[@]}"; then
+        GIT_INDEX_FILE="${tmp_index}" review_diff --name-status || rc=$?
+        printf '\n'
+        GIT_INDEX_FILE="${tmp_index}" review_diff || rc=$?
+    else
+        rc=$?
+    fi
+    # Remove the throwaway index dir on every path: errexit would skip a trailing rm on failure.
+    rm -rf "${tmp_dir}"
+    return "${rc}"
+)
+
 {
     printf '=== Changed Files (%s..HEAD) ===\n' "${BASE}"
     review_diff --name-status "${BASE}..HEAD"
@@ -68,5 +103,9 @@ review_diff() {
 
     printf '=== Unstaged Changes ===\n'
     review_diff
+    printf '\n'
+
+    printf '=== Untracked Files ===\n'
+    untracked_diff
     printf '\n'
 } > "${OUT}"
