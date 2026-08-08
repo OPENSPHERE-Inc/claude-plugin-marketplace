@@ -62,11 +62,25 @@ For Unresolved findings, do not write a `verification` value.
 - Single line only (no newlines). Write long descriptions in other sections of the document (e.g., feedback details), and keep the metadata value as a summary.
 - No deletion (append only).
 
-## Common Sub-Agent Instructions
+## Sub-Agent Launch
 
-For common prohibitions, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`. The body of each sub-agent prompt is stored in external templates under `templates/*.md` (each has a `template_id` in its frontmatter). When invoking a sub-agent via the Agent tool, the leader passes a launch prompt that instructs the sub-agent to "Read the template and follow its instructions" with variable values substituted in. Sub-agents include `template_id` in their return value. The leader checks that the returned `template_id` matches the UUID specified for each step (hard-coded per step below); if it does not match, the leader relaunches that sub-agent.
+For common prohibitions and launch-prompt completeness, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` and its § Launch Prompt Completeness. Each sub-agent's instructions live in an external `templates/*.md` carrying a `template_id` in its frontmatter; the launch prompt has the sub-agent Read that template instead of quoting it.
 
-For launch-prompt-completeness rules, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch Prompt Completeness.
+Launch every sub-agent with the prompt below, substituting the template, variables, and overrides the step names:
+
+```
+As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/{template}`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+Variables (substitute into the template's {{...}} placeholders):
+- {name}: {value}
+
+Round-specific overrides (apply after following the template's instructions):
+- (none)
+
+Include `template_id` (Read from the template's frontmatter) in the return value.
+```
+
+Verify each returned `template_id` against the UUID its step names; on mismatch, relaunch that sub-agent.
 
 ## Internal Processing (Intermediate Files)
 
@@ -105,46 +119,13 @@ The leader (you) does not Read the diff content. Verification is insufficient wi
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
    ```
-4. Launch the analysis sub-agent via `Agent(subagent_type="review-helper", prompt=...)`. Task-specific instructions are stored in the `templates/analyze.md` external template. Example launch prompt:
-
-```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/analyze.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
-
-Variables (substitute into the template's {{...}} placeholders):
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- document_path: {document_path}
-
-Round-specific overrides (apply after following the template's instructions):
-- (none)
-
-Include `template_id` (Read from the template's frontmatter) in the return value.
-```
-
-Receive the return value from the sub-agent (`{total, by_assignee, template_id}`). Verify that `template_id` matches `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`. If it does not match, relaunch the sub-agent.
+4. Launch the analysis sub-agent via `Agent(subagent_type="review-helper", prompt=...)` — template `analyze.md`, `template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `document_path = {document_path}`, overrides `(none)`. Return value: `{total, by_assignee, template_id}`.
 
 ## Step 2 — Verify each finding (delegate in parallel per specialist)
 
 Loop over `by_assignee` from Step 1, and for each `{assignee, ids}` launch a verification sub-agent in parallel via `Agent(subagent_type=assignee, prompt=...)` (the agent definition's persona and specialist perspective are auto-loaded).
 
-Example launch prompt (do not include the persona). Task-specific instructions are stored in the `templates/verify.md` external template:
-
-```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/verify.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
-
-Variables (substitute into the template's {{...}} placeholders):
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- ids: {ids}
-- document_path: {document_path}
-- tmp_dir: {tmp_dir}
-- diff_path: {tmp_dir}/diff.txt
-
-Round-specific overrides (apply after following the template's instructions):
-- (none)
-
-Include `template_id` (Read from the template's frontmatter) in the return value.
-```
-
-Receive the return value from each verification agent (`{items: [{id, outcome}, ...], template_id}`). Verify that `template_id` matches `8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94`. If it does not match, relaunch that agent. **Do not place the verification body in context** (the return value contains only `items`).
+Do not include the persona. Template `verify.md`, `template_id` `8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `ids = {ids}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/diff.txt`, overrides `(none)`. Return value per agent: `{items: [{id, outcome}, ...], template_id}` — **do not place the verification body in context**.
 
 ## Step 3 — Verification report and reflection
 

@@ -9,11 +9,7 @@ template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 タスク: `{{task}}`
 出力先: `{{output_path}}`
 
-エージェントプール: 以下のスコープから優先順位順に `*.md` を列挙し、各ファイルの frontmatter の `name` / `description` を Read して各エージェントの専門性を把握する。`name` 値は、teammate 起動時にリーダーが `subagent_type` に渡す値である（プラグイン同梱のスコープ 3 を採用する場合は名前空間付き、例 `cdev:comment-sensei`）。同一 `name` が複数スコープに存在する場合は上位スコープのものを採用する。存在しないスコープはスキップする。
-
-1. プロジェクトスコープ: `.claude/agents/**/*.md`（作業ディレクトリ基準）
-2. ユーザースコープ: `~/.claude/agents/**/*.md`
-3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`
+エージェントプール: `{{plugin_root}}/rules/agents-detection.md` § 列挙 に従って構築する。同ルールは 1 体を解決する手順だが、ここでは複数体を（以下の手順で）選定し、各選定の `name` を同ルール § 結果 の指定どおりに記録する。
 
 手順:
 

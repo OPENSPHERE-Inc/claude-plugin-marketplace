@@ -4,6 +4,16 @@ When writing or modifying AI-facing prompts (agent definitions, skills, commands
 
 These rules do not apply to human-facing documentation (README, API references, design docs, etc.). Human-facing documentation is governed by [document.md](document.md).
 
+## Contract-style prompts
+
+An AI-facing prompt is not program code. The AI infers requirements from context even when an instruction is loose, so do not write rigid procedural instructions where consistency and reproducibility are not required.
+
+- State the goal concretely and leave the method of reaching it to the executing AI. Do not over-specify the procedure.
+- State explicitly the contracts that must hold at each checkpoint — a command that must be run in a given form, the format of a return value, and the like.
+- When a strict command line or execution flow is required, consider extracting it into an external script and writing only its invocation and the expected result in the prompt.
+- Recommended pattern: state the result to be obtained (the goal) and lay out the tools to be used.
+- Anti-pattern: enumerate the exact command lines procedurally in the prompt and make the AI follow them.
+
 ## The reader is an AI
 
 - The reader of a prompt is an AI agent. Explanatory writing aimed at users or other humans is unnecessary.

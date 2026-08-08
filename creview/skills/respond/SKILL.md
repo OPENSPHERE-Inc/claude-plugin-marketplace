@@ -64,11 +64,25 @@ A finding is a fix target when **all** hold (read from the METADATA marker, usin
 
 `Triage: 🚫 Won't Fix`, `Estimate: 🔻 Downgrade`, and findings already `Status: 🟢 Fixed` are skipped.
 
-## Common sub-agent instructions
+## Sub-agent launch
 
-For the common prohibitions, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`. The body of the prompt for each sub-agent is stored in external templates under `templates/*.md` (each carries a `template_id` in its frontmatter). When launching via the Agent tool, the leader sends a launch prompt that tells the sub-agent to "Read the template and follow its instructions" with the variable values filled in. The sub-agent includes `template_id` in its return value. The leader checks that the returned `template_id` matches the UUID specified for that step (hardcoded per step, see below); on mismatch, relaunch that sub-agent.
+For the common prohibitions and launch-prompt completeness, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` and its § Launch prompt completeness. Each sub-agent's instructions live in an external `templates/*.md` carrying a `template_id` in its frontmatter; the launch prompt has the sub-agent Read that template instead of quoting it.
 
-For launch-prompt-completeness rules, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch prompt completeness.
+Launch every sub-agent with the prompt below, substituting the template, variables, and overrides the step names:
+
+```
+As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/{template}`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+Variables (substitute into the template's {{...}} placeholders):
+- {name}: {value}
+
+Round-specific overrides (apply after following the template's instructions):
+- (none)
+
+Include `template_id` (Read from the template's frontmatter) in the return value.
+```
+
+Verify each returned `template_id` against the UUID its step names; on mismatch, relaunch that sub-agent.
 
 ### Specialist agent resolution
 
@@ -93,23 +107,9 @@ At the start of Step 1, the leader (you) creates `{tmp_dir}` with `mkdir -p {tmp
 
 ## Step 1 — Select fix targets (delegate to the select-fix-targets sub-agent)
 
-Launch via `Agent(subagent_type="general-purpose", prompt=...)`. The Sub Reads the review document, applies the fix-target selection rule, and Writes `{tmp_dir}/targets.json`. Task-specific instructions are stored in the `templates/select-fix-targets.md` external template:
+Launch via `Agent(subagent_type="general-purpose", prompt=...)`. The Sub Reads the review document, applies the fix-target selection rule, and Writes `{tmp_dir}/targets.json`.
 
-```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/select-fix-targets.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
-
-Variables (substitute into the template's {{...}} placeholders):
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- document_path: {document_path}
-- tmp_dir: {tmp_dir}
-
-Round-specific overrides (apply after following the template's instructions):
-- (none)
-
-Include `template_id` (Read from the template's frontmatter) in the return value.
-```
-
-Receive the return value (`{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}`). Verify that `template_id` matches `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`; on mismatch, relaunch the sub-agent. Do not load the body.
+Template `select-fix-targets.md`, `template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — do not load the body.
 
 When `fix_count == 0`, skip Steps 2–4 and proceed to Step 5 (compile; nothing to reflect → report "no fix targets").
 
@@ -117,47 +117,15 @@ When `fix_count == 0`, skip Steps 2–4 and proceed to Step 5 (compile; nothing 
 
 For each `{assignee, ids}` in `by_assignee`, launch a fix sub-agent via `Agent(subagent_type=assignee, prompt=...)`. Different assignees launch in parallel; ids within the same assignee follow the parallelization constraint in the template.
 
-Task-specific instructions are stored in the `templates/fix.md` external template:
-
-```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/fix.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
-
-Variables (substitute into the template's {{...}} placeholders):
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- ids: {ids}
-- document_path: {document_path}
-- tmp_dir: {tmp_dir}
-
-Round-specific overrides (apply after following the template's instructions):
-- (none)
-
-Include `template_id` (Read from the template's frontmatter) in the return value.
-```
-
-Receive the return value from every fix agent (`{items: [{id, path}, ...], template_id}`). Verify that `template_id` matches `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`; on mismatch, relaunch that agent. Collect only `items`; do not load the status body.
+Template `fix.md`, `template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `ids = {ids}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value per agent: `{items: [{id, path}, ...], template_id}` — collect only `items`; do not load the status body.
 
 ## Step 3 — Comment review (delegate to the comment-sensei sub-agent)
 
 Have comment-sensei review whether comments added or modified by the fix sub-agents violate the discipline in `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` and fix any violations. Pass comment-sensei the current fix diff (`fetch-diff.sh` output) and the review document (`{document_path}`) so it sees the changed comments and adjusts them only within bounds that do not distort each finding's intent. If no added or modified comments exist, the sub-agent may finish without making any changes.
 
-Before launching, the leader runs `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the fix diff. Launch via `Agent(subagent_type="comment-sensei", prompt=...)`. Task-specific instructions are stored in the `templates/comment-review.md` external template:
+Before launching, the leader runs `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the fix diff. Launch via `Agent(subagent_type="comment-sensei", prompt=...)`.
 
-```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/comment-review.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
-
-Variables (substitute into the template's {{...}} placeholders):
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-- diff_path: {tmp_dir}/changes.txt
-- document_path: {document_path}
-
-Round-specific overrides (apply after following the template's instructions):
-- (none)
-
-Include `template_id` (Read from the template's frontmatter) in the return value.
-```
-
-Receive the return value (`{reviewed_paths, fix_count, template_id}`). Verify that `template_id` matches `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68`; on mismatch, relaunch the sub-agent.
+Template `comment-review.md`, `template_id` `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `document_path = {document_path}`, overrides `(none)`. Return value: `{reviewed_paths, fix_count, template_id}`.
 
 ## Step 4 — Format / build / test verification
 
@@ -167,47 +135,14 @@ The leader (you) does not run the formatter or build commands directly and does 
 
 Maximum attempts: 5. Repeat the following up to the maximum:
 
-1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the current fix diff (working tree), then launch the format / build / test verification Sub via `Agent(subagent_type="review-helper", prompt=...)`.
-2. Receive the return value (`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`). Verify that `template_id` matches `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`; on mismatch, relaunch the Sub. If `workflow_warning` is non-null, retain it for presentation in Step 6.
+1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the current fix diff (working tree), then launch the format / build / test verification Sub via `Agent(subagent_type="review-helper", prompt=...)` — template `format-build-verify.md`, `template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {attempt_num}`, overrides `(none)`.
+2. Receive the return value (`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`). If `workflow_warning` is non-null, retain it for presentation in Step 6.
 3. If `success == true`, exit the loop.
 4. If `success == false`:
    a. Read `{tmp_dir}/format-build-result.json` and obtain `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` from its `failure` section (operational data, not decision body; do not Read source code itself).
-   b. Launch the build/test-fix specialist Sub via `Agent(subagent_type=suggested_specialist, prompt=...)`.
-   c. Receive the return value (`{description, template_id}`) and verify `template_id` matches `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`; on mismatch, relaunch that Sub.
-   d. Return to the top of the loop (format must be rechecked because code changed).
+   b. Launch the build/test-fix specialist Sub via `Agent(subagent_type=suggested_specialist, prompt=...)` — template `build-fix.md`, `template_id` `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{description, template_id}`.
+   c. Return to the top of the loop (format must be rechecked because code changed).
 5. If the build or test still fails after the maximum attempts, present `error_summary` to the user, exit the loop, and proceed to Step 5.
-
-### Format & build verification Sub launch prompt
-
-```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/format-build-verify.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
-
-Variables (substitute into the template's {{...}} placeholders):
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-- diff_path: {tmp_dir}/changes.txt
-- attempt_num: {attempt_num}
-
-Round-specific overrides (apply after following the template's instructions):
-- (none)
-
-Include `template_id` (Read from the template's frontmatter) in the return value.
-```
-
-### Build/test-fix specialist Sub launch prompt
-
-```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/build-fix.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
-
-Variables (substitute into the template's {{...}} placeholders):
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-
-Round-specific overrides (apply after following the template's instructions):
-- (none)
-
-Include `template_id` (Read from the template's frontmatter) in the return value.
-```
 
 ## Step 5 — Reflect into the review document
 
@@ -228,4 +163,4 @@ The leader (you) does not load decision bodies into context. The fix `status` is
 
 ## Step 6 — Summary
 
-The leader prints the `summary_line` received from the aggregator sub-agent to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.
+The leader prints the `summary_line` received in Step 5 to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.

@@ -9,11 +9,7 @@ Scope the coding task, assemble the specialist team, and pair each producer with
 Task: `{{task}}`
 Output: `{{output_path}}`
 
-Agent pool: enumerate `*.md` from the following scopes in priority order, and Read each file's frontmatter `name` / `description` to learn each agent's specialty. The `name` value is what the leader passes to `subagent_type` when spawning a teammate (for a plugin-bundled scope-3 agent, use the namespaced value, e.g. `cdev:comment-sensei`). When the same `name` exists in multiple scopes, adopt the higher-priority scope's entry. Skip any scope that does not exist.
-
-1. Project scope: `.claude/agents/**/*.md` (relative to the working directory)
-2. User scope: `~/.claude/agents/**/*.md`
-3. Plugin-bundled: `{{plugin_root}}/agents/**/*.md`
+Agent pool: build it per `{{plugin_root}}/rules/agents-detection.md` § Enumeration. That rule resolves one agent; here select several (below), recording each pick's `name` as its § Result specifies.
 
 Procedure:
 

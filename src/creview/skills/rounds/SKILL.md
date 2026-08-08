@@ -176,26 +176,15 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 最終レポートのパス: `{base-path}/{branch-dir}/final-report.md`
 
-1. `Agent(subagent_type="review-helper", prompt=...)` でサブエージェントを起動する。タスク固有の指示は `templates/final-report-compile.md` 外部テンプレートに格納されている。起動プロンプト例:
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/final-report-compile.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- round_doc_paths: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
-- round_stats: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...（workflow_warning が非 null のラウンドは末尾に workflow_warning="..." を付す）
-- template_path: {template_path}
-- report_path: {report_path}
-- language: ユーザーのチャット言語
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (該当なし)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-2. オーケストレーターは戻り値（`{report_path, template_id}`）を受け取る。`template_id` が `4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16` と一致することを確認する。一致しない場合はサブエージェントを再起動する。`report_path` のみを context に保持する。
+1. `Agent(subagent_type="review-helper", prompt=...)` で `templates/final-report-compile.md`（`template_id`: `4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16`）のサブエージェントを起動する。
+   - 変数:
+     - `round_doc_paths`: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
+     - `round_stats`: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...（workflow_warning が非 null のラウンドは末尾に workflow_warning="..." を付す）
+     - `template_path`: {template_path}
+     - `report_path`: {report_path}
+     - `language`: ユーザーのチャット言語
+   - オーバーライド: (該当なし)
+2. オーケストレーターは戻り値（`{report_path, template_id}`）を受け取り、`report_path` のみを context に保持する。
 
 ### 最終レポート形式
 

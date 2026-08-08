@@ -1,7 +1,7 @@
 ---
 name: start
 description: 対象プロジェクトのエージェントから自動選定したレビュアーで並列コードレビューを起動する。ユーザーが変更・ブランチ・PR のレビューを求めたとき（例「このコードをレビューして」）や、まとまった実装が完了した直後に能動的に使用する。
-allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*)
+allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*)
 ---
 
 # 並列コードレビュー
@@ -61,11 +61,25 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch
 
 構造アンカー（重要度見出し `## Critical` / `## Major` / `## Minor` / `## Info`、finding-id、メタデータマーカー）は後工程（triage / respond / resolve）の解析対象のため `{doc_lang}` に関わらず変更しない。
 
-## サブエージェント共通指示
+## サブエージェントの起動
 
-共通禁止事項は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` を参照。各サブエージェントへのプロンプト本体は `templates/*.md` の外部テンプレートに格納されている（frontmatter に `template_id` を持つ）。リーダーは Agent ツール起動時に「テンプレートを Read して指示に従う」旨の起動プロンプトに変数値を埋めて渡す。サブエージェントは戻り値に `template_id` を含める。リーダーは戻り値の `template_id` が各ステップで指定されている UUID（後述、各ステップにハードコード）と一致することを確認し、不一致の場合は当該サブエージェントを再起動する。
+共通禁止事項と起動プロンプトの完全性は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` および同 § 起動プロンプトの完全性 を参照。各サブエージェントへの指示は `templates/*.md` の外部テンプレート（frontmatter に `template_id` を持つ）にあり、起動プロンプトはその内容を引用せず、テンプレートを Read させる。
 
-起動プロンプトの完全性に関する規約は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動プロンプトの完全性を参照。
+サブエージェントはすべて以下のプロンプトで起動し、テンプレート・変数・オーバーライドは各ステップの指定で置換する:
+
+```
+最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/{template}` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
+
+変数（テンプレート中の {{...}} placeholder を置換）:
+- {name}: {value}
+
+ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
+- (none)
+
+戻り値に template_id（テンプレートの frontmatter から Read）を含める。
+```
+
+戻り値の `template_id` が各ステップで指定した UUID と一致することを確認し、不一致の場合は当該サブエージェントを再起動する。
 
 ## 内部処理（中間ファイル）
 
@@ -93,26 +107,9 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
      ```
-4. スコープ解析サブエージェントを起動して差分を解析させる。起動プロンプト例:
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/scope-analysis.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-- user_requested: {user_requested}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (none)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-5. サブエージェントから戻り値（`{line_count, recommended_reviewers, extension_summary, rationale, template_id}`）を受け取る。
-6. `template_id` が `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
-7. `recommended_reviewers` をそのまま最終レビュアーリストとして確定し、各要素の `name` をステップ 2 で `subagent_type` に渡す。
-8. `line_count == 0` の場合、空のレビュードキュメントを `{final_doc_path}` に生成してステップ 4 へ直接進む。
+4. スコープ解析サブエージェントを起動して差分を解析させる — テンプレート `scope-analysis.md`、`template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`user_requested = {user_requested}`、オーバーライド `(none)`。戻り値: `{line_count, recommended_reviewers, extension_summary, rationale, template_id}`。
+5. `recommended_reviewers` をそのまま最終レビュアーリストとして確定し、各要素の `name` をステップ 2 で `subagent_type` に渡す。
+6. `line_count == 0` の場合、空のレビュードキュメント（`${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` のヘッダーブロックのみ、重要度セクションなし）を `{final_doc_path}` に Write してステップ 4 へ直接進む。
 
 ## ステップ 2 — 並列レビュアーの起動
 
@@ -124,28 +121,11 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch
 - 内容は「指摘の番号付きリスト」だけ（前後の挨拶や全体サマリは入れない）
 - フォーマット: `[重要度] [カテゴリ] file_path:line — 問題の説明とその重要性。` の番号付きリスト。カテゴリは 1 件以上付与し、複数の場合は `/` で連結して 1 つの `[ ]` にまとめる（例: `[バグ/保守性]`）。プリセットの詳細はレビュアー向けテンプレート参照。
 
-### エージェント起動プロンプト
+### レビュアーの起動
 
-Agent ツール起動時は `subagent_type={name}`（スコープ解析 Sub が対象プロジェクトの `.claude/agents/` から解決した名前、または `general-purpose`）を指定する。agent 定義の persona と観点は自動でロードされる。起動プロンプトに persona / 観点は含めない。タスク固有の指示は `templates/{reviewer_template}` 外部テンプレートに格納されている。
+`subagent_type={name}`（スコープ解析 Sub が対象プロジェクトの `.claude/agents/` から解決した名前、または `general-purpose`）を指定する。agent 定義の persona と観点は自動でロードされる。起動プロンプトに persona / 観点は含めない。
 
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/{reviewer_template}` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- targets: {targets}
-- base: {base}
-- diff_path: {diff_path}
-- output_path: {output_path}
-- doc_lang: {doc_lang}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (none)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-各レビュアーから戻り値（`{path, critical, major, minor, info, template_id}`）を受け取る。`template_id` が `{reviewer_template_id}` と一致することを確認する。一致しない場合は当該レビュアーを再起動する。
+テンプレート `{reviewer_template}`、`template_id` `{reviewer_template_id}`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`targets = {targets}`、`base = {base}`、`diff_path = {diff_path}`、`output_path = {output_path}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。各レビュアーの戻り値: `{path, critical, major, minor, info, template_id}`。
 
 ## ステップ 3 — レポートの統合（集約サブエージェントへ委譲）
 
@@ -154,31 +134,7 @@ Agent ツール起動時は `subagent_type={name}`（スコープ解析 Sub が�
 
 `Agent(subagent_type="review-helper", prompt=...)` で起動する（model は review-helper の agent 定義に従う。リーダーから model 指定はしない）。
 
-### 集約サブエージェントの起動プロンプト
-
-タスク固有の指示は `templates/aggregator.md` 外部テンプレートに格納されている。
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/aggregator.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-- reviewer_paths_list: {reviewer_paths_list}
-- final_doc_path: {final_doc_path}
-- round_num_or_omitted: {round_num_or_omitted}
-- targets_description: {targets_description}
-- reviewer_names_csv: {reviewer_names_csv}
-- review_mode: {review_mode}
-- doc_lang: {doc_lang}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (none)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-集約サブエージェントから戻り値（`{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`）を受け取る。`template_id` が `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
+テンプレート `aggregator.md`、`template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`reviewer_paths_list = {reviewer_paths_list}`、`final_doc_path = {final_doc_path}`、`round_num_or_omitted = {round_num_or_omitted}`、`targets_description = {targets_description}`、`reviewer_names_csv = {reviewer_names_csv}`、`review_mode = {review_mode}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。戻り値: `{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`。
 
 ## ステップ 4 — 一時ファイルのクリーンアップ
 
