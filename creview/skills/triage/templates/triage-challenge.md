@@ -1,14 +1,15 @@
 ---
 name: triage-challenge
-description: Prompt for the challenge sub-agent that argues against every primary triage decision in /creview:triage Step 1
+description: Prompt for a challenge sub-agent that argues against every primary triage decision in /creview:triage Step 1
 template_id: b8701509-403b-488b-8b13-c867f9c6700b
 ---
 
-As the challenge owner of the primary triage decisions, Read `{{tmp_dir}}/triage-draft.json`, attempt an objection to every item, and Write the result to `{{tmp_dir}}/challenge.json`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions. Read `{{plugin_root}}/rules/wontfix.md` for the Won't Fix guideline numbers cited below.
+As a challenge owner of the primary triage decisions, Read `{{tmp_dir}}/triage-draft.json`, attempt an objection to every item, and Write the result to `{{tmp_dir}}/challenge-{{challenge_index}}.json`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions. Read `{{plugin_root}}/rules/wontfix.md` for the Won't Fix guideline numbers cited below.
 
 Preconditions:
 
-- Your only filesystem write is `{{tmp_dir}}/challenge.json`. Sources are Read-only.
+- Your only filesystem write is `{{tmp_dir}}/challenge-{{challenge_index}}.json`. Sources are Read-only.
+- Do not Read any other `challenge-*.json`: the parallel instances' stances are tallied as independent votes.
 - The paths passed (`{{document_path}}` / `{{tmp_dir}}`) are relative. Do not convert them to absolute paths.
 
 Inputs:
@@ -34,6 +35,6 @@ When no objection holds, set `stance` to `no_valid_objection` and leave `argumen
 
 Write the `argument` prose in the same language as the existing Finding descriptions in `{{document_path}}`.
 
-`{{tmp_dir}}/challenge.json` format: `{items: [{id, stance, argument}]}` (items covers every id in `triage-draft.json`)
+`{{tmp_dir}}/challenge-{{challenge_index}}.json` format: `{items: [{id, stance, argument}]}` (items covers every id in `triage-draft.json`)
 
 Return value: `{path, flip_count, uphold_count, no_valid_objection_count, template_id}` (do not include the argument body in the return value). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

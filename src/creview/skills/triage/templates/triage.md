@@ -1,14 +1,14 @@
 ---
 name: triage
-description: /creview:triage ステップ 1 で各指摘のステージ判定と敵対的トリアージ（提案 → 反証 → 裁定）を実施するトリアージサブエージェント向けプロンプト
+description: /creview:triage ステップ 1 で各指摘のステージ判定と敵対的トリアージ（提案 → 並列反証 → 多数決を条件とする裁定）を実施するトリアージサブエージェント向けプロンプト
 template_id: 1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15
 ---
 
-レビュードキュメントのトリアージ担当として、`{{document_path}}` を Read し、各指摘のステージ判定と敵対的トリアージ（提案 → 反証 → 裁定）を実施し、最終結果を `{{tmp_dir}}/triage.json` に Write する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
+レビュードキュメントのトリアージ担当として、`{{document_path}}` を Read し、各指摘のステージ判定と敵対的トリアージ（提案 → 並列反証 → 多数決を条件とする裁定）を実施し、最終結果を `{{tmp_dir}}/triage.json` に Write する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
 
 前提:
 
-- `{{tmp_dir}}` はリーダーが事前に `mkdir -p` で作成済み。Sub から存在確認 (`Test-Path` / `ls` 等) や mkdir は不要。自身のファイルシステム書き込みは `triage-draft.json` と `triage.json` の 2 つ。ネスト起動する反証 Sub / 裁定 Sub は、それぞれのテンプレートが指定する `challenge.json` / `adjudication.json` を書く。
+- `{{tmp_dir}}` はリーダーが事前に `mkdir -p` で作成済み。Sub から存在確認 (`Test-Path` / `ls` 等) や mkdir は不要。自身のファイルシステム書き込みは `triage-draft.json` と `triage.json` の 2 つ。ネスト起動する反証 Sub / 裁定 Sub は、それぞれのテンプレートが指定する `challenge-{n}.json` / `adjudication.json` を書く。
 - 渡されるパス (`{{document_path}}` / `{{tmp_dir}}`) は相対形式。絶対パスへの変換は行わない。
 
 `{{previous_round_doc_paths}}` が提供されていれば（Round 1 で実施する標準フローでは空）、各ファイルを Read して過去ラウンドの判定情報（id / location / description / METADATA の triage / estimate / status / verification）を抽出し、トリアージで参照する。空または `(none)` の場合は参照不要。
@@ -39,7 +39,7 @@ stage 分類（current_meta に基づく）:
 
 1. 判定対象ごとに一次判定を行い `{{tmp_dir}}/triage-draft.json` に Write する。この段では assignee を解決しない。
 2. draft の `items` が空の場合は手順 3・4 をスキップし、`items: []` / `will_fix_count: 0` / `wontfix_count: 0` / draft の `by_stage` を持つ `{{tmp_dir}}/triage.json` を Write し、`flipped_count: 0` で返す。
-3. 反証 Sub を `Agent(subagent_type="general-purpose", prompt=...)` で起動する。モデル指定はしない。受け取った変数値を埋めた起動プロンプト:
+3. 反証 Sub 3 体を `Agent(subagent_type="general-purpose", prompt=...)` で同一メッセージ内に起動し、`challenge_index` に 1 / 2 / 3 を与える。モデル指定はしない。受け取った変数値を埋めた起動プロンプト（`{n}` は当該インスタンスの `challenge_index`）:
 
 ```
 最初の行動として `{{plugin_root}}/skills/triage/templates/triage-challenge.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
@@ -49,6 +49,7 @@ stage 分類（current_meta に基づく）:
 - document_path: {{document_path}}
 - tmp_dir: {{tmp_dir}}
 - previous_round_doc_paths: {{previous_round_doc_paths}}
+- challenge_index: {n}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
 - (none)
@@ -56,9 +57,11 @@ stage 分類（current_meta に基づく）:
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-戻り値の `template_id` が `b8701509-403b-488b-8b13-c867f9c6700b` と一致することを確認する。不一致の場合は同一 `subagent_type` の新規インスタンスを起動して再試行する。2 回連続で不一致となった場合は以降の手順に進まず、`triage.json` を Write せずに `{path: null, error: "challenge template_id mismatch twice", template_id}` を返す。Agent の起動自体が失敗した場合（ネスト起動の深度上限到達等）は、手順 4 をスキップし、draft の `verdict` / `reason` をそのまま最終判定として手順 5 の要領で `{{tmp_dir}}/triage.json` を Write し、`flipped_count: 0` と反証・裁定を省略した旨を返す。
+各戻り値の `template_id` が `b8701509-403b-488b-8b13-c867f9c6700b` と一致することを確認する。不一致の index のみ、同一 `subagent_type` の新規インスタンスを同じ `challenge_index` で起動して再試行する。2 回連続で不一致となった index、および Agent の起動自体が失敗した index（ネスト起動の深度上限到達等）は反証出力を持たないものとし、一致を返した index だけで続行する。
 
-4. 裁定 Sub を `Agent(subagent_type="general-purpose", prompt=...)` で起動する。手順 3 の戻り値を受け取り `{{tmp_dir}}/challenge.json` の生成を確認してから起動する。手順 3 と同一メッセージで並列起動しない。モデル指定はしない。受け取った変数値を埋めた起動プロンプト:
+draft の判定を覆すには flip 票が 2 票必要なため、反証出力を持つ index が 2 未満の場合は手順 4 をスキップし、draft の `verdict` / `reason` をそのまま最終判定として手順 5 の要領で `{{tmp_dir}}/triage.json` を Write し、`flipped_count: 0` と裁定を省略した旨を返す。
+
+4. 裁定 Sub を `Agent(subagent_type="general-purpose", prompt=...)` で起動する。手順 3 の全 Sub の戻り値を受け取ってから起動する。手順 3 と同一メッセージで並列起動しない。モデル指定はしない。受け取った変数値を埋めた起動プロンプト:
 
 ```
 最初の行動として `{{plugin_root}}/skills/triage/templates/triage-adjudicate.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
@@ -68,6 +71,7 @@ stage 分類（current_meta に基づく）:
 - document_path: {{document_path}}
 - tmp_dir: {{tmp_dir}}
 - previous_round_doc_paths: {{previous_round_doc_paths}}
+- challenge_indices: {反証出力を持つ challenge_index をカンマ区切りで列挙}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
 - (none)

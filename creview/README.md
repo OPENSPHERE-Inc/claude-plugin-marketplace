@@ -24,18 +24,21 @@ option.
 reviewers in adversarial mode, where every Critical / Major finding must state
 a concrete failure scenario; `/creview:rounds` accepts the same flag and passes
 it through to `/creview:start`. `/creview:triage` is adversarial
-unconditionally: the triage sub-agent proposes a verdict, a challenge sub-agent
-argues the opposite where it can, and an adjudication sub-agent decides the
-final verdict.
+unconditionally: the triage sub-agent proposes a verdict, three challenge
+sub-agents independently argue the opposite where they can, and an adjudication
+sub-agent decides the final verdict. A proposed verdict is overturned only when
+at least two of the three challenges call for it and the adjudicator confirms
+the facts they cite.
 
 Nested sub-agent spawning is required
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; the default is 3):
 
 - `/creview:rounds` — 3 or more. Each phase runs in a phase leader
   sub-agent, which spawns that phase's own sub-agents, and the triage
-  sub-agent spawns the challenge / adjudication sub-agents.
+  sub-agent spawns the three challenge sub-agents and the adjudication
+  sub-agent.
 - `/creview:triage` on its own — 2 or more. The triage sub-agent spawns
-  the challenge / adjudication sub-agents.
+  the three challenge sub-agents and the adjudication sub-agent.
 
 A long run also consumes many subagent slots — raise
 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
