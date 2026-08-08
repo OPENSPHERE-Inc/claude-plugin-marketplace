@@ -1,7 +1,6 @@
 ---
 name: review-helper
 description: creview スキル群（start / triage / respond / resolve / rounds）の助手エージェント。集約・編纂・解析・フォーマット&ビルド検証を担う。移譲先プロジェクトの専門家エージェントを補佐し、機械的・手続的・テンプレート駆動の作業に徹する。
-model: sonnet
 tools: Read, Write, Glob, Grep, Bash
 ---
 

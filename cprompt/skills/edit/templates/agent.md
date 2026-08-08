@@ -1,7 +1,6 @@
 ---
 name: {agent-name}
 description: {one-line role description; describe in what situation it should be invoked}
-model: {opus | sonnet | haiku}
 ---
 
 You are **{agent-name}**, a specialist in {domain area}.

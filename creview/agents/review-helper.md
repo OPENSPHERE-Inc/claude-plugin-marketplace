@@ -1,7 +1,6 @@
 ---
 name: review-helper
 description: Helper agent for the creview skills (start / triage / respond / resolve / rounds), responsible for aggregation, compilation, analysis, and format & build verification. Assists the destination project's specialist agents and sticks to mechanical, procedural, template-driven work.
-model: sonnet
 tools: Read, Write, Glob, Grep, Bash
 ---
 
