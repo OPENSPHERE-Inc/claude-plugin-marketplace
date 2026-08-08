@@ -94,7 +94,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 ```
 {tmp_dir} = .claude/tmp/creview-triage-{timestamp}/
 {tmp_dir}/triage-draft.json    ← 一次判定（トリアージサブエージェント）
-{tmp_dir}/challenge.json       ← 反証サブエージェント（トリアージ Sub がネスト起動）の出力
+{tmp_dir}/challenge-{n}.json   ← 反証サブエージェント 3 体（トリアージ Sub がネスト起動）の出力
 {tmp_dir}/adjudication.json    ← 裁定サブエージェント（トリアージ Sub がネスト起動）の出力
 {tmp_dir}/triage.json          ← 最終判定（トリアージサブエージェント）
 {tmp_dir}/estimates/{id}.json  ← 見積サブエージェントの出力（指摘 1 件 1 ファイル）
@@ -118,7 +118,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## ステップ 1 — 敵対的トリアージ（トリアージサブエージェントへ委譲）
 
-トリアージは**修正作業を行う専門エージェントとは別個の単一サブエージェント**に委譲する（バイアス分離のため）。トリアージ Sub はレビュードキュメントを直接 Read して指摘抽出とステージ判定を行い、トリアージ判定を提案 → 反証 → 裁定の三段（敵対的トリアージ）で行う。一次判定は自身で行い、反証 Sub と裁定 Sub を自らネスト起動し、最終判定を自ら `triage.json` に反映する。ネスト Sub の `template_id` 照合と不一致時の再起動はトリアージ Sub が担う。判定結果は**ファイルに Write** させ、リーダーの context に判定本体を載せない。
+トリアージは**修正作業を行う専門エージェントとは別個の単一サブエージェント**に委譲する（バイアス分離のため）。トリアージ Sub はレビュードキュメントを直接 Read して指摘抽出とステージ判定を行い、トリアージ判定を提案 → 並列反証 → 多数決を条件とする裁定の三段（敵対的トリアージ）で行う。一次判定は自身で行い、反証 Sub 3 体と裁定 Sub を自らネスト起動し、最終判定を自ら `triage.json` に反映する。ネスト Sub の `template_id` 照合と不一致時の再起動はトリアージ Sub が担う。判定結果は**ファイルに Write** させ、リーダーの context に判定本体を載せない。
 
 1. `Agent(subagent_type="general-purpose", prompt=...)` でサブエージェントを起動する。モデル指定はしない。テンプレート `triage.md`、`template_id` `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`previous_round_doc_paths = {previous_round_doc_paths}`（標準フローでは "(none)"。/creview:rounds 等の上位フローから過去ラウンドの doc_path 一覧が渡される場合のみ非空）、オーバーライド `(none)`。戻り値: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}` — triage の本文は読み込まない。
 2. 戻り値に `error` が含まれる場合はステップ 2 以降に進まず、`${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で作業ディレクトリを削除し、失敗をユーザーに報告して中断する。

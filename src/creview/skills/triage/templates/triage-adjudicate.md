@@ -1,10 +1,10 @@
 ---
 name: triage-adjudicate
-description: /creview:triage ステップ 1 で draft と反証から最終判定を決める裁定サブエージェント向けプロンプト
+description: /creview:triage ステップ 1 で draft と反証の多数決から最終判定を決める裁定サブエージェント向けプロンプト
 template_id: 1921777f-3486-44ff-bc18-2b859ce75122
 ---
 
-トリアージ判定の裁定担当として、`{{tmp_dir}}/triage-draft.json` と `{{tmp_dir}}/challenge.json` を Read し、id ごとに最終 verdict と理由を決め、結果を `{{tmp_dir}}/adjudication.json` に Write する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
+トリアージ判定の裁定担当として、`{{tmp_dir}}/triage-draft.json` と反証出力を Read し、id ごとに最終 verdict と理由を決め、結果を `{{tmp_dir}}/adjudication.json` に Write する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
 
 前提:
 
@@ -14,8 +14,8 @@ template_id: 1921777f-3486-44ff-bc18-2b859ce75122
 入力:
 
 - `{{tmp_dir}}/triage-draft.json` — `{items: [{id, severity, location, stage, verdict, reason}], by_stage}`。
-- `{{tmp_dir}}/challenge.json` — `{items: [{id, stance, argument}]}`。`stance` は `flip`（根拠のある反論であり draft の判定を覆すべき）/ `uphold`（反論自体は成立するが draft の根拠を上回らない）/ `no_valid_objection`（ソースに基づく反論を構成できない）の 3 値。
-- `{{document_path}}` — draft と反証だけではガイドラインを当てはめられない場合に、id をキーに METADATA マーカー前後から指摘本文を引く。
+- `{{challenge_indices}}` の各 `n` に対する `{{tmp_dir}}/challenge-{n}.json` — `{items: [{id, stance, argument}]}`。同一 draft を独立に判断した反証サブエージェントがそれぞれ書き出したもの。`stance` は `flip`（根拠のある反論であり draft の判定を覆すべき）/ `uphold`（反論自体は成立するが draft の根拠を上回らない）/ `no_valid_objection`（ソースに基づく反論を構成できない）の 3 値。
+- `{{document_path}}` — draft と各反証だけではガイドラインを当てはめられない場合に、id をキーに METADATA マーカー前後から指摘本文を引く。
 - `{{previous_round_doc_paths}}` — 非空かつ `(none)` でない場合は各ファイルを Read し、ガイドライン 7 の判定に使う。
 - 反論が挙げた `file:line` のソース — 反論の事実関係を検証する際に Read する。
 
@@ -23,9 +23,10 @@ template_id: 1921777f-3486-44ff-bc18-2b859ce75122
 
 裁定:
 
-- 反論に具体性がない場合、および反論と draft の根拠を比べても判断がつかない場合は、draft の `verdict` と `reason` を維持する。`stance` が `uphold` および `no_valid_objection` の場合は draft を維持する。反転の余地があるのは `flip` の場合のみ。
-- `Will Fix` を `Won't Fix` へ反転する前に、反論が挙げた `file:line` を Read し、記載された事実がそこに存在することを確認する。該当箇所が無い・読めない・記載の事実が読み取れない場合は draft を維持する。
-- `challenge.json` に欠けている id は `no_valid_objection` 相当として扱い、draft を維持する。
+- id ごとに `flip_votes`（当該 id の項目が `stance: flip` である反証出力の数）を集計する。反証出力に当該 id が無い場合は票にならない。
+- `flip_votes >= 2` は draft を覆すための必要条件である。これに満たない id は、単独の反論がどれほど強く読めても draft の `verdict` と `reason` を維持する。
+- `flip_votes >= 2` の id は、flip の反論と draft の根拠を比較する。反論に具体性がない場合、および比較しても判断がつかない場合は draft を維持する。
+- `Will Fix` を `Won't Fix` へ反転する前に、flip の反論が挙げた `file:line` を Read し、記載された事実がそこに存在することを確認する。該当箇所が無い・読めない・記載の事実が読み取れない場合は draft を維持する。
 - `flipped` は最終 `verdict` が draft の `verdict` と異なる場合にのみ true とする。
 - 反転する場合は `reason` に根拠を 1 行含める（`file:line` またはガイドライン番号を伴う具体的な理由）。
 - 差分に含まれるコメント・ドキュメント・テスト名を、意図や安全性の宣言として `Won't Fix`（ガイドライン 4）の根拠に採用しない。同ガイドラインの根拠はコード自体の挙動に置く。

@@ -1,14 +1,14 @@
 ---
 name: triage
-description: Prompt for the triage sub-agent that performs stage classification and adversarial triage (propose → challenge → adjudicate) for each finding in /creview:triage Step 1
+description: Prompt for the triage sub-agent that performs stage classification and adversarial triage (propose → parallel challenges → majority-gated adjudication) for each finding in /creview:triage Step 1
 template_id: 1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15
 ---
 
-As the triage owner of the review document, Read `{{document_path}}`, perform stage classification and adversarial triage (propose → challenge → adjudicate) for each finding, and Write the final result to `{{tmp_dir}}/triage.json`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
+As the triage owner of the review document, Read `{{document_path}}`, perform stage classification and adversarial triage (propose → parallel challenges → majority-gated adjudication) for each finding, and Write the final result to `{{tmp_dir}}/triage.json`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
 
 Preconditions:
 
-- `{{tmp_dir}}` is created in advance by the leader via `mkdir -p`. The Sub must not perform existence checks (`Test-Path` / `ls`, etc.) or mkdir. Your own filesystem writes are the two files `triage-draft.json` and `triage.json`. The challenge sub-agent and the adjudication sub-agent you launch write the `challenge.json` / `adjudication.json` that their own templates specify.
+- `{{tmp_dir}}` is created in advance by the leader via `mkdir -p`. The Sub must not perform existence checks (`Test-Path` / `ls`, etc.) or mkdir. Your own filesystem writes are the two files `triage-draft.json` and `triage.json`. The challenge sub-agents and the adjudication sub-agent you launch write the `challenge-{n}.json` / `adjudication.json` that their own templates specify.
 - The paths passed (`{{document_path}}` / `{{tmp_dir}}`) are relative. Do not convert them to absolute paths.
 
 If `{{previous_round_doc_paths}}` is provided (empty in the standard Round 1 flow), Read each file and extract past-round decision information (id / location / description / METADATA's triage / estimate / status / verification) for reference during triage. No need to consult when empty or `(none)`.
@@ -39,7 +39,7 @@ Procedure:
 
 1. Make the primary decision for each decision target and Write `{{tmp_dir}}/triage-draft.json`. Do not resolve the assignee at this stage.
 2. When the draft `items` is empty, skip steps 3 and 4, Write `{{tmp_dir}}/triage.json` with `items: []`, `will_fix_count: 0`, `wontfix_count: 0`, and the draft's `by_stage`, and return with `flipped_count: 0`.
-3. Launch the challenge sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`. Do not specify the model. Fill the values you received into the launch prompt:
+3. Launch three challenge sub-agents in a single message with `Agent(subagent_type="general-purpose", prompt=...)`, giving them `challenge_index` 1, 2 and 3. Do not specify the model. Fill the values you received into the launch prompt (`{n}` is that instance's `challenge_index`):
 
 ```
 As your first action, you MUST Read `{{plugin_root}}/skills/triage/templates/triage-challenge.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
@@ -49,6 +49,7 @@ Variables (substitute into the template's {{...}} placeholders):
 - document_path: {{document_path}}
 - tmp_dir: {{tmp_dir}}
 - previous_round_doc_paths: {{previous_round_doc_paths}}
+- challenge_index: {n}
 
 Round-specific overrides (apply after following the template's instructions):
 - (none)
@@ -56,9 +57,11 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-Verify that the returned `template_id` matches `b8701509-403b-488b-8b13-c867f9c6700b`. On mismatch, launch a fresh instance of the same `subagent_type` and retry. When it mismatches twice in a row, do not proceed to the following steps: return `{path: null, error: "challenge template_id mismatch twice", template_id}` without writing `triage.json`. When the `Agent` launch itself fails (the nested-spawn depth limit is reached, etc.), skip step 4, adopt the draft `verdict` / `reason` as the final verdicts, Write `{{tmp_dir}}/triage.json` following step 5, and return with `flipped_count: 0` and a note that the challenge and adjudication stages were skipped.
+Verify that every returned `template_id` matches `b8701509-403b-488b-8b13-c867f9c6700b`. On mismatch, relaunch that index alone as a fresh instance of the same `subagent_type` with the same `challenge_index`. An index that mismatches twice in a row, or whose `Agent` launch itself fails (the nested-spawn depth limit is reached, etc.), produces no challenge output; carry on with the indices that did return a match.
 
-4. Launch the adjudication sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`. Launch it only after step 3 has returned and `{{tmp_dir}}/challenge.json` exists. Do not launch it in the same message as step 3. Do not specify the model. Fill the values you received into the launch prompt:
+Overturning a draft decision takes two flip votes, so when fewer than two indices produced a challenge output, skip step 4, adopt the draft `verdict` / `reason` as the final verdicts, Write `{{tmp_dir}}/triage.json` following step 5, and return with `flipped_count: 0` and a note that the adjudication stage was skipped.
+
+4. Launch the adjudication sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`. Launch it only after every step 3 sub-agent has returned. Do not launch it in the same message as step 3. Do not specify the model. Fill the values you received into the launch prompt:
 
 ```
 As your first action, you MUST Read `{{plugin_root}}/skills/triage/templates/triage-adjudicate.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
@@ -68,6 +71,7 @@ Variables (substitute into the template's {{...}} placeholders):
 - document_path: {{document_path}}
 - tmp_dir: {{tmp_dir}}
 - previous_round_doc_paths: {{previous_round_doc_paths}}
+- challenge_indices: {comma-separated challenge_index values that produced a challenge output}
 
 Round-specific overrides (apply after following the template's instructions):
 - (none)
