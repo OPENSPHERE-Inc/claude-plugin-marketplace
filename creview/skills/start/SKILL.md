@@ -1,7 +1,7 @@
 ---
 name: start
 description: Launch a parallel code review with reviewers auto-selected from the destination project agents. Use proactively when the user asks to review changes, a branch, or a PR (e.g. "review this code"), or right after a substantial implementation is completed.
-allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*)
+allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*)
 ---
 
 # Parallel Code Review
@@ -109,7 +109,7 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, a
      ```
 4. Launch the scope-analysis sub-agent to analyze the diff — template `scope-analysis.md`, `template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, `user_requested = {user_requested}`, overrides `(none)`. Return value: `{line_count, recommended_reviewers, extension_summary, rationale, template_id}`.
 5. Adopt `recommended_reviewers` as-is as the final reviewer list, and pass each element's `name` to `subagent_type` in Step 2.
-6. If `line_count == 0`, generate an empty review document at `{final_doc_path}` and proceed directly to Step 4.
+6. If `line_count == 0`, Write an empty review document at `{final_doc_path}` — the header block of `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` with no severity sections — and proceed directly to Step 4.
 
 ## Step 2 — Launch Parallel Reviewers
 

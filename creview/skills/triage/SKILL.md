@@ -132,7 +132,7 @@ Loop over the `by_assignee` array received in Step 1. For each `{assignee, ids}`
 
 1. Launch the estimate agents (do not include the persona) — template `estimate.md`, `template_id` `8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `ids = {ids}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value per agent: `{items: [{id, verdict}, ...], template_id}` — do not load the estimate body.
 
-2. Launch the aggregator sub-agent via `Agent(subagent_type="review-helper", prompt=...)` to generate the estimate result summary (a single table merging review + triage + estimate, plus a link to the review document) — template `estimate-summary.md`, `template_id` `5c1e9b7a-3d48-4a96-b8e2-7f3c5a1d4b29`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, `document_path = {document_path}`, overrides `(none)`. Return value: `{summary_path, summary_line, maintain_count, downgrade_count, alternative_count, template_id}`. The leader keeps only `summary_line` in context and does not load the table body.
+2. Launch the aggregator sub-agent via `Agent(subagent_type="review-helper", prompt=...)` to generate the estimate result summary (a single table merging review + triage + estimate, plus a link to the review document) — template `estimate-summary.md`, `template_id` `5c1e9b7a-3d48-4a96-b8e2-7f3c5a1d4b29`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, `document_path = {document_path}`, overrides `(none)`. Return value: `{summary_path, summary_line, maintain_count, downgrade_count, alternative_count, template_id}`. The leader keeps only `summary_path` and the counts in context and does not load the table body.
 
 ## Step 3 — Reflect into the review document
 
@@ -148,8 +148,8 @@ The leader (you) does not load decision bodies into context. `compile-review.py`
 
 ## Step 4 — Summary and cleanup
 
-1. The leader prints the `summary_line` received from the estimate aggregator sub-agent to the console, followed by: "Triage / estimate persisted to `{document_path}`. Run `/creview:respond {document_path}` to fix the Maintain / Alternative findings."
-2. Only when a detailed table is needed, Read `summary_path`.
+1. The leader prints the `summary_line` from the Step 3 compile result to the console, followed by: "Triage / estimate persisted to `{document_path}`. Run `/creview:respond {document_path}` to fix the Maintain / Alternative findings."
+2. Only when a detailed table is needed, Read the `summary_path` from Step 2 (absent when Step 2 was skipped).
 3. The leader removes `{tmp_dir}` in one shot:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}

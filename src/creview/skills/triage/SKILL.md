@@ -132,7 +132,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 1. 見積エージェントを起動する（persona は含めない）— テンプレート `estimate.md`、`template_id` `8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(none)`。各エージェントの戻り値: `{items: [{id, verdict}, ...], template_id}` — estimate の本文は読み込まない。
 
-2. 見積結果サマリ（レビュー + トリアージ + 見積を 1 枚に統合したテーブル + レビュードキュメントへのリンク）を生成するため、集約サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `estimate-summary.md`、`template_id` `5c1e9b7a-3d48-4a96-b8e2-7f3c5a1d4b29`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`document_path = {document_path}`、オーバーライド `(none)`。戻り値: `{summary_path, summary_line, maintain_count, downgrade_count, alternative_count, template_id}`。リーダーは `summary_line` だけを context に保持し、テーブル本体は載せない。
+2. 見積結果サマリ（レビュー + トリアージ + 見積を 1 枚に統合したテーブル + レビュードキュメントへのリンク）を生成するため、集約サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `estimate-summary.md`、`template_id` `5c1e9b7a-3d48-4a96-b8e2-7f3c5a1d4b29`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`document_path = {document_path}`、オーバーライド `(none)`。戻り値: `{summary_path, summary_line, maintain_count, downgrade_count, alternative_count, template_id}`。リーダーは `summary_path` と件数だけを context に保持し、テーブル本体は載せない。
 
 ## ステップ 3 — レビュードキュメントへの反映
 
@@ -148,8 +148,8 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## ステップ 4 — サマリーと後片付け
 
-1. リーダーは見積集約サブエージェントから受け取った `summary_line` をコンソールに表示し、続けて次を表示する: 「トリアージ / 見積を `{document_path}` に永続化しました。Maintain / Alternative 指摘を修正するには `/creview:respond {document_path}` を実行してください。」
-2. 詳細テーブルが必要な場合のみ `summary_path` を Read する。
+1. リーダーはステップ 3 の編纂結果の `summary_line` をコンソールに表示し、続けて次を表示する: 「トリアージ / 見積を `{document_path}` に永続化しました。Maintain / Alternative 指摘を修正するには `/creview:respond {document_path}` を実行してください。」
+2. 詳細テーブルが必要な場合のみ、ステップ 2 の `summary_path` を Read する（ステップ 2 をスキップした場合は存在しない）。
 3. リーダーが `{tmp_dir}` を一括削除する:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}

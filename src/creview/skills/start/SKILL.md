@@ -1,7 +1,7 @@
 ---
 name: start
 description: 対象プロジェクトのエージェントから自動選定したレビュアーで並列コードレビューを起動する。ユーザーが変更・ブランチ・PR のレビューを求めたとき（例「このコードをレビューして」）や、まとまった実装が完了した直後に能動的に使用する。
-allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*)
+allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*)
 ---
 
 # 並列コードレビュー
@@ -109,7 +109,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch
      ```
 4. スコープ解析サブエージェントを起動して差分を解析させる — テンプレート `scope-analysis.md`、`template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`user_requested = {user_requested}`、オーバーライド `(none)`。戻り値: `{line_count, recommended_reviewers, extension_summary, rationale, template_id}`。
 5. `recommended_reviewers` をそのまま最終レビュアーリストとして確定し、各要素の `name` をステップ 2 で `subagent_type` に渡す。
-6. `line_count == 0` の場合、空のレビュードキュメントを `{final_doc_path}` に生成してステップ 4 へ直接進む。
+6. `line_count == 0` の場合、空のレビュードキュメント（`${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` のヘッダーブロックのみ、重要度セクションなし）を `{final_doc_path}` に Write してステップ 4 へ直接進む。
 
 ## ステップ 2 — 並列レビュアーの起動
 
