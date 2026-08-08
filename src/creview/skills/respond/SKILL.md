@@ -64,11 +64,25 @@ fix: Add null check before accessing output pointer
 
 `Triage: 🚫 Won't Fix`、`Estimate: 🔻 Downgrade`、すでに `Status: 🟢 Fixed` の指摘はスキップする。
 
-## サブエージェント共通指示
+## サブエージェントの起動
 
-共通禁止事項は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` を参照。各サブエージェントへのプロンプト本体は `templates/*.md` の外部テンプレートに格納されている（frontmatter に `template_id` を持つ）。リーダーは Agent ツール起動時に、変数値を埋めた上で「テンプレートを Read して指示に従う」旨の起動プロンプトをサブエージェントに渡す。サブエージェントは戻り値に `template_id` を含める。リーダーは戻り値の `template_id` が各ステップで指定されている UUID（後述、各ステップにハードコード）と一致することを確認し、不一致の場合は当該サブエージェントを再起動する。
+共通禁止事項と起動プロンプトの完全性は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` および同 § Launch prompt completeness を参照。各サブエージェントへの指示は `templates/*.md` の外部テンプレート（frontmatter に `template_id` を持つ）にあり、起動プロンプトはその内容を引用せず、テンプレートを Read させる。
 
-起動プロンプトの完全性に関する規約は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch prompt completeness を参照。
+サブエージェントはすべて以下のプロンプトで起動し、テンプレート・変数・オーバーライドは各ステップの指定で置換する:
+
+```
+最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/{template}` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
+
+変数（テンプレート中の {{...}} placeholder を置換）:
+- {name}: {value}
+
+ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
+- (該当なし)
+
+戻り値に template_id（テンプレートの frontmatter から Read）を含める。
+```
+
+戻り値の `template_id` が各ステップで指定した UUID と一致することを確認し、不一致の場合は当該サブエージェントを再起動する。
 
 ### 専門家エージェントの解決
 
@@ -93,23 +107,9 @@ fix: Add null check before accessing output pointer
 
 ## ステップ 1 — 修正対象の選別（select-fix-targets サブエージェントへ委譲）
 
-`Agent(subagent_type="general-purpose", prompt=...)` で起動する。Sub はレビュードキュメントを Read し、修正対象選別ルールを適用し、`{tmp_dir}/targets.json` を Write する。タスク固有の指示は `templates/select-fix-targets.md` 外部テンプレートに格納されている:
+`Agent(subagent_type="general-purpose", prompt=...)` で起動する。Sub はレビュードキュメントを Read し、修正対象選別ルールを適用し、`{tmp_dir}/targets.json` を Write する。
 
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/select-fix-targets.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- document_path: {document_path}
-- tmp_dir: {tmp_dir}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (該当なし)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-戻り値（`{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}`）を受け取る。`template_id` が `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95` と一致することを確認する。一致しない場合はサブエージェントを再起動する。本文は読み込まない。
+テンプレート `select-fix-targets.md`、`template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — 本文は読み込まない。
 
 `fix_count == 0` の場合、ステップ 2・3・4 をスキップしてステップ 5（編纂。反映するものなし → 「修正対象なし」を報告）へ進む。
 
@@ -117,47 +117,15 @@ fix: Add null check before accessing output pointer
 
 `by_assignee` の各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で修正サブエージェントを起動する。異なる assignee は並列起動する。同一 assignee 内の ids はテンプレートの並列化制約に従う。
 
-タスク固有の指示は `templates/fix.md` 外部テンプレートに格納されている:
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/fix.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- ids: {ids}
-- document_path: {document_path}
-- tmp_dir: {tmp_dir}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (該当なし)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-すべての修正エージェントから戻り値（`{items: [{id, path}, ...], template_id}`）を受け取る。`template_id` が `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14` と一致することを確認する。一致しない場合は当該エージェントを再起動する。`items` のみを集め、status 本文は読み込まない。
+テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path}, ...], template_id}` — `items` のみを集め、status 本文は読み込まない。
 
 ## ステップ 3 — コメントレビュー（comment-sensei サブエージェントへ委譲）
 
 修正サブエージェントが追加・変更したコメントが `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` の規律に違反していないかを comment-sensei にレビューさせ、違反があれば修正させる。comment-sensei には今回の修正差分（`fetch-diff.sh` 出力）とレビュードキュメント（`{document_path}`）を渡し、変更されたコメントを把握しつつ各指摘の趣旨を棄損しない範囲で調整させる。追加・変更されたコメントが無い場合、サブエージェントは何もせず終了してよい。
 
-リーダーは起動前に `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` で修正差分を取得する。`Agent(subagent_type="comment-sensei", prompt=...)` で起動する。タスク固有の指示は `templates/comment-review.md` 外部テンプレートに格納されている:
+リーダーは起動前に `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` で修正差分を取得する。`Agent(subagent_type="comment-sensei", prompt=...)` で起動する。
 
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/comment-review.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-- diff_path: {tmp_dir}/changes.txt
-- document_path: {document_path}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (該当なし)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-戻り値（`{reviewed_paths, fix_count, template_id}`）を受け取る。`template_id` が `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
+テンプレート `comment-review.md`、`template_id` `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`document_path = {document_path}`、オーバーライド `(該当なし)`。戻り値: `{reviewed_paths, fix_count, template_id}`。
 
 ## ステップ 4 — フォーマット・ビルド・テスト検証
 
@@ -167,47 +135,14 @@ fix: Add null check before accessing output pointer
 
 最大試行回数: 5。以下を最大試行回数まで繰り返す:
 
-1. `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` で現在の修正差分（作業ツリー）を取得し、フォーマット・ビルド・テスト検証 Sub を `Agent(subagent_type="review-helper", prompt=...)` で起動する。
-2. 戻り値（`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`template_id` が `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46` と一致することを確認する。一致しない場合は Sub を再起動する。`workflow_warning` が非 null の場合はステップ 6 で提示するため保持する。
+1. `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` で現在の修正差分（作業ツリー）を取得し、フォーマット・ビルド・テスト検証 Sub を `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `format-build-verify.md`、`template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`attempt_num = {attempt_num}`、オーバーライド `(該当なし)`。
+2. 戻り値（`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`workflow_warning` が非 null の場合はステップ 6 で提示するため保持する。
 3. `success == true` ならループ終了。
 4. `success == false` の場合:
    a. `{tmp_dir}/format-build-result.json` を Read し、`failure` セクションから `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` を取得する（判定本体ではない operational data。ただしソースコード本体は Read しない）。
-   b. `Agent(subagent_type=suggested_specialist, prompt=...)` でビルド／テスト修正専門家 Sub を起動する。
-   c. 戻り値（`{description, template_id}`）を受け取り、`template_id` が `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29` と一致することを確認する。一致しない場合は当該 Sub を再起動する。
-   d. ループの先頭に戻る（コードが書き変わっているのでフォーマット再確認が必要）。
+   b. `Agent(subagent_type=suggested_specialist, prompt=...)` でビルド／テスト修正専門家 Sub を起動する — テンプレート `build-fix.md`、`template_id` `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{description, template_id}`。
+   c. ループの先頭に戻る（コードが書き変わっているのでフォーマット再確認が必要）。
 5. 試行回数上限に達してもビルド／テストが通らない場合、ユーザーに `error_summary` を提示してループを抜け、ステップ 5 に進む。
-
-### フォーマット・ビルド・テスト検証 Sub の起動プロンプト
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/format-build-verify.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-- diff_path: {tmp_dir}/changes.txt
-- attempt_num: {attempt_num}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (該当なし)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-### ビルド／テスト修正専門家 Sub の起動プロンプト
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/build-fix.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (該当なし)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
 
 ## ステップ 5 — レビュードキュメントへの反映
 
@@ -228,4 +163,4 @@ fix: Add null check before accessing output pointer
 
 ## ステップ 6 — サマリー
 
-リーダーは編纂サブエージェントから受け取った `summary_line` をコンソールに表示する。ステップ 4 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。
+リーダーはステップ 5 で受け取った `summary_line` をコンソールに表示する。ステップ 4 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。

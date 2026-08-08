@@ -61,11 +61,25 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 - `estimate` / `Downgrade` → 🔻（トリアージ判定を覆して修正しない、代替手段なし）
 - `estimate` / `Alternative` → 🚧（トリアージ判定は覆るが FIXME コメント付与等のより軽い手段で代替）
 
-## サブエージェント共通指示
+## サブエージェントの起動
 
-共通禁止事項は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` を参照。各サブエージェントへのプロンプト本体は `templates/*.md` の外部テンプレートに格納されている（frontmatter に `template_id` を持つ）。リーダーは Agent ツール起動時に「テンプレートを Read して指示に従う」旨の起動プロンプトに変数値を埋めて渡す。サブエージェントは戻り値に `template_id` を含める。リーダーは戻り値の `template_id` が各ステップで指定されている UUID（後述、各ステップにハードコード）と一致することを確認し、不一致の場合は当該サブエージェントを再起動する。
+共通禁止事項と起動プロンプトの完全性は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` および同 § 起動プロンプトの完全性 を参照。各サブエージェントへの指示は `templates/*.md` の外部テンプレート（frontmatter に `template_id` を持つ）にあり、起動プロンプトはその内容を引用せず、テンプレートを Read させる。
 
-起動プロンプトの完全性に関する規約は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動プロンプトの完全性を参照。
+サブエージェントはすべて以下のプロンプトで起動し、テンプレート・変数・オーバーライドは各ステップの指定で置換する:
+
+```
+最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/triage/templates/{template}` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
+
+変数（テンプレート中の {{...}} placeholder を置換）:
+- {name}: {value}
+
+ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
+- (none)
+
+戻り値に template_id（テンプレートの frontmatter から Read）を含める。
+```
+
+戻り値の `template_id` が各ステップで指定した UUID と一致することを確認し、不一致の場合は当該サブエージェントを再起動する。
 
 ### 専門家エージェントの解決
 
@@ -106,26 +120,9 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 トリアージは**修正作業を行う専門エージェントとは別個の単一サブエージェント**に委譲する（バイアス分離のため）。トリアージ Sub はレビュードキュメントを直接 Read して指摘抽出とステージ判定を行い、トリアージ判定を提案 → 反証 → 裁定の三段（敵対的トリアージ）で行う。一次判定は自身で行い、反証 Sub と裁定 Sub を自らネスト起動し、最終判定を自ら `triage.json` に反映する。ネスト Sub の `template_id` 照合と不一致時の再起動はトリアージ Sub が担う。判定結果は**ファイルに Write** させ、リーダーの context に判定本体を載せない。
 
-1. `Agent(subagent_type="general-purpose", prompt=...)` でサブエージェントを起動する。モデル指定はしない。タスク固有の指示は `templates/triage.md` 外部テンプレートに格納されている。起動プロンプト例:
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/triage/templates/triage.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- document_path: {document_path}
-- tmp_dir: {tmp_dir}
-- previous_round_doc_paths: {previous_round_doc_paths}（標準フローでは "(none)"。/creview:rounds 等の上位フローから過去ラウンドの doc_path 一覧が渡される場合のみ非空）
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (none)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-2. 戻り値（`{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}`）を受け取る。triage の本文は読み込まない。戻り値に `error` が含まれる場合はステップ 2 以降に進まず、`${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で作業ディレクトリを削除し、失敗をユーザーに報告して中断する。
-3. `template_id` が `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
-4. トリアージサマリ（件数。裁定で反転した件数 `flipped_count` を含む）をユーザーに提示する。
+1. `Agent(subagent_type="general-purpose", prompt=...)` でサブエージェントを起動する。モデル指定はしない。テンプレート `triage.md`、`template_id` `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`previous_round_doc_paths = {previous_round_doc_paths}`（標準フローでは "(none)"。/creview:rounds 等の上位フローから過去ラウンドの doc_path 一覧が渡される場合のみ非空）、オーバーライド `(none)`。戻り値: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}` — triage の本文は読み込まない。
+2. 戻り値に `error` が含まれる場合はステップ 2 以降に進まず、`${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で作業ディレクトリを削除し、失敗をユーザーに報告して中断する。
+3. トリアージサマリ（件数。裁定で反転した件数 `flipped_count` を含む）をユーザーに提示する。
 
 `will_fix_count == 0` の場合、ステップ 2 をスキップしてステップ 3（編纂。Won't Fix の triage 値のみ永続化）へ進む。
 
@@ -133,42 +130,9 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ステップ 1 で受け取った `by_assignee` 配列をループする。各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で専門家サブエージェントを並列起動する。各サブエージェントは担当 ids を一括見積し、id ごとに `{tmp_dir}/estimates/{id}.json` を Write する。
 
-1. 起動プロンプト例（persona は含めない）。タスク固有の指示は `templates/estimate.md` 外部テンプレートに格納されている:
+1. 見積エージェントを起動する（persona は含めない）— テンプレート `estimate.md`、`template_id` `8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(none)`。各エージェントの戻り値: `{items: [{id, verdict}, ...], template_id}` — estimate の本文は読み込まない。
 
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/triage/templates/estimate.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- ids: {ids}
-- document_path: {document_path}
-- tmp_dir: {tmp_dir}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (none)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-2. すべての見積エージェントから戻り値（`{items: [{id, verdict}, ...], template_id}`）を受け取る。各エージェントの `template_id` が `8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48` と一致することを確認する。一致しない場合は当該エージェントを再起動する。estimate の本文は読み込まない。
-
-3. 見積結果サマリ（レビュー + トリアージ + 見積を 1 枚に統合したテーブル + レビュードキュメントへのリンク）を生成するため、集約サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する。
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/triage/templates/estimate-summary.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- tmp_dir: {tmp_dir}
-- document_path: {document_path}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (none)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-戻り値（`{summary_path, summary_line, maintain_count, downgrade_count, alternative_count, template_id}`）を受け取る。`template_id` が `5c1e9b7a-3d48-4a96-b8e2-7f3c5a1d4b29` と一致することを確認する。一致しない場合はサブエージェントを再起動する。リーダーは `summary_line` だけを context に保持し、テーブル本体は載せない。
+2. 見積結果サマリ（レビュー + トリアージ + 見積を 1 枚に統合したテーブル + レビュードキュメントへのリンク）を生成するため、集約サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `estimate-summary.md`、`template_id` `5c1e9b7a-3d48-4a96-b8e2-7f3c5a1d4b29`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`document_path = {document_path}`、オーバーライド `(none)`。戻り値: `{summary_path, summary_line, maintain_count, downgrade_count, alternative_count, template_id}`。リーダーは `summary_line` だけを context に保持し、テーブル本体は載せない。
 
 ## ステップ 3 — レビュードキュメントへの反映
 

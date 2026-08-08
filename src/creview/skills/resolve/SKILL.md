@@ -62,11 +62,25 @@ Unresolved の指摘には `verification` 値を書き込まない。
 - 単一行のみ（改行不可）。長い説明はドキュメントの他のセクション（フィードバック詳細など）に書き、メタデータ値は要約に留める。
 - 削除不可（追記のみ）。
 
-## サブエージェント共通指示
+## サブエージェントの起動
 
-共通禁止事項は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` を参照。各サブエージェントへのプロンプト本体は `templates/*.md` の外部テンプレートに格納されている（frontmatter に `template_id` を持つ）。リーダーは Agent ツール起動時に「テンプレートを Read して指示に従う」旨の起動プロンプトに変数値を埋めて渡す。サブエージェントは戻り値に `template_id` を含める。リーダーは戻り値の `template_id` が各ステップで指定されている UUID（後述、各ステップにハードコード）と一致することを確認し、不一致の場合は当該サブエージェントを再起動する。
+共通禁止事項と起動プロンプトの完全性は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` および同 § 起動プロンプトの完全性 を参照。各サブエージェントへの指示は `templates/*.md` の外部テンプレート（frontmatter に `template_id` を持つ）にあり、起動プロンプトはその内容を引用せず、テンプレートを Read させる。
 
-起動プロンプトの完全性に関する規約は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動プロンプトの完全性を参照。
+サブエージェントはすべて以下のプロンプトで起動し、テンプレート・変数・オーバーライドは各ステップの指定で置換する:
+
+```
+最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/{template}` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
+
+変数（テンプレート中の {{...}} placeholder を置換）:
+- {name}: {value}
+
+ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
+- (該当なし)
+
+戻り値に template_id（テンプレートの frontmatter から Read）を含める。
+```
+
+戻り値の `template_id` が各ステップで指定した UUID と一致することを確認し、不一致の場合は当該サブエージェントを再起動する。
 
 ## 内部処理（中間ファイル）
 
@@ -105,46 +119,13 @@ events.jsonl は `compile-review.py` が `verifications/*.json` の `memo_value`
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
    ```
-4. 解析サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する。タスク固有の指示は `templates/analyze.md` 外部テンプレートに格納されている。起動プロンプト例:
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/analyze.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- document_path: {document_path}
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (該当なし)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-サブエージェントから戻り値（`{total, by_assignee, template_id}`）を受け取る。`template_id` が `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42` と一致することを確認する。一致しない場合はサブエージェントを再起動する。
+4. 解析サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `analyze.md`、`template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`document_path = {document_path}`、オーバーライド `(該当なし)`。戻り値: `{total, by_assignee, template_id}`。
 
 ## ステップ 2 — 各指摘の検証（specialist 単位で並列委譲）
 
 ステップ 1 の `by_assignee` をループし、各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で検証サブエージェントを並列起動する（agent 定義の persona と専門観点が自動ロードされる）。
 
-起動プロンプト例（persona は含めない）。タスク固有の指示は `templates/verify.md` 外部テンプレートに格納されている:
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/verify.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- ids: {ids}
-- document_path: {document_path}
-- tmp_dir: {tmp_dir}
-- diff_path: {tmp_dir}/diff.txt
-
-ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (該当なし)
-
-戻り値に template_id（テンプレートの frontmatter から Read）を含める。
-```
-
-各検証エージェントから戻り値（`{items: [{id, outcome}, ...], template_id}`）を受け取る。`template_id` が `8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94` と一致することを確認する。一致しない場合は当該エージェントを再起動する。**verification 本文は context に載せない**（戻り値は `items` のみ）。
+persona は含めない。テンプレート `verify.md`、`template_id` `8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/diff.txt`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, outcome}, ...], template_id}` — **verification 本文は context に載せない**。
 
 ## ステップ 3 — 検証レポートと反映
 

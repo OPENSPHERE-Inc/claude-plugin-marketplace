@@ -176,26 +176,15 @@ If not met, proceed to final report generation.
 
 Final report path: `{base-path}/{branch-dir}/final-report.md`
 
-1. Launch the sub-agent via `Agent(subagent_type="review-helper", prompt=...)`. The task-specific instructions are stored in the external template `templates/final-report-compile.md`. Example launch prompt:
-
-```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/final-report-compile.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
-
-Variables (substitute into the template's {{...}} placeholders):
-- plugin_root: ${CLAUDE_PLUGIN_ROOT}
-- round_doc_paths: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
-- round_stats: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ... (for rounds whose workflow_warning is non-null, append workflow_warning="..." at the end)
-- template_path: {template_path}
-- report_path: {report_path}
-- language: user's chat language
-
-Round-specific overrides (apply after following the template's instructions):
-- (none)
-
-Include `template_id` (Read from the template's frontmatter) in the return value.
-```
-
-2. The orchestrator receives the return value (`{report_path, template_id}`). Verify that `template_id` matches `4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16`. If it does not match, relaunch the sub-agent. Hold only `report_path` in context.
+1. Launch the sub-agent via `Agent(subagent_type="review-helper", prompt=...)` with `templates/final-report-compile.md` (`template_id`: `4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16`).
+   - Variables:
+     - `round_doc_paths`: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
+     - `round_stats`: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ... (for rounds whose workflow_warning is non-null, append workflow_warning="..." at the end)
+     - `template_path`: {template_path}
+     - `report_path`: {report_path}
+     - `language`: user's chat language
+   - Overrides: (none)
+2. The orchestrator receives the return value (`{report_path, template_id}`) and holds only `report_path` in context.
 
 ### Final report format
 
