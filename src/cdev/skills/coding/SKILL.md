@@ -87,12 +87,12 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 ```
 {tmp_dir} = .claude/tmp/cdev-coding-{timestamp}/
-{tmp_dir}/team.json          ← team-analysis の結果（roster。リーダーが読む）
-{tmp_dir}/design/{slug}.md   ← architect ごとに 1 つの設計セクション（reviewer と coder が読む）
-{tmp_dir}/baseline-tree      ← コーディング開始前の作業ツリースナップショット（QA 差分の基点）
-{tmp_dir}/changes.txt        ← コーディング開始以降の差分（QA の入力）
-{tmp_dir}/qa-result.json     ← QA 結果
-{tmp_dir}/build.log          ← dev-helper が取得するビルド / テスト出力
+{tmp_dir}/team.jsonl        ← team-analysis の結果（roster。リーダーが読む）
+{tmp_dir}/design/{slug}.md  ← architect ごとに 1 つの設計セクション（reviewer と coder が読む）
+{tmp_dir}/baseline-tree     ← コーディング開始前の作業ツリースナップショット（QA 差分の基点）
+{tmp_dir}/changes.txt       ← コーディング開始以降の差分（QA の入力）
+{tmp_dir}/qa-result.jsonl   ← QA 結果
+{tmp_dir}/build.log         ← dev-helper が取得するビルド / テスト出力
 ```
 
 作成はステップ 1 で `mkdir -p`、削除はリーダーがステップ 5 で `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` により行う。
@@ -102,7 +102,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 1. 本スキルはクリーンな作業ツリーでのみ動作する: `git status --porcelain` を実行し、出力が非空（ステージ済み・未ステージ・未追跡のいずれかが存在）ならエラーメッセージをコンソールに表示してスキルを終了する。
 2. `{timestamp}` を解決し、`{tmp_dir}` を確定して作成する（`mkdir -p {tmp_dir}/design`）。続いてコーディング開始前のベースラインを記録する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`。
 3. コンソールに表示する: `## Step 1 — Team formation`。
-4. `dev-helper`（種別 `cdev:dev-helper`、name `dev-helper`）を起動する。`dev-helper` 宛に `templates/team-analysis.md` を指定し `task = {タスク指定}`、`output_path = {tmp_dir}/team.json` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team.json` を Read する: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`（`name` は起動時の subagent_type）。各 producer の `reviewer` はペアの reviewer の `slug`（1 人の reviewer が複数の producer とペアになることもあるが、ドメインが一致する範囲に限る）。
+4. `dev-helper`（種別 `cdev:dev-helper`、name `dev-helper`）を起動する。`dev-helper` 宛に `templates/team-analysis.md` を指定し `task = {タスク指定}`、`output_path = {tmp_dir}/team.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team.jsonl` を Read する: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`（`name` は起動時の subagent_type）。各 producer の `reviewer` はペアの reviewer の `slug`（1 人の reviewer が複数の producer とペアになることもあるが、ドメインが一致する範囲に限る）。
 5. ロスターの各メンバーを起動する。name は `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}`、種別は team-analysis が返す `name` を用いる（architect と coder は `general-purpose`）。ペアリングと `{task_summary}` を保持する。producer のペア reviewer の宛先は `reviewer-{その producer の reviewer slug}`。
 6. コンソールに表示する: 各 producer のペアの reviewer と一行の理由を含むロスター。
 
@@ -128,11 +128,11 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 
 1. コンソールに表示する: `## Step 4 — QA (attempt {n})`。
 2. コーディング開始以降の差分を取得する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh diff {tmp_dir}/baseline-tree {tmp_dir}/changes.txt`。
-3. `dev-helper` 宛に `templates/qa.md` を指定して `tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`attempt_num = {n}` を渡して `SendMessage`。その 1 行の完了報告を `{summary_line}` として保持し、`{tmp_dir}/qa-result.json` を Read する: `{success}` は `failure == null`、`{suggested_specialist}` / `{error_summary}` は `failure` の対応フィールド。`workflow_warning` が非 null の場合、ステップ 5 のために保持する。
+3. `dev-helper` 宛に `templates/qa.md` を指定して `tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`attempt_num = {n}` を渡して `SendMessage`。その 1 行の完了報告を `{summary_line}` として保持し、`{tmp_dir}/qa-result.jsonl` を Read する: `{success}` は `failure == null`、`{suggested_specialist}` / `{error_summary}` は `failure` の対応フィールド。`workflow_warning` が非 null の場合、ステップ 5 のために保持する。
 4. `success == true` の場合、ループを抜ける。
 5. `success == false` かつ試行回数が残っている場合、QA 修正セルを回す:
    a. 失敗スコープを `general-purpose` の coder と、失敗ドメインに一致するペア reviewer（`{suggested_specialist}` をヒントとする）でカバーする。適合する roster のメンバーは再利用し、いなければ roster にない `coder-{slug}` / `reviewer-{slug}` を name として起動する。新規に起動する reviewer の subagent_type は、`{suggested_specialist}` が § Agent 種別と起動要件 の登録名として存在すればそれを、存在しなければ `general-purpose` を用いる。
-   b. coder の name 宛に `templates/code.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {失敗したファイル}`、`tdd = {has_test_suite}`、`feedback = QA failure — Read {tmp_dir}/qa-result.json (failure section) and {tmp_dir}/build.log; fix the build/test error.`、`reviewer = {ペア reviewer の name}`、`comment_reviewer = comment-sensei` を渡して `SendMessage`。そして reviewer の name 宛に `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = {coder の name}`、`cell_task = code-qa-{n}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
+   b. coder の name 宛に `templates/code.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {失敗したファイル}`、`tdd = {has_test_suite}`、`feedback = QA failure — Read {tmp_dir}/qa-result.jsonl (failure section) and {tmp_dir}/build.log; fix the build/test error.`、`reviewer = {ペア reviewer の name}`、`comment_reviewer = comment-sensei` を渡して `SendMessage`。そして reviewer の name 宛に `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = {coder の name}`、`cell_task = code-qa-{n}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
    c. そのセルのクローズ報告を受信したら、このループのステップ 1 へ戻る（再 QA）。
 6. 最大試行回数を超えてもなお失敗する場合、`error_summary` をコンソールに提示してステップ 5 へ進む。
 

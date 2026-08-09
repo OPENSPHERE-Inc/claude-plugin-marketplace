@@ -18,6 +18,8 @@ Common prohibitions that sub-agents of the creview skills (start / triage / resp
 
 Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting.
 
+Write a `.jsonl` output file as the single JSON object the task specifies, on one line. Do not split it into one line per record.
+
 ## Coding Conventions
 
 When editing source code, follow `comment.md` in the same directory as this file. When editing human-facing documentation, follow `document.md` in the same directory as this file. (The leader passes this directory via the template's `{{plugin_root}}/rules/` path; resolve siblings relative to the absolute path you Read this file from.)

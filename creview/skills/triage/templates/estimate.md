@@ -9,7 +9,7 @@ Batch-estimate the cost of the assigned findings `{{ids}}` (investigation and de
 Inputs (look up by id == "{finding-id}"):
 
 - Review document `{{document_path}}` — Obtain description / location / severity from around the METADATA marker.
-- `{{tmp_dir}}/triage.json` — Obtain verdict / reason from the items array by matching id.
+- `{{tmp_dir}}/triage.jsonl` — Obtain verdict / reason from the items array by matching id.
 
 For each id:
 
@@ -46,9 +46,9 @@ For each id:
    FIXME / TODO individual judgment (when considering Alternative):
    e. Items that are sufficient to record in the final report as "recommend follow-up PR" should not leave a FIXME in the source; switch to Alternative → Downgrade (include "recommend separate PR" in the reason). Leave a FIXME only when the future editor of that location must inevitably notice it during editing (a pitfall easily hit during editing, an interim implementation of logic, an unsupported specific condition, etc.).
 
-6. Write to `{{tmp_dir}}/estimates/{finding-id}.json`.
+6. Write to `{{tmp_dir}}/estimates/{finding-id}.jsonl`.
 
-`{{tmp_dir}}/estimates/{finding-id}.json` format: `{id, specialist, verdict (Maintain | Downgrade | Alternative), cost (S|M|L), future (S|M|L), signals (["a","b",...] or []), fix_plan, rationale, memo_value}`
+`{{tmp_dir}}/estimates/{finding-id}.jsonl` format: `{id, specialist, verdict (Maintain | Downgrade | Alternative), cost (S|M|L), future (S|M|L), signals (["a","b",...] or []), fix_plan, rationale, memo_value}`
 
 fix_plan format: array of strings, each entry `"{file:line} — {what to change}"`. Include comment wording for added comments. Reflect the plan finalized at Step 5:
 

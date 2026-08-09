@@ -9,7 +9,7 @@ template_id: 8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48
 入力（id == "{finding-id}" で引く）:
 
 - レビュードキュメント `{{document_path}}` — METADATA マーカー前後から description / location / severity を取得
-- `{{tmp_dir}}/triage.json` — items 配列から id 一致で verdict / reason を取得
+- `{{tmp_dir}}/triage.jsonl` — items 配列から id 一致で verdict / reason を取得
 
 各 id について:
 
@@ -46,9 +46,9 @@ template_id: 8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48
    FIXME / TODO 個別判定（Alternative 検討時）:
    e. 後続 PR 推奨として最終レポートに記録すれば足りる事項は、ソースに FIXME を残さず Alternative → Downgrade（理由に「別 PR 推奨」）に切り替える。FIXME を残すのは、当該箇所を将来編集する人が編集時に必ず気付く必要がある場合に限る（編集時に踏みやすい落とし穴、ロジックの暫定実装、特定条件の未対応等）。
 
-6. `{{tmp_dir}}/estimates/{finding-id}.json` に Write。
+6. `{{tmp_dir}}/estimates/{finding-id}.jsonl` に Write。
 
-`{{tmp_dir}}/estimates/{finding-id}.json` 形式: `{id, specialist, verdict（Maintain | Downgrade | Alternative）, cost（S|M|L）, future（S|M|L）, signals（["a","b",...] または []）, fix_plan, rationale, memo_value}`
+`{{tmp_dir}}/estimates/{finding-id}.jsonl` 形式: `{id, specialist, verdict（Maintain | Downgrade | Alternative）, cost（S|M|L）, future（S|M|L）, signals（["a","b",...] または []）, fix_plan, rationale, memo_value}`
 
 fix_plan 形式: 文字列配列。各要素は `"{file:line} — {変更内容}"` 形式。コメント追加の場合はコメント文言を含める。ステップ 5 で確定したプランを反映する:
 

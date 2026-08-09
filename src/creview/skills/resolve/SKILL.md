@@ -90,17 +90,17 @@ Unresolved の指摘には `verification` 値を書き込まない。
 
 ```
 {tmp_dir} = .claude/tmp/creview-resolve-{timestamp}/
-{tmp_dir}/diff.txt                 ← リーダーがステップ 1 で取得する差分（検証サブエージェント入力）
-{tmp_dir}/verifications/{id}.json  ← 検証サブエージェントの出力（指摘 1 件 1 ファイル）
-{tmp_dir}/events.jsonl             ← compile-review.py の出力（render-review.py 入力）
-{tmp_dir}/resolve-summary.md       ← compile-review.py の出力（検証レポート）
+{tmp_dir}/diff.txt                  ← リーダーがステップ 1 で取得する差分（検証サブエージェント入力）
+{tmp_dir}/verifications/{id}.jsonl  ← 検証サブエージェントの出力（指摘 1 件 1 ファイル）
+{tmp_dir}/events.jsonl              ← compile-review.py の出力（render-review.py 入力）
+{tmp_dir}/resolve-summary.md        ← compile-review.py の出力（検証レポート）
 ```
 
 作成はステップ 1、削除はリーダーがステップ 4 で `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で行う。
 
 ### events.jsonl
 
-events.jsonl は `compile-review.py` が `verifications/*.json` の `memo_value` から `{tmp_dir}/events.jsonl` に生成する。形式:
+events.jsonl は `compile-review.py` が `verifications/*.jsonl` の `memo_value` から `{tmp_dir}/events.jsonl` に生成する。形式:
 
 ```jsonl
 {"id":"C-1","field":"verification","value":"✅ Verified — Null チェックの修正は正確"}
@@ -129,7 +129,7 @@ persona は含めない。テンプレート `verify.md`、`template_id` `8a1f5c
 
 ## ステップ 3 — 検証レポートと反映
 
-リーダー（あなた）は検証本文を context に載せない。`compile-review.py` が `verifications/*.json` から検証レポート（`resolve-summary.md`）と events.jsonl を生成し、verification を markdown に反映する。
+リーダー（あなた）は検証本文を context に載せない。`compile-review.py` が `verifications/*.jsonl` から検証レポート（`resolve-summary.md`）と events.jsonl を生成し、verification を markdown に反映する。
 
 1. 次を実行する（CWD はプロジェクトルート）:
 

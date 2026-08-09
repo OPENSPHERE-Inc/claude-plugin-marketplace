@@ -96,8 +96,8 @@ Each decision is written to an intermediate file, and `compile-review.py` compil
 
 ```
 {tmp_dir} = .claude/tmp/creview-respond-{timestamp}/
-{tmp_dir}/targets.json         ← output of the select-fix-targets sub-agent
-{tmp_dir}/statuses/{id}.json   ← output of the fix sub-agents (one file per finding)
+{tmp_dir}/targets.jsonl        ← output of the select-fix-targets sub-agent
+{tmp_dir}/statuses/{id}.jsonl  ← output of the fix sub-agents (one file per finding)
 {tmp_dir}/events.jsonl         ← output of compile-review.py (input to render-review.py)
 ```
 
@@ -107,7 +107,7 @@ At the start of Step 1, the leader (you) creates `{tmp_dir}` with `mkdir -p {tmp
 
 ## Step 1 — Select fix targets (delegate to the select-fix-targets sub-agent)
 
-Launch via `Agent(subagent_type="general-purpose", prompt=...)`. The Sub Reads the review document, applies the fix-target selection rule, and Writes `{tmp_dir}/targets.json`.
+Launch via `Agent(subagent_type="general-purpose", prompt=...)`. The Sub Reads the review document, applies the fix-target selection rule, and Writes `{tmp_dir}/targets.jsonl`.
 
 Template `select-fix-targets.md`, `template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — do not load the body.
 
@@ -139,14 +139,14 @@ Maximum attempts: 5. Repeat the following up to the maximum:
 2. Receive the return value (`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`). If `workflow_warning` is non-null, retain it for presentation in Step 6.
 3. If `success == true`, exit the loop.
 4. If `success == false`:
-   a. Read `{tmp_dir}/format-build-result.json` and obtain `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` from its `failure` section (operational data, not decision body; do not Read source code itself).
+   a. Read `{tmp_dir}/format-build-result.jsonl` and obtain `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` from its `failure` section (operational data, not decision body; do not Read source code itself).
    b. Launch the build/test-fix specialist Sub via `Agent(subagent_type=suggested_specialist, prompt=...)` — template `build-fix.md`, `template_id` `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{description, template_id}`.
    c. Return to the top of the loop (format must be rechecked because code changed).
 5. If the build or test still fails after the maximum attempts, present `error_summary` to the user, exit the loop, and proceed to Step 5.
 
 ## Step 5 — Reflect into the review document
 
-The leader (you) does not load decision bodies into context. The fix `status` is aggregated by `compile-review.py` from `statuses/*.json` and reflected into the markdown via events.jsonl (`triage` / `estimate` were already persisted by `/creview:triage`).
+The leader (you) does not load decision bodies into context. The fix `status` is aggregated by `compile-review.py` from `statuses/*.jsonl` and reflected into the markdown via events.jsonl (`triage` / `estimate` were already persisted by `/creview:triage`).
 
 1. Run (CWD = project root):
 

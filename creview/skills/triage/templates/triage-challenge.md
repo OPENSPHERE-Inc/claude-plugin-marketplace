@@ -4,17 +4,17 @@ description: Prompt for a challenge sub-agent that argues against every primary 
 template_id: b8701509-403b-488b-8b13-c867f9c6700b
 ---
 
-As a challenge owner of the primary triage decisions, Read `{{tmp_dir}}/triage-draft.json`, attempt an objection to every item, and Write the result to `{{tmp_dir}}/challenge-{{challenge_index}}.json`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions. Read `{{plugin_root}}/rules/wontfix.md` for the Won't Fix guideline numbers cited below.
+As a challenge owner of the primary triage decisions, Read `{{tmp_dir}}/triage-draft.jsonl`, attempt an objection to every item, and Write the result to `{{tmp_dir}}/challenge-{{challenge_index}}.jsonl`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions. Read `{{plugin_root}}/rules/wontfix.md` for the Won't Fix guideline numbers cited below.
 
 Preconditions:
 
-- Your only filesystem write is `{{tmp_dir}}/challenge-{{challenge_index}}.json`. Sources are Read-only.
-- Do not Read any other `challenge-*.json`: the parallel instances' stances are tallied as independent votes.
+- Your only filesystem write is `{{tmp_dir}}/challenge-{{challenge_index}}.jsonl`. Sources are Read-only.
+- Do not Read any other `challenge-*.jsonl`: the parallel instances' stances are tallied as independent votes.
 - The paths passed (`{{document_path}}` / `{{tmp_dir}}`) are relative. Do not convert them to absolute paths.
 
 Inputs:
 
-- `{{tmp_dir}}/triage-draft.json` — `{items: [{id, severity, location, stage, verdict, reason}], by_stage}`.
+- `{{tmp_dir}}/triage-draft.jsonl` — `{items: [{id, severity, location, stage, verdict, reason}], by_stage}`.
 - `{{document_path}}` — look up the finding body around the METADATA marker, keyed by id, when the draft alone does not give enough to argue against.
 - `{{previous_round_doc_paths}}` — when non-empty and not `(none)`, Read each file and use the past-round decision on the same finding (identity is matching file:line and finding summary) as objection material; that is the ground of Won't Fix guideline 7, "already processed in a past round". Do not raise an objection grounded in guideline 7 against a finding whose `stage` is `feedback`: the adjudication sub-agent does not apply guideline 7 to `feedback` findings.
 
@@ -35,6 +35,6 @@ When no objection holds, set `stance` to `no_valid_objection` and leave `argumen
 
 Write the `argument` prose in the same language as the existing Finding descriptions in `{{document_path}}`.
 
-`{{tmp_dir}}/challenge-{{challenge_index}}.json` format: `{items: [{id, stance, argument}]}` (items covers every id in `triage-draft.json`)
+`{{tmp_dir}}/challenge-{{challenge_index}}.jsonl` format: `{items: [{id, stance, argument}]}` (items covers every id in `triage-draft.jsonl`)
 
 Return value: `{path, flip_count, uphold_count, no_valid_objection_count, template_id}` (do not include the argument body in the return value). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

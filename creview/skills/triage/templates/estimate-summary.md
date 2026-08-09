@@ -4,11 +4,11 @@ description: Prompt for the estimate-aggregator sub-agent that produces the esti
 template_id: 5c1e9b7a-3d48-4a96-b8e2-7f3c5a1d4b29
 ---
 
-As the estimate-summary owner, Read `{{tmp_dir}}/triage.json`, all `{{tmp_dir}}/estimates/*.json`, and `{{document_path}}`, and Write the integrated summary to `{{tmp_dir}}/estimate-summary.md`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
+As the estimate-summary owner, Read `{{tmp_dir}}/triage.jsonl`, all `{{tmp_dir}}/estimates/*.jsonl`, and `{{document_path}}`, and Write the integrated summary to `{{tmp_dir}}/estimate-summary.md`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
 
 ## Input handling
 
-- Each item in triage.json (both Will Fix and Won't Fix) is part of the output. Estimates exist only for Will Fix, so use triage.json as the primary axis and join `estimates/{id}.json` by id.
+- Each item in triage.jsonl (both Will Fix and Won't Fix) is part of the output. Estimates exist only for Will Fix, so use triage.jsonl as the primary axis and join `estimates/{id}.jsonl` by id.
 - Read the review document `{{document_path}}` and obtain severity / location / description for each finding (extracted from the heading and body around the METADATA marker). Compress description into a 1–2 sentence summary.
 
 ## `{{tmp_dir}}/estimate-summary.md` structure
@@ -18,9 +18,9 @@ As the estimate-summary owner, Read `{{tmp_dir}}/triage.json`, all `{{tmp_dir}}/
    - Severity: Critical / Major / Minor / Info
    - Location: file:line (may shorten to basename:line when long)
    - Summary: 1–2 sentence summary of the description
-   - Specialist: assignee from triage.json (`—` for Won't Fix)
+   - Specialist: assignee from triage.jsonl (`—` for Won't Fix)
    - Triage: 🔧 Will Fix / 🚫 Won't Fix
-   - For a Won't Fix row, fill the four estimate columns (Cost / Future / Signals / Estimate Verdict) with `—`, and place a summary of the triage.json reason in the Note column.
+   - For a Won't Fix row, fill the four estimate columns (Cost / Future / Signals / Estimate Verdict) with `—`, and place a summary of the triage.jsonl reason in the Note column.
    - Note: supplementary information such as "recommend separate PR" / FIXME insertion, or a Won't Fix reason summary.
 
 ## Return value

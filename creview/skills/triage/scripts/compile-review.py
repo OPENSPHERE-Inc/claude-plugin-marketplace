@@ -6,7 +6,7 @@ document via render-review.py.
 Usage:
     python3 compile-review.py <tmp_dir> <document_path>
 
-Reads <tmp_dir>/triage.json and <tmp_dir>/estimates/*.json (each carries a
+Reads <tmp_dir>/triage.jsonl and <tmp_dir>/estimates/*.jsonl (each carries a
 precomputed `memo_value`), writes <tmp_dir>/events.jsonl, runs the sibling
 render-review.py, and prints a result JSON object to stdout:
     {"fixed_count", "code_changed", "summary_line",
@@ -31,7 +31,7 @@ def main():
         sys.exit(f"Usage: {sys.argv[0]} <tmp_dir> <document_path>")
     tmp_dir, document_path = sys.argv[1:3]
 
-    with open(os.path.join(tmp_dir, "triage.json"), encoding="utf-8") as f:
+    with open(os.path.join(tmp_dir, "triage.jsonl"), encoding="utf-8") as f:
         triage = json.load(f)
 
     events = [
@@ -40,7 +40,7 @@ def main():
     ]
 
     verdicts = {"Maintain": 0, "Alternative": 0, "Downgrade": 0}
-    for est_path in sorted(glob.glob(os.path.join(tmp_dir, "estimates", "*.json"))):
+    for est_path in sorted(glob.glob(os.path.join(tmp_dir, "estimates", "*.jsonl"))):
         with open(est_path, encoding="utf-8") as f:
             est = json.load(f)
         events.append({"id": est["id"], "field": "estimate", "value": est["memo_value"]})

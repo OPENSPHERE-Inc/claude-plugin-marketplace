@@ -20,9 +20,9 @@ template_id: 6a711cba-0da8-4177-a41f-ddb4cf2a6e1f
    - テスト（test コマンドが解決され、ビルド未失敗、ステージがスキップ対象でない場合。`test_ran = true`）: テストを実行し、出力を `{{tmp_dir}}/build.log` に append する。非ゼロ終了時は `failure.stage = "test"` を設定し手順 6 へ。
 5. 目視チェックのみ（`workflow_source == "none"`）: 何も実行しない（`build_ran` / `test_ran` は false）。変更ファイルを Read し、目視で明白な破損（構文崩れ、未解決シンボル）を確認する。`workflow_warning` に「フォーマット／ビルド／テスト手順が宣言されておらず自動検証をスキップした。`.claude/rules/build-format.md` の追加を推奨」を設定する。明白な破損がある場合のみ `failure.stage = "visual"` を設定する。
 6. 失敗時（`failure != null`）: ログ（`{{tmp_dir}}/build.log`。目視モードでは存在しない）とエラー発生ファイルを Read し、原因を分析して `error_summary` / `error_files` / `fix_guidance` を設定する。`{{plugin_root}}/rules/agents-detection.md` の手順で修正担当の専門家を解決し（マッチ対象はエラー内容——言語／ビルドシステム／サブシステム／テストフレームワーク）、`suggested_specialist` に記録する。
-7. `{{tmp_dir}}/qa-result.json` を Write する。
+7. `{{tmp_dir}}/qa-result.jsonl` を Write する。
 
-`{{tmp_dir}}/qa-result.json` 形式:
+`{{tmp_dir}}/qa-result.jsonl` 形式:
 
 ```
 {"workflow_source": "build-format.md | CLAUDE.md | README.md | none", "workflow_warning": <string|null>, "format": {"format_violations_fixed": <int>}, "build": {"ran": <bool>, "success": <bool>}, "test": {"ran": <bool>, "success": <bool>}, "failure": {"stage": "build|test|visual", "error_summary": <string|null>, "error_files": ["src/foo:42", ...]|null, "suggested_specialist": <string|null>, "fix_guidance": <string|null>, "log_path": "{{tmp_dir}}/build.log"}|null}

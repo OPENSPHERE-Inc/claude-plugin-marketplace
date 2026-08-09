@@ -87,12 +87,12 @@ The leader holds only the roster (each teammate's name → agentType), the pairi
 
 ```
 {tmp_dir} = .claude/tmp/cdev-coding-{timestamp}/
-{tmp_dir}/team.json          ← team-analysis result (roster; read by the leader)
-{tmp_dir}/design/{slug}.md   ← one design section per architect (read by reviewers and coders)
-{tmp_dir}/baseline-tree      ← pre-coding working-tree snapshot (baseline for the QA diff)
-{tmp_dir}/changes.txt        ← diff since coding start (input to QA)
-{tmp_dir}/qa-result.json     ← QA result
-{tmp_dir}/build.log          ← build / test output captured by dev-helper
+{tmp_dir}/team.jsonl        ← team-analysis result (roster; read by the leader)
+{tmp_dir}/design/{slug}.md  ← one design section per architect (read by reviewers and coders)
+{tmp_dir}/baseline-tree     ← pre-coding working-tree snapshot (baseline for the QA diff)
+{tmp_dir}/changes.txt       ← diff since coding start (input to QA)
+{tmp_dir}/qa-result.jsonl   ← QA result
+{tmp_dir}/build.log         ← build / test output captured by dev-helper
 ```
 
 Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`.
@@ -102,7 +102,7 @@ Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE
 1. This skill operates only on a clean working tree: run `git status --porcelain`, and if the output is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill.
 2. Resolve `{timestamp}`, fix `{tmp_dir}`, and create it (`mkdir -p {tmp_dir}/design`). Then record the pre-coding baseline: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`.
 3. Console: `## Step 1 — Team formation`.
-4. Spawn `dev-helper` (type `cdev:dev-helper`, name `dev-helper`). To it, `SendMessage` naming `templates/team-analysis.md` with `task = {task specification}`, `output_path = {tmp_dir}/team.json`. On its completion report, Read `{tmp_dir}/team.json`: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).
+4. Spawn `dev-helper` (type `cdev:dev-helper`, name `dev-helper`). To it, `SendMessage` naming `templates/team-analysis.md` with `task = {task specification}`, `output_path = {tmp_dir}/team.jsonl`. On its completion report, Read `{tmp_dir}/team.jsonl`: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).
 5. Spawn each roster member, naming it `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` and using the `name` team-analysis returns as the type (architects and coders use `general-purpose`). Hold the pairings and `{task_summary}`. A producer's paired reviewer is addressed as `reviewer-{the producer's reviewer slug}`.
 6. Console: the roster with each producer's paired reviewer and one-line reasons.
 
@@ -128,11 +128,11 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 
 1. Console: `## Step 4 — QA (attempt {n})`.
 2. Capture the diff since coding start: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh diff {tmp_dir}/baseline-tree {tmp_dir}/changes.txt`.
-3. To `dev-helper`, `SendMessage` naming `templates/qa.md` with `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {n}`. Retain its one-line completion report as `{summary_line}`, then Read `{tmp_dir}/qa-result.json`: `{success}` is `failure == null`; `{suggested_specialist}` / `{error_summary}` are the corresponding `failure` fields. If `workflow_warning` is non-null, retain it for Step 5.
+3. To `dev-helper`, `SendMessage` naming `templates/qa.md` with `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {n}`. Retain its one-line completion report as `{summary_line}`, then Read `{tmp_dir}/qa-result.jsonl`: `{success}` is `failure == null`; `{suggested_specialist}` / `{error_summary}` are the corresponding `failure` fields. If `workflow_warning` is non-null, retain it for Step 5.
 4. If `success == true`, exit the loop.
 5. If `success == false` and attempts remain, run a QA-fix cell:
    a. Cover the failing scope with a `general-purpose` coder and a paired reviewer whose domain matches the failure (`{suggested_specialist}` is the hint). Reuse roster members that fit; otherwise spawn under a `coder-{slug}` / `reviewer-{slug}` name not already in the roster. A newly spawned reviewer uses `{suggested_specialist}` as its subagent_type when that exists as a registered name per § Agent types and spawn requirements, otherwise `general-purpose`.
-   b. To the coder's name, `SendMessage` naming `templates/code.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `assigned_scope = {the failing files}`, `tdd = {has_test_suite}`, `feedback = QA failure — Read {tmp_dir}/qa-result.json (failure section) and {tmp_dir}/build.log; fix the build/test error.`, `reviewer = {paired reviewer's name}`, `comment_reviewer = comment-sensei`; and to the reviewer's name, `SendMessage` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = {the coder's name}`, `cell_task = code-qa-{n}`, `review_rounds = {--review-rounds}`.
+   b. To the coder's name, `SendMessage` naming `templates/code.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `assigned_scope = {the failing files}`, `tdd = {has_test_suite}`, `feedback = QA failure — Read {tmp_dir}/qa-result.jsonl (failure section) and {tmp_dir}/build.log; fix the build/test error.`, `reviewer = {paired reviewer's name}`, `comment_reviewer = comment-sensei`; and to the reviewer's name, `SendMessage` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = {the coder's name}`, `cell_task = code-qa-{n}`, `review_rounds = {--review-rounds}`.
    c. When you receive the reviewer's closure report for that cell, return to step 1 of this loop (re-QA).
 6. If still failing after the max attempts, present `error_summary` to the console and proceed to Step 5.
 

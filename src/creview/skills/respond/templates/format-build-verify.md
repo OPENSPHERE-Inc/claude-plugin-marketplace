@@ -39,9 +39,9 @@ template_id: 9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46
    - `failure.log_path`（`{{tmp_dir}}/build.log`。目視モードでは存在しない）とエラー発生ファイル（目視モードでは破損ファイル）を Read して原因分析し、`failure.error_summary` / `failure.error_files` / `failure.fix_guidance` を設定。
    - 専門家選定: `{{plugin_root}}/rules/agents-detection.md` の手順でエージェントを解決する。マッチ対象はエラー内容（言語・ビルドシステム・サブシステム・テストフレームワーク）、記録先は `failure.suggested_specialist`。
 
-7. `{{tmp_dir}}/format-build-result.json` に Write。
+7. `{{tmp_dir}}/format-build-result.jsonl` に Write。
 
-`{{tmp_dir}}/format-build-result.json` 形式:
+`{{tmp_dir}}/format-build-result.jsonl` 形式:
 
 ```
 {
