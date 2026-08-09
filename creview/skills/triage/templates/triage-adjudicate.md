@@ -4,17 +4,17 @@ description: Prompt for the adjudication sub-agent that settles the final verdic
 template_id: 1921777f-3486-44ff-bc18-2b859ce75122
 ---
 
-As the adjudication owner of the triage decisions, Read `{{tmp_dir}}/triage-draft.json` and the challenge outputs, decide the final verdict and reason per id, and Write the result to `{{tmp_dir}}/adjudication.json`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
+As the adjudication owner of the triage decisions, Read `{{tmp_dir}}/triage-draft.jsonl` and the challenge outputs, decide the final verdict and reason per id, and Write the result to `{{tmp_dir}}/adjudication.jsonl`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
 
 Preconditions:
 
-- Your only filesystem write is `{{tmp_dir}}/adjudication.json`. Sources are Read-only.
+- Your only filesystem write is `{{tmp_dir}}/adjudication.jsonl`. Sources are Read-only.
 - The paths passed (`{{document_path}}` / `{{tmp_dir}}`) are relative. Do not convert them to absolute paths.
 
 Inputs:
 
-- `{{tmp_dir}}/triage-draft.json` — `{items: [{id, severity, location, stage, verdict, reason}], by_stage}`.
-- `{{tmp_dir}}/challenge-{n}.json` for every `n` in `{{challenge_indices}}` — `{items: [{id, stance, argument}]}`, each written by an independent challenge sub-agent that judged the same draft. `stance` takes one of three values: `flip` (the objection is well-grounded and the draft decision should be overturned) / `uphold` (the objection holds but does not outweigh the draft's basis) / `no_valid_objection` (no source-grounded objection can be constructed).
+- `{{tmp_dir}}/triage-draft.jsonl` — `{items: [{id, severity, location, stage, verdict, reason}], by_stage}`.
+- `{{tmp_dir}}/challenge-{n}.jsonl` for every `n` in `{{challenge_indices}}` — `{items: [{id, stance, argument}]}`, each written by an independent challenge sub-agent that judged the same draft. `stance` takes one of three values: `flip` (the objection is well-grounded and the draft decision should be overturned) / `uphold` (the objection holds but does not outweigh the draft's basis) / `no_valid_objection` (no source-grounded objection can be constructed).
 - `{{document_path}}` — look up the finding body around the METADATA marker, keyed by id, when the draft and the challenges alone do not let you apply the guidelines.
 - `{{previous_round_doc_paths}}` — when non-empty and not `(none)`, Read each file and use it for the guideline 7 decision.
 - Source files — Read the `file:line` cited in an objection to verify its factual basis.
@@ -35,6 +35,6 @@ Adjudication:
 
 Write the `reason` prose in the same language as the existing Finding descriptions in `{{document_path}}`.
 
-`{{tmp_dir}}/adjudication.json` format: `{items: [{id, verdict (Will Fix | Won't Fix), flipped, reason}], flipped_count}` (items covers every id in `triage-draft.json`; flipped_count is the number of items whose `flipped` is true)
+`{{tmp_dir}}/adjudication.jsonl` format: `{items: [{id, verdict (Will Fix | Won't Fix), flipped, reason}], flipped_count}` (items covers every id in `triage-draft.jsonl`; flipped_count is the number of items whose `flipped` is true)
 
 Return value: `{path, flipped_count, will_fix_count, wontfix_count, template_id}` (do not include the reason body in the return value). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

@@ -11,7 +11,7 @@ template_id: 8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94
 - レビュードキュメント `{{document_path}}`（Read して各 id の severity / location / description / 末尾フィールドを取得する）。
 - 差分ファイル `{{diff_path}}`（Read して今回の変更範囲を把握する。`Status: 🟢 Fixed` の検証では、記載された修正がこの差分に実在するかを照合の基準とする。差分外を根拠に Resolved と判定しない）。
 
-各 id について以下のロジックで Resolved / Feedback / Unresolved を判定し、結果を `{{tmp_dir}}/verifications/{id}.json` に Write する。末尾フィールドは METADATA マーカー間の triage / estimate / status / verification の最終値。
+各 id について以下のロジックで Resolved / Feedback / Unresolved を判定し、結果を `{{tmp_dir}}/verifications/{id}.jsonl` に Write する。末尾フィールドは METADATA マーカー間の triage / estimate / status / verification の最終値。
 
 共通追加チェック（コード検証分岐の判定直前に必ず実施。`Status: 🟢 Fixed` / `Triage: 🚫 Won't Fix` / `Estimate: 🔻 Downgrade` の各分岐で適用）:
 
@@ -47,7 +47,7 @@ Unresolved として報告するケース:
 - `Triage: 🔧 Will Fix` のみ — 見積未完了。
 - マーカー間にメタデータなし — トリアージ未実施。
 
-`{{tmp_dir}}/verifications/{id}.json` 形式: `{id, severity, trailing_field, outcome (Resolved | Feedback | Unresolved), reason (1〜3 文), memo_value, feedback_detail}`
+`{{tmp_dir}}/verifications/{id}.jsonl` 形式: `{id, severity, trailing_field, outcome (Resolved | Feedback | Unresolved), reason (1〜3 文), memo_value, feedback_detail}`
 
 trailing_field: マーカー内の末尾フィールド（例: `Status: 🟢 Fixed` / `Triage: 🚫 Won't Fix` / `(empty)`）。
 
@@ -61,4 +61,4 @@ memo_value:
 
 feedback_detail（outcome == Feedback のみ含める）: `{description, current_state, issue, suggestion}`
 
-戻り値: `{items: [{id, outcome}, ...], template_id}`（reason / memo_value / feedback_detail 等の本文は戻り値に含めない。これらは `verifications/{id}.json` ファイル側にのみ書き出す）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
+戻り値: `{items: [{id, outcome}, ...], template_id}`（reason / memo_value / feedback_detail 等の本文は戻り値に含めない。これらは `verifications/{id}.jsonl` ファイル側にのみ書き出す）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

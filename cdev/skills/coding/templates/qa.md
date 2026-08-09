@@ -20,9 +20,9 @@ Procedure:
    - Test (when a test command resolved, the build did not fail, and the stage is not skip-eligible; `test_ran = true`): run the test, appending output to `{{tmp_dir}}/build.log`. On non-zero exit, set `failure.stage = "test"` and go to step 6.
 5. Visual check only (`workflow_source == "none"`): run nothing (`build_ran` / `test_ran` false). Read the changed files and check for visually obvious breakage (syntax, unresolved symbols). Set `workflow_warning` to "Format / build / test procedure is not declared, so automatic verification was skipped. Adding `.claude/rules/build-format.md` is recommended." Set `failure.stage = "visual"` only on an obvious break.
 6. On failure (`failure != null`): Read the log (`{{tmp_dir}}/build.log`; absent in visual mode) and the error-producing files, analyze the cause, and set `error_summary` / `error_files` / `fix_guidance`. Resolve the fix specialist via `{{plugin_root}}/rules/agents-detection.md` (match target: the error content — language / build system / subsystem / test framework) into `suggested_specialist`.
-7. Write `{{tmp_dir}}/qa-result.json`.
+7. Write `{{tmp_dir}}/qa-result.jsonl`.
 
-`{{tmp_dir}}/qa-result.json` format:
+`{{tmp_dir}}/qa-result.jsonl` format:
 
 ```
 {"workflow_source": "build-format.md | CLAUDE.md | README.md | none", "workflow_warning": <string|null>, "format": {"format_violations_fixed": <int>}, "build": {"ran": <bool>, "success": <bool>}, "test": {"ran": <bool>, "success": <bool>}, "failure": {"stage": "build|test|visual", "error_summary": <string|null>, "error_files": ["src/foo:42", ...]|null, "suggested_specialist": <string|null>, "fix_guidance": <string|null>, "log_path": "{{tmp_dir}}/build.log"}|null}

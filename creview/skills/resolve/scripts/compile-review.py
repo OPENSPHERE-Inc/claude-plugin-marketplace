@@ -6,7 +6,7 @@ document via render-review.py.
 Usage:
     python3 compile-review.py <tmp_dir> <document_path>
 
-Reads <tmp_dir>/verifications/*.json (each carries severity / trailing_field /
+Reads <tmp_dir>/verifications/*.jsonl (each carries severity / trailing_field /
 outcome / reason / memo_value / feedback_detail), writes the human-facing report
 <tmp_dir>/resolve-summary.md and <tmp_dir>/events.jsonl (verification events,
 excluding Unresolved), runs the sibling render-review.py, and prints a result
@@ -39,7 +39,7 @@ def main():
     tmp_dir, document_path = sys.argv[1:3]
 
     verifications = []
-    for path in glob.glob(os.path.join(tmp_dir, "verifications", "*.json")):
+    for path in glob.glob(os.path.join(tmp_dir, "verifications", "*.jsonl")):
         with open(path, encoding="utf-8") as f:
             verifications.append(json.load(f))
     verifications.sort(key=lambda v: (SEVERITY_RANK.get(v.get("severity"), 9), v.get("id", "")))

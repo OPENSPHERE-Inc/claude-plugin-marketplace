@@ -11,7 +11,7 @@ Input:
 - Review document `{{document_path}}` (Read it to obtain each id's severity / location / description / trailing field).
 - Diff file `{{diff_path}}` (Read it to grasp the scope of the current changes. For `Status: 🟢 Fixed` verification, use whether the described fix actually exists in this diff as the baseline for collation. Do not judge Resolved based on anything outside the diff).
 
-For each id, determine Resolved / Feedback / Unresolved using the logic below and Write the result to `{{tmp_dir}}/verifications/{id}.json`. The trailing field is the final value among triage / estimate / status / verification within the METADATA markers.
+For each id, determine Resolved / Feedback / Unresolved using the logic below and Write the result to `{{tmp_dir}}/verifications/{id}.jsonl`. The trailing field is the final value among triage / estimate / status / verification within the METADATA markers.
 
 Common additional checks (always perform immediately before the code-verification branch decision; apply in each of the `Status: 🟢 Fixed` / `Triage: 🚫 Won't Fix` / `Estimate: 🔻 Downgrade` branches):
 
@@ -47,7 +47,7 @@ Cases reported as Unresolved:
 - Only `Triage: 🔧 Will Fix` — estimate not yet completed.
 - No metadata between the markers — not yet triaged.
 
-Format of `{{tmp_dir}}/verifications/{id}.json`: `{id, severity, trailing_field, outcome (Resolved | Feedback | Unresolved), reason (1–3 sentences), memo_value, feedback_detail}`
+Format of `{{tmp_dir}}/verifications/{id}.jsonl`: `{id, severity, trailing_field, outcome (Resolved | Feedback | Unresolved), reason (1–3 sentences), memo_value, feedback_detail}`
 
 trailing_field: the trailing field within the markers (e.g., `Status: 🟢 Fixed` / `Triage: 🚫 Won't Fix` / `(empty)`).
 
@@ -61,4 +61,4 @@ memo_value:
 
 feedback_detail (include only when outcome == Feedback): `{description, current_state, issue, suggestion}`
 
-Return value: `{items: [{id, outcome}, ...], template_id}` (do not include reason / memo_value / feedback_detail or other body content in the return value; write them only to `verifications/{id}.json`). Include the `template_id` value Read from this template's frontmatter as-is.
+Return value: `{items: [{id, outcome}, ...], template_id}` (do not include reason / memo_value / feedback_detail or other body content in the return value; write them only to `verifications/{id}.jsonl`). Include the `template_id` value Read from this template's frontmatter as-is.

@@ -4,11 +4,11 @@ description: Prompt for the select-fix-targets sub-agent in /creview:respond Ste
 template_id: 7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95
 ---
 
-As the fix-target selection owner, Read the review document `{{document_path}}`, apply the fix-target selection rule, and Write `{{tmp_dir}}/targets.json`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
+As the fix-target selection owner, Read the review document `{{document_path}}`, apply the fix-target selection rule, and Write `{{tmp_dir}}/targets.jsonl`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
 
 Preconditions:
 
-- `{{tmp_dir}}` is created in advance by the leader. The only filesystem write is targets.json. Do not run existence checks or mkdir.
+- `{{tmp_dir}}` is created in advance by the leader. The only filesystem write is targets.jsonl. Do not run existence checks or mkdir.
 - `{{document_path}}` / `{{tmp_dir}}` are relative paths. Do not convert them to absolute.
 
 Extraction targets: Critical / Major / Minor sections (skip Info). For each finding, read the values inside `<!-- METADATA(id) -->` … `<!-- /METADATA(id) -->`. When a field repeats, use the last value.
@@ -23,6 +23,6 @@ Skip (not a fix target): `Triage: 🚫 Won't Fix`, `Estimate: 🔻 Downgrade`, a
 
 For each fix target, extract fix_plan from the part after ` — Plan: ` on the `Estimate:` line. Split on the leading `(1) ` and subsequent ` (n) ` numbered markers into a string array, one entry per element. When there is no ` — Plan: ` segment, set fix_plan to an empty array.
 
-`{{tmp_dir}}/targets.json` format: `{items: [{id, assignee, estimate (Maintain|Alternative), fix_plan (string array, [] when absent)}], fix_count, not_ready: [{id, reason}]}`
+`{{tmp_dir}}/targets.jsonl` format: `{items: [{id, assignee, estimate (Maintain|Alternative), fix_plan (string array, [] when absent)}], fix_count, not_ready: [{id, reason}]}`
 
 Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` (`by_assignee` groups the fix targets by assignee; do not include finding bodies). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

@@ -39,9 +39,9 @@ Procedure:
    - Read `failure.log_path` (`{{tmp_dir}}/build.log`; absent in visual mode) and the error-producing files (in visual mode, the broken files), analyze the cause, and set `failure.error_summary` / `failure.error_files` / `failure.fix_guidance`.
    - Specialist selection: resolve the agent via the procedure in `{{plugin_root}}/rules/agents-detection.md`. Match target is the error content (language / build system / subsystem / test framework); the result field is `failure.suggested_specialist`.
 
-7. Write to `{{tmp_dir}}/format-build-result.json`.
+7. Write to `{{tmp_dir}}/format-build-result.jsonl`.
 
-`{{tmp_dir}}/format-build-result.json` format:
+`{{tmp_dir}}/format-build-result.jsonl` format:
 
 ```
 {

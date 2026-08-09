@@ -96,8 +96,8 @@ fix: Add null check before accessing output pointer
 
 ```
 {tmp_dir} = .claude/tmp/creview-respond-{timestamp}/
-{tmp_dir}/targets.json         ← select-fix-targets サブエージェントの出力
-{tmp_dir}/statuses/{id}.json   ← 修正サブエージェントの出力（指摘 1 件 1 ファイル）
+{tmp_dir}/targets.jsonl        ← select-fix-targets サブエージェントの出力
+{tmp_dir}/statuses/{id}.jsonl  ← 修正サブエージェントの出力（指摘 1 件 1 ファイル）
 {tmp_dir}/events.jsonl         ← compile-review.py の出力（render-review.py 入力）
 ```
 
@@ -107,7 +107,7 @@ fix: Add null check before accessing output pointer
 
 ## ステップ 1 — 修正対象の選別（select-fix-targets サブエージェントへ委譲）
 
-`Agent(subagent_type="general-purpose", prompt=...)` で起動する。Sub はレビュードキュメントを Read し、修正対象選別ルールを適用し、`{tmp_dir}/targets.json` を Write する。
+`Agent(subagent_type="general-purpose", prompt=...)` で起動する。Sub はレビュードキュメントを Read し、修正対象選別ルールを適用し、`{tmp_dir}/targets.jsonl` を Write する。
 
 テンプレート `select-fix-targets.md`、`template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — 本文は読み込まない。
 
@@ -139,14 +139,14 @@ fix: Add null check before accessing output pointer
 2. 戻り値（`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`workflow_warning` が非 null の場合はステップ 6 で提示するため保持する。
 3. `success == true` ならループ終了。
 4. `success == false` の場合:
-   a. `{tmp_dir}/format-build-result.json` を Read し、`failure` セクションから `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` を取得する（判定本体ではない operational data。ただしソースコード本体は Read しない）。
+   a. `{tmp_dir}/format-build-result.jsonl` を Read し、`failure` セクションから `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` を取得する（判定本体ではない operational data。ただしソースコード本体は Read しない）。
    b. `Agent(subagent_type=suggested_specialist, prompt=...)` でビルド／テスト修正専門家 Sub を起動する — テンプレート `build-fix.md`、`template_id` `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{description, template_id}`。
    c. ループの先頭に戻る（コードが書き変わっているのでフォーマット再確認が必要）。
 5. 試行回数上限に達してもビルド／テストが通らない場合、ユーザーに `error_summary` を提示してループを抜け、ステップ 5 に進む。
 
 ## ステップ 5 — レビュードキュメントへの反映
 
-リーダー（あなた）は判定本文を context に載せない。修正状況（`status`）は `compile-review.py` が `statuses/*.json` から集約し events.jsonl 経由で markdown に反映する（`triage` / `estimate` は `/creview:triage` が永続化済み）。
+リーダー（あなた）は判定本文を context に載せない。修正状況（`status`）は `compile-review.py` が `statuses/*.jsonl` から集約し events.jsonl 経由で markdown に反映する（`triage` / `estimate` は `/creview:triage` が永続化済み）。
 
 1. 次を実行する（CWD はプロジェクトルート）:
 

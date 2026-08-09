@@ -5,7 +5,7 @@ persist the status metadata into the review document via render-review.py.
 Usage:
     python3 compile-review.py <tmp_dir> <document_path>
 
-Reads <tmp_dir>/statuses/*.json (each carries a precomputed `memo_value` and a
+Reads <tmp_dir>/statuses/*.jsonl (each carries a precomputed `memo_value` and a
 `verdict` of Maintain | Alternative), writes <tmp_dir>/events.jsonl (empty when
 no fixes), runs the sibling render-review.py, and prints a result JSON object to
 stdout: {"fixed_count", "code_changed", "summary_line", "maintain", "alternative"}.
@@ -30,7 +30,7 @@ def main():
 
     events = []
     verdicts = {"Maintain": 0, "Alternative": 0}
-    for status_path in sorted(glob.glob(os.path.join(tmp_dir, "statuses", "*.json"))):
+    for status_path in sorted(glob.glob(os.path.join(tmp_dir, "statuses", "*.jsonl"))):
         with open(status_path, encoding="utf-8") as f:
             status = json.load(f)
         events.append({"id": status["id"], "field": "status", "value": status["memo_value"]})
