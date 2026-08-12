@@ -20,6 +20,10 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 `{timestamp}` はステップ 1 の開始時に一度だけ決定する現在日時文字列（`YYYYMMDD-HHMMSS` 形式、例: `20240101-120000`）。以降の全ステップで同一値を使う。
 
+## オプション
+
+- `--adr`（デフォルト OFF）— 見積サブエージェントが設計判断を ADR ファイルとしてレビュードキュメントの隣に記録することを許可する（ファイル名 `{レビュードキュメント basename}-adr-{finding-id}.md`、スケルトン: `${CLAUDE_PLUGIN_ROOT}/rules/adr-format.md`）。ユーザーは `/creview:respond` の前に ADR ファイルを編集してよい。`/creview:respond` は自身の `--adr` に寄らず、参照されている ADR を読み・更新する。
+
 ## レビュードキュメント形式
 
 レビュードキュメントは `/creview:start` が生成し、各 finding にメタデータマーカー（`<!-- METADATA({finding-id}) -->` 〜 `<!-- /METADATA({finding-id}) -->`）を含む:
@@ -44,7 +48,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 本スキルはマーカーの間に以下のフィールドを追加する:
 
 - `triage`（ステップ 1）— 値の形式: `🔧 Will Fix (assignee: {specialist}) — {判定理由}` / `🚫 Won't Fix — {対応不要の理由}`。
-- `estimate`（ステップ 2）— 値の形式: `▶️ Maintain — Cost: {S/M/L}, Future: {S/M/L}, Signals: {none\|a,b,c,d,e,f} — Plan: (1) {file:line — 変更} (2) ...` / `🔻 Downgrade — Cost: ..., Future: ..., Signals: ... — {格下げ理由}` / `🚧 Alternative — Cost: ..., Future: ..., Signals: ... — FIXME 付与: {方向性} — Plan: (1) {file:line — FIXME 文言} ...`。` — Plan: ` は Maintain / Alternative のみに付加し、見積で確定した修正プランを単一行に畳んだもの（Downgrade には付かない）。
+- `estimate`（ステップ 2）— 値の形式: `▶️ Maintain — Cost: {S/M/L}, Future: {S/M/L}, Signals: {none\|a,b,c,d,e,f} — Plan: (1) {file:line — 変更} (2) ...` / `🔻 Downgrade — Cost: ..., Future: ..., Signals: ... — {格下げ理由}` / `🚧 Alternative — Cost: ..., Future: ..., Signals: ... — FIXME 付与: {方向性} — Plan: (1) {file:line — FIXME 文言} ...`。` — Plan: ` は Maintain / Alternative のみに付加し、見積で確定した修正プランを単一行に畳んだもの（Downgrade には付かない）。`--adr` 時、その指摘について ADR を作成 / 更新した場合は ` — ADR: {ファイル名}` セグメントが ` — Plan: ` の直前に入る。
 
 `status`（設定者: `/creview:respond`）と `verification`（設定者: `/creview:resolve`）は本スキルの対象外である。
 
@@ -130,7 +134,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ステップ 1 で受け取った `by_assignee` 配列をループする。各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で専門家サブエージェントを並列起動する。各サブエージェントは担当 ids を一括見積し、id ごとに `{tmp_dir}/estimates/{id}.jsonl` を Write する。
 
-1. 見積エージェントを起動する（persona は含めない）— テンプレート `estimate.md`、`template_id` `8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(none)`。各エージェントの戻り値: `{items: [{id, verdict}, ...], template_id}` — estimate の本文は読み込まない。
+1. 見積エージェントを起動する（persona は含めない）— テンプレート `estimate.md`、`template_id` `8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(none)`。各エージェントの戻り値: `{items: [{id, verdict, adr}, ...], template_id}`（`adr` は ADR ファイル名または null）— estimate の本文は読み込まない。
 
 2. 見積結果サマリ（レビュー + トリアージ + 見積を 1 枚に統合したテーブル + レビュードキュメントへのリンク）を生成するため、集約サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `estimate-summary.md`、`template_id` `5c1e9b7a-3d48-4a96-b8e2-7f3c5a1d4b29`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`document_path = {document_path}`、オーバーライド `(none)`。戻り値: `{summary_path, summary_line, maintain_count, downgrade_count, alternative_count, template_id}`。リーダーは `summary_path` と件数だけを context に保持し、テーブル本体は載せない。
 
@@ -148,7 +152,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## ステップ 4 — サマリーと後片付け
 
-1. リーダーはステップ 3 の編纂結果の `summary_line` をコンソールに表示し、続けて次を表示する: 「トリアージ / 見積を `{document_path}` に永続化しました。Maintain / Alternative 指摘を修正するには `/creview:respond {document_path}` を実行してください。」
+1. リーダーはステップ 3 の編纂結果の `summary_line` をコンソールに表示し、続けて次を表示する: 「トリアージ / 見積を `{document_path}` に永続化しました。Maintain / Alternative 指摘を修正するには `/creview:respond {document_path}` を実行してください。」`--adr` が ON でステップ 2 の戻り値に非 null の `adr` がある場合、それらの ADR ファイルパスも列挙し、`/creview:respond` 前に編集できる旨を添える。ADR ファイル本文は Read しない。
 2. 詳細テーブルが必要な場合のみ、ステップ 2 の `summary_path` を Read する（ステップ 2 をスキップした場合は存在しない）。
 3. リーダーが `{tmp_dir}` を一括削除する:
    ```bash
