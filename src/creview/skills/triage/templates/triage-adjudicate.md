@@ -14,7 +14,7 @@ template_id: 1921777f-3486-44ff-bc18-2b859ce75122
 入力:
 
 - `{{tmp_dir}}/triage-draft.jsonl` — `{items: [{id, severity, location, stage, verdict, reason}], by_stage}`。
-- `{{challenge_indices}}` の各 `n` に対する `{{tmp_dir}}/challenge-{n}.jsonl` — `{items: [{id, stance, argument}]}`。同一 draft を独立に判断した反証サブエージェントがそれぞれ書き出したもの。`stance` は `flip`（根拠のある反論であり draft の判定を覆すべき）/ `uphold`（反論自体は成立するが draft の根拠を上回らない）/ `no_valid_objection`（ソースに基づく反論を構成できない）の 3 値。
+- `{{challenge_paths}}` の各パス — `{items: [{id, stance, argument}]}`。独立した反証サブエージェントがそれぞれ書き出したもの。draft の id はバッチに分割され、各出力は 1 バッチ分を担当するため、ある id が現れる出力は最大 3 つ。`stance` は `flip`（根拠のある反論であり draft の判定を覆すべき）/ `uphold`（反論自体は成立するが draft の根拠を上回らない）/ `no_valid_objection`（ソースに基づく反論を構成できない）の 3 値。
 - `{{document_path}}` — draft と各反証だけではガイドラインを当てはめられない場合に、id をキーに METADATA マーカー前後から指摘本文を引く。
 - `{{previous_round_doc_paths}}` — 非空かつ `(none)` でない場合は各ファイルを Read し、ガイドライン 7 の判定に使う。
 - 反論が挙げた `file:line` のソース — 反論の事実関係を検証する際に Read する。

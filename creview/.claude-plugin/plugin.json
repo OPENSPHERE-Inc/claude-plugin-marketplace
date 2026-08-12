@@ -1,6 +1,6 @@
 {
   "name": "creview",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "Multi-agent parallel code review workflow: start → triage → respond → resolve, with an automatic multi-round driver. Reviewers and fixers are resolved from the destination project's .claude/agents. Triage is adversarial (propose → three parallel challenges → majority-gated adjudication) and the multi-round driver runs each phase in a sub-agent, so both require a runtime with nested sub-agent spawning.",
   "author": {
     "name": "OPENSPHERE Inc.",
