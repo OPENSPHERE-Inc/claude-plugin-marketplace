@@ -4,16 +4,17 @@ description: /creview:triage ステップ 1 で一次判定の全件に反論を
 template_id: b8701509-403b-488b-8b13-c867f9c6700b
 ---
 
-一次トリアージ判定の反証担当の 1 インスタンスとして、`{{tmp_dir}}/triage-draft.jsonl` を Read し、`items` の全件に反論を試み、結果を `{{tmp_dir}}/challenge-{{challenge_index}}.jsonl` に Write する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。本文で引く Won't Fix ガイドライン番号は `{{plugin_root}}/rules/wontfix.md` を Read して参照する。
+一次トリアージ判定の反証担当の 1 インスタンスとして、`{{tmp_dir}}/triage-draft.jsonl` を Read し、`items` のうち id が `{{ids}}` に含まれる全件に反論を試み、結果を `{{tmp_dir}}/challenge-{{batch_index}}-{{challenge_index}}.jsonl` に Write する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。本文で引く Won't Fix ガイドライン番号は `{{plugin_root}}/rules/wontfix.md` を Read して参照する。
 
 前提:
 
-- 自身のファイルシステム書き込みは `{{tmp_dir}}/challenge-{{challenge_index}}.jsonl` のみ。ソースは Read のみ。
+- 自身のファイルシステム書き込みは `{{tmp_dir}}/challenge-{{batch_index}}-{{challenge_index}}.jsonl` のみ。ソースは Read のみ。
 - 他の `challenge-*.jsonl` は Read しない。並列インスタンスの stance は独立票として集計される。
 - 渡されるパス (`{{document_path}}` / `{{tmp_dir}}`) は相対形式。絶対パスへの変換は行わない。
 
 入力:
 
+- `{{ids}}` — 自身の担当となる draft の id。このリスト外の draft 項目は判断しない。
 - `{{tmp_dir}}/triage-draft.jsonl` — `{items: [{id, severity, location, stage, verdict, reason}], by_stage}`。
 - `{{document_path}}` — draft だけでは反論を組み立てられない場合に、id をキーに METADATA マーカー前後から指摘本文を引く。
 - `{{previous_round_doc_paths}}` — 非空かつ `(none)` でない場合は各ファイルを Read し、過去ラウンドの同一指摘（同一性は file:line と指摘要旨の一致）に関する判定を反論材料に使う。これは Won't Fix ガイドライン 7「過去ラウンドで処理済み」の根拠にあたる。`stage` が `feedback` の指摘には、ガイドライン 7 を根拠とする反論を立てない。裁定 Sub は `feedback` の指摘にガイドライン 7 を適用しないため。
@@ -35,6 +36,6 @@ template_id: b8701509-403b-488b-8b13-c867f9c6700b
 
 `argument` の散文は、`{{document_path}}` の既存 Finding 説明と同じ言語で記述する。
 
-`{{tmp_dir}}/challenge-{{challenge_index}}.jsonl` 形式: `{items: [{id, stance, argument}]}`（items は `triage-draft.jsonl` の全 id を網羅する）
+`{{tmp_dir}}/challenge-{{batch_index}}-{{challenge_index}}.jsonl` 形式: `{items: [{id, stance, argument}]}`（items は `{{ids}}` の全 id を網羅する）
 
 戻り値: `{path, flip_count, uphold_count, no_valid_objection_count, template_id}`（argument の本文は戻り値に含めない）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

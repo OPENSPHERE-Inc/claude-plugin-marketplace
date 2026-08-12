@@ -8,7 +8,7 @@ As the triage owner of the review document, Read `{{document_path}}`, perform st
 
 Preconditions:
 
-- `{{tmp_dir}}` is created in advance by the leader via `mkdir -p`. The Sub must not perform existence checks (`Test-Path` / `ls`, etc.) or mkdir. Your own filesystem writes are the two files `triage-draft.jsonl` and `triage.jsonl`. The challenge sub-agents and the adjudication sub-agent you launch write the `challenge-{n}.jsonl` / `adjudication.jsonl` that their own templates specify.
+- `{{tmp_dir}}` is created in advance by the leader via `mkdir -p`. The Sub must not perform existence checks (`Test-Path` / `ls`, etc.) or mkdir. Your own filesystem writes are the two files `triage-draft.jsonl` and `triage.jsonl`. The challenge sub-agents and the adjudication sub-agent you launch write the `challenge-{b}-{n}.jsonl` / `adjudication.jsonl` that their own templates specify.
 - The paths passed (`{{document_path}}` / `{{tmp_dir}}`) are relative. Do not convert them to absolute paths.
 
 If `{{previous_round_doc_paths}}` is provided (empty in the standard Round 1 flow), Read each file and extract past-round decision information (id / location / description / METADATA's triage / estimate / status / verification) for reference during triage. No need to consult when empty or `(none)`.
@@ -38,8 +38,8 @@ Read `{{plugin_root}}/rules/wontfix.md` and apply it when the verdict is `Won't 
 Procedure:
 
 1. Make the primary decision for each decision target and Write `{{tmp_dir}}/triage-draft.jsonl`. Do not resolve the assignee at this stage.
-2. When the draft `items` is empty, skip steps 3 and 4, Write `{{tmp_dir}}/triage.jsonl` with `items: []`, `will_fix_count: 0`, `wontfix_count: 0`, and the draft's `by_stage`, and return with `flipped_count: 0`.
-3. Launch three challenge sub-agents in a single message with `Agent(subagent_type="general-purpose", prompt=...)`, giving them `challenge_index` 1, 2 and 3. Do not specify the model. Fill the values you received into the launch prompt (`{n}` is that instance's `challenge_index`):
+2. When the draft `items` is empty, skip steps 3 and 4, Write `{{tmp_dir}}/triage.jsonl` with `items: []`, `will_fix_count: 0`, `wontfix_count: 0`, and the draft's `by_stage`, and return with `flipped_count: 0` and `adjudication_skipped: true`.
+3. Split the draft `items` into batches of at most 8 ids in draft order, numbering the batches from 1. Launch three challenge sub-agents per batch with `Agent(subagent_type="general-purpose", prompt=...)`, giving them `challenge_index` 1, 2 and 3, and launch every batch's sub-agents in a single message. Do not specify the model. Fill the values you received into the launch prompt (`{b}` is that instance's batch number, `{n}` its `challenge_index`, `{batch_ids}` the ids of batch `{b}` as a comma-separated list):
 
 ```
 As your first action, you MUST Read `{{plugin_root}}/skills/triage/templates/triage-challenge.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
@@ -49,7 +49,9 @@ Variables (substitute into the template's {{...}} placeholders):
 - document_path: {{document_path}}
 - tmp_dir: {{tmp_dir}}
 - previous_round_doc_paths: {{previous_round_doc_paths}}
+- batch_index: {b}
 - challenge_index: {n}
+- ids: {batch_ids}
 
 Round-specific overrides (apply after following the template's instructions):
 - (none)
@@ -57,9 +59,9 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-Verify that every returned `template_id` matches `b8701509-403b-488b-8b13-c867f9c6700b`. On mismatch, relaunch that index alone as a fresh instance of the same `subagent_type` with the same `challenge_index`. An index that mismatches twice in a row, or whose `Agent` launch itself fails (the nested-spawn depth limit is reached, etc.), produces no challenge output; carry on with the indices that did return a match.
+Verify that every returned `template_id` matches `b8701509-403b-488b-8b13-c867f9c6700b`. On mismatch, relaunch that (batch, challenge_index) pair alone as a fresh instance of the same `subagent_type` with the same `batch_index`, `ids` and `challenge_index`. A pair that mismatches twice in a row, or whose `Agent` launch itself fails (the nested-spawn depth limit is reached, etc.), produces no challenge output; carry on with the pairs that did return a match.
 
-Overturning a draft decision takes two flip votes, so when fewer than two indices produced a challenge output, skip step 4, adopt the draft `verdict` / `reason` as the final verdicts, Write `{{tmp_dir}}/triage.jsonl` following step 5, and return with `flipped_count: 0` and a note that the adjudication stage was skipped.
+Overturning a draft decision takes two flip votes from the id's own batch, so when no batch produced two or more challenge outputs, skip step 4, adopt the draft `verdict` / `reason` as the final verdicts, Write `{{tmp_dir}}/triage.jsonl` following step 5, and return with `flipped_count: 0` and `adjudication_skipped: true`.
 
 4. Launch the adjudication sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`. Launch it only after every step 3 sub-agent has returned. Do not launch it in the same message as step 3. Do not specify the model. Fill the values you received into the launch prompt:
 
@@ -71,7 +73,7 @@ Variables (substitute into the template's {{...}} placeholders):
 - document_path: {{document_path}}
 - tmp_dir: {{tmp_dir}}
 - previous_round_doc_paths: {{previous_round_doc_paths}}
-- challenge_indices: {comma-separated challenge_index values that produced a challenge output}
+- challenge_paths: {comma-separated {{tmp_dir}}/challenge-{b}-{n}.jsonl paths that were produced}
 
 Round-specific overrides (apply after following the template's instructions):
 - (none)
@@ -79,7 +81,7 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-Verify that the returned `template_id` matches `1921777f-3486-44ff-bc18-2b859ce75122`. On mismatch, launch a fresh instance of the same `subagent_type` and retry. When it mismatches twice in a row, do not proceed to step 5: return `{path: null, error: "adjudicate template_id mismatch twice", template_id}` without writing `triage.jsonl`. When the `Agent` launch itself fails, adopt the draft `verdict` / `reason` as the final verdicts, Write `{{tmp_dir}}/triage.jsonl` following step 5, and return with `flipped_count: 0` and a note that the adjudication stage was skipped.
+Verify that the returned `template_id` matches `1921777f-3486-44ff-bc18-2b859ce75122`. On mismatch, launch a fresh instance of the same `subagent_type` and retry. When it mismatches twice in a row, do not proceed to step 5: return `{path: null, error: "adjudicate template_id mismatch twice", template_id}` without writing `triage.jsonl`. When the `Agent` launch itself fails, adopt the draft `verdict` / `reason` as the final verdicts, Write `{{tmp_dir}}/triage.jsonl` following step 5, and return with `flipped_count: 0` and `adjudication_skipped: true`.
 
 5. Adopt the `verdict` and `reason` of `{{tmp_dir}}/adjudication.jsonl` as-is (do not rework the reason), resolve the assignee for the confirmed Will Fix set only via the procedure in `{{plugin_root}}/rules/agents-detection.md` (match target is the finding content — language, subsystem, comment-discipline, build, etc.; the result field is the assignee), and Write `{{tmp_dir}}/triage.jsonl`. For an id missing from `adjudication.jsonl`, or whose `verdict` is neither `Will Fix` nor `Won't Fix`, adopt the draft's `verdict` and `reason` and count it as not flipped. When the Read of `{{tmp_dir}}/adjudication.jsonl` fails (the file does not exist, etc.), adopt the draft `verdict` and `reason` for all ids as the final verdicts, resolve the assignee for the Will Fix set as usual, Write `{{tmp_dir}}/triage.jsonl`, and set `flipped_count: 0`.
 
@@ -96,4 +98,4 @@ memo_value format:
 - Will Fix: `🔧 Will Fix (assignee: {assignee}) — {reason}`
 - Won't Fix: `🚫 Won't Fix — {reason}`
 
-Return value: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee: [{assignee, ids: [id, ...]}], template_id}` (by_assignee groups Will Fix only by assignee. Do not include reason / memo_value or other body content in the return value). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.
+Return value: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee: [{assignee, ids: [id, ...]}], template_id}`, with `adjudication_skipped: true` added on the paths that skip the adjudication stage; step 4's twice-mismatch path returns the `error` shape instead (by_assignee groups Will Fix only by assignee. Do not include reason / memo_value or other body content in the return value). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

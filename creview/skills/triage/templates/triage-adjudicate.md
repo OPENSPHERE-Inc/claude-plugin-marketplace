@@ -14,7 +14,7 @@ Preconditions:
 Inputs:
 
 - `{{tmp_dir}}/triage-draft.jsonl` — `{items: [{id, severity, location, stage, verdict, reason}], by_stage}`.
-- `{{tmp_dir}}/challenge-{n}.jsonl` for every `n` in `{{challenge_indices}}` — `{items: [{id, stance, argument}]}`, each written by an independent challenge sub-agent that judged the same draft. `stance` takes one of three values: `flip` (the objection is well-grounded and the draft decision should be overturned) / `uphold` (the objection holds but does not outweigh the draft's basis) / `no_valid_objection` (no source-grounded objection can be constructed).
+- Every path in `{{challenge_paths}}` — `{items: [{id, stance, argument}]}`, each written by an independent challenge sub-agent. The draft ids are split into batches and each output covers one batch, so a given id appears in at most three outputs. `stance` takes one of three values: `flip` (the objection is well-grounded and the draft decision should be overturned) / `uphold` (the objection holds but does not outweigh the draft's basis) / `no_valid_objection` (no source-grounded objection can be constructed).
 - `{{document_path}}` — look up the finding body around the METADATA marker, keyed by id, when the draft and the challenges alone do not let you apply the guidelines.
 - `{{previous_round_doc_paths}}` — when non-empty and not `(none)`, Read each file and use it for the guideline 7 decision.
 - Source files — Read the `file:line` cited in an objection to verify its factual basis.
