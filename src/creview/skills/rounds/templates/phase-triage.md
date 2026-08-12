@@ -10,11 +10,12 @@ template_id: 6d2a8f4c-1e93-4b57-9c8a-3f7b2d6e1a95
 
 - レビュードキュメント: `{{document_path}}`
 - 過去ラウンドのレビュードキュメントのパス: `{{previous_round_doc_paths}}`（Round 1 では `(なし)`）
+- `--adr`: `{{adr_flag}}`
 - ラウンド固有のオーバーライド: `{{overrides}}`
 
 実施内容:
 
-1. `creview:triage` スキルを引数 `{{document_path}}` で起動し、そのトリアージリーダーとしてステップ 1〜3（compile ステップを含む）を実行する。
+1. `creview:triage` スキルを引数 `{{document_path}}` で起動し（`{{adr_flag}}` が ON の場合は `--adr` を付す）、そのトリアージリーダーとしてステップ 1〜3（compile ステップを含む）を実行する。
 2. 自分が発行するすべてのサブエージェント起動プロンプトの「ラウンド固有のオーバーライド」セクションに以下を追加する:
    - トリアージサブエージェント: `previous_round_doc_paths` は `{{previous_round_doc_paths}}`。トリアージ報告に Will Fix 件数を明記する（0 件の場合も明示）。
    - 見積サブエージェント: 過去ラウンドのレビュードキュメントは参照しない（バイアス回避）。拡散シグナル e（FIXME 起源の Will Fix）を判定する際、当該指摘がレビュー本文や対象ファイル中の `FIXME:` / `TODO:` を起点としているかを確認する。

@@ -10,11 +10,12 @@ Input:
 
 - Review document: `{{document_path}}`
 - Past rounds' review document paths: `{{previous_round_doc_paths}}` (`(none)` in Round 1)
+- `--adr`: `{{adr_flag}}`
 - Round-specific overrides: `{{overrides}}`
 
 What to do:
 
-1. Invoke the `creview:triage` skill with the argument `{{document_path}}`, then act as its triage leader through its Steps 1-3, including the compile step.
+1. Invoke the `creview:triage` skill with the argument `{{document_path}}`, appending `--adr` when `{{adr_flag}}` is on. Then act as its triage leader through its Steps 1-3, including the compile step.
 2. Add the following to the "Round-specific overrides" section of every sub-agent launch prompt you issue:
    - Triage sub-agent: `previous_round_doc_paths` is `{{previous_round_doc_paths}}`. State the Will Fix count explicitly in the triage report, including when it is 0.
    - Estimate sub-agent: do not reference any past round's review document (bias avoidance). When determining diffusion signal e (Will Fix originating from FIXME), check whether the finding originates from a `FIXME:` / `TODO:` in the review body or the target file.

@@ -23,6 +23,8 @@ Skip (not a fix target): `Triage: 🚫 Won't Fix`, `Estimate: 🔻 Downgrade`, a
 
 For each fix target, extract fix_plan from the part after ` — Plan: ` on the `Estimate:` line. Split on the leading `(1) ` and subsequent ` (n) ` numbered markers into a string array, one entry per element. When there is no ` — Plan: ` segment, set fix_plan to an empty array.
 
-`{{tmp_dir}}/targets.jsonl` format: `{items: [{id, assignee, estimate (Maintain|Alternative), fix_plan (string array, [] when absent)}], fix_count, not_ready: [{id, reason}]}`
+When the `Estimate:` line carries an ` — ADR: {filename}` segment immediately before ` — Plan: `, set `adr` to the filename; otherwise `adr` is null. The segment is not part of fix_plan.
+
+`{{tmp_dir}}/targets.jsonl` format: `{items: [{id, assignee, estimate (Maintain|Alternative), adr (filename or null), fix_plan (string array, [] when absent)}], fix_count, not_ready: [{id, reason}]}`
 
 Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` (`by_assignee` groups the fix targets by assignee; do not include finding bodies). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

@@ -17,6 +17,7 @@ The user may optionally specify an output base path. When the argument is `$ARGU
 - `--confirm` (default OFF) — After triage / estimate are persisted into the review document (Step 2.2) and before the fix phase (Step 2.3), present the estimate summary to the user and wait for confirmation.
 - `--confirm-round` (default OFF) — After resolve, if unresolved findings remain, wait for user confirmation before proceeding to the next round.
 - `--commit` (default OFF) — Perform a git commit after each finding is fixed (passed through to the respond phase).
+- `--adr` (default OFF) — Permit creating ADR files for design decisions next to each round's review document (passed through to the triage and respond phases). ADRs referenced from a review document are read / updated at fix time regardless of this flag.
 - `--max-rounds N` (default 5, range 1–10) — Change the maximum number of rounds for the outer loop.
 - `--base {branch}` (default `main` or `master`) — Specify the base branch (passed to the review phase).
 - `--adversarial` (default OFF) — Run the review phase in adversarial mode (passed through to the review phase).
@@ -112,7 +113,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
 
 1. Display in console: `## Round {N} — Step 2: Triage & Estimate`
 2. Launch the phase sub-agent with `templates/phase-triage.md` (`template_id`: `6d2a8f4c-1e93-4b57-9c8a-3f7b2d6e1a95`).
-   - Variables: `document_path` (this round's file path), `previous_round_doc_paths` (Round 1: `(none)`; Round N: doc_paths of Round 1..N-1)
+   - Variables: `document_path` (this round's file path), `previous_round_doc_paths` (Round 1: `(none)`; Round N: doc_paths of Round 1..N-1), `adr_flag` (`--adr` state)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
 3. Hold only the return value (`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, error}`) in context.
 4. When `error` is non-null, do not proceed to 2.3 or beyond: report the failure to the user and end the round loop.
@@ -123,7 +124,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
 
 1. Display in console: `## Round {N} — Step 3: Respond (Fix & Verify)`
 2. Launch the phase sub-agent with `templates/phase-respond.md` (`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`).
-   - Variables: `document_path`, `commit_flag` (`--commit` state)
+   - Variables: `document_path`, `commit_flag` (`--commit` state), `adr_flag` (`--adr` state)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
 3. Hold only the return value (`{fix_count, fixed_count, code_changed, workflow_warning, summary_line}`) in context. When `workflow_warning` is non-null, retain it for this round's record.
 

@@ -46,9 +46,20 @@ template_id: 8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48
    FIXME / TODO 個別判定（Alternative 検討時）:
    e. 後続 PR 推奨として最終レポートに記録すれば足りる事項は、ソースに FIXME を残さず Alternative → Downgrade（理由に「別 PR 推奨」）に切り替える。FIXME を残すのは、当該箇所を将来編集する人が編集時に必ず気付く必要がある場合に限る（編集時に踏みやすい落とし穴、ロジックの暫定実装、特定条件の未対応等）。
 
-6. `{{tmp_dir}}/estimates/{finding-id}.jsonl` に Write。
+6. ADR（`{{adr_flag}}` が on かつ最終判定が Maintain または Alternative の場合のみ）。判定が設計判断である場合に限り ADR を作成 / 更新する — 以下の少なくとも 1 つに該当すること:
+   - 実行可能なアプローチが複数存在し、プランが恒久的なトレードオフを伴う 1 つにコミットする。
+   - 修正がアーキテクチャ、公開 API、データフォーマット、並行動作、依存関係を変更または制約する。
+   - Alternative が純粋なコストではなく設計上の理由で根本修正を先送りする。
 
-`{{tmp_dir}}/estimates/{finding-id}.jsonl` 形式: `{id, specialist, verdict（Maintain | Downgrade | Alternative）, cost（S|M|L）, future（S|M|L）, signals（["a","b",...] または []）, fix_plan, rationale, memo_value}`
+   自明な単一アプローチの機械的修正には ADR を作らない（`adr` = null）。基準に該当する場合:
+
+   - `{{document_path}}` のディレクトリにある既存の `*-adr-*.md` ファイルを列挙する。同じ箇所・同じ主題の判断を記録したものがあれば、新規作成せずそのファイルを更新する: History エントリを追記する（日付 = `{{timestamp}}` の日付部を YYYY-MM-DD 形式で）。新しい判断が記録済みの判断を置き換える場合は、旧ファイルの Status を `Superseded by {新ファイル名}` にし、旧ファイルを History で参照する新 ADR を Write する。
+   - 該当ファイルがなければ、同ディレクトリに `{{{document_path}} の basename から .md を除いたもの}-adr-{finding-id}.md` を Status `Proposed` で Write する。スケルトンは `{{plugin_root}}/rules/adr-format.md` に従う。
+   - `adr` に作成 / 更新したファイル名を設定する。
+
+7. `{{tmp_dir}}/estimates/{finding-id}.jsonl` に Write。
+
+`{{tmp_dir}}/estimates/{finding-id}.jsonl` 形式: `{id, specialist, verdict（Maintain | Downgrade | Alternative）, cost（S|M|L）, future（S|M|L）, signals（["a","b",...] または []）, fix_plan, rationale, adr（ファイル名または null）, memo_value}`
 
 fix_plan 形式: 文字列配列。各要素は `"{file:line} — {変更内容}"` 形式。コメント追加の場合はコメント文言を含める。ステップ 5 で確定したプランを反映する:
 
@@ -56,12 +67,12 @@ fix_plan 形式: 文字列配列。各要素は `"{file:line} — {変更内容}
 - Alternative: FIXME / TODO 付与のみ
 - Downgrade: 見積対象となった却下プラン（そのまま記録）
 
-`rationale` / `fix_plan` の変更説明 / `memo_value` の散文は、`{{document_path}}` の既存 Finding 説明と同じ言語で記述する（`▶️ Maintain` / `🔻 Downgrade` / `🚧 Alternative` のラベルと絵文字、`Cost:` / `Future:` / `Signals:` / `Plan:` のキー、シグナル記号 a–f、S/M/L、`(n)` マーカー、file:line は固定）。
+`rationale` / `fix_plan` の変更説明 / `memo_value` の散文は、`{{document_path}}` の既存 Finding 説明と同じ言語で記述する（`▶️ Maintain` / `🔻 Downgrade` / `🚧 Alternative` のラベルと絵文字、`Cost:` / `Future:` / `Signals:` / `ADR:` / `Plan:` のキー、シグナル記号 a–f、S/M/L、`(n)` マーカー、file:line は固定）。
 
-memo_value 形式（Maintain / Alternative は fix_plan 全エントリを末尾 ` — Plan: ` セグメントに畳んで単一行で持つ。各エントリを ` (n) ` 番号マーカーで連結し改行を含めない。要約・省略しない。Downgrade は付加しない）:
+memo_value 形式（Maintain / Alternative は fix_plan 全エントリを末尾 ` — Plan: ` セグメントに畳んで単一行で持つ。各エントリを ` (n) ` 番号マーカーで連結し改行を含めない。要約・省略しない。Downgrade は付加しない。`adr` が非 null の場合は ` — ADR: {adr}` セグメントを ` — Plan: ` の直前に挿入する）:
 
 - Maintain: `▶️ Maintain — Cost: {cost}, Future: {future}, Signals: {a,b,... または none} — Plan: (1) {fix_plan[0]} (2) {fix_plan[1]} ...`
 - Downgrade: `🔻 Downgrade — Cost: ..., Future: ..., Signals: ... — {格下げ理由}`
 - Alternative: `🚧 Alternative — Cost: ..., Future: ..., Signals: ... — FIXME 付与: {方向性} — Plan: (1) {fix_plan[0]} ...`
 
-戻り値: `{items: [{id, verdict}, ...], template_id}`（items は担当 ids 全件分）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
+戻り値: `{items: [{id, verdict, adr}, ...], template_id}`（items は担当 ids 全件分。`adr` はステップ 6 のファイル名または null）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

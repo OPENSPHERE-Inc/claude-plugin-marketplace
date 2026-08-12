@@ -31,6 +31,20 @@ decides the final verdict. A proposed verdict is overturned only when at least
 two of its own batch's three challenges call for it and the adjudicator
 confirms the facts they cite.
 
+`/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
+that permits creating ADR files recording design decisions next to the review
+document (`{review-doc basename}-adr-{finding-id}.md`, skeleton in
+`rules/adr-format.md`). At estimate time the estimate sub-agents create an ADR
+for a finding whose fix commits to one of several viable approaches; the user
+can edit the ADR files between `/creview:triage` and `/creview:respond`. ADR
+files referenced from the review document's `Estimate:` metadata are read back
+at fix time (a user-edited Decision overrides the estimated plan) and get
+their Status / History updated regardless of the flag — on `/creview:respond`
+the flag only permits creating a new ADR for a design decision that first
+arises during implementation. A later round that revisits the same location
+updates or supersedes the existing ADR instead of duplicating it.
+`/creview:rounds` accepts the same flag and passes it through to both phases.
+
 Nested sub-agent spawning is required
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; the default is 3):
 
@@ -60,8 +74,8 @@ bundled agents are `review-helper` (mechanical aggregation / verification),
 
 ## Bundled support files
 
-- `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`
-  (only the rules the skills reference).
+- `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
+  `adr-format.md` (only the rules the skills reference).
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `rm-tmp.sh`, and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
   `fetch-diff.sh` / `rm-tmp.sh`). The scripts require `python3` (3.9 or later)

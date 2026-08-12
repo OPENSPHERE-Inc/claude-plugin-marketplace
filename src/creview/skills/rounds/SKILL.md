@@ -17,6 +17,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 - `--confirm`（デフォルト OFF）— トリアージ・見積がレビュードキュメントに永続化された後（ステップ 2.2）、修正フェーズ（ステップ 2.3）の前に、見積サマリをユーザーに提示して確認を待つ。
 - `--confirm-round`（デフォルト OFF）— resolve 後、未解決の指摘が残っている場合、次ラウンドに進む前にユーザーの確認を待つ。
 - `--commit`（デフォルト OFF）— 各指摘の修正後に git commit を行う（respond フェーズにそのまま渡す）。
+- `--adr`（デフォルト OFF）— 設計判断の ADR ファイルを各ラウンドのレビュードキュメントの隣に新規作成することを許可する（triage / respond フェーズにそのまま渡す）。レビュードキュメントから参照されている ADR の読み込み・更新は、このフラグに寄らず修正時に実行される。
 - `--max-rounds N`（デフォルト 5、範囲 1〜10）— 外側ループの最大ラウンド数を変更する。
 - `--base {branch}`（デフォルト `main` または `master`）— ベースブランチを指定する（review フェーズに渡される）。
 - `--adversarial`（デフォルト OFF）— review フェーズを敵対的モードで実行する（review フェーズにそのまま渡す）。
@@ -112,7 +113,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 1. コンソールに表示: `## Round {N} — Step 2: Triage & Estimate`
 2. `templates/phase-triage.md`（`template_id`: `6d2a8f4c-1e93-4b57-9c8a-3f7b2d6e1a95`）でフェーズ Sub を起動する。
-   - 変数: `document_path`（今ラウンドのファイルパス）、`previous_round_doc_paths`（Round 1: `(なし)`、Round N: Round 1〜N-1 の doc_path）
+   - 変数: `document_path`（今ラウンドのファイルパス）、`previous_round_doc_paths`（Round 1: `(なし)`、Round N: Round 1〜N-1 の doc_path）、`adr_flag`（`--adr` の状態）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの
 3. 戻り値（`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, error}`）のみ context に保持する。
 4. `error` が非 null の場合は 2.3 以降に進まず、失敗をユーザーに報告してラウンドループを終了する。
@@ -123,7 +124,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 1. コンソールに表示: `## Round {N} — Step 3: Respond (Fix & Verify)`
 2. `templates/phase-respond.md`（`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`）でフェーズ Sub を起動する。
-   - 変数: `document_path`、`commit_flag`（`--commit` の状態）
+   - 変数: `document_path`、`commit_flag`（`--commit` の状態）、`adr_flag`（`--adr` の状態）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの
 3. 戻り値（`{fix_count, fixed_count, code_changed, workflow_warning, summary_line}`）のみ context に保持する。`workflow_warning` が非 null の場合は本ラウンドの記録用に保持する。
 

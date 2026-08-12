@@ -29,6 +29,20 @@ Critical / Major の指摘に具体的な失敗シナリオを求める敵対的
 担当バッチの 3 体のうち 2 体以上が反転を支持し、かつ裁定サブエージェントが
 その根拠となる事実を確認できた場合に限られます。
 
+`/creview:triage` と `/creview:respond` には `--adr` オプション
+（デフォルト OFF）があり、設計判断を記録する ADR ファイルをレビュードキュメントの
+隣に新規作成することを許可します（`{レビュードキュメント basename}-adr-{finding-id}.md`、
+スケルトンは `rules/adr-format.md`）。見積時に、複数の実行可能なアプローチから
+1 つを選んで修正方針を確定した指摘について見積サブエージェントが ADR を作成し、
+ユーザーは `/creview:triage` と `/creview:respond` の間で ADR ファイルを編集
+できます。レビュードキュメントの `Estimate:` メタデータから参照されている
+ADR は、フラグに寄らず修正時に読み戻され（ユーザーが編集した Decision は
+見積時のプランより優先）、Status / History が更新されます — `/creview:respond`
+のフラグは、実装時に初めて生じた設計判断の ADR 新規作成のみを許可します。
+後段のラウンドが同じ箇所を再修正した場合は、新規作成せず既存の ADR を更新または
+Superseded にします。`/creview:rounds` も同じフラグを受け取り、両フェーズへ
+そのまま渡します。
+
 ネスト起動（`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`。デフォルトは 3）の
 必要深度はエントリポイントごとに異なります。
 
@@ -58,8 +72,8 @@ frontmatter の `name` / `description` を読み、指摘ごとに最適なも�
 
 ## 同梱サポートファイル
 
-- `rules/` — `comment.md`、`document.md`、`review.md`、`wontfix.md`、`sub-agent.md`
-  （スキルが参照するルールのみ）。
+- `rules/` — `comment.md`、`document.md`、`review.md`、`wontfix.md`、`sub-agent.md`、
+  `adr-format.md`（スキルが参照するルールのみ）。
 - `scripts/` — `fetch-diff.sh`、`render-review.py`、`rm-tmp.sh`、
   `lib/scratch-guard.py`（`fetch-diff.sh` / `rm-tmp.sh` が共有する
   `.claude/tmp/` 封じ込めチェック）。これらのスクリプトは `PATH` 上の

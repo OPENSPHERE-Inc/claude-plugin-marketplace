@@ -46,9 +46,20 @@ For each id:
    FIXME / TODO individual judgment (when considering Alternative):
    e. Items that are sufficient to record in the final report as "recommend follow-up PR" should not leave a FIXME in the source; switch to Alternative → Downgrade (include "recommend separate PR" in the reason). Leave a FIXME only when the future editor of that location must inevitably notice it during editing (a pitfall easily hit during editing, an interim implementation of logic, an unsupported specific condition, etc.).
 
-6. Write to `{{tmp_dir}}/estimates/{finding-id}.jsonl`.
+6. ADR (only when `{{adr_flag}}` is on and the final verdict is Maintain or Alternative). Create / update an ADR only when the decision is a design decision — at least one of:
+   - Multiple viable approaches existed and the plan commits to one with lasting trade-offs.
+   - The fix changes or constrains architecture, public API, data format, concurrency behavior, or dependencies.
+   - Alternative defers the root-cause fix for design reasons rather than pure cost.
 
-`{{tmp_dir}}/estimates/{finding-id}.jsonl` format: `{id, specialist, verdict (Maintain | Downgrade | Alternative), cost (S|M|L), future (S|M|L), signals (["a","b",...] or []), fix_plan, rationale, memo_value}`
+   Mechanical fixes with one obvious approach get no ADR (`adr` = null). When a criterion holds:
+
+   - List existing `*-adr-*.md` files in the directory of `{{document_path}}`. When one records a decision on the same location and subject, update that file instead of creating a new one: append a History entry (date = the date part of `{{timestamp}}` as YYYY-MM-DD); when the new decision replaces the recorded one, set the old file's Status to `Superseded by {new filename}` and Write the new ADR with a History entry referencing the old file.
+   - Otherwise Write `{basename of {{document_path}} without .md}-adr-{finding-id}.md` in the same directory with Status `Proposed`, following the skeleton in `{{plugin_root}}/rules/adr-format.md`.
+   - Set `adr` to the created / updated filename.
+
+7. Write to `{{tmp_dir}}/estimates/{finding-id}.jsonl`.
+
+`{{tmp_dir}}/estimates/{finding-id}.jsonl` format: `{id, specialist, verdict (Maintain | Downgrade | Alternative), cost (S|M|L), future (S|M|L), signals (["a","b",...] or []), fix_plan, rationale, adr (filename or null), memo_value}`
 
 fix_plan format: array of strings, each entry `"{file:line} — {what to change}"`. Include comment wording for added comments. Reflect the plan finalized at Step 5:
 
@@ -56,12 +67,12 @@ fix_plan format: array of strings, each entry `"{file:line} — {what to change}
 - Alternative: FIXME / TODO insertion(s) only
 - Downgrade: the rejected plan that was costed (record as-is)
 
-Write the `rationale`, the `fix_plan` change descriptions, and the `memo_value` prose in the same language as the existing Finding descriptions in `{{document_path}}` (the `▶️ Maintain` / `🔻 Downgrade` / `🚧 Alternative` labels and emoji, the `Cost:` / `Future:` / `Signals:` / `Plan:` keys, the signal letters a–f, S/M/L, the `(n)` markers, and file:line stay fixed).
+Write the `rationale`, the `fix_plan` change descriptions, and the `memo_value` prose in the same language as the existing Finding descriptions in `{{document_path}}` (the `▶️ Maintain` / `🔻 Downgrade` / `🚧 Alternative` labels and emoji, the `Cost:` / `Future:` / `Signals:` / `ADR:` / `Plan:` keys, the signal letters a–f, S/M/L, the `(n)` markers, and file:line stay fixed).
 
-memo_value format (for Maintain / Alternative, fold all fix_plan entries onto the single line as a trailing ` — Plan: ` segment; join entries with ` (n) ` numbered markers and include no newlines; do not summarize or omit; do not append for Downgrade):
+memo_value format (for Maintain / Alternative, fold all fix_plan entries onto the single line as a trailing ` — Plan: ` segment; join entries with ` (n) ` numbered markers and include no newlines; do not summarize or omit; do not append for Downgrade; when `adr` is non-null, insert an ` — ADR: {adr}` segment immediately before ` — Plan: `):
 
 - Maintain: `▶️ Maintain — Cost: {cost}, Future: {future}, Signals: {a,b,... or none} — Plan: (1) {fix_plan[0]} (2) {fix_plan[1]} ...`
 - Downgrade: `🔻 Downgrade — Cost: ..., Future: ..., Signals: ... — {downgrade reason}`
 - Alternative: `🚧 Alternative — Cost: ..., Future: ..., Signals: ... — FIXME insertion: {direction} — Plan: (1) {fix_plan[0]} ...`
 
-Return value: `{items: [{id, verdict}, ...], template_id}` (items covers all assigned ids). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.
+Return value: `{items: [{id, verdict, adr}, ...], template_id}` (items covers all assigned ids; `adr` is the step 6 filename or null). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

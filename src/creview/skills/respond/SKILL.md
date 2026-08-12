@@ -23,6 +23,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 ## オプション
 
 - `--commit`（デフォルト OFF）— 指摘の修正ごとにコミットを作成する。
+- `--adr`（デフォルト OFF）— 実装時の設計判断にまだ ADR が無い場合に、修正サブエージェントが ADR ファイルを新規作成することを許可する（スケルトン: `${CLAUDE_PLUGIN_ROOT}/rules/adr-format.md`）。`Estimate:` メタデータから参照されている ADR ファイル（`/creview:triage --adr` が作成。ユーザーが編集している場合もある）の修正前の読み込みと修正後の更新は、このオプションに寄らず実行される。
 
 ### `--commit` オプション
 
@@ -49,6 +50,8 @@ fix: Add null check before accessing output pointer
 - **Estimate:** ▶️ Maintain — Cost: M, Future: S, Signals: b,d — Plan: (1) src/foo.cpp:42 — null チェック追加
 <!-- /METADATA({finding-id}) -->
 ```
+
+`/creview:triage --adr` を使った場合、`Estimate:` 値は ` — Plan: ` の直前に ` — ADR: {ファイル名}` セグメントを持つことがある。ファイル名はレビュードキュメントと同じディレクトリにあるその指摘の ADR ファイルを指す。
 
 本スキルは以下を追記する:
 
@@ -117,7 +120,7 @@ fix: Add null check before accessing output pointer
 
 `by_assignee` の各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で修正サブエージェントを起動する。異なる assignee は並列起動する。同一 assignee 内の ids はテンプレートの並列化制約に従う。
 
-テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path}, ...], template_id}` — `items` のみを集め、status 本文は読み込まない。
+テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path}, ...], template_id}` — `items` のみを集め、status 本文は読み込まない。
 
 ## ステップ 3 — コメントレビュー（comment-sensei サブエージェントへ委譲）
 
