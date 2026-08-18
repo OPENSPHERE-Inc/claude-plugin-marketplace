@@ -13,6 +13,7 @@ Common prohibitions that sub-agents of the creview skills (start / triage / resp
   - Comment review sub-agent: comments only; no logic changes.
   - Format & build verification sub-agent: formatter auto-fixes only.
 - **Inherited scope**: An agent a sub-agent launches is bound by the same restrictions as the sub-agent that launched it.
+- **Reporting path**: Report results only via the Agent call's return value (final text). `SendMessage` is prohibited. "Leader" in the SKILLs and templates means the agent that launched you; `to: "main"` reaches the root agent regardless of nesting depth, never your launcher.
 
 ## Tools
 
