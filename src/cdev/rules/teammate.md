@@ -10,13 +10,17 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
   - コメントレビュー teammate（comment-sensei）: ソースファイル内のコメントのみ編集可。ロジックは変更しない。
   - QA teammate（dev-helper）: フォーマット / ビルド / テストコマンドとフォーマッタの自動修正のみ。手動のソース編集は不可。
   - reviewer: ソースおよび設計は Read のみ。編集はしない。
-- **スコープの継承**: teammate が起動したエージェントは、起動元の teammate と同じ制限を受ける。リーダーの roster には登録されないため、起動元の teammate が自身のタスク完了を報告する前に shutdown する。
+- **スコープの継承**: teammate が起動したエージェントは、起動元の teammate と同じ制限を受ける。リーダーの roster には登録されないため、起動元の teammate が自身のタスク完了を報告する前に shutdown する。起動したエージェントの報告先は親（起動元 teammate）であり、リーダーではない。起動時に自分の name を渡して name 宛に報告させるか、name を渡さず Agent の戻り値で結果を受け取る。リーダーへの報告は起動元 teammate が自ら行う。
 
 ## ツール
 
 ファイル出力は Write ツールを使用する。Bash の cat heredoc は値内のアポストロフィ（`Won't` 等）で外側のクォーティングが破綻するため使用不可。
 
-連絡は `SendMessage` で行う。リーダー宛は `to: "main"`、他の teammate 宛はその name（リーダーが各メッセージで渡す）。
+連絡は `SendMessage` で行う。宛先の用語と解決:
+
+- **リーダー** = ルートのメインループで動くコーディングリーダー。宛先は常に `to: "main"`。`main` はネストの深さに関わらずリーダーに届く。
+- **親** = 自分を起動したエージェント。teammate の親はリーダー。teammate が起動したエージェントの親はその teammate で、宛先はその name（親が起動プロンプトで渡す）。name を渡されていない場合、結果は Agent 呼び出しの戻り値で親に返す。
+- 他の teammate 宛はその name（リーダーが各メッセージで渡す）。
 
 `SendMessage` の呼び出し規約:
 

@@ -10,13 +10,17 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
   - Comment-review teammate (comment-sensei): comment-only edits in source files; no logic changes.
   - QA teammate (dev-helper): format / build / test commands and formatter auto-fixes only; no manual source edits.
   - Reviewers: Read-only on sources and design; they do not edit.
-- **Inherited scope**: An agent a teammate launches is bound by the same restrictions as that teammate. It is not in the leader's roster, so the teammate that launched it shuts it down before reporting its own task complete.
+- **Inherited scope**: An agent a teammate launches is bound by the same restrictions as that teammate. It is not in the leader's roster, so the teammate that launched it shuts it down before reporting its own task complete. A launched agent reports to its parent (the launching teammate), never to the leader. Pass your own name at launch to receive its reports by `SendMessage`, or pass no name and receive the result via the Agent call's return value. The launching teammate itself reports to the leader.
 
 ## Tools
 
 Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting.
 
-Communicate via `SendMessage`: the leader at `to: "main"`, other teammates by their name (the leader hands it to you in each message).
+Communicate via `SendMessage`. Destination terms and resolution:
+
+- **Leader** = the coding leader running in the root main loop. Its address is always `to: "main"`; `main` reaches the leader regardless of nesting depth.
+- **Parent** = the agent that launched you. A teammate's parent is the leader. The parent of an agent a teammate launches is that teammate, addressed by its name (the parent passes it in the launch prompt). When no name was passed, return the result to the parent via the Agent call's return value.
+- Other teammates by their name (the leader hands it to you in each message).
 
 `SendMessage` call rules:
 
