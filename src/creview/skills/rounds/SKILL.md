@@ -37,7 +37,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 
 ## サブエージェント利用ルール
 
-- **共通禁止事項は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` を参照**。
+- **共通禁止事項とワンショット起動形態（`run_in_background: false`）は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` を参照**。
 - **各フェーズはフェーズリーダーサブエージェント（`subagent_type="review-leader"`）へ丸ごと委譲する**。フェーズ Sub は対応するスキルを起動し、そのスキルのサブエージェント群・compile ステップ・内部の再実行ループを含めて最後まで実行する。フェーズ Sub 自身がさらにサブエージェントを起動し、triage Sub がさらに反証 / 裁定 Sub を起動するため、ネスト起動の深度 3 以上が必要。
   - レビューフェーズ（ステップ 2.1） — `creview:start`
   - トリアージ&見積フェーズ（ステップ 2.2 / 2.5） — `creview:triage`

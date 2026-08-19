@@ -1,7 +1,7 @@
 ---
 name: respond
 description: Fix the Will-Fix / Maintain / Alternative review findings, verify the build, and reflect the fix status into the review document. Use proactively when a review document carrying triage / estimate metadata exists and the user wants the findings addressed (e.g. "fix the review findings").
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Respond (Fix)
@@ -69,7 +69,7 @@ A finding is a fix target when **all** hold (read from the METADATA marker, usin
 
 ## Sub-agent launch
 
-For the common prohibitions and launch-prompt completeness, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` and its § Launch prompt completeness. Each sub-agent's instructions live in an external `templates/*.md` carrying a `template_id` in its frontmatter; the launch prompt has the sub-agent Read that template instead of quoting it.
+For common prohibitions, the one-shot launch mode (`run_in_background: false`), and launch-prompt completeness, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`. Each sub-agent's instructions live in an external `templates/*.md` carrying a `template_id` in its frontmatter; the launch prompt has the sub-agent Read that template instead of quoting it.
 
 Launch every sub-agent with the prompt below, substituting the template, variables, and overrides the step names:
 
@@ -161,7 +161,7 @@ The leader (you) does not load decision bodies into context. The fix `status` is
 
 3. The leader removes `{tmp_dir}` in one shot:
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}
+   ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
 
 ## Step 6 — Summary

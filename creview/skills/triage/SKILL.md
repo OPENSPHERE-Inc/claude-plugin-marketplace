@@ -1,7 +1,7 @@
 ---
 name: triage
 description: Triage and estimate the cost of review findings, then persist the triage / estimate metadata into the review document (no source fixes). Use proactively when a review document from /creview:start exists and the next step is deciding which findings to address or estimating their fix cost.
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Triage & Estimate
@@ -67,7 +67,7 @@ This skill appends the following fields between the markers:
 
 ## Sub-agent launch
 
-For the common prohibitions and launch-prompt completeness, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` and its § Launch prompt completeness. Each sub-agent's instructions live in an external `templates/*.md` carrying a `template_id` in its frontmatter; the launch prompt has the sub-agent Read that template instead of quoting it.
+For common prohibitions, the one-shot launch mode (`run_in_background: false`), and launch-prompt completeness, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`. Each sub-agent's instructions live in an external `templates/*.md` carrying a `template_id` in its frontmatter; the launch prompt has the sub-agent Read that template instead of quoting it.
 
 Launch every sub-agent with the prompt below, substituting the template, variables, and overrides the step names:
 
@@ -125,7 +125,7 @@ At the start of Step 1, the leader (you) creates `{tmp_dir}` with `mkdir -p {tmp
 Delegate triage to a **single sub-agent that is separate from the specialist agents who will perform the fixes** (to isolate bias). The triage Sub reads the review document directly, extracts findings, performs stage classification, and runs adversarial triage in three stages: propose → parallel challenges → majority-gated adjudication. It makes the primary decision itself, spawns three challenge sub-agents per finding batch and an adjudication sub-agent of its own, and reflects the final verdicts into `triage.jsonl` itself. Verifying the nested sub-agents' `template_id` and relaunching them on mismatch is the triage Sub's responsibility. Make it **Write** the result to a file; do not load the decision body into the leader's context.
 
 1. Launch the sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`; do not specify the model. Template `triage.md`, `template_id` `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, `previous_round_doc_paths = {previous_round_doc_paths}` (in the standard flow, "(none)"; non-empty only when an upstream flow such as /creview:rounds passes a list of past rounds' doc_paths), overrides `(none)`. Return value: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}` — do not load the triage body.
-2. When the return value carries `error`, do not proceed to Step 2 or beyond: remove the working directory with `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`, report the failure to the user, and abort.
+2. When the return value carries `error`, do not proceed to Step 2 or beyond: remove the working directory with `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`, report the failure to the user, and abort.
 3. Present the triage summary (counts, including `flipped_count` — the number of decisions overturned by adjudication) to the user.
 
 When `will_fix_count == 0`, skip Step 2 and proceed to Step 3 (compile; persists Won't Fix triage values only).
@@ -156,5 +156,5 @@ The leader (you) does not load decision bodies into context. `compile-review.py`
 2. Only when a detailed table is needed, Read the `summary_path` from Step 2 (absent when Step 2 was skipped).
 3. The leader removes `{tmp_dir}` in one shot:
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}
+   ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```

@@ -1,7 +1,7 @@
 ---
 name: resolve
 description: Verify review finding resolutions against actual source code and write back verification metadata. Use proactively after review fixes land (typically after /creview:respond) or when the user asks to confirm that review findings are actually resolved.
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Verification
@@ -64,7 +64,7 @@ For Unresolved findings, do not write a `verification` value.
 
 ## Sub-Agent Launch
 
-For common prohibitions and launch-prompt completeness, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` and its § Launch Prompt Completeness. Each sub-agent's instructions live in an external `templates/*.md` carrying a `template_id` in its frontmatter; the launch prompt has the sub-agent Read that template instead of quoting it.
+For common prohibitions, the one-shot launch mode (`run_in_background: false`), and launch-prompt completeness, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`. Each sub-agent's instructions live in an external `templates/*.md` carrying a `template_id` in its frontmatter; the launch prompt has the sub-agent Read that template instead of quoting it.
 
 Launch every sub-agent with the prompt below, substituting the template, variables, and overrides the step names:
 
@@ -96,7 +96,7 @@ The leader (you) does not place the verification body in context.
 {tmp_dir}/resolve-summary.md        ← Output from compile-review.py (verification report)
 ```
 
-Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`.
+Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 
 ### events.jsonl
 
@@ -145,5 +145,5 @@ The leader (you) does not place the verification body in context. `compile-revie
 2. Read `summary_path` (`{tmp_dir}/resolve-summary.md`) only if a detailed report is needed.
 3. The leader removes `{tmp_dir}` in one shot:
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}
+   ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```

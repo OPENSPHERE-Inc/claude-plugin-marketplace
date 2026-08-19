@@ -37,7 +37,7 @@ Write the review document in the user's chat language.
 
 ## Sub-agent usage rules
 
-- **For common prohibitions, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`.**
+- **For common prohibitions and the one-shot launch mode (`run_in_background: false`), see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`.**
 - **Each phase is delegated whole to a phase leader sub-agent** (`subagent_type="review-leader"`). The phase sub-agent invokes the corresponding skill and runs it end to end — that skill's own sub-agents, its compile step, and its internal re-execution loops. The phase sub-agent in turn spawns sub-agents, and the triage sub-agent spawns its own challenge / adjudication sub-agents, so a nested spawn depth of 3 or more is required.
   - Review phase (Step 2.1) — `creview:start`
   - Triage & estimate phase (Step 2.2 / 2.5) — `creview:triage`

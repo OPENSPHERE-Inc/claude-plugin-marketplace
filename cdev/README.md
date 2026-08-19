@@ -58,7 +58,7 @@ or deletion, and no shared task list; the leader tracks each cell's status itsel
 only in a runtime where these are available — a deliberate trade-off favoring efficiency over
 the broad portability of a one-shot, stateless agent design.
 
-The bundled `fetch-diff.sh` / `rm-tmp.sh` scripts also require `python3` (3.9 or later) on
+The bundled `fetch-diff.sh` / `del-tmp.sh` scripts also require `python3` (3.9 or later) on
 the `PATH`: their shared `.claude/tmp/` containment check is implemented in
 `scripts/lib/scratch-guard.py`.
 
@@ -91,7 +91,7 @@ enforce domain correctness. When no specialist matches a domain, the reviewer fa
 - `rules/` — `teammate.md` (teammate common rules), `agents-detection.md`,
   `build-format-detection.md`, `comment.md`, `review.md`, `document.md`.
 - `scripts/` — `fetch-diff.sh` (snapshots the pre-coding tree, then captures the QA diff since
-  coding start), `rm-tmp.sh` (deletes the run's working directory under `.claude/tmp/`), and
+  coding start), `del-tmp.sh` (deletes the run's working directory under `.claude/tmp/`), and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by both; requires
   `python3` — see Requirements). The skill invokes them via
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`; teammates receive the resolved path through the

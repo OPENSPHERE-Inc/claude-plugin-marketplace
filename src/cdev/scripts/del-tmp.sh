@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# rm-tmp.sh — Delete files or directories under .claude/tmp/ only.
-# Usage: <path>/rm-tmp.sh <path> [<path> ...]
+# del-tmp.sh — Delete files or directories under .claude/tmp/ only.
+# Usage: <path>/del-tmp.sh <path> [<path> ...]
 #
 # Restricts deletion to paths under the project's .claude/tmp/ directory
 # so that Bash(rm:*) need not be added to the permission allowlist.
