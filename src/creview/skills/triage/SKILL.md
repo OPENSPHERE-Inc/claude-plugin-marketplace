@@ -1,7 +1,7 @@
 ---
 name: triage
 description: レビュー指摘事項のトリアージと修正コストの見積を行い、トリアージ / 見積メタデータをレビュードキュメントに永続化する（ソース修正は行わない）。/creview:start のレビュードキュメントが存在し、どの指摘に対応するかの判断や修正コストの見積が次の作業となるときに能動的に使用する。
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュートリアージ & 見積
@@ -67,7 +67,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## サブエージェントの起動
 
-共通禁止事項と起動プロンプトの完全性は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` および同 § 起動プロンプトの完全性 を参照。各サブエージェントへの指示は `templates/*.md` の外部テンプレート（frontmatter に `template_id` を持つ）にあり、起動プロンプトはその内容を引用せず、テンプレートを Read させる。
+共通禁止事項・ワンショット起動形態（`run_in_background: false`）・起動プロンプトの完全性は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` を参照。各サブエージェントへの指示は `templates/*.md` の外部テンプレート（frontmatter に `template_id` を持つ）にあり、起動プロンプトはその内容を引用せず、テンプレートを Read させる。
 
 サブエージェントはすべて以下のプロンプトで起動し、テンプレート・変数・オーバーライドは各ステップの指定で置換する:
 
@@ -125,7 +125,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 トリアージは**修正作業を行う専門エージェントとは別個の単一サブエージェント**に委譲する（バイアス分離のため）。トリアージ Sub はレビュードキュメントを直接 Read して指摘抽出とステージ判定を行い、トリアージ判定を提案 → 並列反証 → 多数決を条件とする裁定の三段（敵対的トリアージ）で行う。一次判定は自身で行い、指摘バッチごとに反証 Sub 3 体と、裁定 Sub を自らネスト起動し、最終判定を自ら `triage.jsonl` に反映する。ネスト Sub の `template_id` 照合と不一致時の再起動はトリアージ Sub が担う。判定結果は**ファイルに Write** させ、リーダーの context に判定本体を載せない。
 
 1. `Agent(subagent_type="general-purpose", prompt=...)` でサブエージェントを起動する。モデル指定はしない。テンプレート `triage.md`、`template_id` `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`previous_round_doc_paths = {previous_round_doc_paths}`（標準フローでは "(none)"。/creview:rounds 等の上位フローから過去ラウンドの doc_path 一覧が渡される場合のみ非空）、オーバーライド `(none)`。戻り値: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}` — triage の本文は読み込まない。
-2. 戻り値に `error` が含まれる場合はステップ 2 以降に進まず、`${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}` で作業ディレクトリを削除し、失敗をユーザーに報告して中断する。
+2. 戻り値に `error` が含まれる場合はステップ 2 以降に進まず、`${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で作業ディレクトリを削除し、失敗をユーザーに報告して中断する。
 3. トリアージサマリ（件数。裁定で反転した件数 `flipped_count` を含む）をユーザーに提示する。
 
 `will_fix_count == 0` の場合、ステップ 2 をスキップしてステップ 3（編纂。Won't Fix の triage 値のみ永続化）へ進む。
@@ -156,5 +156,5 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 2. 詳細テーブルが必要な場合のみ、ステップ 2 の `summary_path` を Read する（ステップ 2 をスキップした場合は存在しない）。
 3. リーダーが `{tmp_dir}` を一括削除する:
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}
+   ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```

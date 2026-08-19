@@ -1,7 +1,7 @@
 ---
 name: start
 description: Launch a parallel code review with reviewers auto-selected from the destination project agents. Use proactively when the user asks to review changes, a branch, or a PR (e.g. "review this code"), or right after a substantial implementation is completed.
-allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*)
+allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*)
 ---
 
 # Parallel Code Review
@@ -63,7 +63,7 @@ Structural anchors (severity headings `## Critical` / `## Major` / `## Minor` / 
 
 ## Sub-Agent Launch
 
-For common prohibitions and launch-prompt completeness, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` and its § Launch Prompt Completeness. Each sub-agent's instructions live in an external `templates/*.md` carrying a `template_id` in its frontmatter; the launch prompt has the sub-agent Read that template instead of quoting it.
+For common prohibitions, the one-shot launch mode (`run_in_background: false`), and launch-prompt completeness, see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`. Each sub-agent's instructions live in an external `templates/*.md` carrying a `template_id` in its frontmatter; the launch prompt has the sub-agent Read that template instead of quoting it.
 
 Launch every sub-agent with the prompt below, substituting the template, variables, and overrides the step names:
 
@@ -93,7 +93,7 @@ The leader (you) does not place reviewer output bodies in context.
 {tmp_dir}/reviews/{reviewer-name}.md  ← Output from each reviewer (numbered list of findings)
 ```
 
-Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}`.
+Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 
 ## Step 1 — Identify Review Scope and Fetch Diff
 
@@ -141,5 +141,5 @@ Template `aggregator.md`, `template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`, 
 After the aggregator sub-agent completes Writing the final report, delete the entire working directory created in Step 1 (including `diff.txt` and the reviewer files under `reviews/`).
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/rm-tmp.sh {tmp_dir}
+${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
 ```

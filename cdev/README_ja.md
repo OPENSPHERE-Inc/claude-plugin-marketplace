@@ -58,7 +58,7 @@ teammate 間の `SendMessage` を使用します。セッションは単一の�
 これらが利用可能なランタイムでのみ動作します。これは使い捨て・ステートレスなエージェント方式の
 広い移植性よりも効率を優先した、意図的なトレードオフです。
 
-同梱の `fetch-diff.sh` / `rm-tmp.sh` スクリプトは、`PATH` 上の `python3`（3.9 以降）も
+同梱の `fetch-diff.sh` / `del-tmp.sh` スクリプトは、`PATH` 上の `python3`（3.9 以降）も
 必要とします。両者が共有する `.claude/tmp/` 封じ込めチェックは
 `scripts/lib/scratch-guard.py` に実装されています。
 
@@ -90,7 +90,7 @@ teammate 間の `SendMessage` を使用します。セッションは単一の�
 - `rules/` — `teammate.md`（teammate 共通ルール）、`agents-detection.md`、
   `build-format-detection.md`、`comment.md`、`review.md`、`document.md`。
 - `scripts/` — `fetch-diff.sh`（コーディング開始前のツリーを記録し、開始以降の QA 差分を
-  取得）、`rm-tmp.sh`（`.claude/tmp/` 配下の実行作業ディレクトリを削除）、
+  取得）、`del-tmp.sh`（`.claude/tmp/` 配下の実行作業ディレクトリを削除）、
   `lib/scratch-guard.py`（両者が共有する `.claude/tmp/` 封じ込めチェック。`python3` が必要 —
   動作要件参照）。スキルは `${CLAUDE_PLUGIN_ROOT}/scripts/...` 経由で呼び出し、teammate は
   変数 `{{plugin_root}}` で解決済みパスを受け取ります。

@@ -23,16 +23,16 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/agents/` — bundled mechanical agents: `review-helper.md`,
   `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader).
 - `creview/rules/` — comment / document / review / wontfix / sub-agent rules referenced by skills.
-- `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `rm-tmp.sh`, `lib/scratch-guard.py`.
+- `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
 - `creview/sequencer/programs/review_rounds.py` (+ `review_rounds/`) — agent-sequencer program (English).
 - `cprompt/skills/edit/SKILL.md` (+ `templates/`) — The `/cprompt:edit` skill.
 - `cprompt/rules/` — `prompt.md`, `document.md`.
 - `cdev/skills/coding/SKILL.md` (+ `templates/`) — The `/cdev:coding` team-native skill (7 teammate task templates, each with a `template_id`).
-- `cdev/agents/` — `comment-sensei.md`, `dev-helper.md` (bundled). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`. `cdev/scripts/` — `fetch-diff.sh`, `rm-tmp.sh`, `lib/scratch-guard.py`.
+- `cdev/agents/` — `comment-sensei.md`, `dev-helper.md` (bundled). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`. `cdev/scripts/` — `fetch-diff.sh`, `del-tmp.sh`, `lib/scratch-guard.py`.
 - `src/<plugin>/...` — **Japanese master**, mirrors each plugin's tree 1:1.
 - `tests/scratch-guard-test.sh` — repo-level self-test: containment + byte-parity of the
-  shared `lib/scratch-guard.py` / `rm-tmp.sh` copies (not shipped).
+  shared `lib/scratch-guard.py` / `del-tmp.sh` copies (not shipped).
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
 - `.claude/rules/*.md` — Discipline rules for editing this repo (prompt/document/comment/…).
 
@@ -42,7 +42,7 @@ see **[CLAUDE.md](CLAUDE.md)**.
    `src/**` = Japanese master; `*_ja.md` = Japanese. Top-level docs = English.
 2. **`src/` is the editing master.** Edit `src/<plugin>/X` and active `<plugin>/X` as a
    translation-paired change; keep them structurally 1:1. Exception:
-   `scripts/lib/scratch-guard.py` / `scripts/rm-tmp.sh` are byte-identical across all four
+   `scripts/lib/scratch-guard.py` / `scripts/del-tmp.sh` are byte-identical across all four
    copies (`creview/`, `cdev/`, and their `src/` mirrors) — the `src/` copies stay English;
    see CLAUDE.md.
 3. **Token-placement invariant.** `${CLAUDE_PLUGIN_ROOT}` only in SKILL.md

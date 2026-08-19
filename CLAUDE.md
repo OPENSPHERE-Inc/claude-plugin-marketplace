@@ -63,7 +63,7 @@ claude-plugin-marketplace/
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
 │   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md
 │   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md
-│   ├── scripts/                  # fetch-diff.sh, render-review.py, rm-tmp.sh, lib/scratch-guard.py
+│   ├── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, lib/scratch-guard.py
 │   └── sequencer/programs/
 │       ├── review_rounds.py      # agent-sequencer program (English, active)
 │       └── review_rounds/        # final-report-compile.md, final-report-format.md
@@ -80,7 +80,7 @@ claude-plugin-marketplace/
 │   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, design, design-review, code, code-review, comment-review, qa)
 │   ├── agents/                   # comment-sensei.md, dev-helper.md
 │   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md
-│   └── scripts/                  # fetch-diff.sh, rm-tmp.sh, lib/scratch-guard.py
+│   └── scripts/                  # fetch-diff.sh, del-tmp.sh, lib/scratch-guard.py
 │
 ├── src/                          # Japanese master, mirrors each plugin's tree 1:1
 │   ├── creview/...               # src/creview/<same tree as creview/>
@@ -159,7 +159,7 @@ grep -rl '{{plugin_root}}'   creview/skills/*/SKILL.md   cprompt/skills/*/SKILL.
 # src ↔ active file-count parity (per plugin, excluding .claude-plugin/README)
 
 # Scratch-guard self-test: containment behavior + byte-parity of the shared
-# lib/rm-tmp copies across creview/cdev and their src/ mirrors
+# lib/del-tmp copies across creview/cdev and their src/ mirrors
 bash tests/scratch-guard-test.sh
 ```
 
@@ -376,7 +376,7 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `.claude/...` paths would not resolve in the consuming project. (The detection rules
   `agents-detection.md` / `build-format-detection.md` instead express their plugin-bundled
   scope with the `{{plugin_root}}/...` launch variable; see the Token-placement invariant.)
-- **`scripts/lib/scratch-guard.py` and `scripts/rm-tmp.sh` are byte-identical across all four
+- **`scripts/lib/scratch-guard.py` and `scripts/del-tmp.sh` are byte-identical across all four
   copies** (`creview/`, `cdev/`, and their `src/` mirrors); each plugin ships its own copy
   because plugins install independently. Edit one copy and replicate to the other three;
   `tests/scratch-guard-test.sh` fails on any drift.

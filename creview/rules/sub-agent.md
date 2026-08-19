@@ -15,6 +15,10 @@ Common prohibitions that sub-agents of the creview skills (start / triage / resp
 - **Inherited scope**: An agent a sub-agent launches is bound by the same restrictions as the sub-agent that launched it.
 - **Reporting path**: Report results only via the Agent call's return value (final text). `SendMessage` is prohibited. "Leader" in the SKILLs and templates means the agent that launched you; `to: "main"` reaches the root agent regardless of nesting depth, never your launcher.
 
+## Launch mode
+
+Launch every agent as a one-shot foreground run (Agent tool with `run_in_background: false`). Do not launch standing / persistent agents, and do not continue a launched agent via `SendMessage` — when a retry is needed, launch a fresh instance. A persistent agent reports via `SendMessage`, which reaches the root `main` rather than the launcher, stalling nested runs. This binds the SKILL leaders and every sub-agent that launches nested agents.
+
 ## Tools
 
 Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting.

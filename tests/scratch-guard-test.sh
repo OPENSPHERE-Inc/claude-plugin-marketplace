@@ -7,7 +7,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GUARD="${REPO_ROOT}/cdev/scripts/lib/scratch-guard.py"
-RM="${REPO_ROOT}/cdev/scripts/rm-tmp.sh"
+RM="${REPO_ROOT}/cdev/scripts/del-tmp.sh"
 FD="${REPO_ROOT}/cdev/scripts/fetch-diff.sh"
 CFD="${REPO_ROOT}/creview/scripts/fetch-diff.sh"
 
@@ -27,9 +27,9 @@ same() {
 same cdev/scripts/lib/scratch-guard.py src/cdev/scripts/lib/scratch-guard.py
 same cdev/scripts/lib/scratch-guard.py creview/scripts/lib/scratch-guard.py
 same cdev/scripts/lib/scratch-guard.py src/creview/scripts/lib/scratch-guard.py
-same cdev/scripts/rm-tmp.sh src/cdev/scripts/rm-tmp.sh
-same cdev/scripts/rm-tmp.sh creview/scripts/rm-tmp.sh
-same cdev/scripts/rm-tmp.sh src/creview/scripts/rm-tmp.sh
+same cdev/scripts/del-tmp.sh src/cdev/scripts/del-tmp.sh
+same cdev/scripts/del-tmp.sh creview/scripts/del-tmp.sh
+same cdev/scripts/del-tmp.sh src/creview/scripts/del-tmp.sh
 same cdev/scripts/fetch-diff.sh src/cdev/scripts/fetch-diff.sh
 same creview/scripts/fetch-diff.sh src/creview/scripts/fetch-diff.sh
 
@@ -42,13 +42,13 @@ mode_check() { # <repo-relative-script>
         || { note "FAIL: $1 git mode '${mode:-missing}' (expected 100755)"; fail=1; }
 }
 for d in cdev creview src/cdev src/creview; do
-    for s in fetch-diff.sh rm-tmp.sh; do
+    for s in fetch-diff.sh del-tmp.sh; do
         mode_check "${d}/scripts/${s}"
     done
 done
 
 # --- syntax --------------------------------------------------------------------
-for f in cdev/scripts/rm-tmp.sh cdev/scripts/fetch-diff.sh creview/scripts/fetch-diff.sh; do
+for f in cdev/scripts/del-tmp.sh cdev/scripts/fetch-diff.sh creview/scripts/fetch-diff.sh; do
     bash -n "${REPO_ROOT}/${f}" || { note "FAIL: bash -n ${f}"; fail=1; }
 done
 
@@ -125,25 +125,25 @@ else
     note "SKIP: symlink escape cases (real symlinks unavailable on this platform)"
 fi
 
-# --- rm-tmp.sh end-to-end --------------------------------------------------------
+# --- del-tmp.sh end-to-end --------------------------------------------------------
 mkdir -p .claude/tmp/e2e/dir
 : > .claude/tmp/e2e/dir/f
 rc=0; bash "${RM}" .claude/tmp/e2e/dir 2>/dev/null || rc=$?
-check "rm-tmp legit delete" 0 "${rc}"
-[[ ! -e .claude/tmp/e2e/dir ]] || { note "FAIL: rm-tmp did not delete the target"; fail=1; }
+check "del-tmp legit delete" 0 "${rc}"
+[[ ! -e .claude/tmp/e2e/dir ]] || { note "FAIL: del-tmp did not delete the target"; fail=1; }
 rc=0; bash "${RM}" .claude/tmp/ 2>/dev/null || rc=$?
-check "rm-tmp bare root rejected" 1 "${rc}"
+check "del-tmp bare root rejected" 1 "${rc}"
 rc=0; bash "${RM}" .claude/tmp/gone/x 2>/dev/null || rc=$?
-check "rm-tmp missing parent skipped" 0 "${rc}"
+check "del-tmp missing parent skipped" 0 "${rc}"
 rc=0; bash "${RM}" "${SANDBOX}/outside/victim.txt" 2>/dev/null || rc=$?
-check "rm-tmp outside rejected" 1 "${rc}"
-[[ -e "${SANDBOX}/outside/victim.txt" ]] || { note "FAIL: rm-tmp deleted outside file"; fail=1; }
+check "del-tmp outside rejected" 1 "${rc}"
+[[ -e "${SANDBOX}/outside/victim.txt" ]] || { note "FAIL: del-tmp deleted outside file"; fail=1; }
 if [[ -L .claude/tmp/esc ]]; then
     rc=0; bash "${RM}" .claude/tmp/esc 2>/dev/null || rc=$?
-    check "rm-tmp symlink entry delete" 0 "${rc}"
-    [[ ! -L .claude/tmp/esc ]] || { note "FAIL: rm-tmp left the symlink entry"; fail=1; }
+    check "del-tmp symlink entry delete" 0 "${rc}"
+    [[ ! -L .claude/tmp/esc ]] || { note "FAIL: del-tmp left the symlink entry"; fail=1; }
     [[ -e "${SANDBOX}/outside/victim.txt" ]] \
-        || { note "FAIL: rm-tmp followed the symlink and deleted its target"; fail=1; }
+        || { note "FAIL: del-tmp followed the symlink and deleted its target"; fail=1; }
 fi
 
 # --- fetch-diff.sh (cdev) end-to-end ----------------------------------------------
