@@ -31,6 +31,14 @@ decides the final verdict. A proposed verdict is overturned only when at least
 two of its own batch's three challenges call for it and the adjudicator
 confirms the facts they cite.
 
+`/creview:start` also bounds how much diff a single reviewer owns. When the
+change exceeds 800 changed lines or 20 changed files, the scope-analysis
+sub-agent partitions the changed files into at most eight cohesive review
+scopes of up to 400 changed lines / 10 files each and picks reviewers per
+scope, so a large change is reviewed slice by slice rather than sampled by
+reviewers that stop exploring once they have produced a few findings. A
+smaller change stays a single scope.
+
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review
 document (`{review-doc basename}-adr-{finding-id}.md`, skeleton in
@@ -56,7 +64,8 @@ Nested sub-agent spawning is required
   the challenge sub-agents and the adjudication sub-agent.
 
 A long run also consumes many subagent slots — the challenge sub-agents alone
-number three per batch of eight findings — so raise
+number three per batch of eight findings, and a split review runs one reviewer
+per (scope, reviewer) pair — so raise
 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
 session) when using a high `--max-rounds`.
 
@@ -67,7 +76,8 @@ analysis / format-build-verify sub-agents enumerate agents recursively
 (`**/*.md`, including subdirectories) from the **destination project**
 (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin bundle**, read
 each agent's frontmatter `name` / `description`, and pick the best match per
-finding. With no match, they fall back to `general-purpose`. The
+finding (scope-analysis instead picks every agent relevant to each review
+scope). With no match, they fall back to `general-purpose`. The
 bundled agents are `review-helper` (mechanical aggregation / verification),
 `comment-sensei` (comment-discipline review), and `review-leader` (the
 `/creview:rounds` phase leader).
