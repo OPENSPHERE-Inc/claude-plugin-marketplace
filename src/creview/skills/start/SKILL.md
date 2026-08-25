@@ -89,35 +89,35 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 
 ```
 {tmp_dir} = .claude/tmp/creview-start-{timestamp}/
-{tmp_dir}/diff.txt                    ← リーダーがステップ 1 で取得する差分（スコープ解析サブエージェント入力）
-{tmp_dir}/reviews/{reviewer-name}.md  ← 各レビュアーの出力（指摘の番号付きリスト）
+{tmp_dir}/diff.txt                               ← リーダーがステップ 1 で取得する差分（スコープ解析サブエージェント入力）
+{tmp_dir}/reviews/{scope_id}/{reviewer-name}.md  ← 各レビュアーの出力（指摘の番号付きリスト）
 ```
 
 作成はステップ 1、削除はリーダーがステップ 4 で `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で行う。
 
 ## ステップ 1 — レビュー範囲の特定と差分取得
 
-リーダー（あなた）は差分内容を Read しない。差分の解析・行数算出・必要レビュアー候補の選定はスコープ解析サブエージェントに委譲し、戻り値（行数 + 候補リスト + サマリ）のみ受け取る。
+リーダー（あなた）は差分内容を Read しない。差分の解析・行数算出・レビュースコープへの分割・各スコープのレビュアー選定はスコープ解析サブエージェントに委譲し、戻り値（行数 + スコープリスト + サマリ）のみ受け取る。
 
 1. ユーザーの入力に基づき、レビュー対象（ベースブランチ・対象パス等）と明示要求レビュアー（あれば）を特定する。
-2. `{timestamp}` を解決して `{tmp_dir}` を確定し、`mkdir -p {tmp_dir}/reviews` で作業用ディレクトリを作成する。
+2. `{timestamp}` を解決して `{tmp_dir}` を確定し、`mkdir -p {tmp_dir}` で作業用ディレクトリを作成する。
 3. 差分情報をスクリプトで取得する:
    - 出力ファイルパス: `{tmp_dir}/diff.txt`
    - 以下を実行:
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
      ```
-4. スコープ解析サブエージェントを起動して差分を解析させる — テンプレート `scope-analysis.md`、`template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`user_requested = {user_requested}`、オーバーライド `(none)`。戻り値: `{line_count, recommended_reviewers, extension_summary, rationale, template_id}`。
-5. `recommended_reviewers` をそのまま最終レビュアーリストとして確定し、各要素の `name` をステップ 2 で `subagent_type` に渡す。
-6. `line_count == 0` の場合、空のレビュードキュメント（`${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` のヘッダーブロックのみ、重要度セクションなし）を `{final_doc_path}` に Write してステップ 4 へ直接進む。
+4. スコープ解析サブエージェントを起動して差分を解析させる — テンプレート `scope-analysis.md`、`template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`user_requested = {user_requested}`、オーバーライド `(none)`。戻り値: `{line_count, scopes, extension_summary, rationale, template_id}`。
+5. `line_count == 0` の場合、空のレビュードキュメント（`${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` のヘッダーブロックのみ、重要度セクションなし）を `{final_doc_path}` に Write してステップ 4 へ直接進む。
+6. `scopes` をそのまま確定する（要素は常に 1 つ以上、各要素は `{scope_id, paths, line_count, reviewers: [{name, reason}]}`）。各スコープの出力ディレクトリを `mkdir -p {tmp_dir}/reviews/{scope_id}` で作成する。
 
 ## ステップ 2 — 並列レビュアーの起動
 
-選択したすべてのレビュアーを Agent ツールで同時に起動する。各レビュアーは指摘を stdout に返さず、専用ファイルに Write する。レビューリーダー（あなた）はレビュアー出力本体を context に載せない（後段の集約サブエージェントが読み取る）。
+（スコープ, `reviewers[].name`）の全組につきレビュアーを 1 体ずつ Agent ツールで同時に起動する。各レビュアーは指摘を stdout に返さず、専用ファイルに Write する。レビューリーダー（あなた）はレビュアー出力本体を context に載せない（後段の集約サブエージェントが読み取る）。
 
 ### レビュアー出力ファイル
 
-- 各レビュアーごとに 1 ファイル: `{tmp_dir}/reviews/{reviewer-name}.md`
+- （スコープ, レビュアー）の組ごとに 1 ファイル: `{tmp_dir}/reviews/{scope_id}/{reviewer-name}.md`
 - 内容は「指摘の番号付きリスト」だけ（前後の挨拶や全体サマリは入れない）
 - フォーマット: `[重要度] [カテゴリ] file_path:line — 問題の説明とその重要性。` の番号付きリスト。カテゴリは 1 件以上付与し、複数の場合は `/` で連結して 1 つの `[ ]` にまとめる（例: `[バグ/保守性]`）。プリセットの詳細はレビュアー向けテンプレート参照。
 
@@ -125,7 +125,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 
 `subagent_type={name}`（スコープ解析 Sub が対象プロジェクトの `.claude/agents/` から解決した名前、または `general-purpose`）を指定する。agent 定義の persona と観点は自動でロードされる。起動プロンプトに persona / 観点は含めない。
 
-テンプレート `{reviewer_template}`、`template_id` `{reviewer_template_id}`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`targets = {targets}`、`base = {base}`、`diff_path = {diff_path}`、`output_path = {output_path}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。各レビュアーの戻り値: `{path, critical, major, minor, info, template_id}`。
+テンプレート `{reviewer_template}`、`template_id` `{reviewer_template_id}`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`targets = {targets}`、`base = {base}`、`diff_path = {diff_path}`、`scope_paths = {scope_paths}`、`output_path = {output_path}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。`{scope_paths}` は当該組のスコープの `paths`、`{output_path}` は `{tmp_dir}/reviews/{scope_id}/{name}.md`。各レビュアーの戻り値: `{path, critical, major, minor, info, template_id}`。
 
 ## ステップ 3 — レポートの統合（集約サブエージェントへ委譲）
 
@@ -133,6 +133,8 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 レビューリーダーは集約処理（各レビュアーファイルの Read・重複排除・並べ替え・成果物 Write）を行わず、レビュアー出力本体を context に載せない。
 
 `Agent(subagent_type="review-helper", prompt=...)` で起動する（model は review-helper の agent 定義に従う。リーダーから model 指定はしない）。
+
+`{reviewer_paths_list}` は全スコープのレビュアー出力ファイルを列挙したもの、`{reviewer_names_csv}` はスコープ間で重複排除したレビュアー名。
 
 テンプレート `aggregator.md`、`template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`reviewer_paths_list = {reviewer_paths_list}`、`final_doc_path = {final_doc_path}`、`round_num_or_omitted = {round_num_or_omitted}`、`targets_description = {targets_description}`、`reviewer_names_csv = {reviewer_names_csv}`、`review_mode = {review_mode}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。戻り値: `{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`。
 

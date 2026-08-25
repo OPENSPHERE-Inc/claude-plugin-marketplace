@@ -1,25 +1,32 @@
 ---
 name: scope-analysis
-description: /creview:start ステップ 1 で差分を解析し対象プロジェクトのエージェントからレビュアー候補を選定するスコープ解析サブエージェント向けプロンプト
+description: /creview:start ステップ 1 で差分をレビュースコープに分割し、各スコープのレビュアーを対象プロジェクトのエージェントから選定するスコープ解析サブエージェント向けプロンプト
 template_id: b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85
 ---
 
-レビュー範囲解析担当として `{{tmp_dir}}/diff.txt` を Read し、行数算出とレビュアー候補を選定する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
+レビュー範囲解析担当として `{{tmp_dir}}/diff.txt` を Read し、行数算出・差分のレビュースコープへの分割・各スコープのレビュアー選定を行う。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
 
 ユーザー明示要求レビュアー: `{{user_requested}}`（空配列あり）
 
-レビュアープール: 以下の優先順位で `*.md` を列挙し、各ファイルの frontmatter の `name` / `description` を Read して専門性を把握する。`name` 値は別の Agent 呼び出しの `subagent_type` に渡す値である。同一 `name` が複数スコープに存在する場合は上位スコープのものを採用する。存在しないスコープはスキップする。
+レビュアープール: 以下の優先順位で `*.md` を列挙し、各ファイルの frontmatter の `name` / `description` を Read して専門性を把握する。`name` 値は別の Agent 呼び出しの `subagent_type` に渡す値である。同一 `name` が複数箇所に存在する場合は上位のものを採用する。存在しない箇所はスキップする。
 
-1. プロジェクトスコープ: `.claude/agents/**/*.md`（作業ディレクトリ基準）
-2. ユーザースコープ: `~/.claude/agents/**/*.md`
+1. プロジェクト: `.claude/agents/**/*.md`（作業ディレクトリ基準）
+2. ユーザー: `~/.claude/agents/**/*.md`
 3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`
 
 実施内容:
 
-1. 差分から変更ファイルの種別 / パス / 内容領域（言語、サブシステム、ビルド / CI、A/V、コメント & FIXME / TODO 等）と拡張子別サマリを判定する。
-2. 列挙した各エージェントについて、その `description` から専門性が差分に関連するか判定する。関連するエージェントはすべて、合致した拡張子 / パス / 内容領域を示す短い `reason` を付して `recommended_reviewers` に追加する。
-3. いずれのスコープにも関連するエージェントがない場合、`{name: "general-purpose", reason: "no matching specialist agent"}` を 1 件追加する。
-4. 未追加の `user_requested` レビュアーを補完する（reason: `"user explicitly requested"`）。
-5. `line_count` = 差分中の +/- 行合計。
+1. 差分から変更ファイルの種別 / パス / 内容領域（言語、サブシステム、ビルド / CI、A/V、コメント & FIXME / TODO 等）と拡張子別サマリを判定する。`line_count` = 差分中の +/- 行合計。
+2. 下記のサイズ規則に従って変更ファイルをレビュースコープに分割する。各変更ファイルはいずれか 1 つのスコープにのみ属する。スコープには形成順に `s1`、`s2`、… と番号を振る。
+3. 各スコープについて、列挙した各エージェントの `description` から、その専門性が差分全体ではなく**当該スコープのファイル**に関連するかを判定する。関連するエージェントはすべて、合致した拡張子 / パス / 内容領域を示す短い `reason` を付して当該スコープの `reviewers` に追加する。関連するエージェントが 1 つも無いスコープには代わりに `{name: "general-purpose", reason: "no matching specialist agent"}` を置く。
+4. 未追加の `user_requested` レビュアーを全スコープに補完する（reason: `"user explicitly requested"`）。
 
-戻り値: `{line_count, recommended_reviewers: [{name, reason}], extension_summary（例: ".cpp(12), .hpp(5)"）, rationale（選定根拠 1〜2 文）, template_id}`。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
+サイズ規則:
+
+- `line_count` 800 以下かつ変更ファイル 20 件以下: 全変更ファイルを含む単一スコープとする。
+- それ以外: 1 スコープあたり変更 400 行以下かつ 10 ファイル以下になるよう分割する。網羅性を担保するのはこの上限である。これを超える差分を担当したレビュアーは数件の指摘を出した時点で探索を打ち切り、レビューが局所的なサンプリングに退化する。
+- 1 ファイルの変更行を複数スコープに分割しない。単独で変更 400 行を超えるファイルはそれ自体を 1 スコープとする。
+- まず凝集性（同一サブシステム / ディレクトリ / 言語 / 関心事）でまとめ、そのまとまりの中でサイズ上限を適用する。
+- 分割は 8 スコープを上限とする。上限に達する場合はサイズ上限を各スコープ均等に超過させ、その旨を `rationale` に記す。
+
+戻り値: `{line_count, scopes: [{scope_id, paths（当該スコープの変更ファイルパス）, line_count, reviewers: [{name, reason}]}], extension_summary（例: ".cpp(12), .hpp(5)"）, rationale（分割と選定の根拠 1〜2 文）, template_id}`。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
