@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: Automatically iterate review, triage, respond, and resolve across multiple rounds until no actionable findings remain
-allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(mkdir:*)
+allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*)
 ---
 
 # Automatic Review Round Execution
@@ -17,6 +17,7 @@ The user may optionally specify an output base path. When the argument is `$ARGU
 - `--confirm` (default OFF) — After triage / estimate are persisted into the review document (Step 2.2) and before the fix phase (Step 2.3), present the estimate summary to the user and wait for confirmation.
 - `--confirm-round` (default OFF) — After resolve, if unresolved findings remain, wait for user confirmation before proceeding to the next round.
 - `--commit` (default OFF) — Perform a git commit after each finding is fixed (passed through to the respond phase).
+- `--incremental` (default OFF) — From Round 2 on, review only the commits added between the previous round's start and this round's start, instead of the whole branch diff. Enabling it enables `--commit`: a fix left uncommitted falls outside every later round's commit range.
 - `--adr` (default OFF) — Permit creating ADR files for design decisions next to each round's review document (passed through to the triage and respond phases). ADRs referenced from a review document are read / updated at fix time regardless of this flag.
 - `--max-rounds N` (default 5, range 1–10) — Change the maximum number of rounds for the outer loop.
 - `--base {branch}` (default `main` or `master`) — Specify the base branch (passed to the review phase).
@@ -85,7 +86,7 @@ Round 1 start
   ├─ 2.5 feedback re-fix loop (max 3) → re-run 2.2 → 2.3 → 2.4 with feedback overrides
   └─ 2.6 round end → judge condition for proceeding to the next round
 Round 2 start (do not pass the previous round's review document)
-  └─ ...
+  └─ ... (--incremental: review only the commits Round 1 added)
 Final step
   └─ [final report aggregator Sub] all round{N}.md + template → final-report.md
 ```
@@ -104,10 +105,14 @@ While the round counter is at most `--max-rounds`, repeat the following.
 ### 2.1 — Review phase (start skill)
 
 1. Display in console: `## Round {N} — Step 1: Review`
-2. Launch the phase sub-agent with `templates/phase-review.md` (`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`).
-   - Variables: `base` (`--base` value), `document_path` (this round's file path), `language` (user's chat language), `adversarial` (`--adversarial` state)
+2. Record this round's start revision `{start_rev[N]}` with `git rev-parse HEAD`.
+3. Fix this round's review target:
+   - `--incremental` OFF, or `N == 1`: `{review_base}` = the `--base` value, `{review_range}` = `(none)`.
+   - Otherwise: `{review_base}` = `{start_rev[N-1]}`, `{review_range}` = `{start_rev[N-1]}..{start_rev[N]}`. When the two revisions are equal, the previous round left no commit: end the round loop and proceed to Step 3.
+4. Launch the phase sub-agent with `templates/phase-review.md` (`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`).
+   - Variables: `base` (`{review_base}`), `review_range` (`{review_range}`), `document_path` (this round's file path), `language` (user's chat language), `adversarial` (`--adversarial` state)
    - Overrides: (none)
-3. Hold only the return value (`{doc_path, findings_total, severity_counts}`) in context.
+5. Hold only the return value (`{doc_path, findings_total, severity_counts}`) in context.
 
 ### 2.2 — Triage & estimate phase (triage skill)
 
@@ -132,7 +137,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
 
 1. Display in console: `## Round {N} — Step 4: Resolve`
 2. Launch the phase sub-agent with `templates/phase-resolve.md` (`template_id`: `2f9c6a1e-7b53-4d84-8e2b-5a1f9d3c7b26`).
-   - Variables: `document_path`, `base` (`--base` value)
+   - Variables: `document_path`, `base` (this round's `{review_base}`)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
 3. Hold only the return value (`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count}`) in context.
 

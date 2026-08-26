@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: レビュー・トリアージ・対応・検証を複数ラウンド自動で繰り返し、対応すべき指摘がなくなるまで反復する
-allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(mkdir:*)
+allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*)
 ---
 
 # レビューラウンド自動実行
@@ -17,6 +17,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 - `--confirm`（デフォルト OFF）— トリアージ・見積がレビュードキュメントに永続化された後（ステップ 2.2）、修正フェーズ（ステップ 2.3）の前に、見積サマリをユーザーに提示して確認を待つ。
 - `--confirm-round`（デフォルト OFF）— resolve 後、未解決の指摘が残っている場合、次ラウンドに進む前にユーザーの確認を待つ。
 - `--commit`（デフォルト OFF）— 各指摘の修正後に git commit を行う（respond フェーズにそのまま渡す）。
+- `--incremental`（デフォルト OFF）— Round 2 以降、ブランチ全体の差分ではなく、前ラウンド開始時点から今ラウンド開始時点までに追加されたコミットのみをレビューする。有効にすると `--commit` も有効になる — コミットされない修正は以降のどのラウンドのコミット範囲にも入らないため。
 - `--adr`（デフォルト OFF）— 設計判断の ADR ファイルを各ラウンドのレビュードキュメントの隣に新規作成することを許可する（triage / respond フェーズにそのまま渡す）。レビュードキュメントから参照されている ADR の読み込み・更新は、このフラグに寄らず修正時に実行される。
 - `--max-rounds N`（デフォルト 5、範囲 1〜10）— 外側ループの最大ラウンド数を変更する。
 - `--base {branch}`（デフォルト `main` または `master`）— ベースブランチを指定する（review フェーズに渡される）。
@@ -85,7 +86,7 @@ Round 1 開始
   ├─ 2.5 フィードバック再修正ループ（最大 3 回）→ フィードバック用オーバーライド付きで 2.2 → 2.3 → 2.4 を再実行
   └─ 2.6 ラウンド終了 → 次ラウンドに進む条件を判定
 Round 2 開始（前ラウンドのレビュードキュメントは渡さない）
-  └─ ...
+  └─ ...（--incremental: Round 1 が追加したコミットのみをレビュー）
 最終ステップ
   └─ [最終レポート編纂 Sub] 全 round{N}.md + テンプレート → final-report.md
 ```
@@ -104,10 +105,14 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 ### 2.1 — レビューフェーズ（start スキル）
 
 1. コンソールに表示: `## Round {N} — Step 1: Review`
-2. `templates/phase-review.md`（`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`）でフェーズ Sub を起動する。
-   - 変数: `base`（`--base` の値）、`document_path`（今ラウンドのファイルパス）、`language`（ユーザーのチャット言語）、`adversarial`（`--adversarial` の状態）
+2. `git rev-parse HEAD` で今ラウンドの開始リビジョン `{start_rev[N]}` を記録する。
+3. 今ラウンドのレビュー対象を確定する:
+   - `--incremental` が OFF、または `N == 1`: `{review_base}` = `--base` の値、`{review_range}` = `(該当なし)`。
+   - それ以外: `{review_base}` = `{start_rev[N-1]}`、`{review_range}` = `{start_rev[N-1]}..{start_rev[N]}`。両リビジョンが等しい場合は前ラウンドがコミットを残していないため、ラウンドループを終了してステップ 3 へ進む。
+4. `templates/phase-review.md`（`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`）でフェーズ Sub を起動する。
+   - 変数: `base`（`{review_base}`）、`review_range`（`{review_range}`）、`document_path`（今ラウンドのファイルパス）、`language`（ユーザーのチャット言語）、`adversarial`（`--adversarial` の状態）
    - オーバーライド: (該当なし)
-3. 戻り値（`{doc_path, findings_total, severity_counts}`）のみ context に保持する。
+5. 戻り値（`{doc_path, findings_total, severity_counts}`）のみ context に保持する。
 
 ### 2.2 — トリアージ&見積フェーズ（triage スキル）
 
@@ -132,7 +137,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 1. コンソールに表示: `## Round {N} — Step 4: Resolve`
 2. `templates/phase-resolve.md`（`template_id`: `2f9c6a1e-7b53-4d84-8e2b-5a1f9d3c7b26`）でフェーズ Sub を起動する。
-   - 変数: `document_path`、`base`（`--base` の値）
+   - 変数: `document_path`、`base`（今ラウンドの `{review_base}`）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの
 3. 戻り値（`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count}`）のみ context に保持する。
 
