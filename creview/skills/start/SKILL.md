@@ -90,8 +90,8 @@ The leader (you) does not place reviewer output bodies in context.
 
 ```
 {tmp_dir} = .claude/tmp/creview-start-{timestamp}/
-{tmp_dir}/diff.txt                               ← Diff fetched by the leader in Step 1 (input to the scope-analysis sub-agent)
-{tmp_dir}/reviews/{scope_id}/{reviewer-name}.md  ← Output from each reviewer (numbered list of findings)
+{tmp_dir}/diff.txt                                      ← Diff fetched by the leader in Step 1 (input to the scope-analysis sub-agent)
+{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md  ← Output from each reviewer (numbered list of findings)
 ```
 
 Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
@@ -122,7 +122,7 @@ Launch one reviewer per (scope, `reviewers[].name`) pair concurrently via the Ag
 
 ### Reviewer Output Files
 
-- One file per (scope, reviewer) pair: `{tmp_dir}/reviews/{scope_id}/{reviewer-name}.md`
+- One file per (scope, reviewer) pair: `{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md`
 - Content is only the "numbered list of findings" (no greetings or overall summaries before or after)
 - Format: numbered list of `[severity] [category] file_path:line — Description of the issue and its importance.`. Assign one or more category labels; if multiple, join them with `/` inside a single `[ ]` (e.g., `[Bug/Maintainability]`). See the reviewer template for preset details.
 
@@ -130,7 +130,7 @@ Launch one reviewer per (scope, `reviewers[].name`) pair concurrently via the Ag
 
 Specify `subagent_type={name}` (the name resolved by the scope-analysis Sub from the destination project's `.claude/agents/`, or `general-purpose`). The agent definition's persona and perspective load automatically; do not include the persona / perspective in the launch prompt.
 
-Template `{reviewer_template}`, `template_id` `{reviewer_template_id}`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `targets = {targets}`, `base = {base}`, `diff_path = {diff_path}`, `scope_paths = {scope_paths}`, `output_path = {output_path}`, `doc_lang = {doc_lang}`, overrides `(none)`. `{scope_paths}` is that pair's scope `paths`; `{output_path}` is `{tmp_dir}/reviews/{scope_id}/{name}.md`. Return value from each reviewer: `{path, critical, major, minor, info, template_id}`.
+Template `{reviewer_template}`, `template_id` `{reviewer_template_id}`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `targets = {targets}`, `base = {base}`, `diff_path = {diff_path}`, `scope_paths = {scope_paths}`, `output_path = {output_path}`, `doc_lang = {doc_lang}`, overrides `(none)`. `{scope_paths}` is that pair's scope `paths`; `{output_path}` is `{tmp_dir}/reviews/{scope_id}/review-{name}.md`. Return value from each reviewer: `{path, critical, major, minor, info, template_id}`.
 
 ## Step 3 — Consolidate the Report (Delegate to Aggregator Sub-Agent)
 
