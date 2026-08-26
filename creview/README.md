@@ -53,6 +53,15 @@ arises during implementation. A later round that revisits the same location
 updates or supersedes the existing ADR instead of duplicating it.
 `/creview:rounds` accepts the same flag and passes it through to both phases.
 
+`/creview:rounds` takes an `--incremental` option (default OFF) that makes each
+round after the first review only the commits added since the previous round
+started, instead of re-reviewing the whole branch diff every round. Round 1 is
+always the full branch diff. Enabling it enables `--commit`, since an
+uncommitted fix is not part of any round's commit range. The narrowed range is
+applied at diff-fetch time — `/creview:start` gains a `--range {from}..{to}`
+option that collects only that commit range and skips the working-tree
+sections — so reviewers never see the earlier rounds' already-reviewed code.
+
 Nested sub-agent spawning is required
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; the default is 3):
 

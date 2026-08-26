@@ -30,6 +30,7 @@ If the argument is `$ARGUMENTS`, interpret it as the review target specification
 ## Options
 
 - `--base {branch}` — Specify the base branch. Defaults to `main` or `master`.
+- `--range {from}..{to}` — Review only the commits in that range, replacing the default review target. Working-tree changes are outside the range and are not fetched. `{base}` becomes `{from}` for the Step 2 reviewer variables.
 - `--output {path}` — Specify the final report output path (`{final_doc_path}`).
 - `--adversarial` (default OFF) — Run the Step 2 reviewers with the adversarial reviewer template.
 
@@ -103,9 +104,13 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
 2. Resolve `{timestamp}` to fix `{tmp_dir}`, and create the working directory with `mkdir -p {tmp_dir}`.
 3. Fetch diff information via script:
    - Output file path: `{tmp_dir}/diff.txt`
-   - Run:
+   - Run without `--range`:
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
+     ```
+   - Run with `--range {from}..{to}`:
+     ```
+     ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --range {from} {to} {tmp_dir}/diff.txt
      ```
 4. Launch the scope-analysis sub-agent to analyze the diff — template `scope-analysis.md`, `template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, `user_requested = {user_requested}`, overrides `(none)`. Return value: `{line_count, scopes, extension_summary, rationale, template_id}`.
 5. If `line_count == 0`, Write an empty review document at `{final_doc_path}` — the header block of `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` with no severity sections — and proceed directly to Step 4.

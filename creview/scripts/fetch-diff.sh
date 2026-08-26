@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # fetch-diff.sh — Fetch all git diff sections for parallel-review.
 # Usage: <path>/fetch-diff.sh <base-branch> <output-file>
+#        <path>/fetch-diff.sh --range <from-rev> <to-rev> <output-file>
 #
 # Writes the following sections to <output-file>:
-#   === Changed Files (<base>..HEAD) ===
-#   === Commit Log (<base>..HEAD) ===
-#   === Commit Diff (<base>..HEAD) ===
+#   === Changed Files (<from>..<to>) ===
+#   === Commit Log (<from>..<to>) ===
+#   === Commit Diff (<from>..<to>) ===
 #   === Staged Changes ===
 #   === Unstaged Changes ===
 #   === Untracked Files ===
+#
+# Without --range, <from> is <base-branch> and <to> is HEAD. With --range, the
+# three working-tree sections are omitted: working-tree state belongs to no
+# commit, so it is outside any <from>..<to> range.
 
 set -euo pipefail
 
@@ -32,13 +37,24 @@ prepare_out() {
     printf '%s\n' "${out}"
 }
 
-BASE="${1:?Error: base branch argument required}"
-OUT="${2:?Error: output file path argument required}"
-
-if ! git rev-parse --verify --quiet --end-of-options "${BASE}^{commit}" >/dev/null; then
-    echo "Error: invalid base branch: ${BASE}" >&2
-    exit 1
+RANGE_MODE=0
+if [[ "${1:-}" == "--range" ]]; then
+    RANGE_MODE=1
+    FROM="${2:?Error: --range requires a from revision}"
+    TO="${3:?Error: --range requires a to revision}"
+    OUT="${4:?Error: output file path argument required}"
+else
+    FROM="${1:?Error: base branch argument required}"
+    TO="HEAD"
+    OUT="${2:?Error: output file path argument required}"
 fi
+
+for rev in "${FROM}" "${TO}"; do
+    if ! git rev-parse --verify --quiet --end-of-options "${rev}^{commit}" >/dev/null; then
+        echo "Error: invalid revision: ${rev}" >&2
+        exit 1
+    fi
+done
 
 OUT="$(prepare_out "${OUT}")" || exit 1
 
@@ -85,27 +101,29 @@ untracked_diff() (
 )
 
 {
-    printf '=== Changed Files (%s..HEAD) ===\n' "${BASE}"
-    review_diff --name-status "${BASE}..HEAD"
+    printf '=== Changed Files (%s..%s) ===\n' "${FROM}" "${TO}"
+    review_diff --name-status "${FROM}..${TO}"
     printf '\n'
 
-    printf '=== Commit Log (%s..HEAD) ===\n' "${BASE}"
-    git log "${BASE}..HEAD" --oneline --no-color
+    printf '=== Commit Log (%s..%s) ===\n' "${FROM}" "${TO}"
+    git log "${FROM}..${TO}" --oneline --no-color
     printf '\n'
 
-    printf '=== Commit Diff (%s..HEAD) ===\n' "${BASE}"
-    review_diff "${BASE}..HEAD"
+    printf '=== Commit Diff (%s..%s) ===\n' "${FROM}" "${TO}"
+    review_diff "${FROM}..${TO}"
     printf '\n'
 
-    printf '=== Staged Changes ===\n'
-    review_diff --cached
-    printf '\n'
+    if [[ "${RANGE_MODE}" -eq 0 ]]; then
+        printf '=== Staged Changes ===\n'
+        review_diff --cached
+        printf '\n'
 
-    printf '=== Unstaged Changes ===\n'
-    review_diff
-    printf '\n'
+        printf '=== Unstaged Changes ===\n'
+        review_diff
+        printf '\n'
 
-    printf '=== Untracked Files ===\n'
-    untracked_diff
-    printf '\n'
+        printf '=== Untracked Files ===\n'
+        untracked_diff
+        printf '\n'
+    fi
 } > "${OUT}"

@@ -30,6 +30,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 ## オプション
 
 - `--base {branch}` — ベースブランチを指定する。デフォルトは `main` または `master`。
+- `--range {from}..{to}` — その範囲のコミットのみをレビューし、デフォルトのレビュー対象を置き換える。ワーキングツリーの変更は範囲外となり、取得しない。ステップ 2 のレビュアー変数では `{base}` を `{from}` とする。
 - `--output {path}` — 最終レポートの出力先パス (`{final_doc_path}`) を指定する。
 - `--adversarial`（デフォルト OFF）— ステップ 2 のレビュアーを敵対的レビュアーテンプレートで実行する。
 
@@ -103,9 +104,13 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 2. `{timestamp}` を解決して `{tmp_dir}` を確定し、`mkdir -p {tmp_dir}` で作業用ディレクトリを作成する。
 3. 差分情報をスクリプトで取得する:
    - 出力ファイルパス: `{tmp_dir}/diff.txt`
-   - 以下を実行:
+   - `--range` なしの場合は以下を実行:
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
+     ```
+   - `--range {from}..{to}` ありの場合は以下を実行:
+     ```
+     ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --range {from} {to} {tmp_dir}/diff.txt
      ```
 4. スコープ解析サブエージェントを起動して差分を解析させる — テンプレート `scope-analysis.md`、`template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`user_requested = {user_requested}`、オーバーライド `(none)`。戻り値: `{line_count, scopes, extension_summary, rationale, template_id}`。
 5. `line_count == 0` の場合、空のレビュードキュメント（`${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` のヘッダーブロックのみ、重要度セクションなし）を `{final_doc_path}` に Write してステップ 4 へ直接進む。
