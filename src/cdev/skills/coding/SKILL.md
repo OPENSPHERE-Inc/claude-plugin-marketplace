@@ -87,12 +87,12 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 ```
 {tmp_dir} = .claude/tmp/cdev-coding-{timestamp}/
-{tmp_dir}/team.jsonl        ← team-analysis の結果（roster。リーダーが読む）
-{tmp_dir}/design/{slug}.md  ← architect ごとに 1 つの設計セクション（reviewer と coder が読む）
-{tmp_dir}/baseline-tree     ← コーディング開始前の作業ツリースナップショット（QA 差分の基点）
-{tmp_dir}/changes.txt       ← コーディング開始以降の差分（QA の入力）
-{tmp_dir}/qa-result.jsonl   ← QA 結果
-{tmp_dir}/build.log         ← dev-helper が取得するビルド / テスト出力
+{tmp_dir}/team.jsonl               ← team-analysis の結果（roster。リーダーが読む）
+{tmp_dir}/design/design-{slug}.md  ← architect ごとに 1 つの設計セクション（reviewer と coder が読む）
+{tmp_dir}/baseline-tree            ← コーディング開始前の作業ツリースナップショット（QA 差分の基点）
+{tmp_dir}/changes.txt              ← コーディング開始以降の差分（QA の入力）
+{tmp_dir}/qa-result.jsonl          ← QA 結果
+{tmp_dir}/build.log                ← dev-helper が取得するビルド / テスト出力
 ```
 
 作成はステップ 1 で `mkdir -p`、削除はリーダーがステップ 5 で `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` により行う。
@@ -110,8 +110,8 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 1. コンソールに表示する: `## Step 2 — Design`。
 2. 各 architect について、設計セル `design-{slug}` を 2 つのメッセージで開始する（宛先は roster の name）:
-   - `architect-{slug}` 宛に `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`output_path = {tmp_dir}/design/{slug}.md`、`reviewer = {ペア reviewer の name}` を渡して `SendMessage`。
-   - ペア reviewer の name 宛に `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {tmp_dir}/design/{slug}.md`、`producer = architect-{slug}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
+   - `architect-{slug}` 宛に `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`output_path = {tmp_dir}/design/design-{slug}.md`、`reviewer = {ペア reviewer の name}` を渡して `SendMessage`。
+   - ペア reviewer の name 宛に `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {tmp_dir}/design/design-{slug}.md`、`producer = architect-{slug}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
 3. ゲート: 設計セルごとにクローズ報告 1 通（届いたエスカレーションは随時裁定する）。セクションパスを `{design_paths}` として収集する。
 
 ## ステップ 3 — コードセル（コーディング）

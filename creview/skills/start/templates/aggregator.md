@@ -16,7 +16,7 @@ Output language: `{{doc_lang}}`
 
 Consolidation procedure:
 
-1. Read each reviewer file. Extract the severity and categories from the leading `[severity] [category]` of each finding.
+1. Read each reviewer file. Its reviewer name is the basename without the `review-` prefix and the `.md` suffix. Extract the severity and categories from the leading `[severity] [category]` of each finding.
 2. Deduplicate — merge findings at the same location with the same intent into a single entry, listing the originating reviewers together. Take the union of categories from the merged sources, join with `/` (preserve first-occurrence order, drop duplicates).
 3. Group by severity (Critical → Major → Minor → Info).
 4. Within each group, assign finding-ids (Critical: C-1, C-2, ...; Major: M-1, M-2, ...; Minor: mi-1, mi-2, ...; Info: I-1, I-2, ...). The Minor prefix is the lowercase two-letter `mi-`, which does not collide with Major's `M-`.

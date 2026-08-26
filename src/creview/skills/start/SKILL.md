@@ -90,8 +90,8 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 
 ```
 {tmp_dir} = .claude/tmp/creview-start-{timestamp}/
-{tmp_dir}/diff.txt                               ← リーダーがステップ 1 で取得する差分（スコープ解析サブエージェント入力）
-{tmp_dir}/reviews/{scope_id}/{reviewer-name}.md  ← 各レビュアーの出力（指摘の番号付きリスト）
+{tmp_dir}/diff.txt                                      ← リーダーがステップ 1 で取得する差分（スコープ解析サブエージェント入力）
+{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md  ← 各レビュアーの出力（指摘の番号付きリスト）
 ```
 
 作成はステップ 1、削除はリーダーがステップ 4 で `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で行う。
@@ -122,7 +122,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 
 ### レビュアー出力ファイル
 
-- （スコープ, レビュアー）の組ごとに 1 ファイル: `{tmp_dir}/reviews/{scope_id}/{reviewer-name}.md`
+- （スコープ, レビュアー）の組ごとに 1 ファイル: `{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md`
 - 内容は「指摘の番号付きリスト」だけ（前後の挨拶や全体サマリは入れない）
 - フォーマット: `[重要度] [カテゴリ] file_path:line — 問題の説明とその重要性。` の番号付きリスト。カテゴリは 1 件以上付与し、複数の場合は `/` で連結して 1 つの `[ ]` にまとめる（例: `[バグ/保守性]`）。プリセットの詳細はレビュアー向けテンプレート参照。
 
@@ -130,7 +130,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 
 `subagent_type={name}`（スコープ解析 Sub が対象プロジェクトの `.claude/agents/` から解決した名前、または `general-purpose`）を指定する。agent 定義の persona と観点は自動でロードされる。起動プロンプトに persona / 観点は含めない。
 
-テンプレート `{reviewer_template}`、`template_id` `{reviewer_template_id}`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`targets = {targets}`、`base = {base}`、`diff_path = {diff_path}`、`scope_paths = {scope_paths}`、`output_path = {output_path}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。`{scope_paths}` は当該組のスコープの `paths`、`{output_path}` は `{tmp_dir}/reviews/{scope_id}/{name}.md`。各レビュアーの戻り値: `{path, critical, major, minor, info, template_id}`。
+テンプレート `{reviewer_template}`、`template_id` `{reviewer_template_id}`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`targets = {targets}`、`base = {base}`、`diff_path = {diff_path}`、`scope_paths = {scope_paths}`、`output_path = {output_path}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。`{scope_paths}` は当該組のスコープの `paths`、`{output_path}` は `{tmp_dir}/reviews/{scope_id}/review-{name}.md`。各レビュアーの戻り値: `{path, critical, major, minor, info, template_id}`。
 
 ## ステップ 3 — レポートの統合（集約サブエージェントへ委譲）
 

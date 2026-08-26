@@ -380,6 +380,14 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   copies** (`creview/`, `cdev/`, and their `src/` mirrors); each plugin ships its own copy
   because plugins install independently. Edit one copy and replicate to the other three;
   `tests/scratch-guard-test.sh` fails on any drift.
+- **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
+  `SUMMARY`, `FINDINGS`, or `ANALYSIS`** (case-insensitive, basename only). Claude Code's
+  Write tool blocks it and tells the sub-agent to return the content as text instead. Output
+  paths whose basename comes from a runtime value therefore carry a fixed prefix — creview's
+  `{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md` (the aggregator recovers the
+  reviewer name by stripping it) and cdev's `{tmp_dir}/design/design-{slug}.md`. Keep those
+  prefixes: a destination-project agent name or a team-analysis slug can begin with any of
+  the four words.
 - **Agent definitions use `tools:`; skills / commands use `allowed-tools:`.** `allowed-tools`
   is not a supported sub-agent frontmatter field, so a tool list written under that key in
   `<plugin>/agents/*.md` is ignored and the agent runs with every tool.

@@ -87,12 +87,12 @@ The leader holds only the roster (each teammate's name → agentType), the pairi
 
 ```
 {tmp_dir} = .claude/tmp/cdev-coding-{timestamp}/
-{tmp_dir}/team.jsonl        ← team-analysis result (roster; read by the leader)
-{tmp_dir}/design/{slug}.md  ← one design section per architect (read by reviewers and coders)
-{tmp_dir}/baseline-tree     ← pre-coding working-tree snapshot (baseline for the QA diff)
-{tmp_dir}/changes.txt       ← diff since coding start (input to QA)
-{tmp_dir}/qa-result.jsonl   ← QA result
-{tmp_dir}/build.log         ← build / test output captured by dev-helper
+{tmp_dir}/team.jsonl               ← team-analysis result (roster; read by the leader)
+{tmp_dir}/design/design-{slug}.md  ← one design section per architect (read by reviewers and coders)
+{tmp_dir}/baseline-tree            ← pre-coding working-tree snapshot (baseline for the QA diff)
+{tmp_dir}/changes.txt              ← diff since coding start (input to QA)
+{tmp_dir}/qa-result.jsonl          ← QA result
+{tmp_dir}/build.log                ← build / test output captured by dev-helper
 ```
 
 Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
@@ -110,8 +110,8 @@ Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE
 
 1. Console: `## Step 2 — Design`.
 2. For each architect, start the design cell `design-{slug}` with two messages (addressed to roster names):
-   - To `architect-{slug}`, `SendMessage` naming `templates/design.md` with `task = {task_summary}`, `assigned_scope = {its scope}`, `output_path = {tmp_dir}/design/{slug}.md`, `reviewer = {paired reviewer's name}`.
-   - To the paired reviewer's name, `SendMessage` naming `templates/design-review.md` with `task = {task_summary}`, `design_path = {tmp_dir}/design/{slug}.md`, `producer = architect-{slug}`, `cell_task = design-{slug}`, `review_rounds = {--review-rounds}`.
+   - To `architect-{slug}`, `SendMessage` naming `templates/design.md` with `task = {task_summary}`, `assigned_scope = {its scope}`, `output_path = {tmp_dir}/design/design-{slug}.md`, `reviewer = {paired reviewer's name}`.
+   - To the paired reviewer's name, `SendMessage` naming `templates/design-review.md` with `task = {task_summary}`, `design_path = {tmp_dir}/design/design-{slug}.md`, `producer = architect-{slug}`, `cell_task = design-{slug}`, `review_rounds = {--review-rounds}`.
 3. Gate: one closure report per design cell, arbitrating any escalation as it arrives. Collect the section paths as `{design_paths}`.
 
 ## Step 3 — Code cells (コーディング)
