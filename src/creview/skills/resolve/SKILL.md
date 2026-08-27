@@ -53,6 +53,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 /creview:resolve は `verification` フィールドを以下のいずれかの形式で追記する:
 
 - `✅ Verified — {検証結果の簡潔な説明}` — 解決済み（Resolved）。
+- `✅ Verified — Re-checked: unchanged` — すでに `✅ Verified` で、再検証でも判定が維持された指摘。
 - `💬 Feedback — {不足点と完全解決のために必要なこと}` — フィードバック必要（Feedback）。
 
 Unresolved の指摘には `verification` 値を書き込まない。

@@ -18,6 +18,12 @@ Common additional checks (always perform immediately before the code-verificatio
 - If comments were added or modified, Read `{{plugin_root}}/rules/comment.md` and check for violations. If any violation exists, mark as Feedback.
 - If human-facing documentation (README, API references, etc.; AI-facing prompts under `.claude/` are out of scope) was added or modified, Read `{{plugin_root}}/rules/document.md` and check for violations. If any violation exists, mark as Feedback.
 
+`Verification: ✅ Verified` is the trailing field — verified in an earlier pass. This branch takes precedence over the three below:
+
+1. Re-check the earlier Verified judgment against the current code: another finding's fix may have undone it.
+2. Perform the common additional checks.
+3. Decision: Resolved (the judgment still holds) / Feedback (it no longer holds; describe what broke).
+
 `Status: 🟢 Fixed` present:
 
 1. Read the referenced file and lines to confirm the described fix actually exists:
@@ -51,11 +57,11 @@ Format of `{{tmp_dir}}/verifications/{id}.jsonl`: `{id, severity, trailing_field
 
 trailing_field: the trailing field within the markers (e.g., `Status: 🟢 Fixed` / `Triage: 🚫 Won't Fix` / `(empty)`).
 
-Write the `reason`, the `memo_value` description text, and the `feedback_detail` prose in the same language as the existing Finding descriptions in `{{document_path}}` (the `✅ Verified` / `💬 Feedback` labels and emoji stay fixed).
+Write the `reason`, the `memo_value` description text, and the `feedback_detail` prose in the same language as the existing Finding descriptions in `{{document_path}}` (the `✅ Verified` / `💬 Feedback` labels, the emoji, and the re-check phrase `Re-checked: unchanged` stay fixed).
 
 memo_value:
 
-- Resolved: `✅ Verified — {verification result}`
+- Resolved: `✅ Verified — {verification result}`. In the re-check branch, `{verification result}` is the fixed phrase `Re-checked: unchanged`.
 - Feedback: `💬 Feedback — {what is missing and what is required for full resolution}`
 - Unresolved: `""`
 

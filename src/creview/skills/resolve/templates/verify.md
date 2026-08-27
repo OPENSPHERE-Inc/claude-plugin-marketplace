@@ -18,6 +18,12 @@ template_id: 8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94
 - コメントの追加・変更があれば `{{plugin_root}}/rules/comment.md` を Read し違反を確認する。違反があれば Feedback とする。
 - 人間向けドキュメント（README、API リファレンス等。`.claude/` 配下の AI 向けプロンプトは対象外）の追加・修正があれば `{{plugin_root}}/rules/document.md` を Read し違反を確認する。違反があれば Feedback とする。
 
+末尾フィールドが `Verification: ✅ Verified` — 前のパスで検証済み。下の 3 分岐より優先する:
+
+1. 以前の Verified 判定を現在のコードに照らして再確認する。他の指摘の修正が判定を崩している可能性がある。
+2. 共通追加チェックを実施する。
+3. 判定: Resolved（判定が維持されている）/ Feedback（維持されていない。何が崩れたかを記述）。
+
 `Status: 🟢 Fixed` あり:
 
 1. 参照ファイル＋行を Read し、記載された修正が実在することを確認する:
@@ -51,11 +57,11 @@ Unresolved として報告するケース:
 
 trailing_field: マーカー内の末尾フィールド（例: `Status: 🟢 Fixed` / `Triage: 🚫 Won't Fix` / `(empty)`）。
 
-`reason` / `memo_value` の説明文 / `feedback_detail` の散文は、`{{document_path}}` の既存 Finding 説明と同じ言語で記述する（`✅ Verified` / `💬 Feedback` ラベルと絵文字は固定）。
+`reason` / `memo_value` の説明文 / `feedback_detail` の散文は、`{{document_path}}` の既存 Finding 説明と同じ言語で記述する（`✅ Verified` / `💬 Feedback` ラベル、絵文字、再確認の定型文言 `Re-checked: unchanged` は固定）。
 
 memo_value:
 
-- Resolved: `✅ Verified — {検証結果}`
+- Resolved: `✅ Verified — {検証結果}`。再確認分岐では `{検証結果}` を固定文言 `Re-checked: unchanged` とする。
 - Feedback: `💬 Feedback — {不足点と完全解決のために必要なこと}`
 - Unresolved: `""`
 

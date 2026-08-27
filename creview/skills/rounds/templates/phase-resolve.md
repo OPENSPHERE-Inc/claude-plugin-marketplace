@@ -14,7 +14,7 @@ Input:
 
 What to do:
 
-1. Invoke the `creview:resolve` skill with the arguments `{{document_path}} --base {{base}}`, then act as its verification leader through its Steps 1-3, including the compile step.
+1. Invoke the `creview:resolve` skill with the arguments `{{document_path}} --base {{base}}`, then act as its verification leader through its Steps 1-4, including the compile step and deleting the working directory.
 2. Add each entry in `{{overrides}}` to the "Round-specific overrides" section of the launch prompt of the sub-agent it names, or of every sub-agent when it names none.
 
-Return value: `{summary_path, summary_line, resolved_count, feedback_count, unresolved_count, template_id}`. Include `template_id` exactly as Read from this template's frontmatter.
+Return value: `{summary_line, resolved_count, feedback_count, unresolved_count, template_id}`. Include `template_id` exactly as Read from this template's frontmatter.

@@ -10,7 +10,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 レビュー対応リーダー自身は修正作業を行わず、プロセス全体のオーケストレーションと結果の集約・判断を行う。修正作業はすべてサブエージェントに委任する。
 
-本スキルの前に `/creview:triage {document}` を実行する。本スキルは `triage` が `🔧 Will Fix` であり、`estimate` が `▶️ Maintain` または `🚧 Alternative` であり、まだ `status` を持たない指摘のみを修正する。
+本スキルの前に `/creview:triage {document}` を実行する。本スキルは `triage` が `🔧 Will Fix`、`estimate` が `▶️ Maintain` または `🚧 Alternative` で、かつ未着手の指摘のみを修正する — `status` がまだ無いか、`status` はあるが検証が `💬 Feedback` を返したもの。
 
 ## 入力
 
@@ -53,6 +53,8 @@ fix: Add null check before accessing output pointer
 
 `/creview:triage --adr` を使った場合、`Estimate:` 値は ` — Plan: ` の直前に ` — ADR: {ファイル名}` セグメントを持つことがある。ファイル名はレビュードキュメントと同じディレクトリにあるその指摘の ADR ファイルを指す。
 
+`/creview:resolve` を通過した指摘は `Verification:` 行も持つ。そこが `💬 Feedback` の場合、記録済みの修正は不十分と判定されている。
+
 本スキルは以下を追記する:
 
 - `status`（ステップ 5）— 値の形式: `🟢 Fixed — {修正内容の簡潔な説明}`。
@@ -63,9 +65,9 @@ fix: Add null check before accessing output pointer
 
 - `Triage:` が `🔧 Will Fix`（assignee は `(assignee: {specialist})` からパースする）。
 - `Estimate:` が `▶️ Maintain`（通常修正）または `🚧 Alternative`（FIXME 付与のみ）。
-- `Status:` が存在しない（未修正）。
+- `Status:` が存在しない、または `Verification:` が `💬 Feedback`。メタデータは追記専用のため、再修正に差し戻された指摘も以前の `Status:` を持ち続ける。
 
-`Triage: 🚫 Won't Fix`、`Estimate: 🔻 Downgrade`、すでに `Status: 🟢 Fixed` の指摘はスキップする。
+`Triage: 🚫 Won't Fix`、`Estimate: 🔻 Downgrade`、および `Status:` が `🟢 Fixed` で `Verification:` が無いか `✅ Verified` の指摘はスキップする。
 
 ## サブエージェントの起動
 

@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: Automatically iterate review, triage, respond, and resolve across multiple rounds until no actionable findings remain
-allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*)
+allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
 # Automatic Review Round Execution
@@ -49,6 +49,7 @@ Write the review document in the user's chat language.
   - Console headings, round loop control, and the feedback re-fix loop.
   - Phase sub-agent launch and aggregation of their return values (counters, paths, one-line summaries).
   - User interaction for `--confirm` / `--confirm-round`. A phase sub-agent cannot reach the user, so every wait for confirmation happens here, between phases.
+  - Removal of the triage phase's working directory (Step 2.2), which outlives its phase sub-agent.
   - Final summary presentation to the user.
 - **Do not put review finding bodies or judgment bodies into context.** Hold only file paths, counters, and revision hashes; the details stay inside each phase.
 - Each round's findings and judgments are passed to the next Step / next round **only through the review document**. `{prev_round_rev}` is the one value the round loop itself carries forward.
@@ -120,10 +121,14 @@ While the round counter is at most `--max-rounds`, repeat the following.
 2. Launch the phase sub-agent with `templates/phase-triage.md` (`template_id`: `6d2a8f4c-1e93-4b57-9c8a-3f7b2d6e1a95`).
    - Variables: `document_path` (this round's file path), `previous_round_doc_paths` (Round 1: `(none)`; Round N: doc_paths of Round 1..N-1), `adr_flag` (`--adr` state)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
-3. Hold only the return value (`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, error}`) in context.
-4. When `error` is non-null, do not proceed to 2.3 or beyond: report the failure to the user and end the round loop.
-5. Round loop control: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4.
-6. `--confirm`: when at least one Maintain / Alternative exists, Read `summary_path`, present it to the user, and wait for confirmation before 2.3.
+3. Hold only the return value (`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, tmp_dir, error}`) in context.
+4. `--confirm`: when `error` is null and at least one Maintain / Alternative exists, Read `summary_path`, present it to the user, and wait for confirmation.
+5. Remove the phase's working directory, which holds `summary_path` (`del-tmp.sh` skips an already-removed target, so the `error` path needs no separate handling):
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
+   ```
+6. When `error` is non-null, do not proceed to 2.3 or beyond: report the failure to the user and end the round loop.
+7. Round loop control: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4.
 
 ### 2.3 — Respond phase (respond skill)
 
@@ -139,7 +144,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
 2. Launch the phase sub-agent with `templates/phase-resolve.md` (`template_id`: `2f9c6a1e-7b53-4d84-8e2b-5a1f9d3c7b26`).
    - Variables: `document_path`, `base` (this round's `{review_base}`)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
-3. Hold only the return value (`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count}`) in context.
+3. Hold only the return value (`{summary_line, resolved_count, feedback_count, unresolved_count}`) in context.
 
 ### 2.5 — Feedback confirmation and re-fix loop
 
@@ -150,8 +155,8 @@ From the Step 2.4 return value (`feedback_count`), determine whether findings th
 
 Each attempt re-runs 2.2 → 2.3 → 2.4, passing the text below as the phase sub-agent's `overrides` variable:
 
-1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.` When all are Downgrade, skip step 2 and go to step 3.
-2. Display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)`. Re-run 2.3 with the override `Fix sub-agent: re-fix based on the Feedback content in current_meta.verification.` When the returned `workflow_warning` is non-null, update this round's recorded value (last write wins).
+1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.` When 2.2's round-loop control decided to skip the respond phase, skip step 2 and go to step 3.
+2. Display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)`. Re-run 2.3 with the override `Feedback re-fix pass: the fix targets are the findings whose Verification is 💬 Feedback; re-fix based on that feedback content.` Do not scope this override to a named sub-agent — the fix-target selection sub-agent must receive it too. When the returned `workflow_warning` is non-null, update this round's recorded value (last write wins).
 3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run 2.4 with overrides `(none)`.
 4. If feedback remains, return to step 1. If not resolved within 3 attempts, end the round (remaining 💬 Feedback are counted as "unresolved" in 2.6).
 5. When `--confirm-round` is enabled and unresolved findings remain, wait for user confirmation before proceeding to the next round.
