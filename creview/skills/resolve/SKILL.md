@@ -53,6 +53,7 @@ Determine each finding's current state from the fields present between the marke
 /creview:resolve appends a `verification` field in one of the following forms:
 
 - `✅ Verified — {brief description of the verification result}` — Resolved.
+- `✅ Verified — Re-checked: unchanged` — a finding that was already `✅ Verified` and whose judgment still holds on re-verification.
 - `💬 Feedback — {what is missing and what is required for full resolution}` — Feedback required.
 
 For Unresolved findings, do not write a `verification` value.
