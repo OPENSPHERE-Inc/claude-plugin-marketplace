@@ -30,7 +30,7 @@ If the argument is `$ARGUMENTS`, interpret it as the review target specification
 ## Options
 
 - `--base {branch}` — Specify the base branch. Defaults to `main` or `master`.
-- `--range {from}..{to}` — Review only the commits in that range, replacing the default review target. Working-tree changes are outside the range and are not fetched. `{base}` becomes `{from}` for the Step 2 reviewer variables.
+- `--range {from}..{to}` — Review only the commits in that range. Working-tree changes are outside the range and are not fetched. `{base}` becomes `{from}` for the Step 2 reviewer variables, and `{targets}` / `{targets_description}` name the range.
 - `--output {path}` — Specify the final report output path (`{final_doc_path}`).
 - `--adversarial` (default OFF) — Run the Step 2 reviewers with the adversarial reviewer template.
 
@@ -43,7 +43,7 @@ If the argument is `$ARGUMENTS`, interpret it as the review target specification
 
 ### Default Review Target
 
-If the user does not explicitly specify a review target, use the following as the default:
+`--range {from}..{to}` fixes the review target as that commit range. Otherwise, if the user does not explicitly specify a review target, use the following as the default:
 
 1. Commits unique to the current branch — all commits since the divergence from the base branch (equivalent to `git log {base}..HEAD`).
 2. Working tree changes — staged (`git diff --cached`) and unstaged (`git diff`) changes.
@@ -100,7 +100,7 @@ Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLU
 
 The leader (you) does not Read the diff content. Diff analysis, line counting, splitting the diff into review scopes, and selecting each scope's reviewers are delegated to the scope-analysis sub-agent; the leader receives only the return value (line count + scope list + summary).
 
-1. Based on the user's input, identify the review target (base branch, target paths, etc.) and any explicitly requested reviewers (if any).
+1. Based on the user's input, identify the review target (`--range` value, base branch, target paths, etc.) and any explicitly requested reviewers (if any).
 2. Resolve `{timestamp}` to fix `{tmp_dir}`, and create the working directory with `mkdir -p {tmp_dir}`.
 3. Fetch diff information via script:
    - Output file path: `{tmp_dir}/diff.txt`

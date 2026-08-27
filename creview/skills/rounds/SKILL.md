@@ -17,10 +17,10 @@ The user may optionally specify an output base path. When the argument is `$ARGU
 - `--confirm` (default OFF) — After triage / estimate are persisted into the review document (Step 2.2) and before the fix phase (Step 2.3), present the estimate summary to the user and wait for confirmation.
 - `--confirm-round` (default OFF) — After resolve, if unresolved findings remain, wait for user confirmation before proceeding to the next round.
 - `--commit` (default OFF) — Perform a git commit after each finding is fixed (passed through to the respond phase).
-- `--incremental` (default OFF) — From Round 2 on, review only the commits added between the previous round's start and this round's start, instead of the whole branch diff. Enabling it enables `--commit`: a fix left uncommitted falls outside every later round's commit range.
+- `--incremental` (default OFF) — From Round 2 on, review only the commits added between the previous round's start and this round's start — the previous round's fix commits — instead of the whole branch diff. Enabling it enables `--commit`: a fix left uncommitted falls outside every later round's commit range.
 - `--adr` (default OFF) — Permit creating ADR files for design decisions next to each round's review document (passed through to the triage and respond phases). ADRs referenced from a review document are read / updated at fix time regardless of this flag.
 - `--max-rounds N` (default 5, range 1–10) — Change the maximum number of rounds for the outer loop.
-- `--base {branch}` (default `main` or `master`) — Specify the base branch (passed to the review phase).
+- `--base {branch}` (default `main` or `master`) — Specify the base branch (passed to the review phase). `--incremental` overrides it from Round 2 on.
 - `--adversarial` (default OFF) — Run the review phase in adversarial mode (passed through to the review phase).
 
 ## Review document file naming
@@ -50,8 +50,8 @@ Write the review document in the user's chat language.
   - Phase sub-agent launch and aggregation of their return values (counters, paths, one-line summaries).
   - User interaction for `--confirm` / `--confirm-round`. A phase sub-agent cannot reach the user, so every wait for confirmation happens here, between phases.
   - Final summary presentation to the user.
-- **Do not put review finding bodies or judgment bodies into context.** Hold only file paths and counters; the details stay inside each phase.
-- Each round's results are passed to the next Step / next round **only through the review document**.
+- **Do not put review finding bodies or judgment bodies into context.** Hold only file paths, counters, and revision hashes; the details stay inside each phase.
+- Each round's findings and judgments are passed to the next Step / next round **only through the review document**. `{prev_round_rev}` is the one value the round loop itself carries forward.
 - Do not specify `model="..."` when launching (the model follows each agent definition's frontmatter).
 
 ## Phase sub-agent launch
@@ -96,7 +96,7 @@ Final step
 1. Verify the output directory exists; if not, create it.
 2. Get the current branch name.
 3. Parse options.
-4. Set the round counter to 1.
+4. Set the round counter to 1 and `{prev_round_rev}` to `(none)`.
 
 ## Step 2 — Round loop
 
@@ -105,10 +105,10 @@ While the round counter is at most `--max-rounds`, repeat the following.
 ### 2.1 — Review phase (start skill)
 
 1. Display in console: `## Round {N} — Step 1: Review`
-2. Record this round's start revision `{start_rev[N]}` with `git rev-parse HEAD`.
+2. Record this round's start revision `{this_round_rev}` with `git rev-parse HEAD`.
 3. Fix this round's review target:
-   - `--incremental` OFF, or `N == 1`: `{review_base}` = the `--base` value, `{review_range}` = `(none)`.
-   - Otherwise: `{review_base}` = `{start_rev[N-1]}`, `{review_range}` = `{start_rev[N-1]}..{start_rev[N]}`. When the two revisions are equal, the previous round left no commit: end the round loop and proceed to Step 3.
+   - `--incremental` OFF, or `{prev_round_rev}` is `(none)`: `{review_base}` = the `--base` value, `{review_range}` = `(none)`.
+   - Otherwise: `{review_base}` = `{prev_round_rev}`, `{review_range}` = `{prev_round_rev}..{this_round_rev}`. When the two revisions are equal, the previous round left no commit: end the round loop and proceed to Step 3.
 4. Launch the phase sub-agent with `templates/phase-review.md` (`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`).
    - Variables: `base` (`{review_base}`), `review_range` (`{review_range}`), `document_path` (this round's file path), `language` (user's chat language), `adversarial` (`--adversarial` state)
    - Overrides: (none)
@@ -169,9 +169,10 @@ Record the round's results. Each counter is obtained from phase sub-agent return
 - Unresolved count: the resolve phase's `feedback_count` after the final attempt of Step 2.5
 - Resolved count: the resolve phase's `resolved_count`
 - Feedback attempts: the number of Step 2.5 attempts performed in this round
+- Round start revision: this round's `{this_round_rev}`
 - workflow_warning: the `workflow_warning` retained in 2.3 / 2.5 (only for rounds where the format / build procedure was unresolved; null otherwise)
 
-Condition for proceeding to the next round: only when **all** of the following are met, increment the round counter and return to Step 2.1:
+Condition for proceeding to the next round: only when **all** of the following are met, set `{prev_round_rev}` to this round's `{this_round_rev}`, increment the round counter, and return to Step 2.1:
 
 1. The round counter is at most `--max-rounds`.
 2. The respond phase's `code_changed` is true for this round. Treat it as false when Step 2.3 was skipped.
