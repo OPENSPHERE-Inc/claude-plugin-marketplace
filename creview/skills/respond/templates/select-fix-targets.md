@@ -17,9 +17,9 @@ A finding is a fix target when **all** of the following hold:
 
 - `Triage:` is `🔧 Will Fix`. Parse the assignee from `(assignee: {specialist})`. When no assignee is parseable, use `general-purpose`.
 - `Estimate:` is `▶️ Maintain` or `🚧 Alternative`.
-- No `Status:` line is present.
+- No `Status:` line is present, or `Verification:` is `💬 Feedback`. Metadata is append-only, so a finding sent back for a re-fix still carries the earlier `Status:`.
 
-Skip (not a fix target): `Triage: 🚫 Won't Fix`, `Estimate: 🔻 Downgrade`, any finding already carrying `Status:`, and findings with no `Triage:` or no `Estimate:` (run `/creview:triage` first — record these in `not_ready` with the reason).
+Skip (not a fix target): `Triage: 🚫 Won't Fix`, `Estimate: 🔻 Downgrade`, a finding whose `Status:` is present with no `Verification:` or with `✅ Verified`, and findings with no `Triage:` or no `Estimate:` (run `/creview:triage` first — record these in `not_ready` with the reason).
 
 For each fix target, extract fix_plan from the part after ` — Plan: ` on the `Estimate:` line. Split on the leading `(1) ` and subsequent ` (n) ` numbered markers into a string array, one entry per element. When there is no ` — Plan: ` segment, set fix_plan to an empty array.
 

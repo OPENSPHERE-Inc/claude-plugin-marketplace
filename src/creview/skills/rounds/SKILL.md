@@ -155,8 +155,8 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 各 attempt は 2.2 → 2.3 → 2.4 を再実行し、以下のテキストをフェーズ Sub の `overrides` 変数として渡す:
 
-1. `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)` を表示。2.2 をオーバーライド `トリアージサブエージェント: stage が "feedback" の指摘を優先的にトリアージする（current_meta.verification に Feedback 詳細あり）。` および `見積サブエージェント: current_meta.verification の Feedback 内容を踏まえて見積。コストが膨らむ場合は Downgrade を検討。` で再実行する。全件 Downgrade なら手順 2 をスキップして手順 3 へ。
-2. `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` を表示。2.3 をオーバーライド `修正サブエージェント: current_meta.verification の Feedback 内容を踏まえて再修正。` で再実行する。戻り値の `workflow_warning` が非 null の場合は本ラウンドの記録値を更新する（後勝ち）。
+1. `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)` を表示。2.2 をオーバーライド `トリアージサブエージェント: stage が "feedback" の指摘を優先的にトリアージする（current_meta.verification に Feedback 詳細あり）。` および `見積サブエージェント: current_meta.verification の Feedback 内容を踏まえて見積。コストが膨らむ場合は Downgrade を検討。` で再実行する。2.2 のラウンドループ制御が対応フェーズのスキップを決めた場合、手順 2 をスキップして手順 3 へ。
+2. `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` を表示。2.3 をオーバーライド `フィードバック再修正パス: 修正対象は Verification が 💬 Feedback の指摘。そのフィードバック内容を踏まえて再修正する。` で再実行する。このオーバーライドを特定のサブエージェントに名指しで限定しない — 修正対象を選定するサブエージェントにも届く必要がある。戻り値の `workflow_warning` が非 null の場合は本ラウンドの記録値を更新する（後勝ち）。
 3. `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)` を表示。2.4 をオーバーライド `(該当なし)` で再実行。
 4. フィードバックが残っていれば手順 1 に戻る。3 回で解消しない場合はラウンドを終了する（残った 💬 Feedback は 2.6 で「未解決」としてカウント）。
 5. `--confirm-round` が有効で未解決が残っている場合、次ラウンドに進む前にユーザーの確認を待つ。

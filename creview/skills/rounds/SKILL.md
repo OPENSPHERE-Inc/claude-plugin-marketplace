@@ -155,8 +155,8 @@ From the Step 2.4 return value (`feedback_count`), determine whether findings th
 
 Each attempt re-runs 2.2 → 2.3 → 2.4, passing the text below as the phase sub-agent's `overrides` variable:
 
-1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.` When all are Downgrade, skip step 2 and go to step 3.
-2. Display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)`. Re-run 2.3 with the override `Fix sub-agent: re-fix based on the Feedback content in current_meta.verification.` When the returned `workflow_warning` is non-null, update this round's recorded value (last write wins).
+1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.` When 2.2's round-loop control decided to skip the respond phase, skip step 2 and go to step 3.
+2. Display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)`. Re-run 2.3 with the override `Feedback re-fix pass: the fix targets are the findings whose Verification is 💬 Feedback; re-fix based on that feedback content.` Do not scope this override to a named sub-agent — the fix-target selection sub-agent must receive it too. When the returned `workflow_warning` is non-null, update this round's recorded value (last write wins).
 3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run 2.4 with overrides `(none)`.
 4. If feedback remains, return to step 1. If not resolved within 3 attempts, end the round (remaining 💬 Feedback are counted as "unresolved" in 2.6).
 5. When `--confirm-round` is enabled and unresolved findings remain, wait for user confirmation before proceeding to the next round.
