@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: レビュー・トリアージ・対応・検証を複数ラウンド自動で繰り返し、対応すべき指摘がなくなるまで反復する
-allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*)
+allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
 # レビューラウンド自動実行
@@ -49,6 +49,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
   - コンソール見出しの表示、ラウンドループ制御、フィードバック再修正ループ。
   - フェーズサブエージェントの起動と戻り値（カウンタ・パス・1 行サマリ）の集約。
   - `--confirm` / `--confirm-round` のユーザー対話。フェーズ Sub はユーザーに到達できないため、確認待ちはすべてフェーズ間のここで行う。
+  - triage フェーズの作業用ディレクトリの削除（ステップ 2.2）。このディレクトリはフェーズ Sub より長く生存する。
   - ユーザーへの最終的なサマリ提示。
 - **オーケストレーターはレビュー指摘や判定の本文を context に載せない**。ファイルパス・カウンタ・リビジョンハッシュのみを保持し、詳細は各フェーズ内に留める。
 - 各ラウンドの指摘と判定は**レビュードキュメントのみ**を通じて次ステップ／次ラウンドに引き継ぐ。ラウンドループ自身が持ち越す値は `{prev_round_rev}` だけ。
@@ -120,10 +121,14 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 2. `templates/phase-triage.md`（`template_id`: `6d2a8f4c-1e93-4b57-9c8a-3f7b2d6e1a95`）でフェーズ Sub を起動する。
    - 変数: `document_path`（今ラウンドのファイルパス）、`previous_round_doc_paths`（Round 1: `(なし)`、Round N: Round 1〜N-1 の doc_path）、`adr_flag`（`--adr` の状態）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの
-3. 戻り値（`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, error}`）のみ context に保持する。
-4. `error` が非 null の場合は 2.3 以降に進まず、失敗をユーザーに報告してラウンドループを終了する。
-5. ラウンドループ制御: `will_fix_count` が 0、または `maintain_count` と `alternative_count` がともに 0 の場合、2.3 をスキップして 2.4 に進む。
-6. `--confirm`: Maintain / Alternative が 1 件以上ある場合、`summary_path` を Read してユーザーに提示し、2.3 の前に確認を待つ。
+3. 戻り値（`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, tmp_dir, error}`）のみ context に保持する。
+4. `--confirm`: `error` が null かつ Maintain / Alternative が 1 件以上ある場合、`summary_path` を Read してユーザーに提示し、確認を待つ。
+5. `summary_path` を含むフェーズの作業用ディレクトリを削除する（`del-tmp.sh` は削除済みのターゲットを読み飛ばすため、`error` 経路も個別扱いは不要）:
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
+   ```
+6. `error` が非 null の場合は 2.3 以降に進まず、失敗をユーザーに報告してラウンドループを終了する。
+7. ラウンドループ制御: `will_fix_count` が 0、または `maintain_count` と `alternative_count` がともに 0 の場合、2.3 をスキップして 2.4 に進む。
 
 ### 2.3 — 対応フェーズ（respond スキル）
 
@@ -139,7 +144,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 2. `templates/phase-resolve.md`（`template_id`: `2f9c6a1e-7b53-4d84-8e2b-5a1f9d3c7b26`）でフェーズ Sub を起動する。
    - 変数: `document_path`、`base`（今ラウンドの `{review_base}`）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの
-3. 戻り値（`{summary_path, summary_line, resolved_count, feedback_count, unresolved_count}`）のみ context に保持する。
+3. 戻り値（`{summary_line, resolved_count, feedback_count, unresolved_count}`）のみ context に保持する。
 
 ### 2.5 — フィードバック確認と再修正ループ
 
