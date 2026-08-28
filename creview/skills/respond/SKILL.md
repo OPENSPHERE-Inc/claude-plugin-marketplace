@@ -22,23 +22,8 @@ The user supplies a path to a review document (markdown). When the argument is `
 
 ## Options
 
-- `--commit` (default OFF) — Create a commit for each finding's fix.
+- `--commit` (default OFF) — Commit the fixed source code in Step 5.
 - `--adr` (default OFF) — Permit the fix sub-agents to create a new ADR file when an implementation-time design decision has no ADR yet (skeleton: `${CLAUDE_PLUGIN_ROOT}/rules/adr-format.md`). ADR files referenced from the `Estimate:` metadata (written by `/creview:triage --adr`, possibly edited by the user) are read before fixing and updated after fixing regardless of this option.
-
-### `--commit` option
-
-When enabled, in Step 2 each completed fix per finding is committed to git.
-
-- Granularity: one commit per finding fix whenever possible. Even when fixing several findings on the same file in sequence, commit each finding's fix individually.
-- Commit message: describe the fix concisely in 1–3 lines. Do **not** include the finding ID (`C-1`, `M-1`, etc.).
-- Staging: stage only the source-code files related to the fix (do not use `git add -A`). **Do not commit the review document.**
-- Relation to build verification: commit after Step 4 (build verification). If a build error occurs, include the build fix in the commit as well.
-
-#### Commit message example
-
-```
-fix: Add null check before accessing output pointer
-```
 
 ## Review document format
 
@@ -57,7 +42,7 @@ A finding that has been through `/creview:resolve` also carries a `Verification:
 
 This skill appends:
 
-- `status` (Step 5) — Value format: `🟢 Fixed — {concise description of the fix}`.
+- `status` (Step 6) — Value format: `🟢 Fixed — {concise description of the fix}`.
 
 ### Fix-target selection rule
 
@@ -116,7 +101,7 @@ Launch via `Agent(subagent_type="general-purpose", prompt=...)`. The Sub Reads t
 
 Template `select-fix-targets.md`, `template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — do not load the body.
 
-When `fix_count == 0`, skip Steps 2–4 and proceed to Step 5 (compile; nothing to reflect → report "no fix targets").
+When `fix_count == 0`, skip Steps 2–5 and proceed to Step 6 (compile; nothing to reflect → report "no fix targets").
 
 ## Step 2 — Fix (parallel delegation to specialist sub-agents)
 
@@ -141,7 +126,7 @@ The leader (you) does not run the formatter or build commands directly and does 
 Maximum attempts: 5. Repeat the following up to the maximum:
 
 1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the current fix diff (working tree), then launch the format / build / test verification Sub via `Agent(subagent_type="review-helper", prompt=...)` — template `format-build-verify.md`, `template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {attempt_num}`, overrides `(none)`.
-2. Receive the return value (`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`). If `workflow_warning` is non-null, retain it for presentation in Step 6.
+2. Receive the return value (`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`). If `workflow_warning` is non-null, retain it for presentation in Step 7.
 3. If `success == true`, exit the loop.
 4. If `success == false`:
    a. Read `{tmp_dir}/format-build-result.jsonl` and obtain `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` from its `failure` section (operational data, not decision body; do not Read source code itself).
@@ -149,7 +134,17 @@ Maximum attempts: 5. Repeat the following up to the maximum:
    c. Return to the top of the loop (format must be rechecked because code changed).
 5. If the build or test still fails after the maximum attempts, present `error_summary` to the user, exit the loop, and proceed to Step 5.
 
-## Step 5 — Reflect into the review document
+## Step 5 — Commit (`--commit` only)
+
+Skip this step when `--commit` is off. The source code is final here: the fixes, comment-sensei's adjustments, and any build / test fixes are all in the working tree.
+
+1. A Step 1 `by_assignee` group owns the union of `files` across its ids in `{tmp_dir}/statuses/*.jsonl` (read only the `files` arrays — operational data, not decision body). For each group, stage and commit the files it owns that no other group also owns.
+2. Commit whatever remains changed in the working tree as one final commit — the files two groups share, and the comment-sensei and build-fix edits to files no group owns. Skip it when nothing remains.
+3. Never `git add -A`, and never stage `{document_path}` or anything under `{tmp_dir}`.
+4. Commit message: 1–3 lines describing what the code now does. Do not include finding ids (`C-1`, `M-1`, etc.). Example: `fix: Add null check before accessing output pointer`
+5. Commit even when Step 4 exited on a build or test failure. The user has already been shown `error_summary`, and work left uncommitted falls outside every later round's commit range.
+
+## Step 6 — Reflect into the review document
 
 The leader (you) does not load decision bodies into context. The fix `status` is aggregated by `compile-review.py` from `statuses/*.jsonl` and reflected into the markdown via events.jsonl (`triage` / `estimate` were already persisted by `/creview:triage`).
 
@@ -166,6 +161,6 @@ The leader (you) does not load decision bodies into context. The fix `status` is
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
 
-## Step 6 — Summary
+## Step 7 — Summary
 
-The leader prints the `summary_line` received in Step 5 to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.
+The leader prints the `summary_line` received in Step 6 to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.

@@ -29,7 +29,7 @@ template_id: 2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14
 - 同一ファイルに影響する複数 ids は順次処理（書き込み競合防止）。
 - 異なるファイルに影響する ids は並列処理可。
 
-`{{tmp_dir}}/statuses/{finding-id}.jsonl` 形式: `{id, specialist, verdict（targets.jsonl の estimate。Maintain | Alternative）, description（修正内容の簡潔な説明）, memo_value}`
+`{{tmp_dir}}/statuses/{finding-id}.jsonl` 形式: `{id, specialist, verdict（targets.jsonl の estimate。Maintain | Alternative）, description（修正内容の簡潔な説明）, memo_value, files（この修正が変更したソースファイルのリポジトリ相対パス）}`
 
 `description` および `memo_value` の散文は、`{{document_path}}` の既存 Finding 説明と同じ言語で記述する（`🟢 Fixed` ラベルと絵文字は固定）。
 

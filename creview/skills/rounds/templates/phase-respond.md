@@ -15,7 +15,7 @@ Input:
 
 What to do:
 
-1. Invoke the `creview:respond` skill with the argument `{{document_path}}`, appending `--commit` when `{{commit_flag}}` is on and `--adr` when `{{adr_flag}}` is on. Then act as its respond leader through its Steps 1-5, including the format / build / test verification ⇄ build-fix re-execution loop and the compile step.
+1. Invoke the `creview:respond` skill with the argument `{{document_path}}`, appending `--commit` when `{{commit_flag}}` is on and `--adr` when `{{adr_flag}}` is on. Then act as its respond leader through its Steps 1-6, including the format / build / test verification ⇄ build-fix re-execution loop, the commit step, and the compile step.
 2. Add each entry in `{{overrides}}` to the "Round-specific overrides" section of the launch prompt of the sub-agent it names, or of every sub-agent when it names none.
 
 Return value: `{fix_count, fixed_count, code_changed, workflow_warning, summary_line, template_id}`. `workflow_warning` is the value from the last format / build / test verification, and is null when the workflow was resolved. Include `template_id` exactly as Read from this template's frontmatter.

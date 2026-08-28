@@ -29,7 +29,7 @@ Parallelization constraints (when handling multiple ids):
 - Multiple ids that affect the same file are processed sequentially (to prevent write conflicts).
 - ids that affect different files may be processed in parallel.
 
-`{{tmp_dir}}/statuses/{finding-id}.jsonl` format: `{id, specialist, verdict (the targets.jsonl estimate; Maintain | Alternative), description (concise description of the fix), memo_value}`
+`{{tmp_dir}}/statuses/{finding-id}.jsonl` format: `{id, specialist, verdict (the targets.jsonl estimate; Maintain | Alternative), description (concise description of the fix), memo_value, files (repo-relative paths of the source files this fix changed)}`
 
 Write the `description` and `memo_value` prose in the same language as the existing Finding descriptions in `{{document_path}}` (the `🟢 Fixed` label and emoji stay fixed).
 
