@@ -22,23 +22,8 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## オプション
 
-- `--commit`（デフォルト OFF）— 指摘の修正ごとにコミットを作成する。
+- `--commit`（デフォルト OFF）— 修正後のソースコードをステップ 5 でコミットする。
 - `--adr`（デフォルト OFF）— 実装時の設計判断にまだ ADR が無い場合に、修正サブエージェントが ADR ファイルを新規作成することを許可する（スケルトン: `${CLAUDE_PLUGIN_ROOT}/rules/adr-format.md`）。`Estimate:` メタデータから参照されている ADR ファイル（`/creview:triage --adr` が作成。ユーザーが編集している場合もある）の修正前の読み込みと修正後の更新は、このオプションに寄らず実行される。
-
-### `--commit` オプション
-
-有効にすると、ステップ 2 で各指摘の修正が完了するたびに、その変更を git コミットする。
-
-- 粒度: 可能な限り指摘単位で 1 コミットとする。同じファイルに対する複数の指摘を順次修正する場合でも、各指摘の修正を個別にコミットする。
-- コミットメッセージ: 1〜3行で修正内容を簡潔に記述する。指摘 ID（`C-1`、`M-1` 等）は**含めない**。
-- ステージング: 修正に関連するソースコードファイルのみをステージングする（`git add -A` は使用しない）。**レビュードキュメントはコミットしない。**
-- ビルド検証との関係: コミットはステップ 4（ビルド検証）の後に行う。ビルドエラーが発生した場合、その修正も含めてからコミットする。
-
-#### コミットメッセージの例
-
-```
-fix: Add null check before accessing output pointer
-```
 
 ## レビュードキュメント形式
 
@@ -57,7 +42,7 @@ fix: Add null check before accessing output pointer
 
 本スキルは以下を追記する:
 
-- `status`（ステップ 5）— 値の形式: `🟢 Fixed — {修正内容の簡潔な説明}`。
+- `status`（ステップ 6）— 値の形式: `🟢 Fixed — {修正内容の簡潔な説明}`。
 
 ### 修正対象選別ルール
 
@@ -116,7 +101,7 @@ fix: Add null check before accessing output pointer
 
 テンプレート `select-fix-targets.md`、`template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — 本文は読み込まない。
 
-`fix_count == 0` の場合、ステップ 2・3・4 をスキップしてステップ 5（編纂。反映するものなし → 「修正対象なし」を報告）へ進む。
+`fix_count == 0` の場合、ステップ 2〜5 をスキップしてステップ 6（編纂。反映するものなし → 「修正対象なし」を報告）へ進む。
 
 ## ステップ 2 — 修正（専門家サブエージェントへ並列委譲）
 
@@ -141,7 +126,7 @@ fix: Add null check before accessing output pointer
 最大試行回数: 5。以下を最大試行回数まで繰り返す:
 
 1. `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` で現在の修正差分（作業ツリー）を取得し、フォーマット・ビルド・テスト検証 Sub を `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `format-build-verify.md`、`template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`attempt_num = {attempt_num}`、オーバーライド `(該当なし)`。
-2. 戻り値（`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`workflow_warning` が非 null の場合はステップ 6 で提示するため保持する。
+2. 戻り値（`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`workflow_warning` が非 null の場合はステップ 7 で提示するため保持する。
 3. `success == true` ならループ終了。
 4. `success == false` の場合:
    a. `{tmp_dir}/format-build-result.jsonl` を Read し、`failure` セクションから `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` を取得する（判定本体ではない operational data。ただしソースコード本体は Read しない）。
@@ -149,7 +134,17 @@ fix: Add null check before accessing output pointer
    c. ループの先頭に戻る（コードが書き変わっているのでフォーマット再確認が必要）。
 5. 試行回数上限に達してもビルド／テストが通らない場合、ユーザーに `error_summary` を提示してループを抜け、ステップ 5 に進む。
 
-## ステップ 5 — レビュードキュメントへの反映
+## ステップ 5 — コミット（`--commit` 指定時のみ）
+
+`--commit` が OFF の場合はこのステップをスキップする。この時点でソースコードは確定している — 修正、comment-sensei による調整、ビルド／テスト修正のすべてが作業ツリーにある。
+
+1. ステップ 1 の `by_assignee` 単位が所有するファイルは、`{tmp_dir}/statuses/*.jsonl` のうちその単位の id が持つ `files` の和集合（`files` 配列のみを読む。判定本文ではなく運用データである）。各単位について、他の単位が所有していないファイルのみをステージングしてコミットする。
+2. 作業ツリーに残った変更をまとめて最後の 1 コミットにする — 複数の単位が共有するファイルと、どの単位も所有しないファイルへの comment-sensei / ビルド修正の変更。残りが無ければこのコミットは作らない。
+3. `git add -A` は使用しない。`{document_path}` および `{tmp_dir}` 配下はステージングしない。
+4. コミットメッセージ: 1〜3 行で、コードが現在何をするかを記述する。指摘 ID（`C-1`、`M-1` 等）は含めない。例: `fix: Add null check before accessing output pointer`
+5. ステップ 4 がビルド／テスト失敗で抜けた場合もコミットする。`error_summary` は既にユーザーに提示されており、コミットされない変更は以降のどのラウンドのコミット範囲にも入らない。
+
+## ステップ 6 — レビュードキュメントへの反映
 
 リーダー（あなた）は判定本文を context に載せない。修正状況（`status`）は `compile-review.py` が `statuses/*.jsonl` から集約し events.jsonl 経由で markdown に反映する（`triage` / `estimate` は `/creview:triage` が永続化済み）。
 
@@ -166,6 +161,6 @@ fix: Add null check before accessing output pointer
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
 
-## ステップ 6 — サマリー
+## ステップ 7 — サマリー
 
-リーダーはステップ 5 で受け取った `summary_line` をコンソールに表示する。ステップ 4 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。
+リーダーはステップ 6 で受け取った `summary_line` をコンソールに表示する。ステップ 4 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。
