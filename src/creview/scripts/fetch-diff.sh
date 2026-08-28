@@ -58,6 +58,12 @@ done
 
 OUT="$(prepare_out "${OUT}")" || exit 1
 
+# git diff A..B compares two trees, so commits added to A after the fork point surface
+# as reversals; diff from the merge base instead. git log keeps A..B, where two dots
+# already means "commits in B but not in A". With no common ancestor (orphan branch,
+# shallow clone) there is no merge base: fall back to FROM rather than aborting.
+DIFF_FROM="$(git merge-base "${FROM}" "${TO}" 2>/dev/null || printf '%s' "${FROM}")"
+
 # Reviewers parse these sections as plain unified diffs: pin the prefix
 # options and disable external diff / textconv / color so user git config
 # cannot change the format (or run arbitrary commands).
@@ -102,7 +108,7 @@ untracked_diff() (
 
 {
     printf '=== Changed Files (%s..%s) ===\n' "${FROM}" "${TO}"
-    review_diff --name-status "${FROM}..${TO}"
+    review_diff --name-status "${DIFF_FROM}..${TO}"
     printf '\n'
 
     printf '=== Commit Log (%s..%s) ===\n' "${FROM}" "${TO}"
@@ -110,7 +116,7 @@ untracked_diff() (
     printf '\n'
 
     printf '=== Commit Diff (%s..%s) ===\n' "${FROM}" "${TO}"
-    review_diff "${FROM}..${TO}"
+    review_diff "${DIFF_FROM}..${TO}"
     printf '\n'
 
     if [[ "${RANGE_MODE}" -eq 0 ]]; then
