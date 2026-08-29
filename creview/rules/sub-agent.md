@@ -1,6 +1,6 @@
 # Sub-Agent Common Rules
 
-Common prohibitions that sub-agents of the creview skills (start / triage / respond / resolve / rounds) must observe.
+Common rules that sub-agents of the creview skills (start / triage / respond / resolve / rounds) must observe.
 
 ## Prohibitions
 
@@ -24,6 +24,8 @@ Launch every agent as a one-shot foreground run (Agent tool with `run_in_backgro
 Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting.
 
 Write a `.jsonl` output file as the single JSON object the task specifies, on one line. Do not split it into one line per record.
+
+After writing a `.jsonl` file, validate it with `python3 {{plugin_root}}/scripts/check-jsonl.py {path}`, and fix and re-validate on error. Do not check the syntax with a `node -e` or similar interpreter one-liner: an ad-hoc interpreter command is what a permission policy denies or prompts on.
 
 ## Coding Conventions
 

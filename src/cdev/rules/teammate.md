@@ -16,6 +16,8 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 ファイル出力は Write ツールを使用する。Bash の cat heredoc は値内のアポストロフィ（`Won't` 等）で外側のクォーティングが破綻するため使用不可。
 
+`.jsonl` を Write した後は `python3 {{plugin_root}}/scripts/check-jsonl.py {path}` で検証し、エラーが出たら修正して再検証する。`node -e` 等のインタプリタワンライナーで構文チェックしない。その場限りのインタプリタ実行は権限ポリシーの拒否や確認の対象になるため。
+
 連絡は `SendMessage` で行う。宛先の用語と解決:
 
 - **リーダー** = ルートのメインループで動くコーディングリーダー。宛先は常に `to: "main"`。`main` はネストの深さに関わらずリーダーに届く。

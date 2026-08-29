@@ -1,6 +1,6 @@
 # サブエージェント共通ルール
 
-creview スキル群（start / triage / respond / resolve / rounds）のサブエージェントが遵守する共通禁止事項。
+creview スキル群（start / triage / respond / resolve / rounds）のサブエージェントが遵守する共通ルール。
 
 ## 禁止事項
 
@@ -24,6 +24,8 @@ creview スキル群（start / triage / respond / resolve / rounds）のサブ�
 ファイル出力は Write ツールを使用する。Bash の cat heredoc は値内のアポストロフィ（`Won't` 等）で外側のクォーティングが破綻するため使用不可。
 
 `.jsonl` の出力ファイルは、タスクが指定する JSON オブジェクト 1 個を 1 行で Write する。レコード 1 件 1 行に分割しない。
+
+`.jsonl` を Write した後は `python3 {{plugin_root}}/scripts/check-jsonl.py {path}` で検証し、エラーが出たら修正して再検証する。`node -e` 等のインタプリタワンライナーで構文チェックしない。その場限りのインタプリタ実行は権限ポリシーの拒否や確認の対象になるため。
 
 ## コーディング規約
 

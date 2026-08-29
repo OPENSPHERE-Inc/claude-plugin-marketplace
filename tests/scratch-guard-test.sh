@@ -7,6 +7,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GUARD="${REPO_ROOT}/cdev/scripts/lib/scratch-guard.py"
+CJ="${REPO_ROOT}/cdev/scripts/check-jsonl.py"
 RM="${REPO_ROOT}/cdev/scripts/del-tmp.sh"
 FD="${REPO_ROOT}/cdev/scripts/fetch-diff.sh"
 CFD="${REPO_ROOT}/creview/scripts/fetch-diff.sh"
@@ -30,6 +31,9 @@ same cdev/scripts/lib/scratch-guard.py src/creview/scripts/lib/scratch-guard.py
 same cdev/scripts/del-tmp.sh src/cdev/scripts/del-tmp.sh
 same cdev/scripts/del-tmp.sh creview/scripts/del-tmp.sh
 same cdev/scripts/del-tmp.sh src/creview/scripts/del-tmp.sh
+same cdev/scripts/check-jsonl.py src/cdev/scripts/check-jsonl.py
+same cdev/scripts/check-jsonl.py creview/scripts/check-jsonl.py
+same cdev/scripts/check-jsonl.py src/creview/scripts/check-jsonl.py
 same cdev/scripts/fetch-diff.sh src/cdev/scripts/fetch-diff.sh
 same creview/scripts/fetch-diff.sh src/creview/scripts/fetch-diff.sh
 
@@ -57,6 +61,7 @@ SANDBOX="$(mktemp -d)"
 trap 'cd / && rm -rf "${SANDBOX}"' EXIT
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GUARD}" \
     || { note "FAIL: python3 -m py_compile scratch-guard.py"; fail=1; }
+PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${CJ}" || { note "FAIL: python3 -m py_compile check-jsonl.py"; fail=1; }
 mkdir -p "${SANDBOX}/proj/.claude/tmp/sub" "${SANDBOX}/outside"
 : > "${SANDBOX}/proj/.claude/tmp/sub/file.txt"
 : > "${SANDBOX}/outside/victim.txt"
@@ -186,6 +191,24 @@ rc=0; bash "${CFD}" --output=pwn .claude/tmp/e2e/review3.txt 2>/dev/null || rc=$
 check "creview fetch-diff option-like base rejected" 1 "${rc}"
 rc=0; bash "${CFD}" HEAD..HEAD .claude/tmp/e2e/review4.txt 2>/dev/null || rc=$?
 check "creview fetch-diff range base rejected" 1 "${rc}"
+
+# --- check-jsonl.py accepts both shapes and rejects malformed input ---------------
+JD="${SANDBOX}/jsonl"
+mkdir -p "${JD}"
+echo '{"id":"C-1"}' > "${JD}/object.jsonl"
+{ echo '{'; echo '  "id": "C-1"'; echo '}'; } > "${JD}/pretty.jsonl"
+{ echo '{"a":1}'; echo '{"b":2}'; } > "${JD}/lines.jsonl"
+{ echo '{"a":1}'; echo '{"b":2'; echo '{"c":3}'; } > "${JD}/broken.jsonl"
+echo '{"a":1},' > "${JD}/trailing.jsonl"
+: > "${JD}/empty.jsonl"
+for case in object:0 pretty:0 lines:0 broken:1 trailing:1 empty:1 missing:1; do
+    rc=0; python3 "${CJ}" "${JD}/${case%%:*}.jsonl" >/dev/null 2>&1 || rc=$?
+    check "check-jsonl ${case%%:*}" "${case##*:}" "${rc}"
+done
+rc=0; python3 "${CJ}" >/dev/null 2>&1 || rc=$?
+check "check-jsonl no argument" 1 "${rc}"
+rc=0; python3 "${CJ}" "${JD}/object.jsonl" "${JD}/broken.jsonl" >/dev/null 2>&1 || rc=$?
+check "check-jsonl one bad among many" 1 "${rc}"
 
 if [[ "${fail}" -eq 0 ]]; then
     note "PASS: all scratch-guard cases"
