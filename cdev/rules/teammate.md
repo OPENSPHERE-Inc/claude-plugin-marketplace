@@ -16,6 +16,8 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
 
 Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting.
 
+After writing a `.jsonl` file, validate it with `python3 {{plugin_root}}/scripts/check-jsonl.py {path}`, and fix and re-validate on error. Do not check the syntax with a `node -e` or similar interpreter one-liner: an ad-hoc interpreter command is what a permission policy denies or prompts on.
+
 Communicate via `SendMessage`. Destination terms and resolution:
 
 - **Leader** = the coding leader running in the root main loop. Its address is always `to: "main"`; `main` reaches the leader regardless of nesting depth.

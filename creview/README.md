@@ -95,7 +95,8 @@ bundled agents are `review-helper` (mechanical aggregation / verification),
 
 - `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
   `adr-format.md` (only the rules the skills reference).
-- `scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, and
+- `scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`,
+  `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it), and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
   `fetch-diff.sh` / `del-tmp.sh`). The scripts require `python3` (3.9 or later)
   on the `PATH`. Skills invoke them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`;

@@ -95,6 +95,7 @@ frontmatter の `name` / `description` を読み、指摘ごとに最適なも�
 - `rules/` — `comment.md`、`document.md`、`review.md`、`wontfix.md`、`sub-agent.md`、
   `adr-format.md`（スキルが参照するルールのみ）。
 - `scripts/` — `fetch-diff.sh`、`render-review.py`、`del-tmp.sh`、
+  `check-jsonl.py`（サブエージェントが書き出した `.jsonl` の検証に使用）、
   `lib/scratch-guard.py`（`fetch-diff.sh` / `del-tmp.sh` が共有する
   `.claude/tmp/` 封じ込めチェック）。これらのスクリプトは `PATH` 上の
   `python3`（3.9 以降）を必要とします。スキルは
