@@ -14,8 +14,8 @@ The user may optionally specify an output base path. When the argument is `$ARGU
 
 ## Options
 
-- `--confirm` (default OFF) — After triage / estimate are persisted into the review document (Step 2.2) and before the fix phase (Step 2.3), present the estimate summary to the user and wait for confirmation.
-- `--confirm-round` (default OFF) — After resolve, if unresolved findings remain, wait for user confirmation before proceeding to the next round.
+- `--confirm` (default OFF) — After triage / estimate are persisted into the review document (Step 2.2) and before the fix phase (Step 2.3), present the estimate summary to the user and wait for their instruction to continue.
+- `--confirm-round` (default OFF) — Before starting the next round, wait for the user's instruction to continue.
 - `--commit` (default OFF) — Perform a git commit after each finding is fixed (passed through to the respond phase).
 - `--incremental` (default OFF) — From Round 2 on, review only the commits added between the previous round's start and this round's start — the previous round's fix commits — instead of the whole branch diff. Enabling it enables `--commit`: a fix left uncommitted falls outside every later round's commit range.
 - `--adr` (default OFF) — Permit creating ADR files for design decisions next to each round's review document (passed through to the triage and respond phases). ADRs referenced from a review document are read / updated at fix time regardless of this flag.
@@ -48,7 +48,7 @@ Write the review document in the user's chat language.
 - **What you handle directly is limited to the following:**
   - Console headings, round loop control, and the feedback re-fix loop.
   - Phase sub-agent launch and aggregation of their return values (counters, paths, one-line summaries).
-  - User interaction for `--confirm` / `--confirm-round`. A phase sub-agent cannot reach the user, so every wait for confirmation happens here, between phases.
+  - User interaction for `--confirm` / `--confirm-round`. A phase sub-agent cannot reach the user, so every wait for the user's instruction to continue happens here, between phases.
   - Removal of the triage phase's working directory (Step 2.2), which outlives its phase sub-agent.
   - Final summary presentation to the user.
 - **Do not put review finding bodies or judgment bodies into context.** Hold only file paths, counters, and revision hashes; the details stay inside each phase.
@@ -80,10 +80,11 @@ Verify that the returned `template_id` matches the UUID the Step specifies; rela
 Round 1 start
   ├─ 2.1 review          [phase Sub] creview:start   → round1.md
   ├─ 2.2 triage+estimate  [phase Sub] creview:triage  → persists triage / estimate
-  │     ↳ --confirm: present the estimate summary, wait for confirmation
+  │     ↳ --confirm: present the estimate summary, wait for the instruction to continue
   ├─ 2.3 respond / fix    [phase Sub] creview:respond → persists status
   │     ↳ skipped when there is no Maintain / Alternative target
   ├─ 2.4 resolve          [phase Sub] creview:resolve → persists verification
+  │     ↳ runs even when 2.3 was skipped
   ├─ 2.5 feedback re-fix loop (max 3) → re-run 2.2 → 2.3 → 2.4 with feedback overrides
   └─ 2.6 round end → judge condition for proceeding to the next round
 Round 2 start (do not pass the previous round's review document)
@@ -122,13 +123,13 @@ While the round counter is at most `--max-rounds`, repeat the following.
    - Variables: `document_path` (this round's file path), `previous_round_doc_paths` (Round 1: `(none)`; Round N: doc_paths of Round 1..N-1), `adr_flag` (`--adr` state)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
 3. Hold only the return value (`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, tmp_dir, error}`) in context.
-4. `--confirm`: when `error` is null and at least one Maintain / Alternative exists, Read `summary_path`, present it to the user, and wait for confirmation.
+4. `--confirm`: when `error` is null and at least one Maintain / Alternative exists, Read `summary_path`, present it to the user, and wait for their instruction to continue.
 5. Remove the phase's working directory, which holds `summary_path` (`del-tmp.sh` skips an already-removed target, so the `error` path needs no separate handling):
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
 6. When `error` is non-null, do not proceed to 2.3 or beyond: report the failure to the user and end the round loop.
-7. Round loop control: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4.
+7. Respond phase skip decision: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4 (Won't Fix / Downgrade findings receive their verification in 2.4).
 
 ### 2.3 — Respond phase (respond skill)
 
@@ -155,11 +156,10 @@ From the Step 2.4 return value (`feedback_count`), determine whether findings th
 
 Each attempt re-runs 2.2 → 2.3 → 2.4, passing the text below as the phase sub-agent's `overrides` variable:
 
-1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.` When 2.2's round-loop control decided to skip the respond phase, skip step 2 and go to step 3.
-2. Display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)`. Re-run 2.3 with the override `Feedback re-fix pass: the fix targets are the findings whose Verification is 💬 Feedback; re-fix based on that feedback content.` Do not scope this override to a named sub-agent — the fix-target selection sub-agent must receive it too. When the returned `workflow_warning` is non-null, update this round's recorded value (last write wins).
+1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.`
+2. When 2.2 decided to skip the respond phase, skip this step and proceed to step 3. Otherwise display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` and re-run 2.3 with the override `Feedback re-fix pass: the fix targets are the findings whose Verification is 💬 Feedback; re-fix based on that feedback content.` Do not scope this override to a named sub-agent — the fix-target selection sub-agent must receive it too. When the returned `workflow_warning` is non-null, update this round's recorded value (last write wins).
 3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run 2.4 with overrides `(none)`.
 4. If feedback remains, return to step 1. If not resolved within 3 attempts, end the round (remaining 💬 Feedback are counted as "unresolved" in 2.6).
-5. When `--confirm-round` is enabled and unresolved findings remain, wait for user confirmation before proceeding to the next round.
 
 ### 2.6 — Round end
 
@@ -180,7 +180,9 @@ Record the round's results. Each counter is obtained from phase sub-agent return
 Condition for proceeding to the next round: only when **all** of the following are met, set `{prev_round_rev}` to this round's `{this_round_rev}`, increment the round counter, and return to Step 2.1:
 
 1. The round counter is at most `--max-rounds`.
-2. The respond phase's `code_changed` is true for this round. Treat it as false when Step 2.3 was skipped.
+2. The respond phase returned `code_changed` true at least once in this round (Step 2.3, or a Step 2.5 attempt's step 2). Treat it as false when no respond phase ran in the round.
+
+When the conditions are met and `--confirm-round` is enabled, wait for the user's instruction to continue before returning to Step 2.1.
 
 If not met, proceed to final report generation.
 

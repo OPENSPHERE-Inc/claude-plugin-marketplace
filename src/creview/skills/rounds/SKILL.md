@@ -14,8 +14,8 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 
 ## オプション
 
-- `--confirm`（デフォルト OFF）— トリアージ・見積がレビュードキュメントに永続化された後（ステップ 2.2）、修正フェーズ（ステップ 2.3）の前に、見積サマリをユーザーに提示して確認を待つ。
-- `--confirm-round`（デフォルト OFF）— resolve 後、未解決の指摘が残っている場合、次ラウンドに進む前にユーザーの確認を待つ。
+- `--confirm`（デフォルト OFF）— トリアージ・見積がレビュードキュメントに永続化された後（ステップ 2.2）、修正フェーズ（ステップ 2.3）の前に、見積サマリをユーザーに提示して続行の指示を待つ。
+- `--confirm-round`（デフォルト OFF）— 次ラウンドを開始する前にユーザーの続行の指示を待つ。
 - `--commit`（デフォルト OFF）— 各指摘の修正後に git commit を行う（respond フェーズにそのまま渡す）。
 - `--incremental`（デフォルト OFF）— Round 2 以降、ブランチ全体の差分ではなく、前ラウンド開始時点から今ラウンド開始時点までに追加されたコミット — 前ラウンドの修正コミット — のみをレビューする。有効にすると `--commit` も有効になる — コミットされない修正は以降のどのラウンドのコミット範囲にも入らないため。
 - `--adr`（デフォルト OFF）— 設計判断の ADR ファイルを各ラウンドのレビュードキュメントの隣に新規作成することを許可する（triage / respond フェーズにそのまま渡す）。レビュードキュメントから参照されている ADR の読み込み・更新は、このフラグに寄らず修正時に実行される。
@@ -48,7 +48,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 - **オーケストレーター（あなた自身）が直接担うのは以下に限定する**:
   - コンソール見出しの表示、ラウンドループ制御、フィードバック再修正ループ。
   - フェーズサブエージェントの起動と戻り値（カウンタ・パス・1 行サマリ）の集約。
-  - `--confirm` / `--confirm-round` のユーザー対話。フェーズ Sub はユーザーに到達できないため、確認待ちはすべてフェーズ間のここで行う。
+  - `--confirm` / `--confirm-round` のユーザー対話。フェーズ Sub はユーザーに到達できないため、続行の指示待ちはすべてフェーズ間のここで行う。
   - triage フェーズの作業用ディレクトリの削除（ステップ 2.2）。このディレクトリはフェーズ Sub より長く生存する。
   - ユーザーへの最終的なサマリ提示。
 - **オーケストレーターはレビュー指摘や判定の本文を context に載せない**。ファイルパス・カウンタ・リビジョンハッシュのみを保持し、詳細は各フェーズ内に留める。
@@ -80,10 +80,11 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 Round 1 開始
   ├─ 2.1 review          [フェーズ Sub] creview:start   → round1.md
   ├─ 2.2 triage+estimate  [フェーズ Sub] creview:triage  → トリアージ／見積を永続化
-  │     ↳ --confirm: 見積サマリを提示し確認を待つ
+  │     ↳ --confirm: 見積サマリを提示し続行の指示を待つ
   ├─ 2.3 respond / fix    [フェーズ Sub] creview:respond → status を永続化
   │     ↳ Maintain / Alternative の対象がなければスキップ
   ├─ 2.4 resolve          [フェーズ Sub] creview:resolve → verification を永続化
+  │     ↳ 2.3 をスキップした場合も実行する
   ├─ 2.5 フィードバック再修正ループ（最大 3 回）→ フィードバック用オーバーライド付きで 2.2 → 2.3 → 2.4 を再実行
   └─ 2.6 ラウンド終了 → 次ラウンドに進む条件を判定
 Round 2 開始（前ラウンドのレビュードキュメントは渡さない）
@@ -122,13 +123,13 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
    - 変数: `document_path`（今ラウンドのファイルパス）、`previous_round_doc_paths`（Round 1: `(なし)`、Round N: Round 1〜N-1 の doc_path）、`adr_flag`（`--adr` の状態）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの
 3. 戻り値（`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, tmp_dir, error}`）のみ context に保持する。
-4. `--confirm`: `error` が null かつ Maintain / Alternative が 1 件以上ある場合、`summary_path` を Read してユーザーに提示し、確認を待つ。
+4. `--confirm`: `error` が null かつ Maintain / Alternative が 1 件以上ある場合、`summary_path` を Read してユーザーに提示し、続行の指示を待つ。
 5. `summary_path` を含むフェーズの作業用ディレクトリを削除する（`del-tmp.sh` は削除済みのターゲットを読み飛ばすため、`error` 経路も個別扱いは不要）:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
 6. `error` が非 null の場合は 2.3 以降に進まず、失敗をユーザーに報告してラウンドループを終了する。
-7. ラウンドループ制御: `will_fix_count` が 0、または `maintain_count` と `alternative_count` がともに 0 の場合、2.3 をスキップして 2.4 に進む。
+7. 対応フェーズのスキップ判定: `will_fix_count` が 0、または `maintain_count` と `alternative_count` がともに 0 の場合、2.3 をスキップして 2.4 に進む（Won't Fix / Downgrade の指摘は 2.4 で検証を受ける）。
 
 ### 2.3 — 対応フェーズ（respond スキル）
 
@@ -155,11 +156,10 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 各 attempt は 2.2 → 2.3 → 2.4 を再実行し、以下のテキストをフェーズ Sub の `overrides` 変数として渡す:
 
-1. `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)` を表示。2.2 をオーバーライド `トリアージサブエージェント: stage が "feedback" の指摘を優先的にトリアージする（current_meta.verification に Feedback 詳細あり）。` および `見積サブエージェント: current_meta.verification の Feedback 内容を踏まえて見積。コストが膨らむ場合は Downgrade を検討。` で再実行する。2.2 のラウンドループ制御が対応フェーズのスキップを決めた場合、手順 2 をスキップして手順 3 へ。
-2. `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` を表示。2.3 をオーバーライド `フィードバック再修正パス: 修正対象は Verification が 💬 Feedback の指摘。そのフィードバック内容を踏まえて再修正する。` で再実行する。このオーバーライドを特定のサブエージェントに名指しで限定しない — 修正対象を選定するサブエージェントにも届く必要がある。戻り値の `workflow_warning` が非 null の場合は本ラウンドの記録値を更新する（後勝ち）。
+1. `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)` を表示。2.2 をオーバーライド `トリアージサブエージェント: stage が "feedback" の指摘を優先的にトリアージする（current_meta.verification に Feedback 詳細あり）。` および `見積サブエージェント: current_meta.verification の Feedback 内容を踏まえて見積。コストが膨らむ場合は Downgrade を検討。` で再実行する。
+2. 2.2 が対応フェーズのスキップを決めた場合、この手順をスキップして手順 3 へ進む。そうでなければ `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` を表示し、2.3 をオーバーライド `フィードバック再修正パス: 修正対象は Verification が 💬 Feedback の指摘。そのフィードバック内容を踏まえて再修正する。` で再実行する。このオーバーライドを特定のサブエージェントに名指しで限定しない — 修正対象を選定するサブエージェントにも届く必要がある。戻り値の `workflow_warning` が非 null の場合は本ラウンドの記録値を更新する（後勝ち）。
 3. `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)` を表示。2.4 をオーバーライド `(該当なし)` で再実行。
 4. フィードバックが残っていれば手順 1 に戻る。3 回で解消しない場合はラウンドを終了する（残った 💬 Feedback は 2.6 で「未解決」としてカウント）。
-5. `--confirm-round` が有効で未解決が残っている場合、次ラウンドに進む前にユーザーの確認を待つ。
 
 ### 2.6 — ラウンド終了
 
@@ -180,7 +180,9 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 次のラウンドに進む条件: 以下の**すべて**を満たす場合に限り、`{prev_round_rev}` を今ラウンドの `{this_round_rev}` に設定し、ラウンドカウンターをインクリメントしてステップ 2.1 へ戻る:
 
 1. ラウンドカウンターが `--max-rounds` 以下である。
-2. 今ラウンドの対応フェーズの `code_changed` が true である。ステップ 2.3 をスキップした場合は false として扱う。
+2. 今ラウンドの対応フェーズ実行（ステップ 2.3、またはステップ 2.5 の attempt の手順 2）のいずれかが `code_changed` を true で返した。対応フェーズが 1 度も実行されなかった場合は false として扱う。
+
+条件を満たし、かつ `--confirm-round` が有効な場合は、ステップ 2.1 へ戻る前にユーザーの続行の指示を待つ。
 
 満たさない場合は最終レポート生成へ進む。
 
