@@ -19,6 +19,7 @@ template_id: 2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14
    - Estimate 🚧 Alternative: FIXME: コメント追加のみ（ロジック変更なし）。fix_plan に記載のコメント文言（無ければ `Estimate:` の FIXME 付与方向性）に沿う。
 3. セルフレビュー: 変更箇所再読、新たな問題（リグレッション・スレッド安全性・リソースリーク等）の混入を確認、見つけたら報告前に修正。
 4. 修正にコメントの追加・変更が含まれる場合、`{{plugin_root}}/rules/comment.md` を Read し、追加・変更したコメントが同規律に違反していないかセルフチェックする。違反があれば報告前に修正する。
+   - `FIXME:` / `TODO:` はステップ 2 の 🚧 Alternative のケースにのみ書く。この注記はその箇所をレビュー対象から外す根拠として恒久的に効くため、修正中に気付いた残余の穴を注記してはならない。▶️ Maintain では当該指摘のスコープ内なら修正し、それ以外は注記せずに残す。
 5. ADR:
    - `adr` が非 null: ADR を更新する — Status を `Accepted` にし、History エントリを追記する（日付 = `{{timestamp}}` の日付部を YYYY-MM-DD 形式で、`{レビュードキュメントのファイル名} / {finding-id}`、修正内容の 1 行要約）。Decision からの逸脱や実装中に行った設計判断があれば Decision / Consequences に記録する。
    - `adr` が null、`{{adr_flag}}` が on、かつ実装自体が恒久的なトレードオフを伴う複数の実行可能なアプローチから 1 つを選択した場合: レビュードキュメントと同じディレクトリに `{{{document_path}} の basename から .md を除いたもの}-adr-{finding-id}.md` を Status `Accepted`・Created History エントリ付きで Write する。スケルトンは `{{plugin_root}}/rules/adr-format.md` に従う。memo_value に ` — ADR: {ファイル名}` を追記する。
