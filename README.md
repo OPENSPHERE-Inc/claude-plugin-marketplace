@@ -11,7 +11,6 @@ A Claude Code plugin marketplace maintained by OPENSPHERE Inc.
 | `creview` | Multi-agent parallel code review workflow: start → triage → respond → resolve, plus an automatic multi-round driver. |
 | `cprompt` | Create and edit AI-facing prompts and self-check them against prompt-discipline rules. |
 | `cdev` | Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. |
-| `agent-sequencer` | External plugin ([OPENSPHERE-Inc/agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer)). Required to run `creview`'s `review_rounds.py` sequencer program. |
 
 ## Installation
 
@@ -24,10 +23,7 @@ Add this marketplace, then install the plugins:
 /plugin install cdev@opensphere-inc
 ```
 
-`creview`, `cprompt`, and `cdev` are self-contained. The optional `agent-sequencer`
-entry is resolved from its own GitHub repository and is only needed for the
-sequencer-driven variant of the multi-round review (see
-[creview/README.md](creview/README.md)).
+`creview`, `cprompt`, and `cdev` are self-contained.
 
 ## Skill commands
 
@@ -56,8 +52,8 @@ per finding. When no suitable agent exists, it falls back to
 The repository-root `src/` directory holds the **Japanese master** of every
 plugin, mirroring each plugin's own tree: `src/<plugin>/...` matches
 `<plugin>/...` (e.g. `src/creview/skills/start/SKILL.md` corresponds to
-`creview/skills/start/SKILL.md`). It contains the skills, rules, scripts,
-agents, and (for `creview`) the sequencer program.
+`creview/skills/start/SKILL.md`). It contains the skills, rules, scripts, and
+agents.
 
 The active plugin files (the English files at the plugin roots) are the
 Japanese `src/` master translated into English with the plugin transformations
