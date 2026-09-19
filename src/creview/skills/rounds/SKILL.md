@@ -19,7 +19,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 - `--commit`（デフォルト OFF）— 各指摘の修正後に git commit を行う（respond フェーズにそのまま渡す）。
 - `--incremental`（デフォルト OFF）— Round 2 以降、ブランチ全体の差分ではなく、前ラウンド開始時点から今ラウンド開始時点までに追加されたコミット — 前ラウンドの修正コミット — のみをレビューする。有効にすると `--commit` も有効になる — コミットされない修正は以降のどのラウンドのコミット範囲にも入らないため。
 - `--adr`（デフォルト OFF）— 設計判断の ADR ファイルを各ラウンドのレビュードキュメントの隣に新規作成することを許可する（triage / respond フェーズにそのまま渡す）。レビュードキュメントから参照されている ADR の読み込み・更新は、このフラグに寄らず修正時に実行される。
-- `--max-rounds N`（デフォルト 5、範囲 1〜10）— 外側ループの最大ラウンド数を変更する。
+- `--max-rounds N`（デフォルト 10、範囲 1〜20）— 外側ループの最大ラウンド数を変更する。
 - `--base {branch}`（デフォルト `main` または `master`）— ベースブランチを指定する（review フェーズに渡される）。`--incremental` は Round 2 以降これを上書きする。
 - `--adversarial`（デフォルト OFF）— review フェーズを敵対的モードで実行する（review フェーズにそのまま渡す）。
 
@@ -44,11 +44,13 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
   - トリアージ&見積フェーズ（ステップ 2.2 / 2.5） — `creview:triage`
   - 対応フェーズ（ステップ 2.3 / 2.5） — `creview:respond`
   - 検証フェーズ（ステップ 2.4 / 2.5） — `creview:resolve`
+- **発散パターン検出サブエージェント（ステップ 2.2）** — `subagent_type="review-helper"`。指摘への修正が後のラウンドの指摘を生む連鎖から、ラウンドループの発散をすべて検出する。
+- **発散調査サブエージェント（ステップ 2.2）** — `subagent_type` は発散パターン検出サブエージェントが返す `investigator`。各発散の源泉を特定し、修正案を発散調査レポートに書き出す。
 - **最終レポート編纂サブエージェント（ステップ 3）** — `subagent_type="review-helper"`。全ラウンドのレビュードキュメントから最終レポートを生成する。
 - **オーケストレーター（あなた自身）が直接担うのは以下に限定する**:
   - コンソール見出しの表示、ラウンドループ制御、フィードバック再修正ループ。
   - フェーズサブエージェントの起動と戻り値（カウンタ・パス・1 行サマリ）の集約。
-  - `--confirm` / `--confirm-round` のユーザー対話。フェーズ Sub はユーザーに到達できないため、続行の指示待ちはすべてフェーズ間のここで行う。
+  - `--confirm` / `--confirm-round` / 発散パターン検出ゲートのユーザー対話。フェーズ Sub はユーザーに到達できないため、続行の指示待ちはすべてフェーズ間のここで行う。
   - triage フェーズの作業用ディレクトリの削除（ステップ 2.2）。このディレクトリはフェーズ Sub より長く生存する。
   - ユーザーへの最終的なサマリ提示。
 - **オーケストレーターはレビュー指摘や判定の本文を context に載せない**。ファイルパス・カウンタ・リビジョンハッシュのみを保持し、詳細は各フェーズ内に留める。
@@ -72,7 +74,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-戻り値の `template_id` が各ステップの指定 UUID と一致することを確認し、不一致の場合はフェーズ Sub を再起動する。ステップ 3 のサブエージェントも同じ規約に従う。`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動プロンプトの完全性を参照。
+戻り値の `template_id` が各ステップの指定 UUID と一致することを確認し、不一致の場合はフェーズ Sub を再起動する。ステップ 2.2 の発散パターン検出サブエージェント・発散調査サブエージェントとステップ 3 のサブエージェントも同じ規約に従う。`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動プロンプトの完全性を参照。
 
 ## フロー概要
 
@@ -80,6 +82,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 Round 1 開始
   ├─ 2.1 review          [フェーズ Sub] creview:start   → round1.md
   ├─ 2.2 triage+estimate  [フェーズ Sub] creview:triage  → トリアージ／見積を永続化
+  │     ↳ Round 2 以降: [発散パターン検出 Sub] → 発散あり: [発散調査 Sub] → divergence-round{N}.md を提示し続行の指示を待つ
   │     ↳ --confirm: 見積サマリを提示し続行の指示を待つ
   ├─ 2.3 respond / fix    [フェーズ Sub] creview:respond → status を永続化
   │     ↳ Maintain / Alternative の対象がなければスキップ
@@ -123,20 +126,31 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
    - 変数: `document_path`（今ラウンドのファイルパス）、`previous_round_doc_paths`（Round 1: `(なし)`、Round N: Round 1〜N-1 の doc_path）、`adr_flag`（`--adr` の状態）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの
 3. 戻り値（`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, tmp_dir, error}`）のみ context に保持する。
-4. `--confirm`: `error` が null かつ Maintain / Alternative が 1 件以上ある場合、`summary_path` を Read してユーザーに提示し、続行の指示を待つ。
-5. `summary_path` を含むフェーズの作業用ディレクトリを削除する（`del-tmp.sh` は削除済みのターゲットを読み飛ばすため、`error` 経路も個別扱いは不要）:
+4. 発散パターン検出ゲート: Round 2 以降のフィードバックループ外で、`error` が null、`will_fix_count` が 1 以上、かつ `maintain_count` と `alternative_count` の合計が 1 以上の場合に実行する。
+   1. 検出: `Agent(subagent_type="review-helper", prompt=...)` で `templates/divergence-check.md`（`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`）のサブエージェントを起動し、戻り値（`{divergence_count, investigator}`）のみ context に保持する。
+      - 変数: `document_path`（今ラウンドのファイルパス）、`previous_round_doc_paths`（Round 1〜N-1 の doc_path）、`output_path`（`{tmp_dir}/divergence.jsonl`）
+      - オーバーライド: (該当なし)
+   2. 調査: `divergence_count` が 1 以上の場合、`Agent(subagent_type="{investigator}", prompt=...)` で `templates/divergence-investigate.md`（`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`）のサブエージェントを起動し、戻り値（`{report_path}`）のみ context に保持する。
+      - 変数: `divergence_path`（`{tmp_dir}/divergence.jsonl`）、`document_path`、`previous_round_doc_paths`、`template_path`（`${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/divergence-report.md`）、`report_path`（`{base-path}/{branch-dir}/divergence-round{N}.md`）、`language`（ユーザーのチャット言語）
+      - オーバーライド: (該当なし)
+5. ユーザー確認: 以下のいずれかに該当する場合、該当するものをまとめてユーザーに提示し、続行の指示を待つ。
+   - 今回の手順 4 が発散を 1 件以上検出した（`--confirm` の状態に寄らない）: 発散パターンを検出した旨と、`report_path` を Read した内容。
+   - `--confirm` が有効で、`error` が null かつ Maintain / Alternative が 1 件以上ある: `summary_path` を Read した内容。
+6. `summary_path` を含むフェーズの作業用ディレクトリを削除する（`del-tmp.sh` は削除済みのターゲットを読み飛ばすため、`error` 経路も個別扱いは不要）:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
-6. `error` が非 null の場合は 2.3 以降に進まず、失敗をユーザーに報告してラウンドループを終了する。
-7. 対応フェーズのスキップ判定: `will_fix_count` が 0、または `maintain_count` と `alternative_count` がともに 0 の場合、2.3 をスキップして 2.4 に進む（Won't Fix / Downgrade の指摘は 2.4 で検証を受ける）。
+7. `error` が非 null の場合は 2.3 以降に進まず、失敗をユーザーに報告してラウンドループを終了する。
+8. 手順 5 でユーザーがループの停止を指示した場合は、以降のフェーズを実行せず 2.6 で今ラウンドの結果を記録し、次ラウンドへ進まずステップ 3 へ進む。
+9. 手順 5 でユーザーが続行とともに修正方針を指示した場合は、その指示の原文を、参照先としての `report_path` とともに今ラウンドの 2.3（ステップ 2.5 での再実行を含む）のオーバーライドに加える。
+10. 対応フェーズのスキップ判定: `will_fix_count` が 0、または `maintain_count` と `alternative_count` がともに 0 の場合、2.3 をスキップして 2.4 に進む（Won't Fix / Downgrade の指摘は 2.4 で検証を受ける）。
 
 ### 2.3 — 対応フェーズ（respond スキル）
 
 1. コンソールに表示: `## Round {N} — Step 3: Respond (Fix & Verify)`
 2. `templates/phase-respond.md`（`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`）でフェーズ Sub を起動する。
    - 変数: `document_path`、`commit_flag`（`--commit` の状態）、`adr_flag`（`--adr` の状態）
-   - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの
+   - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの。ステップ 2.2 でユーザーが修正方針を指示したラウンドでは、その指示を加える
 3. 戻り値（`{fix_count, fixed_count, code_changed, workflow_warning, summary_line}`）のみ context に保持する。`workflow_warning` が非 null の場合は本ラウンドの記録用に保持する。
 
 ### 2.4 — 検証フェーズ（resolve スキル）
@@ -163,7 +177,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 ### 2.6 — ラウンド終了
 
-ラウンドの結果を記録する。各カウンタはフェーズサブエージェントの戻り値から取得する（レビュードキュメント本文を Read してカウントしてはならない）:
+ラウンドの結果を記録する。各カウンタはフェーズサブエージェントの戻り値から取得する（レビュードキュメント本文を Read してカウントしてはならない）。実行されなかったフェーズのカウンタは 0 とする:
 
 - 総指摘数: レビューフェーズの `findings_total`
 - 要対応の指摘数: トリアージフェーズの `will_fix_count`

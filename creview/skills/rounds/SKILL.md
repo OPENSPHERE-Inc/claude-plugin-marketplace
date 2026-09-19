@@ -19,7 +19,7 @@ The user may optionally specify an output base path. When the argument is `$ARGU
 - `--commit` (default OFF) — Perform a git commit after each finding is fixed (passed through to the respond phase).
 - `--incremental` (default OFF) — From Round 2 on, review only the commits added between the previous round's start and this round's start — the previous round's fix commits — instead of the whole branch diff. Enabling it enables `--commit`: a fix left uncommitted falls outside every later round's commit range.
 - `--adr` (default OFF) — Permit creating ADR files for design decisions next to each round's review document (passed through to the triage and respond phases). ADRs referenced from a review document are read / updated at fix time regardless of this flag.
-- `--max-rounds N` (default 5, range 1–10) — Change the maximum number of rounds for the outer loop.
+- `--max-rounds N` (default 10, range 1–20) — Change the maximum number of rounds for the outer loop.
 - `--base {branch}` (default `main` or `master`) — Specify the base branch (passed to the review phase). `--incremental` overrides it from Round 2 on.
 - `--adversarial` (default OFF) — Run the review phase in adversarial mode (passed through to the review phase).
 
@@ -44,11 +44,13 @@ Write the review document in the user's chat language.
   - Triage & estimate phase (Step 2.2 / 2.5) — `creview:triage`
   - Respond phase (Step 2.3 / 2.5) — `creview:respond`
   - Resolve phase (Step 2.4 / 2.5) — `creview:resolve`
+- **Divergence pattern detection sub-agent (Step 2.2)** — `subagent_type="review-helper"`; detects every divergence of the round loop from the chains in which a fix for a finding produces a finding in a later round.
+- **Divergence investigation sub-agent (Step 2.2)** — its `subagent_type` is the `investigator` the divergence pattern detection sub-agent returns; identifies each divergence's source and writes fix proposals into the divergence investigation report.
 - **Final report aggregator sub-agent (Step 3)** — `subagent_type="review-helper"`; generates the final report from all rounds' review documents.
 - **What you handle directly is limited to the following:**
   - Console headings, round loop control, and the feedback re-fix loop.
   - Phase sub-agent launch and aggregation of their return values (counters, paths, one-line summaries).
-  - User interaction for `--confirm` / `--confirm-round`. A phase sub-agent cannot reach the user, so every wait for the user's instruction to continue happens here, between phases.
+  - User interaction for `--confirm` / `--confirm-round` / the divergence pattern detection gate. A phase sub-agent cannot reach the user, so every wait for the user's instruction to continue happens here, between phases.
   - Removal of the triage phase's working directory (Step 2.2), which outlives its phase sub-agent.
   - Final summary presentation to the user.
 - **Do not put review finding bodies or judgment bodies into context.** Hold only file paths, counters, and revision hashes; the details stay inside each phase.
@@ -72,7 +74,7 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-Verify that the returned `template_id` matches the UUID the Step specifies; relaunch the phase sub-agent on mismatch. The same convention applies to the Step 3 sub-agent; see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch prompt completeness.
+Verify that the returned `template_id` matches the UUID the Step specifies; relaunch the phase sub-agent on mismatch. The same convention applies to the Step 2.2 divergence pattern detection and divergence investigation sub-agents and the Step 3 sub-agent; see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch prompt completeness.
 
 ## Flow overview
 
@@ -80,6 +82,7 @@ Verify that the returned `template_id` matches the UUID the Step specifies; rela
 Round 1 start
   ├─ 2.1 review          [phase Sub] creview:start   → round1.md
   ├─ 2.2 triage+estimate  [phase Sub] creview:triage  → persists triage / estimate
+  │     ↳ Round 2 on: [divergence pattern detection Sub] → on divergence: [divergence investigation Sub] → present divergence-round{N}.md, wait for the instruction to continue
   │     ↳ --confirm: present the estimate summary, wait for the instruction to continue
   ├─ 2.3 respond / fix    [phase Sub] creview:respond → persists status
   │     ↳ skipped when there is no Maintain / Alternative target
@@ -123,20 +126,31 @@ While the round counter is at most `--max-rounds`, repeat the following.
    - Variables: `document_path` (this round's file path), `previous_round_doc_paths` (Round 1: `(none)`; Round N: doc_paths of Round 1..N-1), `adr_flag` (`--adr` state)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
 3. Hold only the return value (`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, tmp_dir, error}`) in context.
-4. `--confirm`: when `error` is null and at least one Maintain / Alternative exists, Read `summary_path`, present it to the user, and wait for their instruction to continue.
-5. Remove the phase's working directory, which holds `summary_path` (`del-tmp.sh` skips an already-removed target, so the `error` path needs no separate handling):
+4. Divergence pattern detection gate: run it from Round 2 on, outside the feedback loop, when `error` is null, `will_fix_count` is at least 1, and `maintain_count` plus `alternative_count` is at least 1.
+   1. Detection: launch the sub-agent via `Agent(subagent_type="review-helper", prompt=...)` with `templates/divergence-check.md` (`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`) and hold only the return value (`{divergence_count, investigator}`) in context.
+      - Variables: `document_path` (this round's file path), `previous_round_doc_paths` (doc_paths of Round 1..N-1), `output_path` (`{tmp_dir}/divergence.jsonl`)
+      - Overrides: (none)
+   2. Investigation: when `divergence_count` is at least 1, launch the sub-agent via `Agent(subagent_type="{investigator}", prompt=...)` with `templates/divergence-investigate.md` (`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`) and hold only the return value (`{report_path}`) in context.
+      - Variables: `divergence_path` (`{tmp_dir}/divergence.jsonl`), `document_path`, `previous_round_doc_paths`, `template_path` (`${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/divergence-report.md`), `report_path` (`{base-path}/{branch-dir}/divergence-round{N}.md`), `language` (user's chat language)
+      - Overrides: (none)
+5. User confirmation: when any of the following applies, present the applicable ones to the user together and wait for their instruction to continue.
+   - This run's step 4 detected one or more divergences (regardless of the `--confirm` state): the fact that a divergence pattern was detected, and the content Read from `report_path`.
+   - `--confirm` is enabled, `error` is null, and at least one Maintain / Alternative exists: the content Read from `summary_path`.
+6. Remove the phase's working directory, which holds `summary_path` (`del-tmp.sh` skips an already-removed target, so the `error` path needs no separate handling):
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
-6. When `error` is non-null, do not proceed to 2.3 or beyond: report the failure to the user and end the round loop.
-7. Respond phase skip decision: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4 (Won't Fix / Downgrade findings receive their verification in 2.4).
+7. When `error` is non-null, do not proceed to 2.3 or beyond: report the failure to the user and end the round loop.
+8. When the user instructs to stop the loop at step 5, run no further phase, record this round's results in 2.6, and proceed to Step 3 without advancing to the next round.
+9. When the user instructs a fix policy along with continuing at step 5, add that instruction verbatim, together with `report_path` as its reference, to the overrides of this round's 2.3 (including its re-runs in Step 2.5).
+10. Respond phase skip decision: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4 (Won't Fix / Downgrade findings receive their verification in 2.4).
 
 ### 2.3 — Respond phase (respond skill)
 
 1. Display in console: `## Round {N} — Step 3: Respond (Fix & Verify)`
 2. Launch the phase sub-agent with `templates/phase-respond.md` (`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`).
    - Variables: `document_path`, `commit_flag` (`--commit` state), `adr_flag` (`--adr` state)
-   - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
+   - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists. In a round where the user instructed a fix policy in Step 2.2, add that instruction
 3. Hold only the return value (`{fix_count, fixed_count, code_changed, workflow_warning, summary_line}`) in context. When `workflow_warning` is non-null, retain it for this round's record.
 
 ### 2.4 — Resolve phase (resolve skill)
@@ -163,7 +177,7 @@ Each attempt re-runs 2.2 → 2.3 → 2.4, passing the text below as the phase su
 
 ### 2.6 — Round end
 
-Record the round's results. Each counter is obtained from phase sub-agent return values (do not Read the review document body to count):
+Record the round's results. Each counter is obtained from phase sub-agent return values (do not Read the review document body to count). Counters of a phase that did not run are 0:
 
 - Total findings: the review phase's `findings_total`
 - Findings requiring action: the triage phase's `will_fix_count`
