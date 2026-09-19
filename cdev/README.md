@@ -64,8 +64,8 @@ the `PATH`: their shared `.claude/tmp/` containment check is implemented in
 
 ## Options
 
-- `--review-rounds N` (default 2) — max review ⇄ triage iterations per cell.
-- `--qa-attempts N` (default 5) — max QA verify ⇄ fix attempts.
+- `--review-rounds N` (default 5, max 10) — max review ⇄ triage iterations per cell.
+- `--qa-attempts N` (default 5, max 10) — max QA verify ⇄ fix attempts.
 - `--commit` (default off) — commit the verified implementation in one commit.
 
 ## Architect / coder / reviewer agents
