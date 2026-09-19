@@ -24,7 +24,7 @@ The user supplies a coding task: a feature to implement, a change to make, or a 
 
 ## Options
 
-- `--review-rounds N` (default 2, range 1–5) — Max review ⇄ triage iterations per cell.
+- `--review-rounds N` (default 5, range 1–10) — Max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, range 1–10) — Max QA verify ⇄ fix attempts.
 - `--commit` (default OFF) — After QA passes, commit the implementation in one commit (concise message, no finding IDs).
 

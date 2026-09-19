@@ -64,8 +64,8 @@ teammate 間の `SendMessage` を使用します。セッションは単一の�
 
 ## オプション
 
-- `--review-rounds N`（既定 2）— セルごとの review ⇄ triage の最大反復回数。
-- `--qa-attempts N`（既定 5）— QA 検証 ⇄ コーダー修正の最大試行回数。
+- `--review-rounds N`（既定 5、最大 10）— セルごとの review ⇄ triage の最大反復回数。
+- `--qa-attempts N`（既定 5、最大 10）— QA 検証 ⇄ コーダー修正の最大試行回数。
 - `--commit`（既定 off）— 検証済みの実装を 1 コミットでコミットする。
 
 ## アーキテクト / コーダー / レビュアーエージェント

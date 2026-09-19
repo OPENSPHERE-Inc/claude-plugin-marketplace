@@ -105,21 +105,6 @@ bundled agents are `review-helper` (mechanical aggregation / verification),
 - `skills/{triage,respond,resolve}/scripts/compile-review.py` — the per-skill
   compile step (leader-run): aggregates intermediate JSON into `events.jsonl`
   and calls `render-review.py`.
-- `sequencer/programs/review_rounds.py` — a deterministic sequencer-program
-  variant of `/creview:rounds`.
-
-## Sequencer variant (review_rounds.py)
-
-`sequencer/programs/review_rounds.py` drives the same multi-round flow through
-the [agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer) MCP
-server instead of the `/creview:rounds` skill. It depends on the
-`agent-sequencer` plugin / MCP server (registered in this marketplace as an
-external plugin). Place the program in the agent-sequencer programs directory.
-The orchestrator itself is the triage leader here, so this variant needs a
-spawn depth of 2 or more — not the 3 that `/creview:rounds` needs.
-Its Instruction prompts are written in English; the skills it invokes
-(`/creview:start|triage|respond|resolve`) drive the review in the user's chat
-language.
 
 ## Japanese master (repository-root `src/creview/`)
 

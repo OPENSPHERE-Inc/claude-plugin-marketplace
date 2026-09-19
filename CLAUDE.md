@@ -3,7 +3,7 @@
 ## Project Overview
 
 **opensphere-inc** is a Claude Code **plugin marketplace** maintained by **OPENSPHERE Inc.**
-under the MIT license. It publishes three first-party plugins and references one external plugin:
+under the MIT license. It publishes three first-party plugins:
 
 - **creview** — a multi-agent parallel code review workflow (`start` → `triage` → `respond`
   → `resolve`, plus an automatic multi-round driver `rounds`).
@@ -12,14 +12,11 @@ under the MIT license. It publishes three first-party plugins and references one
 - **cdev** — a team-native multi-agent coding workflow (`coding`: a standing team runs design
   and coding as paired review cells, then a QA gate). Requires background subagents and
   inter-agent messaging.
-- **agent-sequencer** — external plugin
-  ([OPENSPHERE-Inc/agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer)),
-  required only to run `creview`'s `review_rounds.py` sequencer program.
 
 There is no compiled artifact. The deliverables are Markdown skills / templates / rules,
 shell + Python helper scripts, and JSON manifests, consumed by Claude Code's plugin system.
 
-- Repository content: **Markdown (AI-facing prompts)**, Bash, Python ≥ 3.11 (one sequencer program)
+- Repository content: **Markdown (AI-facing prompts)**, Bash, Python ≥ 3.9 (helper scripts)
 - Distribution: **Claude Code plugin marketplace** (git-based)
 - License: **MIT**
 
@@ -29,13 +26,10 @@ shell + Python helper scripts, and JSON manifests, consumed by Claude Code's plu
 
 This repo is intentionally bilingual; the rule is **not** "English only":
 
-- **Active plugin files** (everything under `creview/` and `cprompt/` except their
-  `README_ja.md`) are **English**. This includes SKILL.md, templates, bundled rules,
-  the active `creview/sequencer/programs/review_rounds.py` (its Instruction prompts are
-  English), and `agents/review-helper.md`.
-- **`src/**`** is the **Japanese master** — every file there is Japanese (including
-  `src/creview/sequencer/programs/review_rounds.py`, whose comments / docstring /
-  Instruction prose are Japanese).
+- **Active plugin files** (everything under `creview/`, `cprompt/`, and `cdev/` except their
+  `README_ja.md`) are **English**. This includes SKILL.md, templates, bundled rules, and
+  `agents/review-helper.md`.
+- **`src/**`** is the **Japanese master** — every file there is Japanese.
 - **`README_ja.md`** files are Japanese translations of the sibling `README.md`.
 - All other top-level docs (`README.md`, this `CLAUDE.md`, `AGENTS.md`) are English.
 
@@ -46,7 +40,7 @@ This repo is intentionally bilingual; the rule is **not** "English only":
 ```
 claude-plugin-marketplace/
 ├── .claude-plugin/
-│   └── marketplace.json          # Marketplace listing: creview, cprompt, external agent-sequencer
+│   └── marketplace.json          # Marketplace listing: creview, cprompt, cdev
 ├── README.md / README_ja.md      # Top README (EN) + Japanese translation, cross-linked
 ├── LICENSE                       # MIT
 ├── AGENTS.md / CLAUDE.md         # This documentation set
@@ -63,10 +57,7 @@ claude-plugin-marketplace/
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
 │   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md
 │   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md
-│   ├── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, lib/scratch-guard.py
-│   └── sequencer/programs/
-│       ├── review_rounds.py      # agent-sequencer program (English, active)
-│       └── review_rounds/        # final-report-compile.md, final-report-format.md
+│   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, lib/scratch-guard.py
 │
 ├── cprompt/                      # Plugin: prompt authoring (active, English)
 │   ├── .claude-plugin/plugin.json
@@ -82,10 +73,10 @@ claude-plugin-marketplace/
 │   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md
 │   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, lib/scratch-guard.py
 │
-├── src/                          # Japanese master, mirrors each plugin's tree 1:1
+├── src/                          # Japanese master, mirrors each plugin's tree 1:1 (minus .claude-plugin/README)
 │   ├── creview/...               # src/creview/<same tree as creview/>
 │   ├── cprompt/...               # src/cprompt/<same tree as cprompt/>
-│   └── cdev/...                  # src/cdev/<same tree as cdev/, minus .claude-plugin/README>
+│   └── cdev/...                  # src/cdev/<same tree as cdev/>
 │
 ├── tests/                        # scratch-guard-test.sh — repo-level self-tests (not shipped)
 │
@@ -124,8 +115,10 @@ When changing a plugin:
   persists `status`. The two-skill boundary **is** the review gate; there is no
   `--no-confirm`. `/creview:respond` keeps `--commit`.
 - **Path tokens** (see Important Warnings for the invariant):
-  - SKILL.md bodies / `allowed-tools` use `${CLAUDE_PLUGIN_ROOT}/...`.
-  - `templates/*.md` (read by sub-agents) use the `{{plugin_root}}/...` launch variable.
+  - SKILL.md bodies / `allowed-tools` and bundled agent definitions use
+    `${CLAUDE_PLUGIN_ROOT}/...`.
+  - `templates/*.md` and bundled rules (read by sub-agents) use the `{{plugin_root}}/...`
+    launch variable.
 - **Agent-dispatch generalization**: skills do **not** bundle specialist reviewers. The
   single-best-match resolution mechanics (enumerate agents recursively `**/*.md` across
   **destination project** → **user** → **plugin bundle** scopes, higher-priority scope wins
@@ -145,18 +138,23 @@ There is **no build step**. Validation is consistency-checking + a manual instal
 
 ```bash
 # JSON manifests parse
-python3 -c "import json,glob; [json.load(open(f,encoding='utf-8')) for f in \
-  ['.claude-plugin/marketplace.json','creview/.claude-plugin/plugin.json','cprompt/.claude-plugin/plugin.json']]; print('json ok')"
+python3 -c "import json; [json.load(open(f,encoding='utf-8')) for f in \
+  ['.claude-plugin/marketplace.json'] + \
+  [p+'/.claude-plugin/plugin.json' for p in ('creview','cprompt','cdev')]]; print('json ok')"
 
-# Sequencer programs are syntactically valid
-python3 -c "import ast; ast.parse(open('creview/sequencer/programs/review_rounds.py',encoding='utf-8').read())"
-python3 -c "import ast; ast.parse(open('src/creview/sequencer/programs/review_rounds.py',encoding='utf-8').read())"
+# Token-placement invariant: no ${CLAUDE_PLUGIN_ROOT} in templates / bundled rules,
+# no {{plugin_root}} in SKILLs
+grep -rl 'CLAUDE_PLUGIN_ROOT' {creview,cprompt,cdev}/skills/*/templates \
+  {creview,cprompt,cdev}/rules && echo BAD || echo ok
+grep -rl '{{plugin_root}}'   {creview,cprompt,cdev}/skills/*/SKILL.md   && echo BAD || echo ok
 
-# Token-placement invariant: no ${CLAUDE_PLUGIN_ROOT} in templates, no {{plugin_root}} in SKILLs
-grep -rl 'CLAUDE_PLUGIN_ROOT' creview/skills/*/templates cprompt/skills/*/templates && echo BAD || echo ok
-grep -rl '{{plugin_root}}'   creview/skills/*/SKILL.md   cprompt/skills/*/SKILL.md   && echo BAD || echo ok
-
-# src ↔ active file-count parity (per plugin, excluding .claude-plugin/README)
+# src ↔ active file-set parity (per plugin, excluding .claude-plugin/README)
+for p in creview cprompt cdev; do
+  diff <(cd $p && find . -type f -not -path './.claude-plugin/*' -not -name 'README*.md' \
+           -not -path '*/__pycache__/*' | sort) \
+       <(cd src/$p && find . -type f -not -path '*/__pycache__/*' | sort) \
+    && echo "$p parity ok"
+done
 
 # Scratch-guard self-test: containment behavior + byte-parity of the shared
 # lib/del-tmp copies across creview/cdev and their src/ mirrors
@@ -169,11 +167,13 @@ bash tests/scratch-guard-test.sh
 /plugin marketplace add <path-or-OPENSPHERE-Inc/claude-plugin-marketplace>
 /plugin install creview@opensphere-inc
 /plugin install cprompt@opensphere-inc
+/plugin install cdev@opensphere-inc
 ```
 
 Then exercise `/creview:start`, `/creview:triage`, `/creview:respond`, `/creview:resolve`
 in a project that has its own `.claude/agents/` (or none, to test the `general-purpose`
-fallback), and `/cprompt:edit`.
+fallback), `/cprompt:edit`, and `/cdev:coding` (in a runtime with background subagents and
+inter-agent messaging).
 
 ---
 
@@ -181,9 +181,8 @@ fallback), and `/cprompt:edit`.
 
 ### Marketplace
 
-`.claude-plugin/marketplace.json` (`name: opensphere-inc`) lists four plugins. `creview`,
-`cprompt`, and `cdev` use `"source": "./<dir>"` (relative to the repo root). `agent-sequencer`
-uses an external `{"source":"github","repo":"OPENSPHERE-Inc/agent-sequencer"}` entry. The `src/`
+`.claude-plugin/marketplace.json` (`name: opensphere-inc`) lists three plugins. `creview`,
+`cprompt`, and `cdev` use `"source": "./<dir>"` (relative to the repo root). The `src/`
 tree is **outside** the plugin source dirs, so it is not shipped with the installed plugins.
 
 ### Plugin skills
@@ -222,14 +221,6 @@ mismatch. The leader resolves `${CLAUDE_PLUGIN_ROOT}` (plugin context) and passe
 the launch prompt as the `plugin_root` variable so the template's `{{plugin_root}}/...`
 references resolve for the sub-agent. See `creview/rules/sub-agent.md`.
 
-### agent-sequencer program
-
-`creview/sequencer/programs/review_rounds.py` drives the same multi-round flow via the
-external `agent-sequencer` MCP server (deterministic generator: `yield Instruction(...)` /
-`Done` / `Abort`). It references the skills by invocation name (`/creview:start` etc.),
-**not** by file path, and resolves its adjacent report templates via
-`Path(__file__).resolve().parent` so it is install-location independent.
-
 ---
 
 ## Code Style & Formatting
@@ -240,12 +231,10 @@ external `agent-sequencer` MCP server (deterministic generator: `yield Instructi
 - **READMEs and this doc set are human-facing.** Follow
   [.claude/rules/document.md](.claude/rules/document.md) (audience-independent, escape `\|`
   in table cells, wrap ~100 cols).
-- **Code comments** (scripts / sequencer program) follow
+- **Code comments** (scripts) follow
   [.claude/rules/comment.md](.claude/rules/comment.md): fix the code, defer with a short
   `FIXME:`/`TODO:`, no change-history narration.
-- **Python**: PEP 8, `from __future__ import annotations`, deterministic (no
-  `time`/`random`/I/O inside `run()`), `ctx.params.get(key, default)` (never `… or default`).
-  The English active and Japanese `src/` `review_rounds.py` must both pass `ast.parse`.
+- **Python** (helper scripts): PEP 8, runs on Python ≥ 3.9.
 - **Preserve verbatim across translation/transformation**: every `{{...}}` placeholder,
   `${CLAUDE_PLUGIN_ROOT}`, `.claude/...` paths, `template_id` UUIDs, `allowed-tools`
   lines, JSON/JSONL field names, emoji (🔧 🚫 ▶️ 🔻 🚧 🟢 ✅ 💬), skill names, severity
@@ -272,7 +261,8 @@ external `agent-sequencer` MCP server (deterministic generator: `yield Instructi
 1. Create `<plugin>/skills/<name>/SKILL.md` (`name: <name>` frontmatter) and
    `templates/*.md` as needed; mirror it under `src/<plugin>/skills/<name>/` in Japanese.
 2. Use `${CLAUDE_PLUGIN_ROOT}/...` in the SKILL body / `allowed-tools`; use
-   `{{plugin_root}}/...` inside templates and pass `plugin_root` in every launch prompt.
+   `{{plugin_root}}/...` inside templates and the bundled rules they point to, and pass
+   `plugin_root` in every launch prompt.
 3. Resolve reviewers/fixers via the destination project's `.claude/agents/` with a
    `general-purpose` fallback — do not hardcode specialist agent names.
 4. Add the command to the marketplace `README.md`/`README_ja.md` and the plugin
@@ -288,7 +278,6 @@ external `agent-sequencer` MCP server (deterministic generator: `yield Instructi
 
 - Skill dirs / `name:` — kebab/lower (`start`, `triage`, `select-fix-targets`).
 - Template files — kebab-case `.md` with a `template_id` UUID in frontmatter.
-- Sequencer program file — `snake_case.py`; its `NAME` constant is kebab-case.
 
 ---
 
@@ -303,14 +292,14 @@ There is no automated test suite. Before considering a change done:
   `prompt-editor` as `.claude/skills/...` references).
 - For prompt edits, re-check against [.claude/rules/prompt.md](.claude/rules/prompt.md);
   for doc edits, [.claude/rules/document.md](.claude/rules/document.md).
-- Manually install both plugins and exercise each command (see install smoke test).
+- Manually install all three plugins and exercise each command (see install smoke test).
 
 ---
 
 ## CI / CD
 
 There is currently **no CI workflow** in this repository. Validation is manual /
-local (the checks above). Adding a lightweight GitHub Action that runs the JSON/`ast`/
+local (the checks above). Adding a lightweight GitHub Action that runs the JSON /
 invariant checks is a reasonable future task.
 
 Release/versioning: each plugin's `.claude-plugin/plugin.json` carries its own semver
@@ -331,12 +320,6 @@ The handoff is the **review document metadata**, not a temp dir. `/creview:triag
 persist `triage`+`estimate` (its compile step); `/creview:respond` must read them from the
 doc (`select-fix-targets.md`) — never assume a shared `tmp_dir` across the two skills.
 
-### Modifying review_rounds.py
-
-Change the **English active** copy and the **Japanese `src/`** copy together. Both must
-`ast.parse`. Keep skill-name constants (`/creview:start` etc.), `template_id` UUIDs,
-schema dicts, and control flow identical between the two; only localize prose/comments.
-
 ### Updating documentation
 
 Any change to `README.md` requires the matching `README_ja.md` update (and vice-versa);
@@ -347,14 +330,17 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 
 ## Important Warnings
 
-- **Token-placement invariant.** `${CLAUDE_PLUGIN_ROOT}` appears only in SKILL.md bodies /
-  `allowed-tools` (resolved in plugin context). `{{plugin_root}}` appears inside
-  `templates/*.md` (resolved by the leader and passed as a launch variable) and inside the
-  detection rules `rules/agents-detection.md` / `rules/build-format-detection.md` — those are
-  always reached via a template's `{{plugin_root}}/rules/...` reference, so `plugin_root` is
-  already in the sub-agent's scope and it substitutes the same value. A sub-agent reading a
-  template does **not** get `${CLAUDE_PLUGIN_ROOT}` expanded — never put it in a template;
-  never put `{{plugin_root}}` in a SKILL.
+- **Token-placement invariant.** The token follows who opens the file. Files Claude Code
+  loads itself — SKILL.md bodies / `allowed-tools` and bundled agent definitions
+  (`agents/*.md`) — use `${CLAUDE_PLUGIN_ROOT}`, which Claude Code expands. Files a sub-agent
+  opens with Read — `templates/*.md` and the bundled rules it is pointed to
+  (`rules/sub-agent.md`, `rules/teammate.md`, `rules/agents-detection.md`,
+  `rules/build-format-detection.md`) — use `{{plugin_root}}`: Read returns them raw, so
+  `${CLAUDE_PLUGIN_ROOT}` would stay unexpanded there, while `plugin_root` is already in the
+  sub-agent's scope (the leader resolves it and passes it in the launch prompt; in cdev, the
+  spawn contract). Never put `${CLAUDE_PLUGIN_ROOT}` in a template or a bundled rule; never
+  put `{{plugin_root}}` in a SKILL. (`agents/review-helper.md` / `agents/review-leader.md`
+  mention `{{plugin_root}}` only to name that template variable.)
   `rules/wontfix.md` carries `{{previous_round_doc_paths}}` on the same basis: every
   template that references it receives that launch variable.
 - **`template_id` must match.** The SKILL step's hard-coded UUID and the template's
@@ -366,14 +352,12 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 - **Destination-project agents, not bundled ones.** Active skills must resolve reviewers/
   fixers from the consuming project's `.claude/agents/` with a `general-purpose` fallback.
   Re-introducing hardcoded `*-sensei` names breaks portability.
-- **review_rounds.py depends on the external agent-sequencer plugin/MCP.** It is listed in
-  `marketplace.json` as an external entry; the `creview` plugin itself does not bundle it.
 - **CRLF line endings** in skill/template files are inherited from upstream. Avoid global
   reflow/`autocrlf` churn so diffs stay reviewable.
 - **Bundled rule cross-references resolve relative to the file.** `creview/rules/sub-agent.md`
-  points at sibling `comment.md`/`document.md` "in the same directory"; the sequencer report
-  template uses `../../../rules/sub-agent.md`. Keep these relative forms — absolute
-  `.claude/...` paths would not resolve in the consuming project. (The detection rules
+  points at sibling `comment.md`/`document.md` "in the same directory". Keep this relative
+  form — absolute `.claude/...` paths would not resolve in the consuming project. (The
+  detection rules
   `agents-detection.md` / `build-format-detection.md` instead express their plugin-bundled
   scope with the `{{plugin_root}}/...` launch variable; see the Token-placement invariant.)
 - **`scripts/lib/scratch-guard.py`, `scripts/del-tmp.sh` and `scripts/check-jsonl.py` are
@@ -423,6 +407,6 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 - **prompt-sensei / prompt-editor** — SKILL.md / template prompt structure vs
   `.claude/rules/prompt.md`.
 - **devops-sensei** — marketplace.json / plugin.json manifests, future CI.
-- **python-sensei** — `review_rounds.py` correctness and determinism.
+- **python-sensei** — helper script (`scripts/*.py`, `compile-review.py`) correctness.
 
 For full per-skill detail, see each plugin's `README.md` and the skill `SKILL.md` files.

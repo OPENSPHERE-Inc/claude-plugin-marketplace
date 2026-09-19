@@ -11,7 +11,6 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 | `creview` | マルチエージェントによる並列コードレビューのワークフロー: start → triage → respond → resolve、および複数ラウンドの自動ドライバ。 |
 | `cprompt` | AI 向けプロンプトを作成・編集し、プロンプト規律ルールに照らしてセルフチェックする。 |
 | `cdev` | チームネイティブなマルチエージェントコーディングワークフロー: 常駐チームが設計とコーディングをペアレビューセルで実行し、最後に QA ゲートを通す。 |
-| `agent-sequencer` | 外部プラグイン（[OPENSPHERE-Inc/agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer)）。`creview` の `review_rounds.py` シーケンサプログラムの実行に必要。 |
 
 ## インストール
 
@@ -24,9 +23,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 /plugin install cdev@opensphere-inc
 ```
 
-`creview`・`cprompt`・`cdev` は単体で完結します。任意の `agent-sequencer` エントリは
-独自の GitHub リポジトリから解決され、複数ラウンドレビューのシーケンサ駆動版を
-使う場合にのみ必要です（[creview/README_ja.md](creview/README_ja.md) を参照）。
+`creview`・`cprompt`・`cdev` は単体で完結します。
 
 ## スキルコマンド
 
@@ -54,8 +51,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 リポジトリ直下の `src/` ディレクトリが全プラグインの**日本語マスタ**を保持し、
 各プラグイン自身のツリーをミラーします。`src/<plugin>/...` が `<plugin>/...` に
 対応します（例: `src/creview/skills/start/SKILL.md` は
-`creview/skills/start/SKILL.md` に対応）。skills、rules、scripts、agents、および
-（`creview` の場合）シーケンサプログラムを含みます。
+`creview/skills/start/SKILL.md` に対応）。skills、rules、scripts、agents を含みます。
 
 実稼働のプラグインファイル（プラグイン直下の英語ファイル）は、日本語 `src/`
 マスタをプラグイン変換を適用しつつ英語へ翻訳したものです。プラグインを更新する

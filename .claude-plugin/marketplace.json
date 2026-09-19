@@ -43,22 +43,6 @@
         "design",
         "qa"
       ]
-    },
-    {
-      "name": "agent-sequencer",
-      "source": {
-        "source": "github",
-        "repo": "OPENSPHERE-Inc/agent-sequencer"
-      },
-      "description": "Claude Code skill + MCP server that lets a Python script drive an AI agent through strictly-defined workflows. Required to run creview's review_rounds.py sequencer program.",
-      "homepage": "https://github.com/OPENSPHERE-Inc/agent-sequencer",
-      "license": "MIT",
-      "keywords": [
-        "mcp",
-        "ai-agent",
-        "workflow",
-        "sequencer"
-      ]
     }
   ]
 }

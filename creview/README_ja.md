@@ -104,21 +104,6 @@ frontmatter の `name` / `description` を読み、指摘ごとに最適なも�
 - `skills/{triage,respond,resolve}/scripts/compile-review.py` — スキルごとの
   compile ステップ（リーダーが実行）。中間 JSON を `events.jsonl` に集約し
   `render-review.py` を呼び出します。
-- `sequencer/programs/review_rounds.py` — `/creview:rounds` の決定論的な
-  シーケンサプログラム版。
-
-## シーケンサ版（review_rounds.py）
-
-`sequencer/programs/review_rounds.py` は、`/creview:rounds` スキルの代わりに
-[agent-sequencer](https://github.com/OPENSPHERE-Inc/agent-sequencer) MCP
-サーバ経由で同じ複数ラウンドフローを駆動します。`agent-sequencer` プラグイン /
-MCP サーバに依存します（このマーケットプレースに外部プラグインとして登録）。
-プログラムは agent-sequencer のプログラムディレクトリに配置してください。
-この構成ではオーケストレーター自身がトリアージのリーダーとなるため、
-必要な深度は `/creview:rounds` の 3 ではなく 2 以上です。
-Instruction プロンプトは英語で記述されており、呼び出すスキル
-（`/creview:start|triage|respond|resolve`）はユーザーのチャット言語で
-レビューを駆動します。
 
 ## 日本語マスタ（リポジトリ直下 `src/creview/`）
 
