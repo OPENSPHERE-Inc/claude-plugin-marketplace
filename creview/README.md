@@ -62,6 +62,20 @@ applied at diff-fetch time — `/creview:start` gains a `--range {from}..{to}`
 option that collects only that commit range and skips the working-tree
 sections — so reviewers never see the earlier rounds' already-reviewed code.
 
+`/creview:rounds` iterates for at most `--max-rounds` rounds (default 10,
+maximum 20). From Round 2 on, a divergence pattern detection gate runs after
+triage: a sub-agent reads the past rounds' and the current round's review
+documents and traces the chains in which a fix for a finding produces a
+finding in a later round. A chain that spans three or more rounds without
+shrinking, or in which a finding of the current round asks to revert a past
+fix, is a divergence; one round can yield several. When at least one is
+detected, an investigation sub-agent — resolved from the destination project's
+agents like the other specialists — identifies the source of each divergence
+and writes fix proposals to `divergence-round{N}.md` next to the review
+documents. The loop then pauses as it does for `--confirm`, presents that
+report, and waits for the instruction to continue; a fix policy given with
+that instruction is passed on to the round's respond phase.
+
 Nested sub-agent spawning is required
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; the default is 3):
 
@@ -81,7 +95,7 @@ session) when using a high `--max-rounds`.
 ## Reviewer / fixer agents
 
 This plugin does not bundle specialist agents. The triage / scope-analysis /
-analysis / format-build-verify sub-agents enumerate agents recursively
+analysis / format-build-verify / divergence-detection sub-agents enumerate agents recursively
 (`**/*.md`, including subdirectories) from the **destination project**
 (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin bundle**, read
 each agent's frontmatter `name` / `description`, and pick the best match per

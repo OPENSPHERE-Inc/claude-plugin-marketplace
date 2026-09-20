@@ -123,7 +123,7 @@ When changing a plugin:
   single-best-match resolution mechanics (enumerate agents recursively `**/*.md` across
   **destination project** → **user** → **plugin bundle** scopes, higher-priority scope wins
   on duplicate `name`, fall back to `general-purpose`) live in the shared bundled rule
-  `rules/agents-detection.md`. The triage / analyze / format-build-verify sub-agents read it
+  `rules/agents-detection.md`. The triage / analyze / format-build-verify / divergence-check sub-agents read it
   and supply only their match target + result field. `scope-analysis` keeps its own inline
   multi-select variant (it picks *all* relevant reviewers, not one). Only the mechanical
   helpers (`review-helper`, `comment-sensei`, `review-leader`) are bundled.
@@ -200,7 +200,9 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     format&build-verify ⇄ build-fix loop → compile → persist status
 /creview:resolve → analyze + verify Subs → compile → persist verification
 /creview:rounds  → launches one review-leader Sub per phase per round (each Sub invokes
-                    the phase's skill and runs it whole) + feedback re-fix inner loop
+                    the phase's skill and runs it whole) + divergence gate after triage
+                    (Round 2 on: detect → investigate → pause with the report) +
+                    feedback re-fix inner loop
 ```
 
 Each skill's `skills/<skill>/scripts/compile-review.py` (run directly by the leader, not a
