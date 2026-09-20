@@ -10,7 +10,7 @@ Task: `{{task}}`
 Design section: `{{design_path}}`
 Producer: `{{producer}}` | Cell task: `{{cell_task}}`
 
-Judge the design for correctness and completeness against the task, feasibility, missing edge cases / error handling, interface and data-shape soundness, testability, and risk to existing code. Read `{{plugin_root}}/rules/review.md` and follow it. Restrict tool use to Read / Glob / Grep / Bash(grep/ls/find); do not edit anything.
+Judge the design for correctness and completeness against the task, feasibility, missing edge cases / error handling, interface and data-shape soundness, testability, and risk to existing code. Read `{{plugin_root}}/rules/review.md` and follow it. Read `{{plugin_root}}/rules/divergence.md` and, following its § reviewer, detect divergence patterns. Restrict tool use to Read / Glob / Grep / Bash(grep/ls/find); do not edit anything.
 
 Severity labels: Critical (design is wrong or will not meet the task) / Major (significant gap or risk) / Minor (improvement) / Info (note); actionable = Critical / Major.
 

@@ -27,6 +27,12 @@ The user supplies a coding task: a feature to implement, a change to make, or a 
 - `--review-rounds N` (default 5, range 1–10) — Max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, range 1–10) — Max QA verify ⇄ fix attempts.
 - `--commit` (default OFF) — After QA passes, commit the implementation in one commit (concise message, no finding IDs).
+- `--output {dir}` — Specify the output directory for the design documents (`{design_dir}`).
+
+### Output destination (`{design_dir}`)
+
+- When `--output` is given, that value.
+- Default when not given: `.claude/tmp/cdev-coding-{timestamp}-design/`. Do not place it under `{tmp_dir}` (that is removed in Step 5).
 
 ## Output language
 
@@ -88,7 +94,6 @@ The leader holds only the roster (each teammate's name → agentType), the pairi
 ```
 {tmp_dir} = .claude/tmp/cdev-coding-{timestamp}/
 {tmp_dir}/team.jsonl               ← team-analysis result (roster; read by the leader)
-{tmp_dir}/design/design-{slug}.md  ← one design section per architect (read by reviewers and coders)
 {tmp_dir}/baseline-tree            ← pre-coding working-tree snapshot (baseline for the QA diff)
 {tmp_dir}/changes.txt              ← diff since coding start (input to QA)
 {tmp_dir}/qa-result.jsonl          ← QA result
@@ -97,10 +102,12 @@ The leader holds only the roster (each teammate's name → agentType), the pairi
 
 Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 
+The design documents go to `{design_dir}/design-{slug}.md` (one design section per architect; read by reviewers and coders) and are kept after the run.
+
 ## Step 1 — Form the team and pair
 
-1. This skill operates only on a clean working tree: run `git status --porcelain`, and if the output is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill.
-2. Resolve `{timestamp}`, fix `{tmp_dir}`, and create it (`mkdir -p {tmp_dir}/design`). Then record the pre-coding baseline: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`.
+1. This skill operates only on a clean working tree: run `git status --porcelain -uall`, and if the output outside `.claude/tmp/` and outside the `--output` destination is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill. These are excluded because design documents of past runs remain there.
+2. Resolve `{timestamp}`, fix `{tmp_dir}` and `{design_dir}`, and create them (`mkdir -p`). Then record the pre-coding baseline: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`.
 3. Console: `## Step 1 — Team formation`.
 4. Spawn `dev-helper` (type `cdev:dev-helper`, name `dev-helper`). To it, `SendMessage` naming `templates/team-analysis.md` with `task = {task specification}`, `output_path = {tmp_dir}/team.jsonl`. On its completion report, Read `{tmp_dir}/team.jsonl`: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).
 5. Spawn each roster member, naming it `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` and using the `name` team-analysis returns as the type (architects and coders use `general-purpose`). Hold the pairings and `{task_summary}`. A producer's paired reviewer is addressed as `reviewer-{the producer's reviewer slug}`.
@@ -110,8 +117,8 @@ Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE
 
 1. Console: `## Step 2 — Design`.
 2. For each architect, start the design cell `design-{slug}` with two messages (addressed to roster names):
-   - To `architect-{slug}`, `SendMessage` naming `templates/design.md` with `task = {task_summary}`, `assigned_scope = {its scope}`, `output_path = {tmp_dir}/design/design-{slug}.md`, `reviewer = {paired reviewer's name}`.
-   - To the paired reviewer's name, `SendMessage` naming `templates/design-review.md` with `task = {task_summary}`, `design_path = {tmp_dir}/design/design-{slug}.md`, `producer = architect-{slug}`, `cell_task = design-{slug}`, `review_rounds = {--review-rounds}`.
+   - To `architect-{slug}`, `SendMessage` naming `templates/design.md` with `task = {task_summary}`, `assigned_scope = {its scope}`, `output_path = {design_dir}/design-{slug}.md`, `reviewer = {paired reviewer's name}`.
+   - To the paired reviewer's name, `SendMessage` naming `templates/design-review.md` with `task = {task_summary}`, `design_path = {design_dir}/design-{slug}.md`, `producer = architect-{slug}`, `cell_task = design-{slug}`, `review_rounds = {--review-rounds}`.
 3. Gate: one closure report per design cell, arbitrating any escalation as it arrives. Collect the section paths as `{design_paths}`.
 
 ## Step 3 — Code cells (コーディング)
@@ -138,7 +145,7 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 
 ## Step 5 — Clean up and report
 
-1. If `--commit` is on and QA passed, commit the implementation: stage only the changed source files (not `.claude/tmp`), and commit once with a concise message (no finding IDs).
+1. If `--commit` is on and QA passed, commit the implementation: stage only the changed source files (not `.claude/tmp` or `{design_dir}`), and commit once with a concise message (no finding IDs).
 2. Shut down the teammates: to each teammate's name, `SendMessage` `{type: "shutdown_request"}` and wait for shutdown.
 3. Remove the working directory: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
-4. Report to the console: the team roster with pairings, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the QA result (`summary_line`, plus `workflow_warning` if any), and any unfixed QA failure.
+4. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the QA result (`summary_line`, plus `workflow_warning` if any), and any unfixed QA failure.

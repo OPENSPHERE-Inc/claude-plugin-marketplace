@@ -30,7 +30,12 @@ and drives two cell steps and a final QA gate, reporting progress to the console
 
 1. **Design cells** — each architect writes a design for its area, then its **paired
    reviewer** reviews it; the architect **triages** each finding (fix, or reject with a
-   reason) and the reviewer **resolves** and closes the cell.
+   reason) and the reviewer **resolves** and closes the cell. Both follow
+   `rules/divergence.md`: the design must not carry a source that makes later reviews
+   diverge (a fix producing the next finding without end) — an undecided specification or
+   invariant, a problem class the approach cannot close, an unadjudicated conflict between
+   requirements, or a mismatch with the existing design — and the reviewer raises any it
+   finds as Major or higher.
 2. **Code cells** — each coder implements its scope (test-first when the project has a test
    suite); `comment-sensei` fixes comment violations when comments are present; the **paired
    reviewer** reviews, the coder triages, the reviewer resolves and closes the cell.
@@ -67,6 +72,13 @@ the `PATH`: their shared `.claude/tmp/` containment check is implemented in
 - `--review-rounds N` (default 5, max 10) — max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, max 10) — max QA verify ⇄ fix attempts.
 - `--commit` (default off) — commit the verified implementation in one commit.
+- `--output {dir}` — directory for the design documents (default
+  `.claude/tmp/cdev-coding-{timestamp}-design/`).
+
+The design documents (`design-{slug}.md`, one per architect) are kept after the run; every
+other intermediate file is deleted. `--commit` never stages them. The clean-working-tree
+check at start ignores `.claude/tmp/` and the `--output` destination, so design documents
+left by earlier runs do not block a new run.
 
 ## Architect / coder / reviewer agents
 
@@ -89,7 +101,8 @@ enforce domain correctness. When no specialist matches a domain, the reviewer fa
 - `agents/comment-sensei.md` — code-comment specialist teammate; reviews and fixes comments
   added or modified during coding, against `rules/comment.md`.
 - `rules/` — `teammate.md` (teammate common rules), `agents-detection.md`,
-  `build-format-detection.md`, `comment.md`, `review.md`, `document.md`.
+  `build-format-detection.md`, `comment.md`, `review.md`, `document.md`, `divergence.md`
+  (divergence patterns the design must not introduce).
 - `scripts/` — `fetch-diff.sh` (snapshots the pre-coding tree, then captures the QA diff since
   coding start), `del-tmp.sh` (deletes the run's working directory under `.claude/tmp/`),
   `check-jsonl.py` (teammates validate the `.jsonl` they wrote with it), and

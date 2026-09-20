@@ -31,7 +31,10 @@ Claude Code 向けのチームネイティブなマルチエージェントコ�
 
 1. **設計セル** — 各アーキテクトが担当領域の設計を書き、**ペアのレビュアー**がレビュー。
    アーキテクトが各指摘を **triage（修正 or 理由付きで却下）**、レビュアーが **resolve** して
-   セルをクローズする。
+   セルをクローズする。両者とも `rules/divergence.md` に従う: 後段のレビューを発散させる
+   （修正が次の指摘を生み続ける）源泉 — 未確定の仕様・不変条件、方式が閉じきれない
+   問題クラス、裁定されていない要求の相反、既存設計との不整合 — を設計に持ち込まず、
+   レビュアーは見つけたものを Major 以上として指摘する。
 2. **コードセル** — 各コーダーが自スコープを実装（テストスイートがあればテストファースト）。
    コメントがあれば `comment-sensei` がコメント違反を修正。**ペアのレビュアー**がレビューし、
    コーダーが triage、レビュアーが resolve してセルをクローズする。
@@ -67,6 +70,13 @@ teammate 間の `SendMessage` を使用します。セッションは単一の�
 - `--review-rounds N`（既定 5、最大 10）— セルごとの review ⇄ triage の最大反復回数。
 - `--qa-attempts N`（既定 5、最大 10）— QA 検証 ⇄ コーダー修正の最大試行回数。
 - `--commit`（既定 off）— 検証済みの実装を 1 コミットでコミットする。
+- `--output {dir}` — 設計ドキュメントの出力先ディレクトリ（既定
+  `.claude/tmp/cdev-coding-{timestamp}-design/`）。
+
+設計ドキュメント（`design-{slug}.md`。アーキテクトごとに 1 つ）は実行後も残し、それ以外の
+中間ファイルは削除します。`--commit` は設計ドキュメントをステージしません。開始時の
+クリーンな作業ツリーの確認は `.claude/tmp/` と `--output` の指定先を除外するため、過去の
+実行が残した設計ドキュメントは次の実行を妨げません。
 
 ## アーキテクト / コーダー / レビュアーエージェント
 
@@ -88,7 +98,8 @@ teammate 間の `SendMessage` を使用します。セッションは単一の�
 - `agents/comment-sensei.md` — コードコメントの専門家 teammate。コーディング中に追加・
   変更されたコメントを `rules/comment.md` に照らしてレビュー・修正する。
 - `rules/` — `teammate.md`（teammate 共通ルール）、`agents-detection.md`、
-  `build-format-detection.md`、`comment.md`、`review.md`、`document.md`。
+  `build-format-detection.md`、`comment.md`、`review.md`、`document.md`、`divergence.md`
+  （設計に持ち込んではならない発散パターン）。
 - `scripts/` — `fetch-diff.sh`（コーディング開始前のツリーを記録し、開始以降の QA 差分を
   取得）、`del-tmp.sh`（`.claude/tmp/` 配下の実行作業ディレクトリを削除）、
   `check-jsonl.py`（teammate が書き出した `.jsonl` の検証に使用）、

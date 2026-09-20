@@ -10,7 +10,7 @@ template_id: 448ee08a-0284-4066-9de9-9f82e9078914
 設計セクション: `{{design_path}}`
 producer: `{{producer}}` | セルタスク: `{{cell_task}}`
 
-設計を、タスクに対する正しさと完全性、実現可能性、欠落したエッジケース / エラー処理、インターフェースとデータ形状の妥当性、テスト容易性、既存コードへのリスクの観点で判断する。`{{plugin_root}}/rules/review.md` を Read して従う。使用ツールは Read / Glob / Grep / Bash(grep/ls/find) に限定し、一切編集しない。
+設計を、タスクに対する正しさと完全性、実現可能性、欠落したエッジケース / エラー処理、インターフェースとデータ形状の妥当性、テスト容易性、既存コードへのリスクの観点で判断する。`{{plugin_root}}/rules/review.md` を Read して従う。`{{plugin_root}}/rules/divergence.md` を Read し、§ reviewer に従って発散パターンを検出する。使用ツールは Read / Glob / Grep / Bash(grep/ls/find) に限定し、一切編集しない。
 
 重要度ラベル: Critical（設計が誤っている、またはタスクを満たさない）/ Major（重大なギャップまたはリスク）/ Minor（改善）/ Info（参考）。対応すべきは Critical / Major。
 
