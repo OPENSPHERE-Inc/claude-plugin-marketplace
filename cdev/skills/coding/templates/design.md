@@ -13,7 +13,7 @@ Paired reviewer: `{{reviewer}}`
 Steps:
 
 1. Read the existing code in your scope (Glob / Grep / Read) to ground the design. Do not edit source.
-2. Write the design section to `{{output_path}}` (markdown): the approach, the files / modules to add or change, key interfaces and data shapes, edge cases and error handling, and the impact on tests / build. Follow `{{plugin_root}}/rules/document.md`. Keep code to short signatures, not full listings.
+2. Read `{{plugin_root}}/rules/divergence.md` and, following its § architect, keep divergence patterns out of the design. Write the design section to `{{output_path}}` (markdown): the approach, the files / modules to add or change, key interfaces and data shapes, assumptions / invariants and the accepted scope, edge cases and error handling, and the impact on tests / build. Follow `{{plugin_root}}/rules/document.md`. Keep code to short signatures, not full listings.
 3. DM `{{reviewer}}` that the design at `{{output_path}}` is ready for review, and run the cell as the producer (fixes go into `{{output_path}}`; the reviewer closes the cell).
 
 Report to the leader via SendMessage: the path `{{output_path}}` and 1-2 sentences on what the design covers (in {{doc_lang}}).

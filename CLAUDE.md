@@ -70,7 +70,7 @@ claude-plugin-marketplace/
 │   ├── README.md / README_ja.md
 │   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, design, design-review, code, code-review, comment-review, qa)
 │   ├── agents/                   # comment-sensei.md, dev-helper.md
-│   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md
+│   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, divergence.md
 │   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, lib/scratch-guard.py
 │
 ├── src/                          # Japanese master, mirrors each plugin's tree 1:1 (minus .claude-plugin/README)
@@ -371,7 +371,7 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output
   paths whose basename comes from a runtime value therefore carry a fixed prefix — creview's
   `{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md` (the aggregator recovers the
-  reviewer name by stripping it) and cdev's `{tmp_dir}/design/design-{slug}.md`. Keep those
+  reviewer name by stripping it) and cdev's `{design_dir}/design-{slug}.md`. Keep those
   prefixes: a destination-project agent name or a team-analysis slug can begin with any of
   the four words.
 - **Agent definitions use `tools:`; skills / commands use `allowed-tools:`.** `allowed-tools`

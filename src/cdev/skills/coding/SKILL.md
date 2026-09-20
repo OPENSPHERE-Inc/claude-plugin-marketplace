@@ -27,6 +27,12 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 - `--review-rounds N`（デフォルト 5、範囲 1–10）— セルごとのレビュー ⇄ triage の最大反復回数。
 - `--qa-attempts N`（デフォルト 5、範囲 1–10）— QA 検証 ⇄ 修正の最大試行回数。
 - `--commit`（デフォルト OFF）— QA 通過後、実装を 1 コミットにまとめてコミットする（簡潔なメッセージ、finding ID なし）。
+- `--output {dir}` — 設計ドキュメントの出力先ディレクトリ（`{design_dir}`）を指定する。
+
+### 出力先（`{design_dir}`）
+
+- `--output` 指定があればその値。
+- 指定がない場合のデフォルト: `.claude/tmp/cdev-coding-{timestamp}-design/`。`{tmp_dir}` 配下には置かない（ステップ 5 で削除されるため）。
 
 ## 出力言語
 
@@ -88,7 +94,6 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 ```
 {tmp_dir} = .claude/tmp/cdev-coding-{timestamp}/
 {tmp_dir}/team.jsonl               ← team-analysis の結果（roster。リーダーが読む）
-{tmp_dir}/design/design-{slug}.md  ← architect ごとに 1 つの設計セクション（reviewer と coder が読む）
 {tmp_dir}/baseline-tree            ← コーディング開始前の作業ツリースナップショット（QA 差分の基点）
 {tmp_dir}/changes.txt              ← コーディング開始以降の差分（QA の入力）
 {tmp_dir}/qa-result.jsonl          ← QA 結果
@@ -97,10 +102,12 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 作成はステップ 1 で `mkdir -p`、削除はリーダーがステップ 5 で `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` により行う。
 
+設計ドキュメントは `{design_dir}/design-{slug}.md`（architect ごとに 1 つの設計セクション。reviewer と coder が読む）に置き、実行後も残す。
+
 ## ステップ 1 — チーム編成とペアリング
 
-1. 本スキルはクリーンな作業ツリーでのみ動作する: `git status --porcelain` を実行し、出力が非空（ステージ済み・未ステージ・未追跡のいずれかが存在）ならエラーメッセージをコンソールに表示してスキルを終了する。
-2. `{timestamp}` を解決し、`{tmp_dir}` を確定して作成する（`mkdir -p {tmp_dir}/design`）。続いてコーディング開始前のベースラインを記録する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`。
+1. 本スキルはクリーンな作業ツリーでのみ動作する: `git status --porcelain -uall` を実行し、`.claude/tmp/` 配下と `--output` の指定先配下を除く出力が非空（ステージ済み・未ステージ・未追跡のいずれかが存在）ならエラーメッセージをコンソールに表示してスキルを終了する。これらには過去の実行の設計ドキュメントが残るため除外する。
+2. `{timestamp}` を解決し、`{tmp_dir}` と `{design_dir}` を確定して作成する（`mkdir -p`）。続いてコーディング開始前のベースラインを記録する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`。
 3. コンソールに表示する: `## Step 1 — Team formation`。
 4. `dev-helper`（種別 `cdev:dev-helper`、name `dev-helper`）を起動する。`dev-helper` 宛に `templates/team-analysis.md` を指定し `task = {タスク指定}`、`output_path = {tmp_dir}/team.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team.jsonl` を Read する: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`（`name` は起動時の subagent_type）。各 producer の `reviewer` はペアの reviewer の `slug`（1 人の reviewer が複数の producer とペアになることもあるが、ドメインが一致する範囲に限る）。
 5. ロスターの各メンバーを起動する。name は `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}`、種別は team-analysis が返す `name` を用いる（architect と coder は `general-purpose`）。ペアリングと `{task_summary}` を保持する。producer のペア reviewer の宛先は `reviewer-{その producer の reviewer slug}`。
@@ -110,8 +117,8 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 1. コンソールに表示する: `## Step 2 — Design`。
 2. 各 architect について、設計セル `design-{slug}` を 2 つのメッセージで開始する（宛先は roster の name）:
-   - `architect-{slug}` 宛に `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`output_path = {tmp_dir}/design/design-{slug}.md`、`reviewer = {ペア reviewer の name}` を渡して `SendMessage`。
-   - ペア reviewer の name 宛に `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {tmp_dir}/design/design-{slug}.md`、`producer = architect-{slug}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
+   - `architect-{slug}` 宛に `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`output_path = {design_dir}/design-{slug}.md`、`reviewer = {ペア reviewer の name}` を渡して `SendMessage`。
+   - ペア reviewer の name 宛に `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {design_dir}/design-{slug}.md`、`producer = architect-{slug}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
 3. ゲート: 設計セルごとにクローズ報告 1 通（届いたエスカレーションは随時裁定する）。セクションパスを `{design_paths}` として収集する。
 
 ## ステップ 3 — コードセル（コーディング）
@@ -138,7 +145,7 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 
 ## ステップ 5 — クリーンアップと報告
 
-1. `--commit` が ON かつ QA が通過した場合、実装をコミットする: 変更されたソースファイルのみをステージし（`.claude/tmp` は除く）、簡潔なメッセージで 1 回コミットする（finding ID なし）。
+1. `--commit` が ON かつ QA が通過した場合、実装をコミットする: 変更されたソースファイルのみをステージし（`.claude/tmp` と `{design_dir}` は除く）、簡潔なメッセージで 1 回コミットする（finding ID なし）。
 2. teammate をシャットダウンする: 各 teammate の name 宛に `SendMessage` で `{type: "shutdown_request"}` を送り、シャットダウンを待つ。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`。
-4. コンソールへ報告する: ペアリングを含むチームのロスター、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、QA 結果（`summary_line`、あれば `workflow_warning`）、および未修正の QA 失敗。
+4. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、QA 結果（`summary_line`、あれば `workflow_warning`）、および未修正の QA 失敗。

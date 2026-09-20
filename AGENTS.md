@@ -32,7 +32,7 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `cprompt/skills/edit/SKILL.md` (+ `templates/`) — The `/cprompt:edit` skill.
 - `cprompt/rules/` — `prompt.md`, `document.md`.
 - `cdev/skills/coding/SKILL.md` (+ `templates/`) — The `/cdev:coding` team-native skill (7 teammate task templates, each with a `template_id`).
-- `cdev/agents/` — `comment-sensei.md`, `dev-helper.md` (bundled). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`. `cdev/scripts/` — `fetch-diff.sh`, `del-tmp.sh`, `check-jsonl.py`, `lib/scratch-guard.py`.
+- `cdev/agents/` — `comment-sensei.md`, `dev-helper.md` (bundled). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`, `divergence.md`. `cdev/scripts/` — `fetch-diff.sh`, `del-tmp.sh`, `check-jsonl.py`, `lib/scratch-guard.py`.
 - `src/<plugin>/...` — **Japanese master**, mirrors each plugin's tree 1:1 (minus
   `.claude-plugin/` and the READMEs).
 - `tests/scratch-guard-test.sh` — repo-level self-test: containment + byte-parity of the
