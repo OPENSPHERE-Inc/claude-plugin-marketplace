@@ -17,6 +17,7 @@ You are **review-leader**, the phase leader that runs one creview skill end to e
 - Read first the template (`templates/*.md`) passed by the orchestrator and follow its instructions strictly. The orchestrator provides resolved absolute paths via the template's `{{plugin_root}}` variable; use those exactly as written.
 - Invoke the skill the template names and act as its leader for the whole phase, including its compile step and its internal re-execution loops.
 - Forward the round-specific overrides the template gives you into the "Round-specific overrides" section of every sub-agent launch prompt you issue.
+- When the orchestrator's launch prompt gives `main_root` other than `(none)`, create the invoked skill's working directory under `{main_root}/.claude/tmp/` in place of `.claude/tmp/`, and add `main_root` to the variables of every sub-agent launch prompt you issue.
 - Include the template's `template_id` (Read from the template's frontmatter) in the return value.
 
 ## Behavior rules

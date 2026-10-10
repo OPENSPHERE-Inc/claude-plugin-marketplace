@@ -72,6 +72,8 @@ the `PATH`: their shared `.claude/tmp/` containment check is implemented in
 - `--review-rounds N` (default 5, max 10) — max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, max 10) — max QA verify ⇄ fix attempts.
 - `--commit` (default off) — commit the verified implementation in one commit.
+- `--worktree[=branch]` (default off) — run the task in a separate git worktree on `branch`;
+  enables `--commit` (see below).
 - `--output {dir}` — directory for the design documents (default
   `.claude/tmp/cdev-coding-{timestamp}-design/`).
 
@@ -79,6 +81,19 @@ The design documents (`design-{slug}.md`, one per architect) are kept after the 
 other intermediate file is deleted. `--commit` never stages them. The clean-working-tree
 check at start ignores `.claude/tmp/` and the `--output` destination, so design documents
 left by earlier runs do not block a new run.
+
+With `--worktree`, the team works in a separate git worktree under `.claude/worktrees/`, so the
+main working tree's sources stay untouched and it does not need to be clean. The worktree
+checks out `branch` — an existing local branch as is, or a new one created from the current
+HEAD; without `=branch`, a new branch `cdev-coding-{timestamp}` is created. The branch checked
+out in the main working tree cannot be used, because git does not check out one branch in two
+worktrees. The worktree starts from the committed HEAD, so uncommitted changes in the main
+working tree are not part of the task. The working directory and the design documents stay in
+the main working tree's `.claude/tmp/` (a relative `--output` resolves there too), and the
+destination project's `.claude/agents/` and `.claude/rules/` are read from the main working
+tree. At the end the worktree is removed and the branch is kept; a worktree left with
+uncommitted changes — for example after an unfixed QA failure — is kept and its path is
+reported.
 
 ## Architect / coder / reviewer agents
 
@@ -107,7 +122,8 @@ enforce domain correctness. When no specialist matches a domain, the reviewer fa
   coding start), `del-tmp.sh` (deletes the run's working directory under `.claude/tmp/`),
   `check-jsonl.py` (teammates validate the `.jsonl` they wrote with it), and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by both; requires
-  `python3` — see Requirements). The skill invokes them via
+  `python3` — see Requirements), and `worktree.sh` (creates and removes the `--worktree`
+  worktree). The skill invokes them via
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`; teammates receive the resolved path through the
   `{{plugin_root}}` variable.
 

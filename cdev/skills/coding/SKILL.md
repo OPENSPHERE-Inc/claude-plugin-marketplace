@@ -1,7 +1,7 @@
 ---
 name: coding
 description: Orchestrate a coding task end to end with a standing agent team using paired review cells — a design cell step, a coding cell step, and a QA gate. Reviewers are auto-selected from the destination project agents. Use proactively when the user asks to implement a feature, build a change, or carry out a coding task. Requires a runtime with background subagents (Agent run_in_background) and inter-agent messaging (SendMessage).
-allowed-tools: Agent, SendMessage, TodoWrite, Read, Glob, Grep, Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
+allowed-tools: Agent, SendMessage, TodoWrite, EnterWorktree, ExitWorktree, Read, Glob, Grep, Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # Multi-Agent Coding
@@ -27,6 +27,7 @@ The user supplies a coding task: a feature to implement, a change to make, or a 
 - `--review-rounds N` (default 5, range 1–10) — Max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, range 1–10) — Max QA verify ⇄ fix attempts.
 - `--commit` (default OFF) — After QA passes, commit the implementation in one commit (concise message, no finding IDs).
+- `--worktree[=branch]` (default OFF) — Run the task in a separate git worktree on `branch` (§ Worktree). Without `=branch`, a new branch `cdev-coding-{timestamp}` is created from the current HEAD. Enables `--commit`.
 - `--output {dir}` — Specify the output directory for the design documents (`{design_dir}`).
 
 ### Output destination (`{design_dir}`)
@@ -41,6 +42,22 @@ Design documents and finding descriptions are written in the user's chat languag
 ## Timestamp (`{timestamp}`)
 
 `{timestamp}` is a date-time string (format `YYYYMMDD-HHMMSS`) fixed once at the start of Step 1 and reused in all later steps.
+
+## Worktree (`--worktree`)
+
+Under `--worktree`, the sources are changed and committed only in a separate git worktree, and the main working tree's sources stay untouched. The `.claude/` the run uses — `{tmp_dir}`, the design documents, and the project agents / rules — is the main working tree's.
+
+Setup:
+
+1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
+2. Switch the session into the worktree with `EnterWorktree(path: {worktree_path})`; teammates spawned afterwards work there. If it fails, run teardown step 2 and terminate.
+
+Path base: resolve `{tmp_dir}`, the default `{design_dir}`, and a relative `--output` against `{main_root}`; source paths stay relative to the worktree. Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory.
+
+Teardown — on every exit after setup, once no teammate is running:
+
+1. `ExitWorktree(action: "keep")`.
+2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}`. It keeps a worktree with uncommitted changes and exits non-zero; report that worktree's path then.
 
 ## Team model
 
@@ -70,7 +87,7 @@ Agent type (subagent_type):
 Spawn each teammate once with the prompt below. It fixes the role and the reporting protocol; each later message names the template to Read for that task. For common prohibitions and the cell protocol, see `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md`.
 
 ```
-You are joining the team as {role}. For each task I assign, I name a template under `${CLAUDE_PLUGIN_ROOT}/skills/coding/templates/` and give its variables; Read that template and follow it for that task. Common variables: plugin_root = ${CLAUDE_PLUGIN_ROOT}, doc_lang = {doc_lang}. Report each task result to whoever assigned it — the leader at to: "main", or the requesting teammate's name — counts / paths / one-line summary only; route detailed findings peer-to-peer to the recipient's name via SendMessage (I hand you each recipient's name), as the template directs. Read `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` and observe the common prohibitions and the review-cell protocol.
+You are joining the team as {role}. For each task I assign, I name a template under `${CLAUDE_PLUGIN_ROOT}/skills/coding/templates/` and give its variables; Read that template and follow it for that task. Common variables: plugin_root = ${CLAUDE_PLUGIN_ROOT}, doc_lang = {doc_lang}, main_root = {main_root}. Report each task result to whoever assigned it — the leader at to: "main", or the requesting teammate's name — counts / paths / one-line summary only; route detailed findings peer-to-peer to the recipient's name via SendMessage (I hand you each recipient's name), as the template directs. Read `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` and observe the common prohibitions and the review-cell protocol.
 ```
 
 ## Review cell protocol
@@ -106,12 +123,13 @@ The design documents go to `{design_dir}/design-{slug}.md` (one design section p
 
 ## Step 1 — Form the team and pair
 
-1. This skill operates only on a clean working tree: run `git status --porcelain -uall`, and if the output outside `.claude/tmp/` and outside the `--output` destination is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill. These are excluded because design documents of past runs remain there.
-2. Resolve `{timestamp}`, fix `{tmp_dir}` and `{design_dir}`, and create them (`mkdir -p`). Then record the pre-coding baseline: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`.
-3. Console: `## Step 1 — Team formation`.
-4. Spawn `dev-helper` (type `cdev:dev-helper`, name `dev-helper`). To it, `SendMessage` naming `templates/team-analysis.md` with `task = {task specification}`, `output_path = {tmp_dir}/team.jsonl`. On its completion report, Read `{tmp_dir}/team.jsonl`: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).
-5. Spawn each roster member, naming it `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` and using the `name` team-analysis returns as the type (architects and coders use `general-purpose`). Hold the pairings and `{task_summary}`. A producer's paired reviewer is addressed as `reviewer-{the producer's reviewer slug}`.
-6. Console: the roster with each producer's paired reviewer and one-line reasons.
+1. Under `--worktree`, run the setup in § Worktree.
+2. This skill operates only on a clean working tree: run `git status --porcelain -uall`, and if the output outside `.claude/tmp/` and outside the `--output` destination is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill. These are excluded because design documents of past runs remain there.
+3. Fix `{tmp_dir}` and `{design_dir}`, and create them (`mkdir -p`). Then record the pre-coding baseline: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`.
+4. Console: `## Step 1 — Team formation`.
+5. Spawn `dev-helper` (type `cdev:dev-helper`, name `dev-helper`). To it, `SendMessage` naming `templates/team-analysis.md` with `task = {task specification}`, `output_path = {tmp_dir}/team.jsonl`. On its completion report, Read `{tmp_dir}/team.jsonl`: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).
+6. Spawn each roster member, naming it `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` and using the `name` team-analysis returns as the type (architects and coders use `general-purpose`). Hold the pairings and `{task_summary}`. A producer's paired reviewer is addressed as `reviewer-{the producer's reviewer slug}`.
+7. Console: the roster with each producer's paired reviewer and one-line reasons.
 
 ## Step 2 — Design cells (設計)
 
@@ -148,4 +166,5 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 1. If `--commit` is on and QA passed, commit the implementation: stage only the changed source files (not `.claude/tmp` or `{design_dir}`), and commit once with a concise message (no finding IDs).
 2. Shut down the teammates: to each teammate's name, `SendMessage` `{type: "shutdown_request"}` and wait for shutdown.
 3. Remove the working directory: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
-4. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the QA result (`summary_line`, plus `workflow_warning` if any), and any unfixed QA failure.
+4. Under `--worktree`, run the teardown in § Worktree.
+5. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the QA result (`summary_line`, plus `workflow_warning` if any), and any unfixed QA failure. Under `--worktree`, add the branch and any worktree the teardown kept.

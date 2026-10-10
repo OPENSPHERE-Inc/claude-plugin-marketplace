@@ -6,7 +6,7 @@ Common procedure by which a cdev teammate resolves a single specialist agent for
 
 Enumerate agent `**/*.md` from the following scopes in priority order and Read each file's frontmatter `name` / `description`. When the same `name` exists in multiple scopes, adopt the higher-priority scope's entry; skip any scope that does not exist. `{{plugin_root}}` is the launch variable from the prompt that had you Read this rule (same value the calling template uses).
 
-1. Project scope: `.claude/agents/**/*.md` (relative to the working directory)
+1. Project scope: `.claude/agents/**/*.md` (relative to `main_root` when your launch prompt gives one other than `(none)`, otherwise to the working directory)
 2. User scope: `~/.claude/agents/**/*.md`
 3. Plugin-bundled: `{{plugin_root}}/agents/**/*.md`
 

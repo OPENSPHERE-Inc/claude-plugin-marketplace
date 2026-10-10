@@ -10,7 +10,7 @@ template_id: b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85
 
 レビュアープール: 以下の優先順位で `*.md` を列挙し、各ファイルの frontmatter の `name` / `description` を Read して専門性を把握する。`name` 値は別の Agent 呼び出しの `subagent_type` に渡す値である。同一 `name` が複数箇所に存在する場合は上位のものを採用する。存在しない箇所はスキップする。
 
-1. プロジェクト: `.claude/agents/**/*.md`（作業ディレクトリ基準）
+1. プロジェクト: `.claude/agents/**/*.md`（起動プロンプトが `(該当なし)` 以外の `main_root` を渡した場合はそれを基準、それ以外は作業ディレクトリ基準）
 2. ユーザー: `~/.claude/agents/**/*.md`
 3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`
 

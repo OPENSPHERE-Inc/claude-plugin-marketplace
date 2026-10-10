@@ -57,13 +57,14 @@ claude-plugin-marketplace/
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
 │   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md
 │   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md
-│   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, lib/scratch-guard.py
+│   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
 │
 ├── cprompt/                      # Plugin: prompt authoring (active, English)
 │   ├── .claude-plugin/plugin.json
 │   ├── README.md / README_ja.md
 │   ├── skills/edit/              # /cprompt:edit (from prompt-editor) + templates/
-│   └── rules/                    # prompt.md, document.md
+│   ├── rules/                    # prompt.md, document.md
+│   └── scripts/                  # worktree.sh
 │
 ├── cdev/                         # Plugin: multi-agent coding workflow (active, English)
 │   ├── .claude-plugin/plugin.json
@@ -71,7 +72,7 @@ claude-plugin-marketplace/
 │   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, design, design-review, code, code-review, comment-review, qa)
 │   ├── agents/                   # comment-sensei.md, dev-helper.md
 │   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, divergence.md
-│   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, lib/scratch-guard.py
+│   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
 │
 ├── src/                          # Japanese master, mirrors each plugin's tree 1:1 (minus .claude-plugin/README)
 │   ├── creview/...               # src/creview/<same tree as creview/>
@@ -156,8 +157,8 @@ for p in creview cprompt cdev; do
     && echo "$p parity ok"
 done
 
-# Scratch-guard self-test: containment behavior + byte-parity of the shared
-# lib/del-tmp copies across creview/cdev and their src/ mirrors
+# Scratch-guard self-test: containment behavior, worktree.sh, and byte-parity of the
+# shared script copies across creview/cdev/cprompt and their src/ mirrors
 bash tests/scratch-guard-test.sh
 ```
 
@@ -365,7 +366,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 - **`scripts/lib/scratch-guard.py`, `scripts/del-tmp.sh` and `scripts/check-jsonl.py` are
   byte-identical across all four copies** (`creview/`, `cdev/`, and their `src/` mirrors); each plugin ships its own copy
   because plugins install independently. Edit one copy and replicate to the other three;
-  `tests/scratch-guard-test.sh` fails on any drift.
+  `tests/scratch-guard-test.sh` fails on any drift. `scripts/worktree.sh` is likewise
+  byte-identical across all six copies (`creview/`, `cdev/`, `cprompt/`, and their `src/`
+  mirrors).
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
   `SUMMARY`, `FINDINGS`, or `ANALYSIS`** (case-insensitive, basename only). Claude Code's
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output

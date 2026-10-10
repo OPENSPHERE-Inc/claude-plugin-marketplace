@@ -1,7 +1,7 @@
 ---
 name: edit
 description: Create and edit AI-facing prompts (agent / skill / rule / command, etc.) and self-check / fix them against prompt.md rules. Use proactively whenever a task involves writing or modifying an agent definition, SKILL.md, rule, slash command, or sub-agent prompt, even if the user does not name this skill.
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(ls:*), Bash(mkdir:*), Bash(find:*)
+allowed-tools: Agent, EnterWorktree, ExitWorktree, Read, Write, Edit, Glob, Grep, Bash(ls:*), Bash(mkdir:*), Bash(find:*), Bash(git status:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # Prompt Editor
@@ -24,6 +24,27 @@ If the argument is `$ARGUMENTS`, interpret it as the above. If the kind is not e
 - `.claude/rules/{name}.md` → rule
 - `.claude/commands/{name}.md` → command
 - Anything else (e.g. a sub-agent prompt body extracted from a skill) → prompt
+
+## Options
+
+- `--commit` (default OFF) — After Step 4, commit the files this run created or edited in one commit (concise message).
+- `--worktree[=branch]` (default OFF) — Work in a separate git worktree on `branch` (§ Worktree). Without `=branch`, a new branch `cprompt-edit-{YYYYMMDD-HHMMSS}` (the start time) is created from the current HEAD. Enables `--commit`.
+
+## Worktree (`--worktree`)
+
+Under `--worktree`, the files are created, edited, and committed only in a separate git worktree, and the main working tree stays untouched.
+
+Setup — before Step 1:
+
+1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
+2. Switch the session into the worktree with `EnterWorktree(path: {worktree_path})`. If it fails, run teardown step 2 and terminate.
+
+Resolve the target path in the worktree: a relative path as given, an absolute path under `{main_root}` re-rooted under `{worktree_path}`.
+
+Teardown — on every exit after setup:
+
+1. `ExitWorktree(action: "keep")`.
+2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}`. It keeps a worktree with uncommitted changes and exits non-zero; report that worktree's path then.
 
 ## Output rules
 
@@ -92,9 +113,11 @@ Checklist:
 Return value: {pass, unclear_items: [{item, reason}]} (pass: true if unclear_items is an empty array)
 ```
 
-3. If the return value is `pass: true`, finish.
+3. If the return value is `pass: true`, proceed to Step 5.
 4. If `unclear_items` are present, fix the places they name with Edit and rerun this step. Repeat up to 3 times. If unclear items remain after the third pass, present the remaining list to the user and ask for judgment.
 
-## Step 5 — Report
+## Step 5 — Commit and report
 
-Report the target path, the number of violations detected/fixed, whether compression occurred, and the test result (pass or remaining unclear items).
+1. With `--commit`, stage only the files this run created or edited and commit them in one commit.
+2. Under `--worktree`, run the teardown in § Worktree.
+3. Report the target path, the number of violations detected/fixed, whether compression occurred, and the test result (pass or remaining unclear items). Under `--worktree`, add the branch and any worktree the teardown kept.

@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: レビュー・トリアージ・対応・検証を複数ラウンド自動で繰り返し、対応すべき指摘がなくなるまで反復する
-allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
+allowed-tools: Agent, EnterWorktree, ExitWorktree, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # レビューラウンド自動実行
@@ -22,6 +22,23 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 - `--max-rounds N`（デフォルト 10、範囲 1〜20）— 外側ループの最大ラウンド数を変更する。
 - `--base {branch}`（デフォルト `main` または `master`）— ベースブランチを指定する（review フェーズに渡される）。`--incremental` は Round 2 以降これを上書きする。
 - `--adversarial`（デフォルト OFF）— review フェーズを敵対的モードで実行する（review フェーズにそのまま渡す）。
+- `--worktree[=branch]`（デフォルト OFF）— 全ラウンドを `branch` 上の別の git ワークツリーで実行する（§ ワークツリー）。`=branch` を省略すると、現在の HEAD から新しいブランチ `creview-rounds-{YYYYMMDD-HHMMSS}`（開始時刻）を作成する。`--commit` を有効にする。
+
+## ワークツリー（`--worktree`）
+
+`--worktree` 指定時、修正とコミットは別の git ワークツリー内でのみ行い、メイン作業ツリーのソースには触れない。実行が使う `.claude/`（レビュードキュメント、各フェーズの作業用ディレクトリ、プロジェクトの agents / rules）はメイン作業ツリーのものとする。
+
+セットアップ:
+
+1. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
+2. `EnterWorktree(path: {worktree_path})` でセッションをワークツリーへ切り替える。以降に起動するサブエージェントはそこで作業する。失敗した場合はティアダウンの手順 2 を実行して終了する。
+
+パスの基点: 出力ベースパス（デフォルトの `.claude/tmp/`、またはユーザーが指定した相対パス）は `{main_root}` を基点に解決する。`--worktree` を指定しない場合、`{main_root}` は `(該当なし)` で、すべてのパスは作業ディレクトリ基準とする。
+
+ティアダウン — セットアップ後のあらゆる終了経路で、稼働中のサブエージェントがなくなってから実行する:
+
+1. `ExitWorktree(action: "keep")`。
+2. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}` を実行する。未コミットの変更があるワークツリーは残して非ゼロ終了するので、その場合はそのワークツリーのパスを報告する。
 
 ## レビュードキュメントのファイル命名
 
@@ -52,6 +69,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
   - フェーズサブエージェントの起動と戻り値（カウンタ・パス・1 行サマリ）の集約。
   - `--confirm` / `--confirm-round` / 発散パターン検出ゲートのユーザー対話。フェーズ Sub はユーザーに到達できないため、続行の指示待ちはすべてフェーズ間のここで行う。
   - triage フェーズの作業用ディレクトリの削除（ステップ 2.2）。このディレクトリはフェーズ Sub より長く生存する。
+  - ワークツリーのセットアップとティアダウン（§ ワークツリー）。
   - ユーザーへの最終的なサマリ提示。
 - **オーケストレーターはレビュー指摘や判定の本文を context に載せない**。ファイルパス・カウンタ・リビジョンハッシュのみを保持し、詳細は各フェーズ内に留める。
 - 各ラウンドの指摘と判定は**レビュードキュメントのみ**を通じて次ステップ／次ラウンドに引き継ぐ。ラウンドループ自身が持ち越す値は `{prev_round_rev}` だけ。
@@ -66,6 +84,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 
 変数（テンプレート中の {{...}} placeholder を置換）:
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
+- main_root: {main_root}
 - {各ステップが挙げる変数}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
@@ -74,7 +93,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), 
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-戻り値の `template_id` が各ステップの指定 UUID と一致することを確認し、不一致の場合はフェーズ Sub を再起動する。ステップ 2.2 の発散パターン検出サブエージェント・発散調査サブエージェントとステップ 3 のサブエージェントも同じ規約に従う。`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動プロンプトの完全性を参照。
+戻り値の `template_id` が各ステップの指定 UUID と一致することを確認し、不一致の場合はフェーズ Sub を再起動する。ステップ 2.2 の発散パターン検出サブエージェント・発散調査サブエージェントとステップ 3 のサブエージェントも、同じ起動プロンプトと同じ確認に従う。`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動プロンプトの完全性を参照。
 
 ## フロー概要
 
@@ -98,10 +117,11 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 ## ステップ 1 — 初期化
 
-1. 出力ディレクトリの存在を確認し、なければ作成する。
-2. 現在のブランチ名を取得する。
-3. オプションを解析する。
-4. ラウンドカウンターを 1、`{prev_round_rev}` を `(該当なし)` に設定する。
+1. オプションを解析する。
+2. `--worktree` 指定時は § ワークツリー のセットアップを実行する。
+3. 現在のブランチ名を取得する。
+4. 出力ディレクトリの存在を確認し、なければ作成する。
+5. ラウンドカウンターを 1、`{prev_round_rev}` を `(該当なし)` に設定する。
 
 ## ステップ 2 — ラウンドループ
 
@@ -220,4 +240,5 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 ## ステップ 4 — 完了報告
 
-最終レポートのパスをユーザーに報告し、主要な統計（総指摘数、解決数、未解決数）を簡潔に伝える。
+1. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
+2. 最終レポートのパスをユーザーに報告し、主要な統計（総指摘数、解決数、未解決数）を簡潔に伝える。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。

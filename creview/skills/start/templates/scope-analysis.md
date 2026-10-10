@@ -10,7 +10,7 @@ User-explicitly-requested reviewers: `{{user_requested}}` (may be an empty array
 
 Reviewer pool: enumerate `*.md` from the following locations in priority order, and Read each file's frontmatter `name` / `description` to learn each agent's specialty. The `name` value is what another Agent call passes to `subagent_type`. When the same `name` exists in more than one location, adopt the higher-priority one. Skip any location that does not exist.
 
-1. Project: `.claude/agents/**/*.md` (relative to the working directory)
+1. Project: `.claude/agents/**/*.md` (relative to `main_root` when your launch prompt gives one other than `(none)`, otherwise to the working directory)
 2. User: `~/.claude/agents/**/*.md`
 3. Plugin-bundled: `{{plugin_root}}/agents/**/*.md`
 

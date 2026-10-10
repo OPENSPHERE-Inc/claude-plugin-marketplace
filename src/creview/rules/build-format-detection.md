@@ -7,7 +7,7 @@
 次の優先順で解決し、最初に確定できた段で打ち切る。
 
 1. 構造化記述子 `build-format.md`（後述「記述子形式」）。以下のスコープを優先順に、各スコープ内は `**/build-format.md` で再帰探索する（`.claude/rules/local/build-format.md` 等のサブディレクトリも対象）。最初に記述子が見つかったスコープのものを採用し、記載のフォーマット／ビルド（`## Test` があればテストも）コマンドをそのまま使う。`workflow_source = "build-format.md"`。`{{plugin_root}}` は本ルールを Read させた起動プロンプトの起動変数値（呼び出しテンプレートと同一）。
-   1. プロジェクトスコープ（最優先）: `.claude/rules/**/build-format.md`（作業ディレクトリ基準）
+   1. プロジェクトスコープ（最優先）: `.claude/rules/**/build-format.md`（起動プロンプトが `(該当なし)` 以外の `main_root` を渡した場合はそれを基準、それ以外は作業ディレクトリ基準）
    2. ユーザースコープ: `~/.claude/rules/**/build-format.md`
    3. プラグイン同梱: `{{plugin_root}}/rules/**/build-format.md`
    同一スコープ内に複数該当する場合は、スコープ直下（例: `.claude/rules/build-format.md`）を最優先、無ければパスが最も浅いもの、同深さならパス文字列の昇順で先頭を採る。
