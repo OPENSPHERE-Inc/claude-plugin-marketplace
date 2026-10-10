@@ -142,7 +142,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 1. ステップ 1 の `by_assignee` 単位が所有するファイルは、`{tmp_dir}/statuses/*.jsonl` のうちその単位の id が持つ `files` の和集合（`files` 配列のみを読む。判定本文ではなく運用データである）。各単位について、他の単位が所有していないファイルのみをステージングしてコミットする。
 2. 作業ツリーに残った変更をまとめて最後の 1 コミットにする — 複数の単位が共有するファイルと、どの単位も所有しないファイルへの comment-sensei / ビルド修正の変更。残りが無ければこのコミットは作らない。
-3. `git add -A` は使用しない。`{document_path}` および `{tmp_dir}` 配下はステージングしない。
+3. `git add -A` は使用しない。`{document_path}` および `{tmp_dir}`・`.claude/tmp/`・`.claude/worktrees/` 配下はステージングしない。
 4. コミットメッセージ: 1〜3 行で、コードが現在何をするかを記述する。指摘 ID（`C-1`、`M-1` 等）は含めない。例: `fix: Add null check before accessing output pointer`
 5. ステップ 4 がビルド／テスト失敗で抜けた場合もコミットする。`error_summary` は既にユーザーに提示されており、コミットされない変更は以降のどのラウンドのコミット範囲にも入らない。
 

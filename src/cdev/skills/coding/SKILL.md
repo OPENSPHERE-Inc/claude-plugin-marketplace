@@ -1,7 +1,7 @@
 ---
 name: coding
 description: ペアレビューセルを用いて、設計セルステップ・コーディングセルステップ・QA ゲートでコーディングタスクをエンドツーエンドに統括する、常駐エージェントチーム方式のワークフロー。reviewer は対象プロジェクトのエージェントから自動選定する。ユーザーが機能の実装・変更の構築・コーディングタスクの遂行を求めたとき能動的に使用する。バックグラウンドのサブエージェント（Agent の run_in_background）とエージェント間メッセージング（SendMessage）が利用可能なランタイムを要する。
-allowed-tools: Agent, SendMessage, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, SendMessage, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(realpath:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # マルチエージェントコーディング
@@ -52,7 +52,7 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 1. `git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、`--worktree` にはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。空なら `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
 2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に spawn する teammate はそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外（メイン作業ツリーの `.claude/tmp/` を含む）への Write / Edit を拒否する。
 
-パスの基点: `{tmp_dir}`、デフォルトの `{design_dir}`、相対パスの `--output` は `{main_root}` を基点に解決する。ソースのパスはワークツリー基準のままとする。ステップ 1.5 で team-analysis へ渡す前に、タスク指定中の各パス（`{main_root}` 配下の絶対パス、または `{main_root}` 基準で解釈した相対パス）を存在で振り分ける: メイン作業ツリーには存在するが `{worktree_path}` の同じ相対位置には存在しないもの（例: `.claude/tmp/` 配下のレビュー文書や設計ドキュメント、未追跡のメモ）は `{main_root}` 配下の絶対パスにし、読み取り専用の参照資料であることをタスク指定に明記する。それ以外の `{main_root}` 配下の絶対パスは `{worktree_path}` 配下の同じ相対位置へ付け替え、それ以外の相対パスはそのまま（ワークツリー基準）とする。`--worktree` を指定しない場合、`{main_root}` は `(none)` で、すべてのパスは作業ディレクトリ基準とする。
+パスの基点: `{tmp_dir}`、デフォルトの `{design_dir}`、相対パスの `--output` は `{main_root}` を基点に解決する。ソースのパスはワークツリー基準のままとする。ステップ 1.5 で team-analysis へ渡す前に、タスク指定中の各パスを絶対化し（相対パスは `{main_root}` 基準）、シンボリックリンクを解決した物理パス（`git rev-parse --show-toplevel` が出力する形）にする。そのうえで物理パスで振り分ける: `{main_root}` 配下で、メイン作業ツリーには存在するが `{worktree_path}` の同じ相対位置には存在しないもの（例: `.claude/tmp/` 配下のレビュー文書や設計ドキュメント、未追跡のメモ）は `{main_root}` 配下の絶対パスのままとし、読み取り専用の参照資料であることをタスク指定に明記する。それ以外の `{main_root}` 配下のものは `{worktree_path}` 配下の同じ相対位置へ付け替え、`{main_root}` の外を指すもの（`../` で外へ出る相対パスを含む）はその物理パスの絶対パスのまま渡す。`--worktree` を指定しない場合、`{main_root}` は `(none)` で、すべてのパスは作業ディレクトリ基準とする。
 
 ティアダウン — セットアップ後のあらゆる終了経路で、稼働中の teammate がなくなってから実行する:
 

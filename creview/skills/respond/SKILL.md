@@ -142,7 +142,7 @@ Skip this step when `--commit` is off. The source code is final here: the fixes,
 
 1. A Step 1 `by_assignee` group owns the union of `files` across its ids in `{tmp_dir}/statuses/*.jsonl` (read only the `files` arrays — operational data, not decision body). For each group, stage and commit the files it owns that no other group also owns.
 2. Commit whatever remains changed in the working tree as one final commit — the files two groups share, and the comment-sensei and build-fix edits to files no group owns. Skip it when nothing remains.
-3. Never `git add -A`, and never stage `{document_path}` or anything under `{tmp_dir}`.
+3. Never `git add -A`, and never stage `{document_path}` or anything under `{tmp_dir}`, `.claude/tmp/`, or `.claude/worktrees/`.
 4. Commit message: 1–3 lines describing what the code now does. Do not include finding ids (`C-1`, `M-1`, etc.). Example: `fix: Add null check before accessing output pointer`
 5. Commit even when Step 4 exited on a build or test failure. The user has already been shown `error_summary`, and work left uncommitted falls outside every later round's commit range.
 

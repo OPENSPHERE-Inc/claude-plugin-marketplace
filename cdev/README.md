@@ -105,7 +105,11 @@ default design-document destination are in the main working tree's `.claude/tmp/
 `--output` resolves against the main working tree's root, and the destination project's
 `.claude/agents/` and `.claude/rules/` are read from the main working tree. At the end the
 worktree is removed and the branch is kept; a worktree left with uncommitted changes — for
-example after an unfixed QA failure — is kept and its path is reported.
+example after an unfixed QA failure — is kept and its path is reported. Git also refuses to
+remove a worktree in which submodules were initialized (for example by the configure command),
+so such a worktree is kept and reported as well; check its contents and remove it with
+`git worktree remove --force <path>`, since a rerun on the same `--worktree=branch` fails while
+it remains.
 
 ## Architect / coder / reviewer agents
 

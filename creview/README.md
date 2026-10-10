@@ -99,7 +99,11 @@ configure runs only at the start of the build stage — after the format
 command, and not at all when the build is skipped or none is declared — so the
 format command and tests that run without a build cannot rely on it. At the
 end the worktree is removed and the branch is kept; a worktree that still has
-uncommitted changes is kept and its path is reported.
+uncommitted changes is kept and its path is reported. Git also refuses to
+remove a worktree in which submodules were initialized (for example by the
+configure command), so such a worktree is kept and reported as well; check its
+contents and remove it with `git worktree remove --force <path>`, since a rerun
+on the same `--worktree=branch` fails while it remains.
 
 Nested sub-agent spawning is required
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; the default is 3):
