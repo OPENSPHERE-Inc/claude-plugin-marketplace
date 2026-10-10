@@ -1,7 +1,7 @@
 ---
 name: edit
 description: Create and edit AI-facing prompts (agent / skill / rule / command, etc.) and self-check / fix them against prompt.md rules. Use proactively whenever a task involves writing or modifying an agent definition, SKILL.md, rule, slash command, or sub-agent prompt, even if the user does not name this skill.
-allowed-tools: Agent, EnterWorktree, ExitWorktree, Read, Write, Edit, Glob, Grep, Bash(ls:*), Bash(mkdir:*), Bash(find:*), Bash(git status:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(ls:*), Bash(mkdir:*), Bash(find:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # Prompt Editor
@@ -32,18 +32,18 @@ If the argument is `$ARGUMENTS`, interpret it as the above. If the kind is not e
 
 ## Worktree (`--worktree`)
 
-Under `--worktree`, the files are created, edited, and committed only in a separate git worktree, and the main working tree stays untouched.
+Under `--worktree`, the repository's files are created, edited, and committed only in a separate git worktree, and the main working tree stays untouched.
 
 Setup — before Step 1:
 
 1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
-2. Switch the session into the worktree with `EnterWorktree(path: {worktree_path})`. If it fails, run teardown step 2 and terminate.
+2. Move the session into the worktree with a Bash `cd {worktree_path}`; sub-agents launched afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree.
 
-Resolve the target path in the worktree: a relative path as given, an absolute path under `{main_root}` re-rooted under `{worktree_path}`.
+Resolve the target path in the worktree: a relative path as given, an absolute path under `{main_root}` re-rooted under `{worktree_path}`. A path outside `{main_root}` stays as given and is left out of the commit.
 
 Teardown — on every exit after setup:
 
-1. `ExitWorktree(action: "keep")`.
+1. Return the session with a Bash `cd {main_root}`.
 2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}`. It keeps a worktree with uncommitted changes and exits non-zero; report that worktree's path then.
 
 ## Output rules

@@ -1,7 +1,7 @@
 ---
 name: edit
 description: AI 向けプロンプト（agent / skill / rule / command 等）の新規作成と編集を行い、prompt.md ルールに照らしてセルフチェック・修正する。タスクがエージェント定義・SKILL.md・ルール・スラッシュコマンド・サブエージェントプロンプトの作成や修正を含むときは、ユーザーがこのスキルを名指ししていなくても能動的に使用する。
-allowed-tools: Agent, EnterWorktree, ExitWorktree, Read, Write, Edit, Glob, Grep, Bash(ls:*), Bash(mkdir:*), Bash(find:*), Bash(git status:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(ls:*), Bash(mkdir:*), Bash(find:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # プロンプトエディタ
@@ -32,18 +32,18 @@ AI 向けプロンプト markdown を作成または編集する。完成した�
 
 ## ワークツリー（`--worktree`）
 
-`--worktree` 指定時、ファイルの作成・編集・コミットは別の git ワークツリー内でのみ行い、メイン作業ツリーには触れない。
+`--worktree` 指定時、リポジトリ内のファイルの作成・編集・コミットは別の git ワークツリー内でのみ行い、メイン作業ツリーには触れない。
 
 セットアップ — ステップ 1 の前に実行する:
 
 1. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
-2. `EnterWorktree(path: {worktree_path})` でセッションをワークツリーへ切り替える。失敗した場合はティアダウンの手順 2 を実行して終了する。
+2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に起動するサブエージェントはそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外への Write / Edit を拒否する。
 
-対象パスはワークツリー内で解決する: 相対パスはそのまま、`{main_root}` 配下の絶対パスは `{worktree_path}` 配下に付け替える。
+対象パスはワークツリー内で解決する: 相対パスはそのまま、`{main_root}` 配下の絶対パスは `{worktree_path}` 配下に付け替える。`{main_root}` 外のパスはそのまま扱い、コミットの対象外とする。
 
 ティアダウン — セットアップ後のあらゆる終了経路で実行する:
 
-1. `ExitWorktree(action: "keep")`。
+1. Bash の `cd {main_root}` でセッションを戻す。
 2. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}` を実行する。未コミットの変更があるワークツリーは残して非ゼロ終了するので、その場合はそのワークツリーのパスを報告する。
 
 ## 出力規則

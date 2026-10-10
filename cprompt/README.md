@@ -26,7 +26,8 @@ Options:
   is, or a new one created from the current HEAD; without `=branch`, a new
   branch `cprompt-edit-{timestamp}` is created. The branch checked out in the
   main working tree cannot be used. A relative target path resolves inside the
-  worktree. At the end the worktree is removed and the branch is kept; a
+  worktree; a target outside the repository is edited in place and not
+  committed. At the end the worktree is removed and the branch is kept; a
   worktree left with uncommitted changes is kept and its path is reported.
 
 ## Bundled support files

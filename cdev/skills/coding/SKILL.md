@@ -1,7 +1,7 @@
 ---
 name: coding
 description: Orchestrate a coding task end to end with a standing agent team using paired review cells — a design cell step, a coding cell step, and a QA gate. Reviewers are auto-selected from the destination project agents. Use proactively when the user asks to implement a feature, build a change, or carry out a coding task. Requires a runtime with background subagents (Agent run_in_background) and inter-agent messaging (SendMessage).
-allowed-tools: Agent, SendMessage, TodoWrite, EnterWorktree, ExitWorktree, Read, Glob, Grep, Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, SendMessage, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # Multi-Agent Coding
@@ -50,13 +50,13 @@ Under `--worktree`, the sources are changed and committed only in a separate git
 Setup:
 
 1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
-2. Switch the session into the worktree with `EnterWorktree(path: {worktree_path})`; teammates spawned afterwards work there. If it fails, run teardown step 2 and terminate.
+2. Move the session into the worktree with a Bash `cd {worktree_path}`; teammates spawned afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree, including the main working tree's `.claude/tmp/`.
 
 Path base: resolve `{tmp_dir}`, the default `{design_dir}`, and a relative `--output` against `{main_root}`; source paths stay relative to the worktree. Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory.
 
 Teardown — on every exit after setup, once no teammate is running:
 
-1. `ExitWorktree(action: "keep")`.
+1. Return the session with a Bash `cd {main_root}`.
 2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}`. It keeps a worktree with uncommitted changes and exits non-zero; report that worktree's path then.
 
 ## Team model

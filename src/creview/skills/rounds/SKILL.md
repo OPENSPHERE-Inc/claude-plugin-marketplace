@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: レビュー・トリアージ・対応・検証を複数ラウンド自動で繰り返し、対応すべき指摘がなくなるまで反復する
-allowed-tools: Agent, EnterWorktree, ExitWorktree, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # レビューラウンド自動実行
@@ -31,13 +31,13 @@ allowed-tools: Agent, EnterWorktree, ExitWorktree, Read, Glob, Grep, Bash(grep:*
 セットアップ:
 
 1. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
-2. `EnterWorktree(path: {worktree_path})` でセッションをワークツリーへ切り替える。以降に起動するサブエージェントはそこで作業する。失敗した場合はティアダウンの手順 2 を実行して終了する。
+2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に起動するサブエージェントはそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外（メイン作業ツリーの `.claude/tmp/` を含む）への Write / Edit を拒否する。
 
 パスの基点: 出力ベースパス（デフォルトの `.claude/tmp/`、またはユーザーが指定した相対パス）は `{main_root}` を基点に解決する。`--worktree` を指定しない場合、`{main_root}` は `(該当なし)` で、すべてのパスは作業ディレクトリ基準とする。
 
 ティアダウン — セットアップ後のあらゆる終了経路で、稼働中のサブエージェントがなくなってから実行する:
 
-1. `ExitWorktree(action: "keep")`。
+1. Bash の `cd {main_root}` でセッションを戻す。
 2. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}` を実行する。未コミットの変更があるワークツリーは残して非ゼロ終了するので、その場合はそのワークツリーのパスを報告する。
 
 ## レビュードキュメントのファイル命名

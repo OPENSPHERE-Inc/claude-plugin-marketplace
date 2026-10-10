@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: Automatically iterate review, triage, respond, and resolve across multiple rounds until no actionable findings remain
-allowed-tools: Agent, EnterWorktree, ExitWorktree, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # Automatic Review Round Execution
@@ -31,13 +31,13 @@ Under `--worktree`, the fixes are made and committed only in a separate git work
 Setup:
 
 1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
-2. Switch the session into the worktree with `EnterWorktree(path: {worktree_path})`; sub-agents launched afterwards work there. If it fails, run teardown step 2 and terminate.
+2. Move the session into the worktree with a Bash `cd {worktree_path}`; sub-agents launched afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree, including the main working tree's `.claude/tmp/`.
 
 Path base: resolve the output base path (the default `.claude/tmp/` or a relative one the user gave) against `{main_root}`. Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory.
 
 Teardown — on every exit after setup, once no sub-agent is running:
 
-1. `ExitWorktree(action: "keep")`.
+1. Return the session with a Bash `cd {main_root}`.
 2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}`. It keeps a worktree with uncommitted changes and exits non-zero; report that worktree's path then.
 
 ## Review document file naming
