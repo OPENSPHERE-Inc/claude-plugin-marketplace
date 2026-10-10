@@ -72,7 +72,8 @@ def worktree_roots():
 
 def locate(target, raw):
     # Returns (base, rel): rel is the path below base, and base is None when
-    # rel is relative to the CWD. rel is None when no base contains <path>.
+    # rel is relative to the CWD. rel is None when <path> is under neither the
+    # CWD nor .claude/tmp/ of any worktree root.
     if not (target.is_absolute() or raw.startswith(("/", "\\"))):
         return None, target
     for cwd in cwd_candidates():
