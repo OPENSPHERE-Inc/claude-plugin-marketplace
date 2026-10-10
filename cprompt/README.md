@@ -31,7 +31,9 @@ Options:
   main working tree cannot be used. The worktree starts from committed state —
   the current HEAD for a new branch, the tip of an existing one — so it holds
   no uncommitted changes; editing does not start for a target that is missing
-  from the worktree or has uncommitted changes. A relative target path is
+  from the worktree or has uncommitted changes. The option works only in a
+  session started at the repository root; from a subdirectory the skill stops
+  with an error without creating the worktree. A relative target path is
   resolved against the working directory at launch and then re-rooted into
   the worktree; a target outside the repository is edited in place and not
   committed. A target git ignores cannot be handled with `--worktree`: the

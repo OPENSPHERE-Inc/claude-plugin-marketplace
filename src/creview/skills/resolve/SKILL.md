@@ -97,6 +97,8 @@ Unresolved の指摘には `verification` 値を書き込まない。
 {tmp_dir}/resolve-summary.md        ← compile-review.py の出力（検証レポート）
 ```
 
+`{main_root}` は、上位フロー（例: `/creview:rounds`）がこのスキルを実行する場合は起動プロンプトが渡した `main_root`、スキルを直接起動した場合は `(該当なし)` とする。
+
 作成はステップ 1、削除はリーダーがステップ 4 で `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で行う。
 
 ### events.jsonl
@@ -120,13 +122,13 @@ events.jsonl は `compile-review.py` が `verifications/*.jsonl` の `memo_value
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
    ```
-4. 解析サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `analyze.md`、`template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`document_path = {document_path}`、オーバーライド `(該当なし)`。戻り値: `{total, by_assignee, template_id}`。
+4. 解析サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `analyze.md`、`template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`、`document_path = {document_path}`、オーバーライド `(該当なし)`。戻り値: `{total, by_assignee, template_id}`。
 
 ## ステップ 2 — 各指摘の検証（specialist 単位で並列委譲）
 
 ステップ 1 の `by_assignee` をループし、各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で検証サブエージェントを並列起動する（agent 定義の persona と専門観点が自動ロードされる）。
 
-persona は含めない。テンプレート `verify.md`、`template_id` `8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/diff.txt`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, outcome}, ...], template_id}` — **verification 本文は context に載せない**。
+persona は含めない。テンプレート `verify.md`、`template_id` `8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/diff.txt`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, outcome}, ...], template_id}` — **verification 本文は context に載せない**。
 
 ## ステップ 3 — 検証レポートと反映
 

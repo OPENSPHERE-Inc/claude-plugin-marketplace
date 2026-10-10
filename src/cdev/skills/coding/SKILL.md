@@ -52,7 +52,7 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 1. `git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、`--worktree` にはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。空なら `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
 2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に spawn する teammate はそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外（メイン作業ツリーの `.claude/tmp/` を含む）への Write / Edit を拒否する。
 
-パスの基点: `{tmp_dir}`、デフォルトの `{design_dir}`、相対パスの `--output` は `{main_root}` を基点に解決する。ソースのパスはワークツリー基準のままとする。タスク指定中の `{main_root}` 配下の絶対パスは、ステップ 1.5 で team-analysis へ渡す前に `{worktree_path}` 配下の同じ相対位置へ付け替える。`--worktree` を指定しない場合、`{main_root}` は `(none)` で、すべてのパスは作業ディレクトリ基準とする。
+パスの基点: `{tmp_dir}`、デフォルトの `{design_dir}`、相対パスの `--output` は `{main_root}` を基点に解決する。ソースのパスはワークツリー基準のままとする。ステップ 1.5 で team-analysis へ渡す前に、タスク指定中の各パス（`{main_root}` 配下の絶対パス、または `{main_root}` 基準で解釈した相対パス）を存在で振り分ける: メイン作業ツリーには存在するが `{worktree_path}` の同じ相対位置には存在しないもの（例: `.claude/tmp/` 配下のレビュー文書や設計ドキュメント、未追跡のメモ）は `{main_root}` 配下の絶対パスにし、読み取り専用の参照資料であることをタスク指定に明記する。それ以外の `{main_root}` 配下の絶対パスは `{worktree_path}` 配下の同じ相対位置へ付け替え、それ以外の相対パスはそのまま（ワークツリー基準）とする。`--worktree` を指定しない場合、`{main_root}` は `(none)` で、すべてのパスは作業ディレクトリ基準とする。
 
 ティアダウン — セットアップ後のあらゆる終了経路で、稼働中の teammate がなくなってから実行する:
 
@@ -163,7 +163,7 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 
 ## ステップ 5 — クリーンアップと報告
 
-1. `--commit` が ON かつ QA が通過した場合、実装をコミットする: 変更されたソースファイルのみをステージし（`.claude/tmp` と `{design_dir}` は除く）、簡潔なメッセージで 1 回コミットする（finding ID なし）。
+1. `--commit` が ON かつ QA が通過した場合、実装をコミットする: 変更されたソースファイルのみをステージし（`.claude/tmp`、`.claude/worktrees`、`{design_dir}` は除く）、簡潔なメッセージで 1 回コミットする（finding ID なし）。
 2. teammate をシャットダウンする: 各 teammate の name 宛に `SendMessage` で `{type: "shutdown_request"}` を送り、シャットダウンを待つ。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`。
 4. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。

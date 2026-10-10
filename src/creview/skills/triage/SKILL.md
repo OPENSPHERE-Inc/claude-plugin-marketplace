@@ -105,6 +105,8 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 {tmp_dir}/events.jsonl            ← compile-review.py の出力（render-review.py 入力）
 ```
 
+`{main_root}` は、上位フロー（例: `/creview:rounds`）がこのスキルを実行する場合は起動プロンプトが渡した `main_root`、スキルを直接起動した場合は `(該当なし)` とする。
+
 各サブエージェントは description / location / 既存メタデータ等の指摘本体情報を、`id` をキーにレビュードキュメントの METADATA マーカー前後から直接 Read して取得する。
 
 ### events.jsonl
@@ -124,7 +126,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 トリアージは**修正作業を行う専門エージェントとは別個の単一サブエージェント**に委譲する（バイアス分離のため）。トリアージ Sub はレビュードキュメントを直接 Read して指摘抽出とステージ判定を行い、トリアージ判定を提案 → 並列反証 → 多数決を条件とする裁定の三段（敵対的トリアージ）で行う。一次判定は自身で行い、指摘バッチごとに反証 Sub 3 体と、裁定 Sub を自らネスト起動し、最終判定を自ら `triage.jsonl` に反映する。ネスト Sub の `template_id` 照合と不一致時の再起動はトリアージ Sub が担う。判定結果は**ファイルに Write** させ、リーダーの context に判定本体を載せない。
 
-1. `Agent(subagent_type="general-purpose", prompt=...)` でサブエージェントを起動する。モデル指定はしない。テンプレート `triage.md`、`template_id` `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`previous_round_doc_paths = {previous_round_doc_paths}`（標準フローでは "(none)"。/creview:rounds 等の上位フローから過去ラウンドの doc_path 一覧が渡される場合のみ非空）、オーバーライド `(none)`。戻り値: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}` — triage の本文は読み込まない。
+1. `Agent(subagent_type="general-purpose", prompt=...)` でサブエージェントを起動する。モデル指定はしない。テンプレート `triage.md`、`template_id` `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`previous_round_doc_paths = {previous_round_doc_paths}`（標準フローでは "(none)"。/creview:rounds 等の上位フローから過去ラウンドの doc_path 一覧が渡される場合のみ非空）、オーバーライド `(none)`。戻り値: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}` — triage の本文は読み込まない。
 2. 戻り値に `error` が含まれる場合はステップ 2 以降に進まず、`${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で作業ディレクトリを削除し、失敗をユーザーに報告して中断する。
 3. トリアージサマリ（件数。裁定で反転した件数 `flipped_count` を含む）をユーザーに提示する。
 
@@ -134,9 +136,9 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ステップ 1 で受け取った `by_assignee` 配列をループする。各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で専門家サブエージェントを並列起動する。各サブエージェントは担当 ids を一括見積し、id ごとに `{tmp_dir}/estimates/{id}.jsonl` を Write する。
 
-1. 見積エージェントを起動する（persona は含めない）— テンプレート `estimate.md`、`template_id` `8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(none)`。各エージェントの戻り値: `{items: [{id, verdict, adr}, ...], template_id}`（`adr` は ADR ファイル名または null）— estimate の本文は読み込まない。
+1. 見積エージェントを起動する（persona は含めない）— テンプレート `estimate.md`、`template_id` `8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(none)`。各エージェントの戻り値: `{items: [{id, verdict, adr}, ...], template_id}`（`adr` は ADR ファイル名または null）— estimate の本文は読み込まない。
 
-2. 見積結果サマリ（レビュー + トリアージ + 見積を 1 枚に統合したテーブル + レビュードキュメントへのリンク）を生成するため、集約サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `estimate-summary.md`、`template_id` `5c1e9b7a-3d48-4a96-b8e2-7f3c5a1d4b29`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`document_path = {document_path}`、オーバーライド `(none)`。戻り値: `{summary_path, summary_line, maintain_count, downgrade_count, alternative_count, template_id}`。リーダーは `summary_path` と件数だけを context に保持し、テーブル本体は載せない。
+2. 見積結果サマリ（レビュー + トリアージ + 見積を 1 枚に統合したテーブル + レビュードキュメントへのリンク）を生成するため、集約サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `estimate-summary.md`、`template_id` `5c1e9b7a-3d48-4a96-b8e2-7f3c5a1d4b29`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`、`tmp_dir = {tmp_dir}`、`document_path = {document_path}`、オーバーライド `(none)`。戻り値: `{summary_path, summary_line, maintain_count, downgrade_count, alternative_count, template_id}`。リーダーは `summary_path` と件数だけを context に保持し、テーブル本体は載せない。
 
 ## ステップ 3 — レビュードキュメントへの反映
 

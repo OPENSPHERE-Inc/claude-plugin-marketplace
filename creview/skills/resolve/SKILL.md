@@ -97,6 +97,8 @@ The leader (you) does not place the verification body in context.
 {tmp_dir}/resolve-summary.md        ← Output from compile-review.py (verification report)
 ```
 
+`{main_root}` is the `main_root` your launch prompt gives when an upper flow (e.g. `/creview:rounds`) runs this skill, or `(none)` when the skill is invoked directly.
+
 Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 
 ### events.jsonl
@@ -120,13 +122,13 @@ The leader (you) does not Read the diff content. Verification is insufficient wi
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
    ```
-4. Launch the analysis sub-agent via `Agent(subagent_type="review-helper", prompt=...)` — template `analyze.md`, `template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `document_path = {document_path}`, overrides `(none)`. Return value: `{total, by_assignee, template_id}`.
+4. Launch the analysis sub-agent via `Agent(subagent_type="review-helper", prompt=...)` — template `analyze.md`, `template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `document_path = {document_path}`, overrides `(none)`. Return value: `{total, by_assignee, template_id}`.
 
 ## Step 2 — Verify each finding (delegate in parallel per specialist)
 
 Loop over `by_assignee` from Step 1, and for each `{assignee, ids}` launch a verification sub-agent in parallel via `Agent(subagent_type=assignee, prompt=...)` (the agent definition's persona and specialist perspective are auto-loaded).
 
-Do not include the persona. Template `verify.md`, `template_id` `8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `ids = {ids}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/diff.txt`, overrides `(none)`. Return value per agent: `{items: [{id, outcome}, ...], template_id}` — **do not place the verification body in context**.
+Do not include the persona. Template `verify.md`, `template_id` `8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `ids = {ids}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/diff.txt`, overrides `(none)`. Return value per agent: `{items: [{id, outcome}, ...], template_id}` — **do not place the verification body in context**.
 
 ## Step 3 — Verification report and reflection
 

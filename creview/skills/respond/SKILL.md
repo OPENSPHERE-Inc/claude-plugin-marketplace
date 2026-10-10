@@ -91,6 +91,8 @@ Each decision is written to an intermediate file, and `compile-review.py` compil
 {tmp_dir}/events.jsonl         ← output of compile-review.py (input to render-review.py)
 ```
 
+`{main_root}` is the `main_root` your launch prompt gives when an upper flow (e.g. `/creview:rounds`) runs this skill, or `(none)` when the skill is invoked directly.
+
 Use the **Write tool** for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g. `Won't`) break the outer quoting.
 
 At the start of Step 1, the leader (you) creates `{tmp_dir}` with `mkdir -p {tmp_dir}/statuses` and passes `{tmp_dir}` to each sub-agent.
@@ -99,7 +101,7 @@ At the start of Step 1, the leader (you) creates `{tmp_dir}` with `mkdir -p {tmp
 
 Launch via `Agent(subagent_type="general-purpose", prompt=...)`. The Sub Reads the review document, applies the fix-target selection rule, and Writes `{tmp_dir}/targets.jsonl`.
 
-Template `select-fix-targets.md`, `template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — do not load the body.
+Template `select-fix-targets.md`, `template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — do not load the body.
 
 When `fix_count == 0`, skip Steps 2–5 and proceed to Step 6 (compile; nothing to reflect → report "no fix targets").
 
@@ -107,7 +109,7 @@ When `fix_count == 0`, skip Steps 2–5 and proceed to Step 6 (compile; nothing 
 
 For each `{assignee, ids}` in `by_assignee`, launch a fix sub-agent via `Agent(subagent_type=assignee, prompt=...)`. Different assignees launch in parallel; ids within the same assignee follow the parallelization constraint in the template.
 
-Template `fix.md`, `template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `ids = {ids}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, `adr_flag = {on|off, per --adr}`, `timestamp = {timestamp}`, overrides `(none)`. Return value per agent: `{items: [{id, path}, ...], template_id}` — collect only `items`; do not load the status body.
+Template `fix.md`, `template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `ids = {ids}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, `adr_flag = {on|off, per --adr}`, `timestamp = {timestamp}`, overrides `(none)`. Return value per agent: `{items: [{id, path}, ...], template_id}` — collect only `items`; do not load the status body.
 
 ## Step 3 — Comment review (delegate to the comment-sensei sub-agent)
 
@@ -115,7 +117,7 @@ Have comment-sensei review whether comments added or modified by the fix sub-age
 
 Before launching, the leader runs `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the fix diff. Launch via `Agent(subagent_type="comment-sensei", prompt=...)`.
 
-Template `comment-review.md`, `template_id` `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `document_path = {document_path}`, overrides `(none)`. Return value: `{reviewed_paths, fix_count, template_id}`.
+Template `comment-review.md`, `template_id` `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `document_path = {document_path}`, overrides `(none)`. Return value: `{reviewed_paths, fix_count, template_id}`.
 
 ## Step 4 — Format / build / test verification
 
@@ -125,12 +127,12 @@ The leader (you) does not run the formatter or build commands directly and does 
 
 Maximum attempts: 5. Repeat the following up to the maximum:
 
-1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the current fix diff (working tree), then launch the format / build / test verification Sub via `Agent(subagent_type="review-helper", prompt=...)` — template `format-build-verify.md`, `template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {attempt_num}`, overrides `(none)`.
+1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the current fix diff (working tree), then launch the format / build / test verification Sub via `Agent(subagent_type="review-helper", prompt=...)` — template `format-build-verify.md`, `template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {attempt_num}`, overrides `(none)`.
 2. Receive the return value (`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`). If `workflow_warning` is non-null, retain it for presentation in Step 7.
 3. If `success == true`, exit the loop.
 4. If `success == false`:
    a. Read `{tmp_dir}/format-build-result.jsonl` and obtain `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` from its `failure` section (operational data, not decision body; do not Read source code itself).
-   b. Launch the build/test-fix specialist Sub via `Agent(subagent_type=suggested_specialist, prompt=...)` — template `build-fix.md`, `template_id` `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{description, template_id}`.
+   b. Launch the build/test-fix specialist Sub via `Agent(subagent_type=suggested_specialist, prompt=...)` — template `build-fix.md`, `template_id` `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{description, template_id}`.
    c. Return to the top of the loop (format must be rechecked because code changed).
 5. If the build or test still fails after the maximum attempts, present `error_summary` to the user, exit the loop, and proceed to Step 5.
 

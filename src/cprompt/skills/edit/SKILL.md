@@ -36,7 +36,7 @@ AI 向けプロンプト markdown を作成または編集する。完成した�
 
 セットアップ — ステップ 1 の前に実行する:
 
-1. 対象パスをセッションの作業ディレクトリ基準で絶対化し、シンボリックリンクを解決した物理パス（`git rev-parse --show-toplevel` が出力する形）にする。そのパスがメイン作業ツリーのルート（`git rev-parse --show-toplevel`）配下にあり、メイン作業ツリーで実行した `git check-ignore -q -- {対象}` が ignore 対象と判定した場合は、git が ignore する対象は `--worktree` では扱えない（`--worktree` なしで実行する）旨のエラーを表示し、ワークツリーを作らずにスキルを終了する。
+1. `git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、`--worktree` にはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。空なら対象パスをセッションの作業ディレクトリ基準で絶対化し、シンボリックリンクを解決した物理パス（`git rev-parse --show-toplevel` が出力する形）にする。そのパスがメイン作業ツリーのルート（`git rev-parse --show-toplevel`）配下にあり、メイン作業ツリーで実行した `git check-ignore -q -- {対象}` が ignore 対象と判定した場合は、git が ignore する対象は `--worktree` では扱えない（`--worktree` なしで実行する）旨のエラーを表示し、ワークツリーを作らずにスキルを終了する。
 2. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
 3. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に起動するサブエージェントはそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外への Write / Edit を拒否する。
 

@@ -91,15 +91,21 @@ out in the main working tree cannot be used, because git does not check out one 
 worktrees. The option works only in a session started at the repository root; from a
 subdirectory the skill stops with an error. The worktree starts from committed state — the
 current HEAD for a new branch, the tip of an existing one — so uncommitted changes in the main
-working tree are not part of the task. Gitignored dependencies, virtual environments, build
-directories, and `.env` are absent from the worktree as well, so the build and tests must pass
-in a fresh checkout (put dependency installation and similar setup in the configure command of
-`build-format.md`). The working directory and the default design-document destination are in
-the main working tree's `.claude/tmp/`, a relative `--output` resolves against the main working
-tree's root, and the destination project's `.claude/agents/` and `.claude/rules/` are read from
-the main working tree. At the end the worktree is removed and the branch is kept; a worktree
-left with uncommitted changes — for example after an unfixed QA failure — is kept and its path
-is reported.
+working tree are not part of the task. Paths in the task are rewritten to the worktree, except
+files that exist only in the main working tree (such as a review document under `.claude/tmp/`
+or an untracked note), which are passed with their main-working-tree path as read-only
+references. Gitignored dependencies, virtual environments, build directories, and `.env` are
+absent from the worktree as well, and so are the contents of submodules, which
+`git worktree add` does not initialize; the build and tests must therefore pass in a fresh
+checkout. Dependency installation and similar setup can go in the configure command of
+`build-format.md`, but configure runs only at the start of the build stage — after the format
+command, and not at all when the build is skipped or no Build is declared — so the format
+command and tests that run without a build cannot rely on it. The working directory and the
+default design-document destination are in the main working tree's `.claude/tmp/`, a relative
+`--output` resolves against the main working tree's root, and the destination project's
+`.claude/agents/` and `.claude/rules/` are read from the main working tree. At the end the
+worktree is removed and the branch is kept; a worktree left with uncommitted changes — for
+example after an unfixed QA failure — is kept and its path is reported.
 
 ## Architect / coder / reviewer agents
 

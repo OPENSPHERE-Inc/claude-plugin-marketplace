@@ -52,7 +52,7 @@ Setup:
 1. If `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that `--worktree` requires a session started at the repository root and terminate the skill. Otherwise run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
 2. Move the session into the worktree with a Bash `cd {worktree_path}`; teammates spawned afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree, including the main working tree's `.claude/tmp/`.
 
-Path base: resolve `{tmp_dir}`, the default `{design_dir}`, and a relative `--output` against `{main_root}`; source paths stay relative to the worktree. Before Step 1.5 passes the task specification to team-analysis, rewrite every absolute path in it that lies under `{main_root}` to the same relative location under `{worktree_path}`. Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory.
+Path base: resolve `{tmp_dir}`, the default `{design_dir}`, and a relative `--output` against `{main_root}`; source paths stay relative to the worktree. Before Step 1.5 passes the task specification to team-analysis, sort each path in it — an absolute path under `{main_root}`, or a relative path taken against `{main_root}` — by existence: a path that exists in the main working tree but not at the same relative location under `{worktree_path}` (e.g. a review or design document under `.claude/tmp/`, an untracked note) becomes its absolute path under `{main_root}`, marked in the specification as read-only reference material; any other absolute path under `{main_root}` is rewritten to the same relative location under `{worktree_path}`; any other relative path stays as is (relative to the worktree). Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory.
 
 Teardown — on every exit after setup, once no teammate is running:
 
@@ -163,7 +163,7 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 
 ## Step 5 — Clean up and report
 
-1. If `--commit` is on and QA passed, commit the implementation: stage only the changed source files (not `.claude/tmp` or `{design_dir}`), and commit once with a concise message (no finding IDs).
+1. If `--commit` is on and QA passed, commit the implementation: stage only the changed source files (not `.claude/tmp`, `.claude/worktrees`, or `{design_dir}`), and commit once with a concise message (no finding IDs).
 2. Shut down the teammates: to each teammate's name, `SendMessage` `{type: "shutdown_request"}` and wait for shutdown.
 3. Remove the working directory: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 4. Under `--worktree`, run the teardown in § Worktree.
