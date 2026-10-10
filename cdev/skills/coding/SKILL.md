@@ -49,10 +49,10 @@ Under `--worktree`, the sources are changed and committed only in a separate git
 
 Setup:
 
-1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
+1. If `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that `--worktree` requires a session started at the repository root and terminate the skill. Otherwise run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
 2. Move the session into the worktree with a Bash `cd {worktree_path}`; teammates spawned afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree, including the main working tree's `.claude/tmp/`.
 
-Path base: resolve `{tmp_dir}`, the default `{design_dir}`, and a relative `--output` against `{main_root}`; source paths stay relative to the worktree. Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory.
+Path base: resolve `{tmp_dir}`, the default `{design_dir}`, and a relative `--output` against `{main_root}`; source paths stay relative to the worktree. Before Step 1.5 passes the task specification to team-analysis, rewrite every absolute path in it that lies under `{main_root}` to the same relative location under `{worktree_path}`. Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory.
 
 Teardown — on every exit after setup, once no teammate is running:
 
@@ -124,7 +124,7 @@ The design documents go to `{design_dir}/design-{slug}.md` (one design section p
 ## Step 1 — Form the team and pair
 
 1. Under `--worktree`, run the setup in § Worktree.
-2. This skill operates only on a clean working tree: run `git status --porcelain -uall`, and if the output outside `.claude/tmp/` and outside the `--output` destination is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill. These are excluded because design documents of past runs remain there.
+2. This skill operates only on a clean working tree: run `git status --porcelain -uall`, and if the output outside `.claude/tmp/`, outside `.claude/worktrees/`, and outside the `--output` destination is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill. These are excluded because design documents of past runs and the worktrees of `--worktree` runs remain there.
 3. Fix `{tmp_dir}` and `{design_dir}`, and create them (`mkdir -p`). Then record the pre-coding baseline: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`.
 4. Console: `## Step 1 — Team formation`.
 5. Spawn `dev-helper` (type `cdev:dev-helper`, name `dev-helper`). To it, `SendMessage` naming `templates/team-analysis.md` with `task = {task specification}`, `output_path = {tmp_dir}/team.jsonl`. On its completion report, Read `{tmp_dir}/team.jsonl`: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).

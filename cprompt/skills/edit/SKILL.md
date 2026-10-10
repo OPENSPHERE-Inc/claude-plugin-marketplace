@@ -1,7 +1,7 @@
 ---
 name: edit
 description: Create and edit AI-facing prompts (agent / skill / rule / command, etc.) and self-check / fix them against prompt.md rules. Use proactively whenever a task involves writing or modifying an agent definition, SKILL.md, rule, slash command, or sub-agent prompt, even if the user does not name this skill.
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(ls:*), Bash(mkdir:*), Bash(find:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(ls:*), Bash(mkdir:*), Bash(find:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git check-ignore:*), Bash(realpath:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # Prompt Editor
@@ -27,7 +27,7 @@ If the argument is `$ARGUMENTS`, interpret it as the above. If the kind is not e
 
 ## Options
 
-- `--commit` (default OFF) — After Step 4, commit the files this run created or edited in one commit (concise message).
+- `--commit` (default OFF) — After Step 4, commit the files this run created or edited in one commit (concise message). With `--commit`, including when `--worktree` enables it, before Step 1 (under `--worktree`, before the setup) run `git status --porcelain -- {target}` in the main working tree for a target inside the repository; if the output is non-empty (the target has uncommitted changes), show an error and terminate the skill.
 - `--worktree[=branch]` (default OFF) — Work in a separate git worktree on `branch` (§ Worktree). Without `=branch`, a new branch `cprompt-edit-{YYYYMMDD-HHMMSS}` (the start time) is created from the current HEAD. Enables `--commit`.
 
 ## Worktree (`--worktree`)
@@ -36,10 +36,11 @@ Under `--worktree`, the repository's files are created, edited, and committed on
 
 Setup — before Step 1:
 
-1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
-2. Move the session into the worktree with a Bash `cd {worktree_path}`; sub-agents launched afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree.
+1. Make the target path absolute against the session's working directory and resolve its symbolic links to the physical path (the form `git rev-parse --show-toplevel` prints). If that path lies under the main working tree's root (`git rev-parse --show-toplevel`) and `git check-ignore -q -- {target}` run in the main working tree reports it ignored, show an error that `--worktree` cannot handle a target git ignores (run without `--worktree`), and terminate the skill without creating the worktree.
+2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
+3. Move the session into the worktree with a Bash `cd {worktree_path}`; sub-agents launched afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree.
 
-Resolve the target path in the worktree: a relative path as given, an absolute path under `{main_root}` re-rooted under `{worktree_path}`. A path outside `{main_root}` stays as given and is left out of the commit.
+Re-root the target path from setup step 1: a physical path under `{main_root}` moves to the same relative location under `{worktree_path}`; any other path stays as that physical path and is left out of the commit. In edit mode, if the re-rooted target does not exist, show the reason, run the teardown, and terminate.
 
 Teardown — on every exit after setup:
 
@@ -118,6 +119,6 @@ Return value: {pass, unclear_items: [{item, reason}]} (pass: true if unclear_ite
 
 ## Step 5 — Commit and report
 
-1. With `--commit`, stage only the files this run created or edited and commit them in one commit.
+1. With `--commit`, `git add` only the files this run created or edited inside the repository, and make one commit with a path-limited `git commit -- {those paths}`. Regardless of `--worktree`, leave out of the commit any file outside the repository or ignored by git (`git check-ignore`); if no path remains, skip the commit.
 2. Under `--worktree`, run the teardown in § Worktree.
 3. Report the target path, the number of violations detected/fixed, whether compression occurred, and the test result (pass or remaining unclear items). Under `--worktree`, add the branch and any worktree the teardown kept.

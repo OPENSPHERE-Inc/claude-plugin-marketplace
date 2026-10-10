@@ -9,7 +9,7 @@ As the triage owner of the review document, Read `{{document_path}}`, perform st
 Preconditions:
 
 - `{{tmp_dir}}` is created in advance by the leader via `mkdir -p`. The Sub must not perform existence checks (`Test-Path` / `ls`, etc.) or mkdir. Your own filesystem writes are the two files `triage-draft.jsonl` and `triage.jsonl`. The challenge sub-agents and the adjudication sub-agent you launch write the `challenge-{b}-{n}.jsonl` / `adjudication.jsonl` that their own templates specify.
-- The paths passed (`{{document_path}}` / `{{tmp_dir}}`) are relative. Do not convert them to absolute paths.
+- Use the paths passed (`{{document_path}}` / `{{tmp_dir}}`) in the form given, whether relative or absolute. Do not convert them.
 
 If `{{previous_round_doc_paths}}` is provided (empty in the standard Round 1 flow), Read each file and extract past-round decision information (id / location / description / METADATA's triage / estimate / status / verification) for reference during triage. No need to consult when empty or `(none)`.
 

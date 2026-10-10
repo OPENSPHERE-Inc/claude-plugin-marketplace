@@ -224,6 +224,12 @@ mismatch. The leader resolves `${CLAUDE_PLUGIN_ROOT}` (plugin context) and passe
 the launch prompt as the `plugin_root` variable so the template's `{{plugin_root}}/...`
 references resolve for the sub-agent. See `creview/rules/sub-agent.md`.
 
+The leader also passes `main_root`: the main working tree's root under `--worktree`,
+`(none)` otherwise. The detection rules (`agents-detection.md` / `build-format-detection.md`)
+and `scope-analysis.md` resolve the project's `.claude/agents/` / `.claude/rules/` against
+it; `review-leader` forwards it to every sub-agent it launches, and cdev passes it through
+the spawn contract.
+
 ---
 
 ## Code Style & Formatting
@@ -265,7 +271,7 @@ references resolve for the sub-agent. See `creview/rules/sub-agent.md`.
    `templates/*.md` as needed; mirror it under `src/<plugin>/skills/<name>/` in Japanese.
 2. Use `${CLAUDE_PLUGIN_ROOT}/...` in the SKILL body / `allowed-tools`; use
    `{{plugin_root}}/...` inside templates and the bundled rules they point to, and pass
-   `plugin_root` in every launch prompt.
+   `plugin_root` and `main_root` in every launch prompt.
 3. Resolve reviewers/fixers via the destination project's `.claude/agents/` with a
    `general-purpose` fallback — do not hardcode specialist agent names.
 4. Add the command to the marketplace `README.md`/`README_ja.md` and the plugin

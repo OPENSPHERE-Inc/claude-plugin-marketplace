@@ -8,7 +8,7 @@ As the format / build / test verification owner, run the destination project's f
 
 Inputs: working directory `{{tmp_dir}}`, fix diff `{{diff_path}}` (`fetch-diff.sh` output; the current fixes), attempt number `{{attempt_num}}` (informational only).
 
-The command execution CWD is assumed to be the project root. Do not use absolute paths; use relative paths only. Do not use `tee` / `Tee-Object` through a pipe, and do not use compound commands (`;` / `&&`) (the Bash tool returns the exit code automatically).
+The command execution CWD is assumed to be the project root. Use `{{tmp_dir}}` / `{{diff_path}}` in the form given; write any other path relative to the CWD (the project root). Do not use `tee` / `Tee-Object` through a pipe, and do not use compound commands (`;` / `&&`) (the Bash tool returns the exit code automatically).
 
 Procedure:
 

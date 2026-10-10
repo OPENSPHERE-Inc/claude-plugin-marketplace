@@ -82,14 +82,20 @@ fixes never touch the main working tree's sources. The worktree checks out
 `branch` — an existing local branch as is, or a new one created from the
 current HEAD; without `=branch`, a new branch `creview-rounds-{timestamp}` is
 created. The branch checked out in the main working tree cannot be used,
-because git does not check out one branch in two worktrees. Enabling it
-enables `--commit`. The review documents, the final report, and every phase's
-working directory stay in the main working tree's `.claude/tmp/`, and the
-destination project's `.claude/agents/` and `.claude/rules/` are read from the
-main working tree. The worktree starts from the committed HEAD, so uncommitted
-changes in the main working tree are not part of the run. At the end the
-worktree is removed and the branch is kept; a worktree that still has
-uncommitted changes is kept and its path is reported.
+because git does not check out one branch in two worktrees. The option works
+only in a session started at the repository root; from a subdirectory the
+skill stops with an error. Enabling it enables `--commit`. The review
+documents, the final report, and every phase's working directory stay in the
+main working tree's `.claude/tmp/`, and the destination project's
+`.claude/agents/` and `.claude/rules/` are read from the main working tree.
+The worktree starts from committed state — the current HEAD for a new branch,
+the tip of an existing one — so uncommitted changes in the main working tree
+are not part of the run. Gitignored dependencies, virtual environments, build
+directories, and `.env` are absent from the worktree as well, so the build and
+tests must pass in a fresh checkout (put dependency installation and similar
+setup in the configure command of `build-format.md`). At the end the worktree
+is removed and the branch is kept; a worktree that still has uncommitted
+changes is kept and its path is reported.
 
 Nested sub-agent spawning is required
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; the default is 3):

@@ -9,7 +9,7 @@ template_id: 7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95
 前提条件:
 
 - `{{tmp_dir}}` はリーダーが事前に作成済み。ファイルシステムへの書き込みは targets.jsonl のみ。存在チェックや mkdir は実行しない。
-- `{{document_path}}` / `{{tmp_dir}}` は相対パス。絶対パスに変換しない。
+- `{{document_path}}` / `{{tmp_dir}}` は渡された形のまま使い、変換しない。
 
 抽出対象: Critical / Major / Minor セクション（Info はスキップ）。各指摘について `<!-- METADATA(id) -->` … `<!-- /METADATA(id) -->` 内の値を読む。フィールドが繰り返す場合は最後の値を使う。
 

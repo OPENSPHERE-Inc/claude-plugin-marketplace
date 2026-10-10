@@ -1,7 +1,7 @@
 ---
 name: edit
 description: AI 向けプロンプト（agent / skill / rule / command 等）の新規作成と編集を行い、prompt.md ルールに照らしてセルフチェック・修正する。タスクがエージェント定義・SKILL.md・ルール・スラッシュコマンド・サブエージェントプロンプトの作成や修正を含むときは、ユーザーがこのスキルを名指ししていなくても能動的に使用する。
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(ls:*), Bash(mkdir:*), Bash(find:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(ls:*), Bash(mkdir:*), Bash(find:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git check-ignore:*), Bash(realpath:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # プロンプトエディタ
@@ -27,7 +27,7 @@ AI 向けプロンプト markdown を作成または編集する。完成した�
 
 ## オプション
 
-- `--commit`（デフォルト OFF）— ステップ 4 の後、本実行で作成・編集したファイルを 1 コミットにまとめてコミットする（簡潔なメッセージ）。
+- `--commit`（デフォルト OFF）— ステップ 4 の後、本実行で作成・編集したファイルを 1 コミットにまとめてコミットする（簡潔なメッセージ）。`--commit` 指定時は `--worktree` で有効になる場合を含め、ステップ 1 の前（`--worktree` 時はセットアップの前）に、リポジトリ内の対象についてメイン作業ツリーで `git status --porcelain -- {対象}` を実行し、出力が非空（対象に未コミット変更がある）ならエラーを表示してスキルを終了する。
 - `--worktree[=branch]`（デフォルト OFF）— `branch` 上の別の git ワークツリーで作業する（§ ワークツリー）。`=branch` を省略すると、現在の HEAD から新しいブランチ `cprompt-edit-{YYYYMMDD-HHMMSS}`（開始時刻）を作成する。`--commit` を有効にする。
 
 ## ワークツリー（`--worktree`）
@@ -36,10 +36,11 @@ AI 向けプロンプト markdown を作成または編集する。完成した�
 
 セットアップ — ステップ 1 の前に実行する:
 
-1. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
-2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に起動するサブエージェントはそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外への Write / Edit を拒否する。
+1. 対象パスをセッションの作業ディレクトリ基準で絶対化し、シンボリックリンクを解決した物理パス（`git rev-parse --show-toplevel` が出力する形）にする。そのパスがメイン作業ツリーのルート（`git rev-parse --show-toplevel`）配下にあり、メイン作業ツリーで実行した `git check-ignore -q -- {対象}` が ignore 対象と判定した場合は、git が ignore する対象は `--worktree` では扱えない（`--worktree` なしで実行する）旨のエラーを表示し、ワークツリーを作らずにスキルを終了する。
+2. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
+3. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に起動するサブエージェントはそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外への Write / Edit を拒否する。
 
-対象パスはワークツリー内で解決する: 相対パスはそのまま、`{main_root}` 配下の絶対パスは `{worktree_path}` 配下に付け替える。`{main_root}` 外のパスはそのまま扱い、コミットの対象外とする。
+セットアップ手順 1 の対象パスを付け替える: 物理パスが `{main_root}` 配下なら `{worktree_path}` 配下の同じ相対位置へ移し、それ以外はその物理パスのまま扱いコミットの対象外とする。編集モードで付け替え先に対象が存在しない場合は、理由を表示してティアダウンを実行し終了する。
 
 ティアダウン — セットアップ後のあらゆる終了経路で実行する:
 
@@ -118,6 +119,6 @@ AI 向けプロンプト markdown を作成または編集する。完成した�
 
 ## ステップ 5 — コミットと完了報告
 
-1. `--commit` 指定時は、本実行で作成・編集したファイルのみをステージし、1 コミットにまとめてコミットする。
+1. `--commit` 指定時は、リポジトリ内の本実行で作成・編集したファイルだけを `git add` し、`git commit -- {それらのパス}` のパス指定コミットで 1 コミットにする。ワークツリーの有無に依らず、リポジトリ外のファイルと git が ignore するファイル（`git check-ignore`）はコミット対象外とし、残るパスがなければコミットしない。
 2. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
 3. 対象パス、検出/修正された違反件数、圧縮の有無、テスト結果（pass / 残 unclear 一覧）を報告する。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。

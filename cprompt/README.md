@@ -19,15 +19,24 @@ project's `.claude/` (`.claude/agents/{name}.md` → agent, etc.).
 
 Options:
 
-- `--commit` (default off) — commit the files the run created or edited in one commit.
+- `--commit` (default off) — commit the files the run created or edited inside the
+  repository in one path-limited commit that leaves other staged changes out. Files
+  outside the repository or ignored by git are not committed. The run does not start
+  when the target has uncommitted changes.
 - `--worktree[=branch]` (default off) — work in a separate git worktree under
   `.claude/worktrees/` so the main working tree stays untouched; enables
   `--commit`. The worktree checks out `branch` — an existing local branch as
   is, or a new one created from the current HEAD; without `=branch`, a new
   branch `cprompt-edit-{timestamp}` is created. The branch checked out in the
-  main working tree cannot be used. A relative target path resolves inside the
-  worktree; a target outside the repository is edited in place and not
-  committed. At the end the worktree is removed and the branch is kept; a
+  main working tree cannot be used. The worktree starts from committed state —
+  the current HEAD for a new branch, the tip of an existing one — so it holds
+  no uncommitted changes; editing does not start for a target that is missing
+  from the worktree or has uncommitted changes. A relative target path is
+  resolved against the working directory at launch and then re-rooted into
+  the worktree; a target outside the repository is edited in place and not
+  committed. A target git ignores cannot be handled with `--worktree`: the
+  skill stops with an error without creating the worktree (run it without
+  `--worktree`). At the end the worktree is removed and the branch is kept; a
   worktree left with uncommitted changes is kept and its path is reported.
 
 ## Bundled support files

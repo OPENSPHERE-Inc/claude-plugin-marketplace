@@ -10,7 +10,7 @@ template_id: b8701509-403b-488b-8b13-c867f9c6700b
 
 - 自身のファイルシステム書き込みは `{{tmp_dir}}/challenge-{{batch_index}}-{{challenge_index}}.jsonl` のみ。ソースは Read のみ。
 - 他の `challenge-*.jsonl` は Read しない。並列インスタンスの stance は独立票として集計される。
-- 渡されるパス (`{{document_path}}` / `{{tmp_dir}}`) は相対形式。絶対パスへの変換は行わない。
+- 渡されるパス (`{{document_path}}` / `{{tmp_dir}}`) は相対・絶対を問わず渡された形のまま使い、変換しない。
 
 入力:
 
