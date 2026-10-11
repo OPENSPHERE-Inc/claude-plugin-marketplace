@@ -66,7 +66,7 @@ done
 
 # --- unit cases (sandbox) -------------------------------------------------------
 SANDBOX="$(mktemp -d)"
-trap 'cd / && rm -rf "${SANDBOX}"' EXIT
+trap 'cd / && { chmod -R u+rwx "${SANDBOX}" 2>/dev/null; rm -rf "${SANDBOX}"; }' EXIT
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GUARD}" \
     || { note "FAIL: python3 -m py_compile scratch-guard.py"; fail=1; }
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${CJ}" || { note "FAIL: python3 -m py_compile check-jsonl.py"; fail=1; }
