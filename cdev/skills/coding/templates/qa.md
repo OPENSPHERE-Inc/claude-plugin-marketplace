@@ -8,7 +8,7 @@ Run the destination project's format, build, and test once each (test only when 
 
 Inputs: working directory `{{tmp_dir}}`, working-tree diff `{{diff_path}}` (`fetch-diff.sh` output), attempt number `{{attempt_num}}` (informational).
 
-Run the commands from the current working directory, the project root, without `cd`. Use `{{tmp_dir}}` / `{{diff_path}}` in the form given; write any other path relative to the current working directory. Do not pipe through `tee` / `Tee-Object`, and do not use compound commands (`;` / `&&`); the Bash tool returns the exit code automatically.
+Run the commands from your current working directory, `{{target_dir}}` (the project root), without `cd`. Use `{{tmp_dir}}` / `{{diff_path}}` in the form given; write any other path (the changed files you get from git, `failure.error_files`) relative to `{{target_dir}}`. Do not pipe through `tee` / `Tee-Object`, and do not use compound commands (`;` / `&&`); the Bash tool returns the exit code automatically.
 
 Procedure:
 

@@ -8,7 +8,7 @@ As the format / build / test verification owner, run the destination project's f
 
 Inputs: working directory `{{tmp_dir}}`, fix diff `{{diff_path}}` (`fetch-diff.sh` output; the current fixes), attempt number `{{attempt_num}}` (informational only).
 
-Run the commands from the current working directory, the project root, without `cd`. Use `{{tmp_dir}}` / `{{diff_path}}` in the form given; write any other path relative to the current working directory. Do not use `tee` / `Tee-Object` through a pipe, and do not use compound commands (`;` / `&&`) (the Bash tool returns the exit code automatically).
+Run the commands from your current working directory, `{{target_dir}}` (the project root), without `cd`. Use `{{tmp_dir}}` / `{{diff_path}}` in the form given; write any other path (the changed files you get from git, `failure.error_files`) relative to `{{target_dir}}`. Do not use `tee` / `Tee-Object` through a pipe, and do not use compound commands (`;` / `&&`) (the Bash tool returns the exit code automatically).
 
 Procedure:
 

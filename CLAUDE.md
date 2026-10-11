@@ -241,20 +241,21 @@ sub-agent it launches; the `/creview:start` / `triage` / `respond` / `resolve` l
 the value an upper flow gave them, or `(none)` when invoked directly; cdev passes it through
 the spawn contract. The detection rules (`agents-detection.md` / `build-format-detection.md`)
 and `scope-analysis.md` resolve the project's `.claude/agents/` / `.claude/rules/` against
-it when it is other than `(none)`, and against the session's working directory otherwise.
-Launches nested inside a template (the challenge / adjudication sub-agents `triage.md` spawns)
-do not receive it, so the templates they run must not depend on it.
+it when it is other than `(none)`, and against `target_dir` otherwise. Launches nested
+inside a template (the challenge / adjudication sub-agents `triage.md` spawns) do not
+receive it, so the templates they run must not depend on it.
 
 Every launch prompt — nested launches included — also passes `target_dir`, the work target:
 the worktree under `--worktree`, otherwise the repository root (`git rev-parse
---show-toplevel`). `target_dir` is the base for the repository-relative paths of findings
-and diffs and for the write scope; a relative path passed as a launch variable resolves
-against the sub-agent's current working directory, which always lies within `target_dir`,
-and commands run from there. The write-scope bullet in `rules/sub-agent.md` /
-`rules/teammate.md` confines every sub-agent's writes to `{{target_dir}}`, its working
-directory, and the output paths it is given, judged by prefix with no `..`, where `\` and
-`/` count as the same separator and a drive letter's case is ignored; paths in a task are
-passed as given, never re-rooted by a leader.
+--show-toplevel`). Every creview and cdev entry point rejects a session started in a
+subdirectory of the repository (non-empty `git rev-parse --show-prefix`) with an error,
+with or without `--worktree`, so every sub-agent's current working directory is
+`target_dir`, the single base for relative paths, for where commands run, and for the
+write scope. The write-scope bullet in `rules/sub-agent.md` / `rules/teammate.md` confines
+every sub-agent's writes to `{{target_dir}}`, its working directory (`tmp_dir`), and the
+output paths it is given, judged by prefix with no `..`, where `\` and `/` count as the
+same separator and a drive letter's case is ignored; paths in a task are passed as given,
+never re-rooted by a leader.
 
 ---
 

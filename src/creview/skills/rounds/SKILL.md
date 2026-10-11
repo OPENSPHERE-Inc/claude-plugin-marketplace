@@ -30,7 +30,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Ba
 
 セットアップ:
 
-1. `git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、`--worktree` にはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。空なら `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
+1. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
 2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に起動するサブエージェントはそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外（メイン作業ツリーの `.claude/tmp/` を含む）への Write / Edit を拒否する。
 
 パスの基点: 出力ベースパス（デフォルトの `.claude/tmp/`、またはユーザーが指定した相対パス）は `{main_root}` を基点に解決する。`--worktree` を指定しない場合、`{main_root}` は `(該当なし)` で、すべてのパスは作業ディレクトリ基準とする。
@@ -119,11 +119,12 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 ## ステップ 1 — 初期化
 
 1. オプションを解析する。
-2. `--worktree` 指定時は § ワークツリー のセットアップを実行する。
-3. すべてのサブエージェントが受け取る作業対象 `{target_dir}` を確定する: `--worktree` 指定時は `{worktree_path}`、それ以外は `git rev-parse --show-toplevel` の出力。
-4. 現在のブランチ名を取得する。
-5. 出力ディレクトリの存在を確認し、なければ作成する。
-6. ラウンドカウンターを 1、`{prev_round_rev}` を `(該当なし)` に設定する。
+2. `git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。
+3. `--worktree` 指定時は § ワークツリー のセットアップを実行する。
+4. すべてのサブエージェントが受け取る作業対象 `{target_dir}` を確定する: `--worktree` 指定時は `{worktree_path}`、それ以外は `git rev-parse --show-toplevel` の出力。
+5. 現在のブランチ名を取得する。
+6. 出力ディレクトリの存在を確認し、なければ作成する。
+7. ラウンドカウンターを 1、`{prev_round_rev}` を `(該当なし)` に設定する。
 
 ## ステップ 2 — ラウンドループ
 

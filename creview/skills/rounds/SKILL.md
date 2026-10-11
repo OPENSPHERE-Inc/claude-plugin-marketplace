@@ -30,7 +30,7 @@ Under `--worktree`, the fixes are made and committed only in a separate git work
 
 Setup:
 
-1. If `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that `--worktree` requires a session started at the repository root and terminate the skill. Otherwise run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
+1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
 2. Move the session into the worktree with a Bash `cd {worktree_path}`; sub-agents launched afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree, including the main working tree's `.claude/tmp/`.
 
 Path base: resolve the output base path (the default `.claude/tmp/` or a relative one the user gave) against `{main_root}`. Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory.
@@ -119,11 +119,12 @@ Final step
 ## Step 1 — Initialization
 
 1. Parse options.
-2. Under `--worktree`, run the setup in § Worktree.
-3. Fix `{target_dir}`, the work target every sub-agent receives: `{worktree_path}` under `--worktree`, otherwise the output of `git rev-parse --show-toplevel`.
-4. Get the current branch name.
-5. Verify the output directory exists; if not, create it.
-6. Set the round counter to 1 and `{prev_round_rev}` to `(none)`.
+2. If `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill.
+3. Under `--worktree`, run the setup in § Worktree.
+4. Fix `{target_dir}`, the work target every sub-agent receives: `{worktree_path}` under `--worktree`, otherwise the output of `git rev-parse --show-toplevel`.
+5. Get the current branch name.
+6. Verify the output directory exists; if not, create it.
+7. Set the round counter to 1 and `{prev_round_rev}` to `(none)`.
 
 ## Step 2 — Round loop
 

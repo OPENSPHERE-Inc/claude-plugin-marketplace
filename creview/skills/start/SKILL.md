@@ -100,6 +100,8 @@ Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLU
 
 ## Step 1 — Identify Review Scope and Fetch Diff
 
+Before creating `{tmp_dir}`, if `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill.
+
 The leader (you) does not Read the diff content. Diff analysis, line counting, splitting the diff into review scopes, and selecting each scope's reviewers are delegated to the scope-analysis sub-agent; the leader receives only the return value (line count + scope list + summary).
 
 1. Based on the user's input, identify the review target (`--range` value, base branch, target paths, etc.) and any explicitly requested reviewers (if any).

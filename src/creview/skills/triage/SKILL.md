@@ -124,6 +124,8 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## ステップ 1 — 敵対的トリアージ（トリアージサブエージェントへ委譲）
 
+`{tmp_dir}` を作成する前に、`git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。
+
 トリアージは**修正作業を行う専門エージェントとは別個の単一サブエージェント**に委譲する（バイアス分離のため）。トリアージ Sub はレビュードキュメントを直接 Read して指摘抽出とステージ判定を行い、トリアージ判定を提案 → 並列反証 → 多数決を条件とする裁定の三段（敵対的トリアージ）で行う。一次判定は自身で行い、指摘バッチごとに反証 Sub 3 体と、裁定 Sub を自らネスト起動し、最終判定を自ら `triage.jsonl` に反映する。ネスト Sub の `template_id` 照合と不一致時の再起動はトリアージ Sub が担う。判定結果は**ファイルに Write** させ、リーダーの context に判定本体を載せない。
 
 1. `Agent(subagent_type="general-purpose", prompt=...)` でサブエージェントを起動する。モデル指定はしない。テンプレート `triage.md`、`template_id` `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`previous_round_doc_paths = {previous_round_doc_paths}`（標準フローでは "(none)"。/creview:rounds 等の上位フローから過去ラウンドの doc_path 一覧が渡される場合のみ非空）、オーバーライド `(none)`。戻り値: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}` — triage の本文は読み込まない。

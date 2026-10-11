@@ -63,6 +63,9 @@ or deletion, and no shared task list; the leader tracks each cell's status itsel
 only in a runtime where these are available — a deliberate trade-off favoring efficiency over
 the broad portability of a one-shot, stateless agent design.
 
+The skill requires a session started at the repository root, with or without `--worktree`;
+started from a subdirectory of the repository, it stops with an error.
+
 The bundled `fetch-diff.sh` / `del-tmp.sh` scripts also require `python3` (3.9 or later) on
 the `PATH`: their shared `.claude/tmp/` containment check is implemented in
 `scripts/lib/scratch-guard.py`.
@@ -88,10 +91,9 @@ main working tree's sources stay untouched and it does not need to be clean. The
 checks out `branch` — an existing local branch as is, or a new one created from the current
 HEAD; without `=branch`, a new branch `cdev-coding-{timestamp}` is created. The branch checked
 out in the main working tree cannot be used, because git does not check out one branch in two
-worktrees. The option works only in a session started at the repository root; from a
-subdirectory the skill stops with an error. The worktree starts from committed state — the
-current HEAD for a new branch, the tip of an existing one — so uncommitted changes in the main
-working tree are not part of the task. Every teammate receives the worktree as its work target
+worktrees. The worktree starts from committed state — the current HEAD for a new branch, the
+tip of an existing one — so uncommitted changes in the main working tree are not part of the
+task. Every teammate receives the worktree as its work target
 (`target_dir`) and writes only under it, to the run's working directory, and to the output paths
 its task names; paths in the task are passed as given, repository-relative paths resolve against
 the worktree, and an absolute path into the main working tree is a read-only reference. Gitignored dependencies, virtual environments, build directories, and `.env` are

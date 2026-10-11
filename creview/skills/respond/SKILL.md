@@ -99,6 +99,8 @@ At the start of Step 1, the leader (you) creates `{tmp_dir}` with `mkdir -p {tmp
 
 ## Step 1 — Select fix targets (delegate to the select-fix-targets sub-agent)
 
+Before creating `{tmp_dir}`, if `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill.
+
 Launch via `Agent(subagent_type="general-purpose", prompt=...)`. The Sub Reads the review document, applies the fix-target selection rule, and Writes `{tmp_dir}/targets.jsonl`.
 
 Template `select-fix-targets.md`, `template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — do not load the body.

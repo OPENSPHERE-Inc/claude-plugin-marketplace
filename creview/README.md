@@ -14,6 +14,10 @@ A multi-agent parallel code review workflow for Claude Code.
 | `/creview:resolve` | `review-resolve` | Verify fix resolutions against the source; persist `verification`. |
 | `/creview:rounds` | `review-rounds` | Automatically iterate start → triage → respond → resolve across rounds. |
 
+Every command requires a session started at the repository root, with or
+without `--worktree`; started from a subdirectory of the repository, it stops
+with an error.
+
 `review-respond` was split into two skills. Run `/creview:triage <doc>`
 first; review the persisted decisions in the document; then run
 `/creview:respond <doc>`. There is no confirmation prompt inside either skill —
@@ -82,12 +86,11 @@ fixes never touch the main working tree's sources. The worktree checks out
 `branch` — an existing local branch as is, or a new one created from the
 current HEAD; without `=branch`, a new branch `creview-rounds-{timestamp}` is
 created. The branch checked out in the main working tree cannot be used,
-because git does not check out one branch in two worktrees. The option works
-only in a session started at the repository root; from a subdirectory the
-skill stops with an error. Enabling it enables `--commit`. The review
-documents, the final report, and every phase's working directory stay in the
-main working tree's `.claude/tmp/`, and the destination project's
-`.claude/agents/` and `.claude/rules/` are read from the main working tree.
+because git does not check out one branch in two worktrees. Enabling it
+enables `--commit`. The review documents, the final report, and every phase's
+working directory stay in the main working tree's `.claude/tmp/`, and the
+destination project's `.claude/agents/` and `.claude/rules/` are read from
+the main working tree.
 Every sub-agent receives the worktree as its work target (`target_dir`) and
 writes only under it, to its working directory, and to the output paths it is
 given; any other path, the main working tree included, is read-only.
