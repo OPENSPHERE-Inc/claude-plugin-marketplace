@@ -7,7 +7,7 @@ Common procedure for detecting the destination project's format and build proced
 Resolve in the following priority order, stopping at the first stage that resolves.
 
 1. Structured descriptor `build-format.md` (see "Descriptor format" below). Search the scopes below in priority order, recursively within each (`**/build-format.md`, so subdirectories like `.claude/rules/local/build-format.md` are included). Adopt the descriptor from the first scope where one is found and use its format / build (and test, if `## Test` is present) commands verbatim. `workflow_source = "build-format.md"`. `{{plugin_root}}` is the launch variable from the prompt that had you Read this rule (same value the calling template uses).
-   1. Project scope (highest): `.claude/rules/**/build-format.md` (relative to `main_root` when your launch prompt gives one other than `(none)`, otherwise to `{{target_dir}}`)
+   1. Project scope (highest): `.claude/rules/**/build-format.md` (relative to `main_root` when your launch prompt gives one other than `(none)`, otherwise to the current working directory)
    2. User scope: `~/.claude/rules/**/build-format.md`
    3. Plugin-bundled: `{{plugin_root}}/rules/**/build-format.md`
    If a scope contains more than one match, prefer the one directly under the scope root (e.g. `.claude/rules/build-format.md`); otherwise take the shallowest path, breaking ties by ascending path string.
@@ -26,4 +26,4 @@ Written under Markdown headings (commands relative to the project root as CWD):
 
 Each command is assumed to be written in a directly executable form; execute it literally without interpretation. The test command is optional in every source (a descriptor `## Test` section, or a test section in `CLAUDE.md` / `README.md`); test verification runs only when one is resolved.
 
-When your launch prompt gives `main_root` other than `(none)`, the commands run in a worktree that holds only tracked files, so the main working tree's gitignored prerequisites (installed dependencies, virtual environments, build directories, generated files, `.env`) and the contents of submodules, which `git worktree add` does not initialize, are absent. When a failure stems from such a missing prerequisite, state in `error_summary` that the cause is environmental, and direct in `fix_guidance` that the source not be changed.
+When your launch prompt gives `main_root` other than `(none)`, the commands run in a worktree that holds only tracked files, so the main working tree's gitignored prerequisites (installed dependencies, virtual environments, build directories, generated files, `.env`) and the contents of submodules, which `git worktree add` does not initialize, are absent. When a failure stems from such a missing prerequisite, state in `error_summary` that the cause is environmental, direct in `fix_guidance` that the source not be changed, and set `environmental` to `true`.

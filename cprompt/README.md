@@ -35,11 +35,13 @@ Options:
   session started at the repository root; from a subdirectory the skill stops
   with an error without creating the worktree. The target path must be
   repository-relative and is resolved inside the worktree; an absolute target
-  path stops the skill with an error without creating the worktree. A target
-  git ignores cannot be handled with `--worktree`: the
+  path or one containing `..` stops the skill with an error without creating
+  the worktree. A target git ignores cannot be handled with `--worktree`: the
   skill stops with an error without creating the worktree (run it without
   `--worktree`). At the end the worktree is removed and the branch is kept; a
-  worktree left with uncommitted changes is kept and its path is reported.
+  worktree left with uncommitted changes, or with a created file that git
+  ignores inside the worktree and that was therefore not committed, is kept
+  and its path is reported.
 
 ## Bundled support files
 

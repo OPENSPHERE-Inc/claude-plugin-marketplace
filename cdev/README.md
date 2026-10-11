@@ -100,7 +100,9 @@ absent from the worktree as well, and so are the contents of submodules, which
 checkout. Dependency installation and similar setup can go in the configure command of
 `build-format.md`, but configure runs only at the start of the build stage — after the format
 command, and not at all when the build is skipped or no Build is declared — so the format
-command and tests that run without a build cannot rely on it. The working directory and the
+command and tests that run without a build cannot rely on it. A build or test failure caused
+by such a missing prerequisite is not fixed in the source: the QA gate ends without a QA-fix
+cell and reports the failure as environmental. The working directory and the
 default design-document destination are in the main working tree's `.claude/tmp/`, a relative
 `--output` resolves against the main working tree's root, and the destination project's
 `.claude/agents/` and `.claude/rules/` are read from the main working tree. At the end the

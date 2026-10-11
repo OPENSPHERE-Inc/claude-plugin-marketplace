@@ -9,7 +9,7 @@ Generate the final report from all rounds' review documents. Read `{{plugin_root
 Input:
 
 - Each round's review document: `{{round_doc_paths}}` (e.g., `Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...`)
-- Each round's statistics (reference information): `{{round_stats}}` (e.g., `Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...`). A round annotated with `workflow_warning="..."` indicates that, in that round's respond, the format / build procedure could not be resolved and automatic verification was skipped.
+- Each round's statistics (reference information): `{{round_stats}}` (e.g., `Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...`). A round annotated with `workflow_warning="..."` indicates that, in that round's respond, the format / build procedure could not be resolved and automatic verification was skipped, or the build / test verification did not complete for an environmental cause; the warning content tells which.
 - Report template: `{{template_path}}`
 - Output path: `{{report_path}}`
 - Language: `{{language}}`

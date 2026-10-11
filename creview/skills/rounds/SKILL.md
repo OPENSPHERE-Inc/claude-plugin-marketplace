@@ -211,7 +211,7 @@ Record the round's results. Each counter is obtained from phase sub-agent return
 - Resolved count: the resolve phase's `resolved_count`
 - Feedback attempts: the number of Step 2.5 attempts performed in this round
 - Round start revision: this round's `{this_round_rev}`
-- workflow_warning: the `workflow_warning` retained in 2.3 / 2.5 (only for rounds where the format / build procedure was unresolved; null otherwise)
+- workflow_warning: the `workflow_warning` retained in 2.3 / 2.5 (only for rounds where the format / build procedure was unresolved or the build / test verification did not complete for an environmental cause; null otherwise)
 
 Condition for proceeding to the next round: only when **all** of the following are met, set `{prev_round_rev}` to this round's `{this_round_rev}`, increment the round counter, and return to Step 2.1:
 

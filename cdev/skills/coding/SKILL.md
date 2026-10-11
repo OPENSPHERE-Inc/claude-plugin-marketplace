@@ -52,7 +52,7 @@ Setup:
 1. If `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that `--worktree` requires a session started at the repository root and terminate the skill. Otherwise run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
 2. Move the session into the worktree with a Bash `cd {worktree_path}`; teammates spawned afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree, including the main working tree's `.claude/tmp/`.
 
-Path base: resolve `{tmp_dir}`, the default `{design_dir}`, and a relative `--output` against `{main_root}`. Pass the task specification to team-analysis as given; teammates resolve its paths against `{target_dir}` per `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md`, where an absolute path outside `{target_dir}` stays a read-only reference. Without `--worktree`, `{main_root}` is `(none)` and those paths are relative to the working directory.
+Path base: resolve `{tmp_dir}`, the default `{design_dir}`, and a relative `--output` against `{main_root}`. Pass the task specification to team-analysis as given; teammates resolve its relative paths against their current working directory per `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md`, where an absolute path outside `{target_dir}` stays a read-only reference. Without `--worktree`, `{main_root}` is `(none)` and those paths are relative to the working directory.
 
 Teardown — on every exit after setup, once no teammate is running:
 
@@ -154,13 +154,14 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 
 1. Console: `## Step 4 — QA (attempt {n})`.
 2. Capture the diff since coding start: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh diff {tmp_dir}/baseline-tree {tmp_dir}/changes.txt`.
-3. To `dev-helper`, `SendMessage` naming `templates/qa.md` with `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {n}`. Retain its one-line completion report as `{summary_line}`, then Read `{tmp_dir}/qa-result.jsonl`: `{success}` is `failure == null`; `{suggested_specialist}` / `{error_summary}` are the corresponding `failure` fields. If `workflow_warning` is non-null, retain it for Step 5.
+3. To `dev-helper`, `SendMessage` naming `templates/qa.md` with `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {n}`. Retain its one-line completion report as `{summary_line}`, then Read `{tmp_dir}/qa-result.jsonl`: `{success}` is `failure == null`; `{suggested_specialist}` / `{error_summary}` / `{environmental}` are the corresponding `failure` fields (`{environmental}` is false when `failure` is null). If `workflow_warning` is non-null, retain it for Step 5.
 4. If `success == true`, exit the loop.
-5. If `success == false` and attempts remain, run a QA-fix cell:
+5. If `success == false` and `environmental` is true, do not run a QA-fix cell: present `error_summary` to the console as an environmental failure and proceed to Step 5.
+6. If `success == false`, `environmental` is false, and attempts remain, run a QA-fix cell:
    a. Cover the failing scope with a `general-purpose` coder and a paired reviewer whose domain matches the failure (`{suggested_specialist}` is the hint). Reuse roster members that fit; otherwise spawn under a `coder-{slug}` / `reviewer-{slug}` name not already in the roster. A newly spawned reviewer uses `{suggested_specialist}` as its subagent_type when that exists as a registered name per § Agent types and spawn requirements, otherwise `general-purpose`.
    b. To the coder's name, `SendMessage` naming `templates/code.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `assigned_scope = {the failing files}`, `tdd = {has_test_suite}`, `feedback = QA failure — Read {tmp_dir}/qa-result.jsonl (failure section) and {tmp_dir}/build.log; fix the build/test error.`, `reviewer = {paired reviewer's name}`, `comment_reviewer = comment-sensei`; and to the reviewer's name, `SendMessage` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = {the coder's name}`, `cell_task = code-qa-{n}`, `review_rounds = {--review-rounds}`.
    c. When you receive the reviewer's closure report for that cell, return to step 1 of this loop (re-QA).
-6. If still failing after the max attempts, present `error_summary` to the console and proceed to Step 5.
+7. If still failing after the max attempts, present `error_summary` to the console and proceed to Step 5.
 
 ## Step 5 — Clean up and report
 
@@ -168,4 +169,4 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 2. Shut down the teammates: to each teammate's name, `SendMessage` `{type: "shutdown_request"}` and wait for shutdown.
 3. Remove the working directory: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 4. Under `--worktree`, run the teardown in § Worktree.
-5. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the QA result (`summary_line`, plus `workflow_warning` if any), and any unfixed QA failure. Under `--worktree`, add the branch and any worktree the teardown kept.
+5. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the QA result (`summary_line`, plus `workflow_warning` if any), and any unfixed QA failure, stated as environmental when `environmental` is true. Under `--worktree`, add the branch and any worktree the teardown kept.

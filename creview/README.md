@@ -100,7 +100,10 @@ and tests must therefore pass in a fresh checkout. Dependency installation and
 similar setup can go in the configure command of `build-format.md`, but
 configure runs only at the start of the build stage — after the format
 command, and not at all when the build is skipped or none is declared — so the
-format command and tests that run without a build cannot rely on it. At the
+format command and tests that run without a build cannot rely on it. A build
+or test failure caused by such a missing prerequisite is not fixed in the
+source: respond stops its build-fix loop and records the failure as the
+round's workflow warning, which the final report lists. At the
 end the worktree is removed and the branch is kept; a worktree that still has
 uncommitted changes is kept and its path is reported. Git also refuses to
 remove a worktree in which submodules were initialized (for example by the

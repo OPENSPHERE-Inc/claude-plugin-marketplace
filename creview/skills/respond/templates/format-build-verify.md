@@ -8,7 +8,7 @@ As the format / build / test verification owner, run the destination project's f
 
 Inputs: working directory `{{tmp_dir}}`, fix diff `{{diff_path}}` (`fetch-diff.sh` output; the current fixes), attempt number `{{attempt_num}}` (informational only).
 
-Run the commands in `{{target_dir}}`, the project root. Use `{{tmp_dir}}` / `{{diff_path}}` in the form given; write any other path relative to `{{target_dir}}`. Do not use `tee` / `Tee-Object` through a pipe, and do not use compound commands (`;` / `&&`) (the Bash tool returns the exit code automatically).
+Run the commands from the current working directory, the project root, without `cd`. Use `{{tmp_dir}}` / `{{diff_path}}` in the form given; write any other path relative to the current working directory. Do not use `tee` / `Tee-Object` through a pipe, and do not use compound commands (`;` / `&&`) (the Bash tool returns the exit code automatically).
 
 Procedure:
 
@@ -36,7 +36,7 @@ Procedure:
    - Set `failure.stage = "visual"` and perform step 6 only if you find an obvious breakage visually.
 
 6. Specialist identification on failure (`failure != null`):
-   - Read `failure.log_path` (`{{tmp_dir}}/build.log`; absent in visual mode) and the error-producing files (in visual mode, the broken files), analyze the cause, and set `failure.error_summary` / `failure.error_files` / `failure.fix_guidance`.
+   - Read `failure.log_path` (`{{tmp_dir}}/build.log`; absent in visual mode) and the error-producing files (in visual mode, the broken files), analyze the cause, and set `failure.error_summary` / `failure.error_files` / `failure.fix_guidance` / `failure.environmental` (`true` only for an environmental failure as `{{plugin_root}}/rules/build-format-detection.md` defines it).
    - Specialist selection: resolve the agent via the procedure in `{{plugin_root}}/rules/agents-detection.md`. Match target is the error content (language / build system / subsystem / test framework); the result field is `failure.suggested_specialist`.
 
 7. Write to `{{tmp_dir}}/format-build-result.jsonl`.
@@ -50,8 +50,8 @@ Procedure:
   "format": {changed_files: [...], format_violations_fixed: <int>, format_violations_remaining: <int>},
   "build": {ran: <bool>, success: <bool>},
   "test": {ran: <bool>, success: <bool>},
-  "failure": {stage: "build | test | visual", log_path, error_summary | null, error_files: ["src/foo.cpp:42", ...] | null, suggested_specialist | null, fix_guidance | null} | null
+  "failure": {stage: "build | test | visual", log_path, error_summary | null, error_files: ["src/foo.cpp:42", ...] | null, suggested_specialist | null, fix_guidance | null, environmental: <bool>} | null
 }
 ```
 
-Return value: `{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line (<=200 chars, e.g. "build-format.md / format ok / build ok / test ok" or "build-format.md / format ok / build skipped (comments only) / test skipped" or "none / visual-only: no workflow declared"), template_id}`. `success` is `failure == null`. For a stage that did not run (`ran = false`), its `build.success` / `test.success` is `true` (counts as passing). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.
+Return value: `{path, success, environmental, format_violations_fixed, workflow_source, workflow_warning, summary_line (<=200 chars, e.g. "build-format.md / format ok / build ok / test ok" or "build-format.md / format ok / build skipped (comments only) / test skipped" or "none / visual-only: no workflow declared"), template_id}`. `success` is `failure == null`. `environmental` is `failure.environmental`, or `false` when `failure` is null. For a stage that did not run (`ran = false`), its `build.success` / `test.success` is `true` (counts as passing). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

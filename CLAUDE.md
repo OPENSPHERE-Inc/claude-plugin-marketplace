@@ -158,8 +158,14 @@ for p in creview cprompt cdev; do
 done
 
 # Every sub-agent launch in a SKILL passes target_dir (prints offending lines)
-grep -n 'plugin_root = ${CLAUDE_PLUGIN_ROOT}' {creview,cdev}/skills/*/SKILL.md \
-  | grep -v 'target_dir' && echo BAD || echo ok
+grep -nF 'plugin_root = ${CLAUDE_PLUGIN_ROOT}' {creview,cdev}/skills/*/SKILL.md \
+  src/{creview,cdev}/skills/*/SKILL.md | grep -vF 'target_dir' && echo BAD || echo ok
+# Same for the colon-form launch block of /creview:rounds (one target_dir line per block)
+pat='- plugin_root: ${CLAUDE_PLUGIN_ROOT}'
+for f in creview/skills/rounds/SKILL.md src/creview/skills/rounds/SKILL.md; do
+  [ "$(grep -cF -- "$pat" "$f")" = "$(grep -A2 -F -- "$pat" "$f" | grep -cF -- '- target_dir:')" ] \
+    && echo "ok $f" || echo "BAD $f"
+done
 
 # Scratch-guard self-test: containment behavior, worktree.sh, and byte-parity of the
 # shared script copies across creview/cdev/cprompt and their src/ mirrors
@@ -235,16 +241,20 @@ sub-agent it launches; the `/creview:start` / `triage` / `respond` / `resolve` l
 the value an upper flow gave them, or `(none)` when invoked directly; cdev passes it through
 the spawn contract. The detection rules (`agents-detection.md` / `build-format-detection.md`)
 and `scope-analysis.md` resolve the project's `.claude/agents/` / `.claude/rules/` against
-it when it is other than `(none)`, and against `target_dir` otherwise. Launches
-nested inside a template (the challenge / adjudication sub-agents `triage.md` spawns) do not
-receive it, so the templates they run must not depend on it.
+it when it is other than `(none)`, and against the session's working directory otherwise.
+Launches nested inside a template (the challenge / adjudication sub-agents `triage.md` spawns)
+do not receive it, so the templates they run must not depend on it.
 
 Every launch prompt — nested launches included — also passes `target_dir`, the work target:
 the worktree under `--worktree`, otherwise the repository root (`git rev-parse
---show-toplevel`). It is passed along the same paths as `main_root`. The write-scope bullet
-in `rules/sub-agent.md` / `rules/teammate.md` confines every sub-agent's writes to
-`{{target_dir}}`, its working directory, and the output paths it is given, judged by plain
-prefix with no `..`; paths in a task are passed as given, never re-rooted by a leader.
+--show-toplevel`). `target_dir` is the base for the repository-relative paths of findings
+and diffs and for the write scope; a relative path passed as a launch variable resolves
+against the sub-agent's current working directory, which always lies within `target_dir`,
+and commands run from there. The write-scope bullet in `rules/sub-agent.md` /
+`rules/teammate.md` confines every sub-agent's writes to `{{target_dir}}`, its working
+directory, and the output paths it is given, judged by prefix with no `..`, where `\` and
+`/` count as the same separator and a drive letter's case is ignored; paths in a task are
+passed as given, never re-rooted by a leader.
 
 ---
 
