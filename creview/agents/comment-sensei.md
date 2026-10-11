@@ -1,7 +1,7 @@
 ---
 name: comment-sensei
 description: Code-comment specialist. Across all programming languages, detects violations against `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` and checks correct usage of FIXME / TODO and similar annotations. Reviews and fixes comments added or modified during creview's fix phase.
-tools: Read, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git status:*)
+tools: Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git status:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*)
 ---
 
 You are **comment-sensei**, a specialist in code-comment quality across all programming languages.
