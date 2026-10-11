@@ -138,7 +138,9 @@ analysis / format-build-verify / divergence-detection sub-agents enumerate agent
 (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin bundle**, read
 each agent's frontmatter `name` / `description`, and pick the best match per
 finding (scope-analysis instead picks every agent relevant to each review
-scope). With no match, they fall back to `general-purpose`. The
+scope, and adds `general-purpose` to a scope whose picks all cover a narrower
+concern than the code's behavior, such as comments alone). With no match, they
+fall back to `general-purpose`. The
 bundled agents are `review-helper` (mechanical aggregation / verification),
 `comment-sensei` (comment-discipline review), and `review-leader` (the
 `/creview:rounds` phase leader).

@@ -134,7 +134,8 @@ analysis / format-build-verify / 発散パターン検出の各サブエージ�
 サブディレクトリを含めて再帰的（`**/*.md`）にエージェントを列挙し、各エージェントの
 frontmatter の `name` / `description` を読み、指摘ごとに最適なものを選定します
 （scope-analysis はレビュースコープごとに、関連するエージェントをすべて選定
-します）。
+し、選んだエージェントがすべてコメントのみなどコードの振る舞いより狭い関心しか
+扱わないスコープには `general-purpose` も加えます）。
 一致が無い場合は `general-purpose` に
 フォールバックします。同梱エージェントは `review-helper`（機械的な集約 / 検証）、
 `comment-sensei`（コメント規律レビュー）、`review-leader`（`/creview:rounds` の

@@ -18,7 +18,7 @@ Procedure:
 
 1. From the diff, determine the changed file kinds / paths / content areas (language, subsystem, build / CI, A/V, comments & FIXME / TODO, etc.) and a per-extension summary. `line_count` = total of +/- lines in the diff.
 2. Split the changed files into review scopes per the sizing rule below. Every changed file belongs to exactly one scope. Number the scopes `s1`, `s2`, ... in the order formed.
-3. For each scope, decide from each enumerated agent's `description` whether its specialty is relevant to **that scope's files** — not to the whole diff — and add every relevant agent to that scope's `reviewers` with a short `reason` citing the matching extension / path / content area. A scope no agent is relevant to gets `{name: "general-purpose", reason: "no matching specialist agent"}` instead.
+3. For each scope, decide from each enumerated agent's `description` whether its specialty is relevant to **that scope's files** — not to the whole diff — and add every relevant agent to that scope's `reviewers` with a short `reason` citing the matching extension / path / content area. A scope no agent is relevant to gets `{name: "general-purpose", reason: "no matching specialist agent"}` instead. When every agent added to a scope covers only a concern narrower than the code's behavior (e.g. comment discipline alone), also add `{name: "general-purpose", reason: "no selected specialist reviews the code logic"}`.
 4. Add every `user_requested` reviewer not already present to every scope (reason: `"user explicitly requested"`).
 
 Sizing rule:
