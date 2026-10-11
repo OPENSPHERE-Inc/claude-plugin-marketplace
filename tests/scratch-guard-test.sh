@@ -247,12 +247,31 @@ for lock in '' --lock; do
     if git worktree add -q --detach ${lock} "${GONE}" >/dev/null 2>&1; then
         rm -rf "${GONE}"
         t 1 -w "${GONE}/.claude/tmp/x/out.txt"
+        mkdir "${GONE}"
+        t 1 -w "${GONE}/.claude/tmp/x/out.txt"
+        rmdir "${GONE}"
         [[ -z "${lock}" ]] || git worktree unlock "${GONE}"
         git worktree prune
     else
         note "FAIL: git worktree add for the removed-worktree case (${lock:-unlocked})"; fail=1
     fi
 done
+# git lists linked worktrees sorted by path, so the unreachable locked entry precedes LATER.
+HIDDEN="$(cd "${SANDBOX}" && pwd -P)/a-hidden"
+LATER="$(cd "${SANDBOX}" && pwd -P)/b-later"
+if [[ "$(id -u)" -ne 0 ]]; then
+    if git worktree add -q --detach --lock "${HIDDEN}/wt" >/dev/null 2>&1 \
+        && git worktree add -q --detach "${LATER}" >/dev/null 2>&1; then
+        mkdir -p "${LATER}/.claude/tmp/x"
+        chmod 000 "${HIDDEN}"
+        t 0 -w "${LATER}/.claude/tmp/x/out.txt"
+        chmod 755 "${HIDDEN}"
+    else
+        note "FAIL: git worktree add for the unreachable-worktree case"; fail=1
+    fi
+    git worktree remove -f -f "${HIDDEN}/wt" >/dev/null 2>&1
+    git worktree remove -f "${LATER}" >/dev/null 2>&1
+fi
 : > "${WT_PATH}/dirty.txt"
 cd "${MAIN}" || exit 1
 rc=0; bash "${CFD}" HEAD .claude/tmp/e2e/wt-review.txt 2>/dev/null || rc=$?

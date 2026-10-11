@@ -54,6 +54,16 @@ def cwd_candidates():
             yield pwd
 
 
+def is_worktree(path):
+    # A main working tree has a .git directory and a linked one a .git file.
+    # Python before 3.13 raises on errors such as EACCES or ESTALE; treat an
+    # unreachable entry as absent like later versions do.
+    try:
+        return (path / ".git").exists()
+    except OSError:
+        return False
+
+
 def worktree_roots():
     # A session switched into a linked worktree still keeps its scratch files
     # in the working tree it was launched from.
@@ -65,14 +75,15 @@ def worktree_roots():
         ).stdout.decode("utf-8", "surrogateescape")
     except (OSError, subprocess.CalledProcessError):
         return
-    # Bare entries and entries whose directory no longer exists (prunable,
-    # or a locked worktree that was removed) are not working trees.
+    # Bare entries, prunable entries, and entries without a .git entry (a
+    # locked worktree that was removed, even if its directory was recreated)
+    # are not working trees.
     root, usable = None, True
     for line in listing.splitlines() + [""]:
         if not line:
             if root is not None and usable:
                 path = Path(to_windows_drive_path(root))
-                if path.is_dir():
+                if is_worktree(path):
                     yield path
             root, usable = None, True
         elif line.startswith("worktree "):
