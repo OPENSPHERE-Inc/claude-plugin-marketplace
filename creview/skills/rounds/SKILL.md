@@ -31,7 +31,7 @@ Under `--worktree`, the fixes are made and committed only in a separate git work
 Setup:
 
 1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
-2. Move the session into the worktree with a Bash `cd {worktree_path}`; sub-agents launched afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree, including the main working tree's `.claude/tmp/`.
+2. Move the session into the worktree with a Bash `cd {worktree_path}`; sub-agents launched afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Until the teardown, run no other bare `cd`: it moves the working directory of the whole session and of every sub-agent launched afterwards. Reach another directory through a command's own option (e.g. `git -C dir`) or a subshell. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree, including the main working tree's `.claude/tmp/`.
 
 Path base: resolve the output base path (the default `.claude/tmp/` or a relative one the user gave) against `{main_root}`. Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory.
 

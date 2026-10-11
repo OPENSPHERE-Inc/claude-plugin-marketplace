@@ -50,7 +50,7 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 セットアップ:
 
 1. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
-2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に spawn する teammate はそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外（メイン作業ツリーの `.claude/tmp/` を含む）への Write / Edit を拒否する。
+2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に spawn する teammate はそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。ティアダウンまでは、ほかに素の `cd` を実行しない: セッション全体と以降に起動するサブエージェントの作業ディレクトリが動く。別のディレクトリにはコマンド自身のオプション（例: `git -C dir`）かサブシェルで到達する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外（メイン作業ツリーの `.claude/tmp/` を含む）への Write / Edit を拒否する。
 
 パスの基点: `{tmp_dir}`、デフォルトの `{design_dir}`、相対パスの `--output` は `{main_root}` を基点に解決する。タスク指定はそのまま team-analysis へ渡す。teammate は `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` に従ってそのパスを `{target_dir}` 基準で解決し、`{target_dir}` 外の絶対パスは読み取り専用の参照とする。`--worktree` を指定しない場合、`{main_root}` は `(none)` で、これらのパスは作業ディレクトリ基準とする。
 

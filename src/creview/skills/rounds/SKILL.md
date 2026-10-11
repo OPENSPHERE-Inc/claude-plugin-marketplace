@@ -31,7 +31,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Ba
 セットアップ:
 
 1. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
-2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に起動するサブエージェントはそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外（メイン作業ツリーの `.claude/tmp/` を含む）への Write / Edit を拒否する。
+2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に起動するサブエージェントはそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。ティアダウンまでは、ほかに素の `cd` を実行しない: セッション全体と以降に起動するサブエージェントの作業ディレクトリが動く。別のディレクトリにはコマンド自身のオプション（例: `git -C dir`）かサブシェルで到達する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外（メイン作業ツリーの `.claude/tmp/` を含む）への Write / Edit を拒否する。
 
 パスの基点: 出力ベースパス（デフォルトの `.claude/tmp/`、またはユーザーが指定した相対パス）は `{main_root}` を基点に解決する。`--worktree` を指定しない場合、`{main_root}` は `(該当なし)` で、すべてのパスは作業ディレクトリ基準とする。
 
