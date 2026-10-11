@@ -65,12 +65,15 @@ def worktree_roots():
         ).stdout.decode("utf-8", "surrogateescape")
     except (OSError, subprocess.CalledProcessError):
         return
-    # Bare and prunable (directory gone) entries are not working trees.
+    # Bare entries and entries whose directory no longer exists (prunable,
+    # or a locked worktree that was removed) are not working trees.
     root, usable = None, True
     for line in listing.splitlines() + [""]:
         if not line:
             if root is not None and usable:
-                yield Path(to_windows_drive_path(root))
+                path = Path(to_windows_drive_path(root))
+                if path.is_dir():
+                    yield path
             root, usable = None, True
         elif line.startswith("worktree "):
             root = line[len("worktree "):]
