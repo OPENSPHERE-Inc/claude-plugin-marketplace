@@ -1,7 +1,7 @@
 ---
 name: respond
 description: Will-Fix / Maintain / Alternative のレビュー指摘を修正し、ビルドを検証し、修正状況をレビュードキュメントに反映する。triage / estimate メタデータ付きのレビュードキュメントが存在し、ユーザーが指摘への対応を求めたとき（例「レビュー指摘を修正して」）に能動的に使用する。
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュー対応（修正）
@@ -91,15 +91,19 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 {tmp_dir}/events.jsonl         ← compile-review.py の出力（render-review.py 入力）
 ```
 
+`{main_root}` は、上位フロー（例: `/creview:rounds`）がこのスキルを実行する場合は起動プロンプトが渡した `main_root`、スキルを直接起動した場合は `(該当なし)` とする。`{target_dir}` も同様に起動プロンプトが渡した `target_dir` とし、スキルを直接起動した場合は `git rev-parse --show-toplevel` の出力とする。
+
 書き出しには **Write ツール**を使う。Bash の cat heredoc は値内のアポストロフィ（例: `Won't`）でクォーティングが破綻するため使用不可。
 
 ステップ 1 開始時にリーダー（あなた）が `mkdir -p {tmp_dir}/statuses` で `{tmp_dir}` を作成し、各サブエージェントに `{tmp_dir}` を渡す。
 
 ## ステップ 1 — 修正対象の選別（select-fix-targets サブエージェントへ委譲）
 
+`{tmp_dir}` を作成する前に、`git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。
+
 `Agent(subagent_type="general-purpose", prompt=...)` で起動する。Sub はレビュードキュメントを Read し、修正対象選別ルールを適用し、`{tmp_dir}/targets.jsonl` を Write する。
 
-テンプレート `select-fix-targets.md`、`template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — 本文は読み込まない。
+テンプレート `select-fix-targets.md`、`template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — 本文は読み込まない。
 
 `fix_count == 0` の場合、ステップ 2〜5 をスキップしてステップ 6（編纂。反映するものなし → 「修正対象なし」を報告）へ進む。
 
@@ -107,7 +111,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 `by_assignee` の各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で修正サブエージェントを起動する。異なる assignee は並列起動する。同一 assignee 内の ids はテンプレートの並列化制約に従う。
 
-テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path}, ...], template_id}` — `items` のみを集め、status 本文は読み込まない。
+テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path}, ...], template_id}` — `items` のみを集め、status 本文は読み込まない。
 
 ## ステップ 3 — コメントレビュー（comment-sensei サブエージェントへ委譲）
 
@@ -115,7 +119,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 リーダーは起動前に `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` で修正差分を取得する。`Agent(subagent_type="comment-sensei", prompt=...)` で起動する。
 
-テンプレート `comment-review.md`、`template_id` `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`document_path = {document_path}`、オーバーライド `(該当なし)`。戻り値: `{reviewed_paths, fix_count, template_id}`。
+テンプレート `comment-review.md`、`template_id` `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`document_path = {document_path}`、オーバーライド `(該当なし)`。戻り値: `{reviewed_paths, fix_count, template_id}`。
 
 ## ステップ 4 — フォーマット・ビルド・テスト検証
 
@@ -125,14 +129,15 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 最大試行回数: 5。以下を最大試行回数まで繰り返す:
 
-1. `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` で現在の修正差分（作業ツリー）を取得し、フォーマット・ビルド・テスト検証 Sub を `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `format-build-verify.md`、`template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`attempt_num = {attempt_num}`、オーバーライド `(該当なし)`。
-2. 戻り値（`{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`workflow_warning` が非 null の場合はステップ 7 で提示するため保持する。
+1. `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` で現在の修正差分（作業ツリー）を取得し、フォーマット・ビルド・テスト検証 Sub を `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `format-build-verify.md`、`template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`attempt_num = {attempt_num}`、オーバーライド `(該当なし)`。
+2. 戻り値（`{path, success, environmental, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）を受け取る。`workflow_warning` が非 null の場合はステップ 7 で提示するため保持する。
 3. `success == true` ならループ終了。
-4. `success == false` の場合:
+4. `success == false` かつ `environmental == true` の場合は、ビルド／テスト修正専門家 Sub を起動しない。`{tmp_dir}/format-build-result.jsonl` の `failure` セクションから `error_summary` を Read し、保持する `workflow_warning` を「環境起因でビルド／テスト検証が完了しなかった: {error_summary}」とし、ユーザーに `error_summary` を提示してループを抜け、ステップ 5 に進む。
+5. `success == false` かつ `environmental == false` の場合:
    a. `{tmp_dir}/format-build-result.jsonl` を Read し、`failure` セクションから `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` を取得する（判定本体ではない operational data。ただしソースコード本体は Read しない）。
-   b. `Agent(subagent_type=suggested_specialist, prompt=...)` でビルド／テスト修正専門家 Sub を起動する — テンプレート `build-fix.md`、`template_id` `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{description, template_id}`。
+   b. `Agent(subagent_type=suggested_specialist, prompt=...)` でビルド／テスト修正専門家 Sub を起動する — テンプレート `build-fix.md`、`template_id` `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{description, template_id}`。
    c. ループの先頭に戻る（コードが書き変わっているのでフォーマット再確認が必要）。
-5. 試行回数上限に達してもビルド／テストが通らない場合、ユーザーに `error_summary` を提示してループを抜け、ステップ 5 に進む。
+6. 試行回数上限に達してもビルド／テストが通らない場合、ユーザーに `error_summary` を提示してループを抜け、ステップ 5 に進む。
 
 ## ステップ 5 — コミット（`--commit` 指定時のみ）
 
@@ -140,7 +145,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 1. ステップ 1 の `by_assignee` 単位が所有するファイルは、`{tmp_dir}/statuses/*.jsonl` のうちその単位の id が持つ `files` の和集合（`files` 配列のみを読む。判定本文ではなく運用データである）。各単位について、他の単位が所有していないファイルのみをステージングしてコミットする。
 2. 作業ツリーに残った変更をまとめて最後の 1 コミットにする — 複数の単位が共有するファイルと、どの単位も所有しないファイルへの comment-sensei / ビルド修正の変更。残りが無ければこのコミットは作らない。
-3. `git add -A` は使用しない。`{document_path}` および `{tmp_dir}` 配下はステージングしない。
+3. `git add -A` は使用しない。`{document_path}` および `{tmp_dir}`・`.claude/tmp/`・`.claude/worktrees/` 配下はステージングしない。
 4. コミットメッセージ: 1〜3 行で、コードが現在何をするかを記述する。指摘 ID（`C-1`、`M-1` 等）は含めない。例: `fix: Add null check before accessing output pointer`
 5. ステップ 4 がビルド／テスト失敗で抜けた場合もコミットする。`error_summary` は既にユーザーに提示されており、コミットされない変更は以降のどのラウンドのコミット範囲にも入らない。
 

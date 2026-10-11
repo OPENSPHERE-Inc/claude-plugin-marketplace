@@ -8,7 +8,7 @@ template_id: 9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46
 
 入力: 作業ディレクトリ `{{tmp_dir}}`、修正差分 `{{diff_path}}`（`fetch-diff.sh` 出力。今回の修正内容）、試行番号 `{{attempt_num}}`（情報のみ）
 
-コマンド実行 CWD はプロジェクトルート前提。絶対パスは使わず相対パスのみ。パイプ経由の `tee` / `Tee-Object`、コンパウンドコマンド（`;` / `&&`）は使用しない（Bash ツールが終了コードを自動返却する）。
+コマンドはプロジェクトルートである `{{target_dir}}`（カレントディレクトリ）から `cd` せずに実行する。`{{tmp_dir}}` / `{{diff_path}}` は渡された形のまま使い、それ以外のパス（git から得る変更ファイル、`failure.error_files`）は `{{target_dir}}` 基準の相対パスで書く。パイプ経由の `tee` / `Tee-Object`、コンパウンドコマンド（`;` / `&&`）は使用しない（Bash ツールが終了コードを自動返却する）。
 
 実施内容:
 
@@ -36,7 +36,7 @@ template_id: 9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46
    - 目視で明白な破損を見つけた場合のみ `failure.stage = "visual"` を設定して手順 6 を行う。
 
 6. 失敗時の専門家判定（`failure != null`）:
-   - `failure.log_path`（`{{tmp_dir}}/build.log`。目視モードでは存在しない）とエラー発生ファイル（目視モードでは破損ファイル）を Read して原因分析し、`failure.error_summary` / `failure.error_files` / `failure.fix_guidance` を設定。
+   - `failure.log_path`（`{{tmp_dir}}/build.log`。目視モードでは存在しない）とエラー発生ファイル（目視モードでは破損ファイル）を Read して原因分析し、`failure.error_summary` / `failure.error_files` / `failure.fix_guidance` / `failure.environmental`（`{{plugin_root}}/rules/build-format-detection.md` が定める環境起因の失敗の場合のみ `true`）を設定。
    - 専門家選定: `{{plugin_root}}/rules/agents-detection.md` の手順でエージェントを解決する。マッチ対象はエラー内容（言語・ビルドシステム・サブシステム・テストフレームワーク）、記録先は `failure.suggested_specialist`。
 
 7. `{{tmp_dir}}/format-build-result.jsonl` に Write。
@@ -50,8 +50,8 @@ template_id: 9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46
   "format": {changed_files: [...], format_violations_fixed: <int>, format_violations_remaining: <int>},
   "build": {ran: <bool>, success: <bool>},
   "test": {ran: <bool>, success: <bool>},
-  "failure": {stage: "build | test | visual", log_path, error_summary | null, error_files: ["src/foo.cpp:42", ...] | null, suggested_specialist | null, fix_guidance | null} | null
+  "failure": {stage: "build | test | visual", log_path, error_summary | null, error_files: ["src/foo.cpp:42", ...] | null, suggested_specialist | null, fix_guidance | null, environmental: <bool>} | null
 }
 ```
 
-戻り値: `{path, success, format_violations_fixed, workflow_source, workflow_warning, summary_line（<=200 chars。例: "build-format.md / format ok / build ok / test ok" や "build-format.md / format ok / build skipped (comments only) / test skipped" や "none / visual-only: no workflow declared"）, template_id}`。`success` は `failure == null`。未実行ステージ（`ran = false`）の `build.success` / `test.success` は `true`（成功扱い）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
+戻り値: `{path, success, environmental, format_violations_fixed, workflow_source, workflow_warning, summary_line（<=200 chars。例: "build-format.md / format ok / build ok / test ok" や "build-format.md / format ok / build skipped (comments only) / test skipped" や "none / visual-only: no workflow declared"）, template_id}`。`success` は `failure == null`。`environmental` は `failure.environmental`（`failure` が null なら `false`）。未実行ステージ（`ran = false`）の `build.success` / `test.success` は `true`（成功扱い）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

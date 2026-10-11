@@ -1,7 +1,7 @@
 ---
 name: start
 description: 対象プロジェクトのエージェントから自動選定したレビュアーで並列コードレビューを起動する。ユーザーが変更・ブランチ・PR のレビューを求めたとき（例「このコードをレビューして」）や、まとまった実装が完了した直後に能動的に使用する。
-allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*)
+allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*)
 ---
 
 # 並列コードレビュー
@@ -94,9 +94,13 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 {tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md  ← 各レビュアーの出力（指摘の番号付きリスト）
 ```
 
+`{main_root}` は、上位フロー（例: `/creview:rounds`）がこのスキルを実行する場合は起動プロンプトが渡した `main_root`、スキルを直接起動した場合は `(該当なし)` とする。`{target_dir}` も同様に起動プロンプトが渡した `target_dir` とし、スキルを直接起動した場合は `git rev-parse --show-toplevel` の出力とする。
+
 作成はステップ 1、削除はリーダーがステップ 4 で `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で行う。
 
 ## ステップ 1 — レビュー範囲の特定と差分取得
+
+`{tmp_dir}` を作成する前に、`git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。
 
 リーダー（あなた）は差分内容を Read しない。差分の解析・行数算出・レビュースコープへの分割・各スコープのレビュアー選定はスコープ解析サブエージェントに委譲し、戻り値（行数 + スコープリスト + サマリ）のみ受け取る。
 
@@ -112,7 +116,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --range {from} {to} {tmp_dir}/diff.txt
      ```
-4. スコープ解析サブエージェントを起動して差分を解析させる — テンプレート `scope-analysis.md`、`template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`user_requested = {user_requested}`、オーバーライド `(none)`。戻り値: `{line_count, scopes, extension_summary, rationale, template_id}`。
+4. スコープ解析サブエージェントを起動して差分を解析させる — テンプレート `scope-analysis.md`、`template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`user_requested = {user_requested}`、オーバーライド `(none)`。戻り値: `{line_count, scopes, extension_summary, rationale, template_id}`。
 5. `line_count == 0` の場合、空のレビュードキュメント（`${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` のヘッダーブロックのみ、重要度セクションなし）を `{final_doc_path}` に Write してステップ 4 へ直接進む。
 6. `scopes` をそのまま確定する（要素は常に 1 つ以上、各要素は `{scope_id, paths, line_count, reviewers: [{name, reason}]}`）。各スコープの出力ディレクトリを `mkdir -p {tmp_dir}/reviews/{scope_id}` で作成する。
 
@@ -130,7 +134,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 
 `subagent_type={name}`（スコープ解析 Sub が対象プロジェクトの `.claude/agents/` から解決した名前、または `general-purpose`）を指定する。agent 定義の persona と観点は自動でロードされる。起動プロンプトに persona / 観点は含めない。
 
-テンプレート `{reviewer_template}`、`template_id` `{reviewer_template_id}`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`targets = {targets}`、`base = {base}`、`diff_path = {diff_path}`、`scope_paths = {scope_paths}`、`output_path = {output_path}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。`{scope_paths}` は当該組のスコープの `paths`、`{output_path}` は `{tmp_dir}/reviews/{scope_id}/review-{name}.md`。各レビュアーの戻り値: `{path, critical, major, minor, info, template_id}`。
+テンプレート `{reviewer_template}`、`template_id` `{reviewer_template_id}`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`targets = {targets}`、`base = {base}`、`diff_path = {diff_path}`、`scope_paths = {scope_paths}`、`output_path = {output_path}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。`{scope_paths}` は当該組のスコープの `paths`、`{output_path}` は `{tmp_dir}/reviews/{scope_id}/review-{name}.md`。各レビュアーの戻り値: `{path, critical, major, minor, info, template_id}`。
 
 ## ステップ 3 — レポートの統合（集約サブエージェントへ委譲）
 
@@ -141,7 +145,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 
 `{reviewer_paths_list}` は全スコープのレビュアー出力ファイルを列挙したもの、`{reviewer_names_csv}` はスコープ間で重複排除したレビュアー名。
 
-テンプレート `aggregator.md`、`template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`tmp_dir = {tmp_dir}`、`reviewer_paths_list = {reviewer_paths_list}`、`final_doc_path = {final_doc_path}`、`round_num_or_omitted = {round_num_or_omitted}`、`targets_description = {targets_description}`、`reviewer_names_csv = {reviewer_names_csv}`、`review_mode = {review_mode}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。戻り値: `{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`。
+テンプレート `aggregator.md`、`template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`reviewer_paths_list = {reviewer_paths_list}`、`final_doc_path = {final_doc_path}`、`round_num_or_omitted = {round_num_or_omitted}`、`targets_description = {targets_description}`、`reviewer_names_csv = {reviewer_names_csv}`、`review_mode = {review_mode}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。戻り値: `{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`。
 
 ## ステップ 4 — 一時ファイルのクリーンアップ
 

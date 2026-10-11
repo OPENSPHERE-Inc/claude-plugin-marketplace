@@ -14,6 +14,10 @@ A multi-agent parallel code review workflow for Claude Code.
 | `/creview:resolve` | `review-resolve` | Verify fix resolutions against the source; persist `verification`. |
 | `/creview:rounds` | `review-rounds` | Automatically iterate start → triage → respond → resolve across rounds. |
 
+Every command requires a session started at the repository root, with or
+without `--worktree`; started from a subdirectory of the repository, it stops
+with an error.
+
 `review-respond` was split into two skills. Run `/creview:triage <doc>`
 first; review the persisted decisions in the document; then run
 `/creview:respond <doc>`. There is no confirmation prompt inside either skill —
@@ -76,6 +80,40 @@ documents. The loop then pauses as it does for `--confirm`, presents that
 report, and waits for the instruction to continue; a fix policy given with
 that instruction is passed on to the round's respond phase.
 
+`/creview:rounds` takes a `--worktree[=branch]` option (default OFF) that runs
+every round in a separate git worktree under `.claude/worktrees/`, so the
+fixes never touch the main working tree's sources. The worktree checks out
+`branch` — an existing local branch as is, or a new one created from the
+current HEAD; without `=branch`, a new branch `creview-rounds-{timestamp}` is
+created. The branch checked out in the main working tree cannot be used,
+because git does not check out one branch in two worktrees. Enabling it
+enables `--commit`. The review documents, the final report, and every phase's
+working directory stay in the main working tree's `.claude/tmp/`, and the
+destination project's `.claude/agents/` and `.claude/rules/` are read from
+the main working tree.
+Every sub-agent receives the worktree as its work target (`target_dir`) and
+writes only under it, to its working directory, and to the output paths it is
+given; any other path, the main working tree included, is read-only.
+The worktree starts from committed state — the current HEAD for a new branch,
+the tip of an existing one — so uncommitted changes in the main working tree
+are not part of the run. Gitignored dependencies, virtual environments, build
+directories, and `.env` are absent from the worktree as well, and so are the
+contents of submodules, which `git worktree add` does not initialize; the build
+and tests must therefore pass in a fresh checkout. Dependency installation and
+similar setup can go in the configure command of `build-format.md`, but
+configure runs only at the start of the build stage — after the format
+command, and not at all when the build is skipped or none is declared — so the
+format command and tests that run without a build cannot rely on it. A build
+or test failure caused by such a missing prerequisite is not fixed in the
+source: respond stops its build-fix loop and records the failure as the
+round's workflow warning, which the final report lists. At the
+end the worktree is removed and the branch is kept; a worktree that still has
+uncommitted changes is kept and its path is reported. Git also refuses to
+remove a worktree in which submodules were initialized (for example by the
+configure command), so such a worktree is kept and reported as well; check its
+contents and remove it with `git worktree remove --force <path>`, since a rerun
+on the same `--worktree=branch` fails while it remains.
+
 Nested sub-agent spawning is required
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; the default is 3):
 
@@ -100,7 +138,9 @@ analysis / format-build-verify / divergence-detection sub-agents enumerate agent
 (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin bundle**, read
 each agent's frontmatter `name` / `description`, and pick the best match per
 finding (scope-analysis instead picks every agent relevant to each review
-scope). With no match, they fall back to `general-purpose`. The
+scope, and adds `general-purpose` to a scope whose picks all cover a narrower
+concern than the code's behavior, such as comments alone). With no match, they
+fall back to `general-purpose`. The
 bundled agents are `review-helper` (mechanical aggregation / verification),
 `comment-sensei` (comment-discipline review), and `review-leader` (the
 `/creview:rounds` phase leader).
@@ -112,7 +152,10 @@ bundled agents are `review-helper` (mechanical aggregation / verification),
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`,
   `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it), and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
-  `fetch-diff.sh` / `del-tmp.sh`). The scripts require `python3` (3.9 or later)
+  `fetch-diff.sh` / `del-tmp.sh`; from a linked worktree it also accepts the
+  `.claude/tmp/` of another working tree of the same repository), and
+  `worktree.sh` (creates and removes the `--worktree` worktree). The scripts
+  require `python3` (3.9 or later)
   on the `PATH`. Skills invoke them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`;
   sub-agent templates receive the resolved path through the `{{plugin_root}}`
   launch variable.

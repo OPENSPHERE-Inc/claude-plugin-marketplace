@@ -10,7 +10,7 @@ Preconditions:
 
 - Your only filesystem write is `{{tmp_dir}}/challenge-{{batch_index}}-{{challenge_index}}.jsonl`. Sources are Read-only.
 - Do not Read any other `challenge-*.jsonl`: the parallel instances' stances are tallied as independent votes.
-- The paths passed (`{{document_path}}` / `{{tmp_dir}}`) are relative. Do not convert them to absolute paths.
+- Use the paths passed as launch variables (`{{document_path}}`, `{{tmp_dir}}`, and each path in `{{previous_round_doc_paths}}`) in the form given, whether relative or absolute. Do not convert them. Resolve any other path — a finding's location and the source `file:line` cited in reasons — relative to `{{target_dir}}` (the working tree under review).
 
 Inputs:
 

@@ -75,9 +75,11 @@ review_diff() {
 # git diff reports no untracked file in any of its modes. Register them in a
 # throwaway index with --intent-to-add so a plain diff renders them as new files;
 # the real index is never touched. Runs from the repo root to keep the listing
-# repo-wide the way git diff already is whatever the CWD. The scratch dir is
-# excluded by path at both the root and the invoking CWD — a project need not
-# gitignore it, and this script's own output file lives there.
+# repo-wide the way git diff already is whatever the CWD. The scratch dir (at both
+# the root and the invoking CWD) and the --worktree worktrees (.claude/worktrees,
+# nested repos that git add -N would record as gitlinks) are excluded by path — a
+# project need not gitignore them, and this script's own output file lives in the
+# scratch dir.
 untracked_diff() (
     local f rc=0 prefix tmp_dir tmp_index
     prefix="$(git rev-parse --show-prefix)"
@@ -87,7 +89,8 @@ untracked_diff() (
     while IFS= read -r -d '' f; do
         paths+=("${f}")
     done < <(git ls-files --others --exclude-standard -z -- \
-        ':(exclude).claude/tmp' ":(exclude)${prefix}.claude/tmp")
+        ':(exclude).claude/tmp' ":(exclude)${prefix}.claude/tmp" \
+        ':(exclude).claude/worktrees')
     [[ "${#paths[@]}" -gt 0 ]] || return 0
 
     # mktemp -d gives a mode-0700 private dir, so the index path inside it

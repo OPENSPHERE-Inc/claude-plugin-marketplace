@@ -8,7 +8,7 @@ Run the destination project's format, build, and test once each (test only when 
 
 Inputs: working directory `{{tmp_dir}}`, working-tree diff `{{diff_path}}` (`fetch-diff.sh` output), attempt number `{{attempt_num}}` (informational).
 
-The command CWD is the project root. Use relative paths only. Do not pipe through `tee` / `Tee-Object`, and do not use compound commands (`;` / `&&`); the Bash tool returns the exit code automatically.
+Run the commands from your current working directory, `{{target_dir}}` (the project root), without `cd`. Use `{{tmp_dir}}` / `{{diff_path}}` in the form given; write any other path (the changed files you get from git, `failure.error_files`) relative to `{{target_dir}}`. Do not pipe through `tee` / `Tee-Object`, and do not use compound commands (`;` / `&&`); the Bash tool returns the exit code automatically.
 
 Procedure:
 
@@ -19,13 +19,13 @@ Procedure:
    - Build (when a build command resolved and the stage is not skip-eligible; `build_ran = true`): run any configure command first, then the build, redirecting output to `{{tmp_dir}}/build.log`. The moment configure or build exits non-zero, set `failure.stage = "build"` and go to step 6.
    - Test (when a test command resolved, the build did not fail, and the stage is not skip-eligible; `test_ran = true`): run the test, appending output to `{{tmp_dir}}/build.log`. On non-zero exit, set `failure.stage = "test"` and go to step 6.
 5. Visual check only (`workflow_source == "none"`): run nothing (`build_ran` / `test_ran` false). Read the changed files and check for visually obvious breakage (syntax, unresolved symbols). Set `workflow_warning` to "Format / build / test procedure is not declared, so automatic verification was skipped. Adding `.claude/rules/build-format.md` is recommended." Set `failure.stage = "visual"` only on an obvious break.
-6. On failure (`failure != null`): Read the log (`{{tmp_dir}}/build.log`; absent in visual mode) and the error-producing files, analyze the cause, and set `error_summary` / `error_files` / `fix_guidance`. Resolve the fix specialist via `{{plugin_root}}/rules/agents-detection.md` (match target: the error content — language / build system / subsystem / test framework) into `suggested_specialist`.
+6. On failure (`failure != null`): Read the log (`{{tmp_dir}}/build.log`; absent in visual mode) and the error-producing files, analyze the cause, and set `error_summary` / `error_files` / `fix_guidance` / `environmental` (`true` only for an environmental failure as `{{plugin_root}}/rules/build-format-detection.md` defines it). Resolve the fix specialist via `{{plugin_root}}/rules/agents-detection.md` (match target: the error content — language / build system / subsystem / test framework) into `suggested_specialist`.
 7. Write `{{tmp_dir}}/qa-result.jsonl`.
 
 `{{tmp_dir}}/qa-result.jsonl` format:
 
 ```
-{"workflow_source": "build-format.md | CLAUDE.md | README.md | none", "workflow_warning": <string|null>, "format": {"format_violations_fixed": <int>}, "build": {"ran": <bool>, "success": <bool>}, "test": {"ran": <bool>, "success": <bool>}, "failure": {"stage": "build|test|visual", "error_summary": <string|null>, "error_files": ["src/foo:42", ...]|null, "suggested_specialist": <string|null>, "fix_guidance": <string|null>, "log_path": "{{tmp_dir}}/build.log"}|null}
+{"workflow_source": "build-format.md | CLAUDE.md | README.md | none", "workflow_warning": <string|null>, "format": {"format_violations_fixed": <int>}, "build": {"ran": <bool>, "success": <bool>}, "test": {"ran": <bool>, "success": <bool>}, "failure": {"stage": "build|test|visual", "error_summary": <string|null>, "error_files": ["src/foo:42", ...]|null, "suggested_specialist": <string|null>, "fix_guidance": <string|null>, "environmental": <bool>, "log_path": "{{tmp_dir}}/build.log"}|null}
 ```
 
 Report completion to the leader (SendMessage with `to: "main"`) as one line of <=200 chars (e.g. "build-format.md / format ok / build ok / test ok").

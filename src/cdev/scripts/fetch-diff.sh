@@ -4,7 +4,7 @@
 # Modes:
 #   fetch-diff.sh snapshot <tree-out-file>
 #     Record a baseline tree of the current working tree (tracked + untracked,
-#     respecting .gitignore; excluding .claude/tmp) into <tree-out-file>.
+#     respecting .gitignore; excluding .claude/tmp and .claude/worktrees) into <tree-out-file>.
 #     Run once before any coding, so the QA diff is exactly what this run changed.
 #
 #   fetch-diff.sh diff <baseline-tree-file> <out-file>
@@ -41,8 +41,9 @@ prepare_out() {
 # Tree object of the entire current working tree (tracked + untracked, .gitignore
 # respected), built in a throwaway index seeded from the real index to reuse its
 # stat cache, without touching the real index or working tree. The .claude/tmp
-# scratch dir is excluded at diff time (PATHSPEC below), not here: naming it in a
-# `git add` pathspec errors when the project gitignores it ("paths are ignored").
+# scratch dir and .claude/worktrees are excluded at diff time (PATHSPEC below), not
+# here: naming them in a `git add` pathspec errors when the project gitignores them
+# ("paths are ignored").
 worktree_tree() {
     local tmp_dir tmp_index tree rc=0
     # mktemp -d gives a mode-0700 private dir, so the index path inside it
@@ -69,9 +70,12 @@ qa_diff() {
         diff --no-ext-diff --no-textconv --no-color "$@"
 }
 
-# Keep the cdev scratch dir out of the diff whether or not the project gitignores it:
-# exclude .claude/tmp at both the repo root and the CWD (the skill may run in a monorepo subdir).
-PATHSPEC=(-- ':(top)' ':(top,exclude).claude/tmp' ':(exclude).claude/tmp')
+# Keep the cdev scratch dir and --worktree worktrees (nested repos that git add -A records
+# as gitlinks) out of the diff whether or not the project gitignores them: exclude
+# .claude/tmp at both the repo root and the CWD (the skill may run in a monorepo subdir),
+# and .claude/worktrees at the repo root.
+PATHSPEC=(-- ':(top)' ':(top,exclude).claude/tmp' ':(exclude).claude/tmp'
+    ':(top,exclude).claude/worktrees')
 
 MODE="${1:?Error: mode (snapshot|diff) argument required}"
 

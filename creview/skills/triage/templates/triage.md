@@ -9,7 +9,7 @@ As the triage owner of the review document, Read `{{document_path}}`, perform st
 Preconditions:
 
 - `{{tmp_dir}}` is created in advance by the leader via `mkdir -p`. The Sub must not perform existence checks (`Test-Path` / `ls`, etc.) or mkdir. Your own filesystem writes are the two files `triage-draft.jsonl` and `triage.jsonl`. The challenge sub-agents and the adjudication sub-agent you launch write the `challenge-{b}-{n}.jsonl` / `adjudication.jsonl` that their own templates specify.
-- The paths passed (`{{document_path}}` / `{{tmp_dir}}`) are relative. Do not convert them to absolute paths.
+- Use the paths passed as launch variables (`{{document_path}}`, `{{tmp_dir}}`, and each path in `{{previous_round_doc_paths}}`) in the form given, whether relative or absolute. Do not convert them. Resolve any other path — a finding's location and the source `file:line` cited in reasons — relative to `{{target_dir}}` (the working tree under review).
 
 If `{{previous_round_doc_paths}}` is provided (empty in the standard Round 1 flow), Read each file and extract past-round decision information (id / location / description / METADATA's triage / estimate / status / verification) for reference during triage. No need to consult when empty or `(none)`.
 
@@ -46,6 +46,7 @@ As your first action, you MUST Read `{{plugin_root}}/skills/triage/templates/tri
 
 Variables (substitute into the template's {{...}} placeholders):
 - plugin_root: {{plugin_root}}
+- target_dir: {{target_dir}}
 - document_path: {{document_path}}
 - tmp_dir: {{tmp_dir}}
 - previous_round_doc_paths: {{previous_round_doc_paths}}
@@ -70,6 +71,7 @@ As your first action, you MUST Read `{{plugin_root}}/skills/triage/templates/tri
 
 Variables (substitute into the template's {{...}} placeholders):
 - plugin_root: {{plugin_root}}
+- target_dir: {{target_dir}}
 - document_path: {{document_path}}
 - tmp_dir: {{tmp_dir}}
 - previous_round_doc_paths: {{previous_round_doc_paths}}

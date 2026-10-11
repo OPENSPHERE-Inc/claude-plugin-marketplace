@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: Automatically iterate review, triage, respond, and resolve across multiple rounds until no actionable findings remain
-allowed-tools: Agent, Read, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
+allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # Automatic Review Round Execution
@@ -22,6 +22,23 @@ The user may optionally specify an output base path. When the argument is `$ARGU
 - `--max-rounds N` (default 10, range 1–20) — Change the maximum number of rounds for the outer loop.
 - `--base {branch}` (default `main` or `master`) — Specify the base branch (passed to the review phase). `--incremental` overrides it from Round 2 on.
 - `--adversarial` (default OFF) — Run the review phase in adversarial mode (passed through to the review phase).
+- `--worktree[=branch]` (default OFF) — Run every round in a separate git worktree on `branch` (§ Worktree). Without `=branch`, a new branch `creview-rounds-{YYYYMMDD-HHMMSS}` (the start time) is created from the current HEAD. Enables `--commit`.
+
+## Worktree (`--worktree`)
+
+Under `--worktree`, the fixes are made and committed only in a separate git worktree, and the main working tree's sources stay untouched. The `.claude/` the run uses — the review documents, every phase's working directory, and the project agents / rules — is the main working tree's.
+
+Setup:
+
+1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
+2. Move the session into the worktree with a Bash `cd {worktree_path}`; sub-agents launched afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Until the teardown, run no other bare `cd`: it moves the working directory of the whole session and of every sub-agent launched afterwards. Reach another directory through a command's own option (e.g. `git -C dir`) or a subshell. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree, including the main working tree's `.claude/tmp/`.
+
+Path base: resolve the output base path (the default `.claude/tmp/` or a relative one the user gave) against `{main_root}`. Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory.
+
+Teardown — on every exit after setup, once no sub-agent is running:
+
+1. Return the session with a Bash `cd {main_root}`.
+2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}`. It keeps a worktree with uncommitted changes and exits non-zero; report that worktree's path then.
 
 ## Review document file naming
 
@@ -52,6 +69,7 @@ Write the review document in the user's chat language.
   - Phase sub-agent launch and aggregation of their return values (counters, paths, one-line summaries).
   - User interaction for `--confirm` / `--confirm-round` / the divergence pattern detection gate. A phase sub-agent cannot reach the user, so every wait for the user's instruction to continue happens here, between phases.
   - Removal of the triage phase's working directory (Step 2.2), which outlives its phase sub-agent.
+  - Worktree setup and teardown (§ Worktree).
   - Final summary presentation to the user.
 - **Do not put review finding bodies or judgment bodies into context.** Hold only file paths, counters, and revision hashes; the details stay inside each phase.
 - Each round's findings and judgments are passed to the next Step / next round **only through the review document**. `{prev_round_rev}` is the one value the round loop itself carries forward.
@@ -66,6 +84,8 @@ As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templat
 
 Variables (substitute into the template's {{...}} placeholders):
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
+- main_root: {main_root}
+- target_dir: {target_dir}
 - {the variables the Step lists}
 
 Round-specific overrides (apply after following the template's instructions):
@@ -74,7 +94,7 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-Verify that the returned `template_id` matches the UUID the Step specifies; relaunch the phase sub-agent on mismatch. The same convention applies to the Step 2.2 divergence pattern detection and divergence investigation sub-agents and the Step 3 sub-agent; see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch prompt completeness.
+Verify that the returned `template_id` matches the UUID the Step specifies; relaunch the phase sub-agent on mismatch. The Step 2.2 divergence pattern detection and divergence investigation sub-agents and the Step 3 sub-agent use the same launch prompt and the same verification; see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch prompt completeness.
 
 ## Flow overview
 
@@ -98,10 +118,13 @@ Final step
 
 ## Step 1 — Initialization
 
-1. Verify the output directory exists; if not, create it.
-2. Get the current branch name.
-3. Parse options.
-4. Set the round counter to 1 and `{prev_round_rev}` to `(none)`.
+1. Parse options.
+2. If `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill.
+3. Under `--worktree`, run the setup in § Worktree.
+4. Fix `{target_dir}`, the work target every sub-agent receives: `{worktree_path}` under `--worktree`, otherwise the output of `git rev-parse --show-toplevel`.
+5. Get the current branch name.
+6. Verify the output directory exists; if not, create it.
+7. Set the round counter to 1 and `{prev_round_rev}` to `(none)`.
 
 ## Step 2 — Round loop
 
@@ -189,7 +212,7 @@ Record the round's results. Each counter is obtained from phase sub-agent return
 - Resolved count: the resolve phase's `resolved_count`
 - Feedback attempts: the number of Step 2.5 attempts performed in this round
 - Round start revision: this round's `{this_round_rev}`
-- workflow_warning: the `workflow_warning` retained in 2.3 / 2.5 (only for rounds where the format / build procedure was unresolved; null otherwise)
+- workflow_warning: the `workflow_warning` retained in 2.3 / 2.5 (only for rounds where the format / build procedure was unresolved or the build / test verification did not complete for an environmental cause; null otherwise)
 
 Condition for proceeding to the next round: only when **all** of the following are met, set `{prev_round_rev}` to this round's `{this_round_rev}`, increment the round counter, and return to Step 2.1:
 
@@ -220,4 +243,5 @@ Template: `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/final-report.md` (the f
 
 ## Step 4 — Completion report
 
-Report the final report path to the user, and concisely convey key statistics (total findings, resolved count, unresolved count).
+1. Under `--worktree`, run the teardown in § Worktree.
+2. Report the final report path to the user, and concisely convey key statistics (total findings, resolved count, unresolved count). Under `--worktree`, add the branch and any worktree the teardown kept.

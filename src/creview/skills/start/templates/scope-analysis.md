@@ -10,7 +10,7 @@ template_id: b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85
 
 レビュアープール: 以下の優先順位で `*.md` を列挙し、各ファイルの frontmatter の `name` / `description` を Read して専門性を把握する。`name` 値は別の Agent 呼び出しの `subagent_type` に渡す値である。同一 `name` が複数箇所に存在する場合は上位のものを採用する。存在しない箇所はスキップする。
 
-1. プロジェクト: `.claude/agents/**/*.md`（作業ディレクトリ基準）
+1. プロジェクト: `.claude/agents/**/*.md`（起動プロンプトが `(該当なし)` 以外の `main_root` を渡した場合はそれを基準、それ以外は `{{target_dir}}` 基準）
 2. ユーザー: `~/.claude/agents/**/*.md`
 3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`
 
@@ -18,7 +18,7 @@ template_id: b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85
 
 1. 差分から変更ファイルの種別 / パス / 内容領域（言語、サブシステム、ビルド / CI、A/V、コメント & FIXME / TODO 等）と拡張子別サマリを判定する。`line_count` = 差分中の +/- 行合計。
 2. 下記のサイズ規則に従って変更ファイルをレビュースコープに分割する。各変更ファイルはいずれか 1 つのスコープにのみ属する。スコープには形成順に `s1`、`s2`、… と番号を振る。
-3. 各スコープについて、列挙した各エージェントの `description` から、その専門性が差分全体ではなく**当該スコープのファイル**に関連するかを判定する。関連するエージェントはすべて、合致した拡張子 / パス / 内容領域を示す短い `reason` を付して当該スコープの `reviewers` に追加する。関連するエージェントが 1 つも無いスコープには代わりに `{name: "general-purpose", reason: "no matching specialist agent"}` を置く。
+3. 各スコープについて、列挙した各エージェントの `description` から、その専門性が差分全体ではなく**当該スコープのファイル**に関連するかを判定する。関連するエージェントはすべて、合致した拡張子 / パス / 内容領域を示す短い `reason` を付して当該スコープの `reviewers` に追加する。関連するエージェントが 1 つも無いスコープには代わりに `{name: "general-purpose", reason: "no matching specialist agent"}` を置く。スコープに追加したエージェントがすべてコードの振る舞いより狭い関心（例: コメント規律のみ）しか扱わない場合は、`{name: "general-purpose", reason: "no selected specialist reviews the code logic"}` も追加する。
 4. 未追加の `user_requested` レビュアーを全スコープに補完する（reason: `"user explicitly requested"`）。
 
 サイズ規則:

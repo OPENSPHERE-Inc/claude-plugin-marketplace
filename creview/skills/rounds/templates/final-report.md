@@ -22,11 +22,12 @@ Column definitions:
 
 ## Build / format verification notes
 
-`<Automatic verification was performed in all rounds / The rounds below had no declared format / build procedure and were visual-check only>`
+`<Automatic verification was performed in all rounds / Automatic verification did not complete in the rounds below>`
 
 | Round | Detail |
 |-------|--------|
 | Round N | Automatic verification skipped because `.claude/rules/build-format.md` etc. was undeclared (visual check only) |
+| Round N | Build / test verification did not complete for an environmental cause: <error summary> |
 
 ## Full findings list and response status
 

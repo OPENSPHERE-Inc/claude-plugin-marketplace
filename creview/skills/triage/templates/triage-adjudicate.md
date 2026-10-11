@@ -9,7 +9,7 @@ As the adjudication owner of the triage decisions, Read `{{tmp_dir}}/triage-draf
 Preconditions:
 
 - Your only filesystem write is `{{tmp_dir}}/adjudication.jsonl`. Sources are Read-only.
-- The paths passed (`{{document_path}}` / `{{tmp_dir}}`) are relative. Do not convert them to absolute paths.
+- Use the paths passed as launch variables (`{{document_path}}`, `{{tmp_dir}}`, each path in `{{previous_round_doc_paths}}`, and each path in `{{challenge_paths}}`) in the form given, whether relative or absolute. Do not convert them. Resolve any other path — a finding's location and the source `file:line` cited in reasons — relative to `{{target_dir}}` (the working tree under review).
 
 Inputs:
 

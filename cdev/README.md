@@ -63,6 +63,9 @@ or deletion, and no shared task list; the leader tracks each cell's status itsel
 only in a runtime where these are available — a deliberate trade-off favoring efficiency over
 the broad portability of a one-shot, stateless agent design.
 
+The skill requires a session started at the repository root, with or without `--worktree`;
+started from a subdirectory of the repository, it stops with an error.
+
 The bundled `fetch-diff.sh` / `del-tmp.sh` scripts also require `python3` (3.9 or later) on
 the `PATH`: their shared `.claude/tmp/` containment check is implemented in
 `scripts/lib/scratch-guard.py`.
@@ -72,13 +75,45 @@ the `PATH`: their shared `.claude/tmp/` containment check is implemented in
 - `--review-rounds N` (default 5, max 10) — max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, max 10) — max QA verify ⇄ fix attempts.
 - `--commit` (default off) — commit the verified implementation in one commit.
+- `--worktree[=branch]` (default off) — run the task in a separate git worktree on `branch`;
+  enables `--commit` (see below).
 - `--output {dir}` — directory for the design documents (default
   `.claude/tmp/cdev-coding-{timestamp}-design/`).
 
 The design documents (`design-{slug}.md`, one per architect) are kept after the run; every
 other intermediate file is deleted. `--commit` never stages them. The clean-working-tree
-check at start ignores `.claude/tmp/` and the `--output` destination, so design documents
-left by earlier runs do not block a new run.
+check at start ignores `.claude/tmp/`, `.claude/worktrees/`, and the `--output` destination,
+so design documents left by earlier runs and the worktrees of `--worktree` runs do not block a
+new run.
+
+With `--worktree`, the team works in a separate git worktree under `.claude/worktrees/`, so the
+main working tree's sources stay untouched and it does not need to be clean. The worktree
+checks out `branch` — an existing local branch as is, or a new one created from the current
+HEAD; without `=branch`, a new branch `cdev-coding-{timestamp}` is created. The branch checked
+out in the main working tree cannot be used, because git does not check out one branch in two
+worktrees. The worktree starts from committed state — the current HEAD for a new branch, the
+tip of an existing one — so uncommitted changes in the main working tree are not part of the
+task. Every teammate receives the worktree as its work target
+(`target_dir`) and writes only under it, to the run's working directory, and to the output paths
+its task names; paths in the task are passed as given, repository-relative paths resolve against
+the worktree, and an absolute path into the main working tree is a read-only reference. Gitignored dependencies, virtual environments, build directories, and `.env` are
+absent from the worktree as well, and so are the contents of submodules, which
+`git worktree add` does not initialize; the build and tests must therefore pass in a fresh
+checkout. Dependency installation and similar setup can go in the configure command of
+`build-format.md`, but configure runs only at the start of the build stage — after the format
+command, and not at all when the build is skipped or no Build is declared — so the format
+command and tests that run without a build cannot rely on it. A build or test failure caused
+by such a missing prerequisite is not fixed in the source: the QA gate ends without a QA-fix
+cell and reports the failure as environmental. The working directory and the
+default design-document destination are in the main working tree's `.claude/tmp/`, a relative
+`--output` resolves against the main working tree's root, and the destination project's
+`.claude/agents/` and `.claude/rules/` are read from the main working tree. At the end the
+worktree is removed and the branch is kept; a worktree left with uncommitted changes — for
+example after an unfixed QA failure — is kept and its path is reported. Git also refuses to
+remove a worktree in which submodules were initialized (for example by the configure command),
+so such a worktree is kept and reported as well; check its contents and remove it with
+`git worktree remove --force <path>`, since a rerun on the same `--worktree=branch` fails while
+it remains.
 
 ## Architect / coder / reviewer agents
 
@@ -107,7 +142,8 @@ enforce domain correctness. When no specialist matches a domain, the reviewer fa
   coding start), `del-tmp.sh` (deletes the run's working directory under `.claude/tmp/`),
   `check-jsonl.py` (teammates validate the `.jsonl` they wrote with it), and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by both; requires
-  `python3` — see Requirements). The skill invokes them via
+  `python3` — see Requirements), and `worktree.sh` (creates and removes the `--worktree`
+  worktree). The skill invokes them via
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`; teammates receive the resolved path through the
   `{{plugin_root}}` variable.
 

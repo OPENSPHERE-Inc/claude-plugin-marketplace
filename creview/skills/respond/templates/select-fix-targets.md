@@ -9,7 +9,7 @@ As the fix-target selection owner, Read the review document `{{document_path}}`,
 Preconditions:
 
 - `{{tmp_dir}}` is created in advance by the leader. The only filesystem write is targets.jsonl. Do not run existence checks or mkdir.
-- `{{document_path}}` / `{{tmp_dir}}` are relative paths. Do not convert them to absolute.
+- Use `{{document_path}}` / `{{tmp_dir}}` in the form given. Do not convert them.
 
 Extraction targets: Critical / Major / Minor sections (skip Info). For each finding, read the values inside `<!-- METADATA(id) -->` … `<!-- /METADATA(id) -->`. When a field repeats, use the last value.
 

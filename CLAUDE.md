@@ -57,13 +57,14 @@ claude-plugin-marketplace/
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
 │   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md
 │   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md
-│   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, lib/scratch-guard.py
+│   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
 │
 ├── cprompt/                      # Plugin: prompt authoring (active, English)
 │   ├── .claude-plugin/plugin.json
 │   ├── README.md / README_ja.md
 │   ├── skills/edit/              # /cprompt:edit (from prompt-editor) + templates/
-│   └── rules/                    # prompt.md, document.md
+│   ├── rules/                    # prompt.md, document.md
+│   └── scripts/                  # worktree.sh
 │
 ├── cdev/                         # Plugin: multi-agent coding workflow (active, English)
 │   ├── .claude-plugin/plugin.json
@@ -71,7 +72,7 @@ claude-plugin-marketplace/
 │   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, design, design-review, code, code-review, comment-review, qa)
 │   ├── agents/                   # comment-sensei.md, dev-helper.md
 │   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, divergence.md
-│   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, lib/scratch-guard.py
+│   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
 │
 ├── src/                          # Japanese master, mirrors each plugin's tree 1:1 (minus .claude-plugin/README)
 │   ├── creview/...               # src/creview/<same tree as creview/>
@@ -156,8 +157,18 @@ for p in creview cprompt cdev; do
     && echo "$p parity ok"
 done
 
-# Scratch-guard self-test: containment behavior + byte-parity of the shared
-# lib/del-tmp copies across creview/cdev and their src/ mirrors
+# Every sub-agent launch in a SKILL passes target_dir (prints offending lines)
+grep -nF 'plugin_root = ${CLAUDE_PLUGIN_ROOT}' {creview,cdev}/skills/*/SKILL.md \
+  src/{creview,cdev}/skills/*/SKILL.md | grep -vF 'target_dir' && echo BAD || echo ok
+# Same for the colon-form launch block of /creview:rounds (one target_dir line per block)
+pat='- plugin_root: ${CLAUDE_PLUGIN_ROOT}'
+for f in creview/skills/rounds/SKILL.md src/creview/skills/rounds/SKILL.md; do
+  [ "$(grep -cF -- "$pat" "$f")" = "$(grep -A2 -F -- "$pat" "$f" | grep -cF -- '- target_dir:')" ] \
+    && echo "ok $f" || echo "BAD $f"
+done
+
+# Scratch-guard self-test: containment behavior, worktree.sh, and byte-parity of the
+# shared script copies across creview/cdev/cprompt and their src/ mirrors
 bash tests/scratch-guard-test.sh
 ```
 
@@ -223,6 +234,29 @@ mismatch. The leader resolves `${CLAUDE_PLUGIN_ROOT}` (plugin context) and passe
 the launch prompt as the `plugin_root` variable so the template's `{{plugin_root}}/...`
 references resolve for the sub-agent. See `creview/rules/sub-agent.md`.
 
+The leader also passes `main_root` in every launch prompt: the main working tree's root
+under `--worktree`, `(none)` otherwise. `/creview:rounds` passes it in every launch
+prompt it issues; `review-leader` forwards the value it received, `(none)` included, to every
+sub-agent it launches; the `/creview:start` / `triage` / `respond` / `resolve` leaders pass
+the value an upper flow gave them, or `(none)` when invoked directly; cdev passes it through
+the spawn contract. The detection rules (`agents-detection.md` / `build-format-detection.md`)
+and `scope-analysis.md` resolve the project's `.claude/agents/` / `.claude/rules/` against
+it when it is other than `(none)`, and against `target_dir` otherwise. Launches nested
+inside a template (the challenge / adjudication sub-agents `triage.md` spawns) do not
+receive it, so the templates they run must not depend on it.
+
+Every launch prompt — nested launches included — also passes `target_dir`, the work target:
+the worktree under `--worktree`, otherwise the repository root (`git rev-parse
+--show-toplevel`). Every creview and cdev entry point rejects a session started in a
+subdirectory of the repository (non-empty `git rev-parse --show-prefix`) with an error,
+with or without `--worktree`, so every sub-agent's current working directory is
+`target_dir`, the single base for relative paths, for where commands run, and for the
+write scope. The write-scope bullet in `rules/sub-agent.md` / `rules/teammate.md` confines
+every sub-agent's writes to `{{target_dir}}`, its working directory (`tmp_dir`), and the
+output paths it is given, judged by prefix with no `..`, where `\` and `/` count as the
+same separator and a drive letter's case is ignored; paths in a task are passed as given,
+never re-rooted by a leader.
+
 ---
 
 ## Code Style & Formatting
@@ -264,7 +298,9 @@ references resolve for the sub-agent. See `creview/rules/sub-agent.md`.
    `templates/*.md` as needed; mirror it under `src/<plugin>/skills/<name>/` in Japanese.
 2. Use `${CLAUDE_PLUGIN_ROOT}/...` in the SKILL body / `allowed-tools`; use
    `{{plugin_root}}/...` inside templates and the bundled rules they point to, and pass
-   `plugin_root` in every launch prompt.
+   `plugin_root`, `main_root`, and `target_dir` in every launch prompt — `main_root` is the
+   main working tree's root under `--worktree` or the value an upper flow passed, and
+   `(none)` otherwise; `target_dir` is the work target (see Sub-agent launch contract).
 3. Resolve reviewers/fixers via the destination project's `.claude/agents/` with a
    `general-purpose` fallback — do not hardcode specialist agent names.
 4. Add the command to the marketplace `README.md`/`README_ja.md` and the plugin
@@ -343,6 +379,8 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   spawn contract). Never put `${CLAUDE_PLUGIN_ROOT}` in a template or a bundled rule; never
   put `{{plugin_root}}` in a SKILL. (`agents/review-helper.md` / `agents/review-leader.md`
   mention `{{plugin_root}}` only to name that template variable.)
+  `rules/sub-agent.md`, `rules/teammate.md`, and the detection rules carry
+  `{{target_dir}}` on the same basis: every launch passes `target_dir`.
   `rules/wontfix.md` carries `{{previous_round_doc_paths}}` on the same basis: every
   template that references it receives that launch variable.
 - **`template_id` must match.** The SKILL step's hard-coded UUID and the template's
@@ -365,7 +403,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 - **`scripts/lib/scratch-guard.py`, `scripts/del-tmp.sh` and `scripts/check-jsonl.py` are
   byte-identical across all four copies** (`creview/`, `cdev/`, and their `src/` mirrors); each plugin ships its own copy
   because plugins install independently. Edit one copy and replicate to the other three;
-  `tests/scratch-guard-test.sh` fails on any drift.
+  `tests/scratch-guard-test.sh` fails on any drift. `scripts/worktree.sh` is likewise
+  byte-identical across all six copies (`creview/`, `cdev/`, `cprompt/`, and their `src/`
+  mirrors).
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
   `SUMMARY`, `FINDINGS`, or `ANALYSIS`** (case-insensitive, basename only). Claude Code's
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output
