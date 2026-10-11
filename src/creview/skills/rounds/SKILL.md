@@ -85,6 +85,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Ba
 変数（テンプレート中の {{...}} placeholder を置換）:
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - main_root: {main_root}
+- target_dir: {target_dir}
 - {各ステップが挙げる変数}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
@@ -119,9 +120,10 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 1. オプションを解析する。
 2. `--worktree` 指定時は § ワークツリー のセットアップを実行する。
-3. 現在のブランチ名を取得する。
-4. 出力ディレクトリの存在を確認し、なければ作成する。
-5. ラウンドカウンターを 1、`{prev_round_rev}` を `(該当なし)` に設定する。
+3. すべてのサブエージェントが受け取る作業対象 `{target_dir}` を確定する: `--worktree` 指定時は `{worktree_path}`、それ以外は `git rev-parse --show-toplevel` の出力。
+4. 現在のブランチ名を取得する。
+5. 出力ディレクトリの存在を確認し、なければ作成する。
+6. ラウンドカウンターを 1、`{prev_round_rev}` を `(該当なし)` に設定する。
 
 ## ステップ 2 — ラウンドループ
 

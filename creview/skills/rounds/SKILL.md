@@ -85,6 +85,7 @@ As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templat
 Variables (substitute into the template's {{...}} placeholders):
 - plugin_root: ${CLAUDE_PLUGIN_ROOT}
 - main_root: {main_root}
+- target_dir: {target_dir}
 - {the variables the Step lists}
 
 Round-specific overrides (apply after following the template's instructions):
@@ -119,9 +120,10 @@ Final step
 
 1. Parse options.
 2. Under `--worktree`, run the setup in § Worktree.
-3. Get the current branch name.
-4. Verify the output directory exists; if not, create it.
-5. Set the round counter to 1 and `{prev_round_rev}` to `(none)`.
+3. Fix `{target_dir}`, the work target every sub-agent receives: `{worktree_path}` under `--worktree`, otherwise the output of `git rev-parse --show-toplevel`.
+4. Get the current branch name.
+5. Verify the output directory exists; if not, create it.
+6. Set the round counter to 1 and `{prev_round_rev}` to `(none)`.
 
 ## Step 2 — Round loop
 

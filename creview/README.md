@@ -88,6 +88,9 @@ skill stops with an error. Enabling it enables `--commit`. The review
 documents, the final report, and every phase's working directory stay in the
 main working tree's `.claude/tmp/`, and the destination project's
 `.claude/agents/` and `.claude/rules/` are read from the main working tree.
+Every sub-agent receives the worktree as its work target (`target_dir`) and
+writes only under it, to its working directory, and to the output paths it is
+given; any other path, the main working tree included, is read-only.
 The worktree starts from committed state — the current HEAD for a new branch,
 the tip of an existing one — so uncommitted changes in the main working tree
 are not part of the run. Gitignored dependencies, virtual environments, build

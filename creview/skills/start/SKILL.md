@@ -1,7 +1,7 @@
 ---
 name: start
 description: Launch a parallel code review with reviewers auto-selected from the destination project agents. Use proactively when the user asks to review changes, a branch, or a PR (e.g. "review this code"), or right after a substantial implementation is completed.
-allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*)
+allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*)
 ---
 
 # Parallel Code Review
@@ -94,7 +94,7 @@ The leader (you) does not place reviewer output bodies in context.
 {tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md  ← Output from each reviewer (numbered list of findings)
 ```
 
-`{main_root}` is the `main_root` your launch prompt gives when an upper flow (e.g. `/creview:rounds`) runs this skill, or `(none)` when the skill is invoked directly.
+`{main_root}` is the `main_root` your launch prompt gives when an upper flow (e.g. `/creview:rounds`) runs this skill, or `(none)` when the skill is invoked directly. `{target_dir}` is likewise the `target_dir` your launch prompt gives, or the output of `git rev-parse --show-toplevel` when the skill is invoked directly.
 
 Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 
@@ -114,7 +114,7 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --range {from} {to} {tmp_dir}/diff.txt
      ```
-4. Launch the scope-analysis sub-agent to analyze the diff — template `scope-analysis.md`, `template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `tmp_dir = {tmp_dir}`, `user_requested = {user_requested}`, overrides `(none)`. Return value: `{line_count, scopes, extension_summary, rationale, template_id}`.
+4. Launch the scope-analysis sub-agent to analyze the diff — template `scope-analysis.md`, `template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `user_requested = {user_requested}`, overrides `(none)`. Return value: `{line_count, scopes, extension_summary, rationale, template_id}`.
 5. If `line_count == 0`, Write an empty review document at `{final_doc_path}` — the header block of `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` with no severity sections — and proceed directly to Step 4.
 6. Adopt `scopes` as-is — always at least one element, each `{scope_id, paths, line_count, reviewers: [{name, reason}]}`. Create each scope's output directory with `mkdir -p {tmp_dir}/reviews/{scope_id}`.
 
@@ -132,7 +132,7 @@ Launch one reviewer per (scope, `reviewers[].name`) pair concurrently via the Ag
 
 Specify `subagent_type={name}` (the name resolved by the scope-analysis Sub from the destination project's `.claude/agents/`, or `general-purpose`). The agent definition's persona and perspective load automatically; do not include the persona / perspective in the launch prompt.
 
-Template `{reviewer_template}`, `template_id` `{reviewer_template_id}`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `targets = {targets}`, `base = {base}`, `diff_path = {diff_path}`, `scope_paths = {scope_paths}`, `output_path = {output_path}`, `doc_lang = {doc_lang}`, overrides `(none)`. `{scope_paths}` is that pair's scope `paths`; `{output_path}` is `{tmp_dir}/reviews/{scope_id}/review-{name}.md`. Return value from each reviewer: `{path, critical, major, minor, info, template_id}`.
+Template `{reviewer_template}`, `template_id` `{reviewer_template_id}`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `targets = {targets}`, `base = {base}`, `diff_path = {diff_path}`, `scope_paths = {scope_paths}`, `output_path = {output_path}`, `doc_lang = {doc_lang}`, overrides `(none)`. `{scope_paths}` is that pair's scope `paths`; `{output_path}` is `{tmp_dir}/reviews/{scope_id}/review-{name}.md`. Return value from each reviewer: `{path, critical, major, minor, info, template_id}`.
 
 ## Step 3 — Consolidate the Report (Delegate to Aggregator Sub-Agent)
 
@@ -143,7 +143,7 @@ Launch via `Agent(subagent_type="review-helper", prompt=...)` (model follows rev
 
 `{reviewer_paths_list}` lists every reviewer output file across all scopes; `{reviewer_names_csv}` is the reviewer names deduplicated across scopes.
 
-Template `aggregator.md`, `template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `tmp_dir = {tmp_dir}`, `reviewer_paths_list = {reviewer_paths_list}`, `final_doc_path = {final_doc_path}`, `round_num_or_omitted = {round_num_or_omitted}`, `targets_description = {targets_description}`, `reviewer_names_csv = {reviewer_names_csv}`, `review_mode = {review_mode}`, `doc_lang = {doc_lang}`, overrides `(none)`. Return value: `{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`.
+Template `aggregator.md`, `template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `reviewer_paths_list = {reviewer_paths_list}`, `final_doc_path = {final_doc_path}`, `round_num_or_omitted = {round_num_or_omitted}`, `targets_description = {targets_description}`, `reviewer_names_csv = {reviewer_names_csv}`, `review_mode = {review_mode}`, `doc_lang = {doc_lang}`, overrides `(none)`. Return value: `{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`.
 
 ## Step 4 — Clean Up Temporary Files
 

@@ -1,7 +1,7 @@
 ---
 name: coding
 description: ペアレビューセルを用いて、設計セルステップ・コーディングセルステップ・QA ゲートでコーディングタスクをエンドツーエンドに統括する、常駐エージェントチーム方式のワークフロー。reviewer は対象プロジェクトのエージェントから自動選定する。ユーザーが機能の実装・変更の構築・コーディングタスクの遂行を求めたとき能動的に使用する。バックグラウンドのサブエージェント（Agent の run_in_background）とエージェント間メッセージング（SendMessage）が利用可能なランタイムを要する。
-allowed-tools: Agent, SendMessage, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(realpath:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, SendMessage, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # マルチエージェントコーディング
@@ -52,7 +52,7 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 1. `git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、`--worktree` にはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。空なら `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
 2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に spawn する teammate はそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外（メイン作業ツリーの `.claude/tmp/` を含む）への Write / Edit を拒否する。
 
-パスの基点: `{tmp_dir}`、デフォルトの `{design_dir}`、相対パスの `--output` は `{main_root}` を基点に解決する。ソースのパスはワークツリー基準のままとする。ステップ 1.5 で team-analysis へ渡す前に、タスク指定中の各パスについて `{main_root}` 配下の相対位置を求める: `../` で `{main_root}` の外へ出ない相対パスはそのまま相対位置とし、それ以外のパス（相対パスは `{main_root}` 基準）は `realpath` の出力が `{main_root}` の `realpath` の出力の配下にある場合だけ、そのプレフィックスより後ろの残りを相対位置とする。比較は 2 つの `realpath` の出力どうしで行い、表記が異なりうる `{main_root}` そのものとは比較しない（例: Git Bash の `C:/...` と `/c/...`）。そのうえで振り分ける: 相対位置が `{main_root}` 配下には存在するが `{worktree_path}` 配下には存在しないもの（例: `.claude/tmp/` 配下のレビュー文書や設計ドキュメント、未追跡のメモ）は `{main_root}/{相対位置}` とし、読み取り専用の参照資料であることをタスク指定に明記する。それ以外の相対位置を持つものは `{worktree_path}` 配下の同じ相対位置へ付け替え、相対位置を持たないもの（`../` で外へ出る相対パスなど `{main_root}` の外を指すもの）はその物理パスの絶対パス（`realpath` の出力）で渡す。`--worktree` を指定しない場合、`{main_root}` は `(none)` で、すべてのパスは作業ディレクトリ基準とする。
+パスの基点: `{tmp_dir}`、デフォルトの `{design_dir}`、相対パスの `--output` は `{main_root}` を基点に解決する。タスク指定はそのまま team-analysis へ渡す。teammate は `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` に従ってそのパスを `{target_dir}` 基準で解決し、`{target_dir}` 外の絶対パスは読み取り専用の参照とする。`--worktree` を指定しない場合、`{main_root}` は `(none)` で、これらのパスは作業ディレクトリ基準とする。
 
 ティアダウン — セットアップ後のあらゆる終了経路で、稼働中の teammate がなくなってから実行する:
 
@@ -87,7 +87,7 @@ agent 種別（subagent_type）:
 各 teammate は以下のプロンプトで一度だけ spawn する。これはロールと報告プロトコルを確定し、以降の各メッセージがそのタスクで Read すべきテンプレートを指定する。共通禁止事項とセルプロトコルは `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` を参照。
 
 ```
-あなたはチームに {role} として参加する。私が割り当てる各タスクでは、`${CLAUDE_PLUGIN_ROOT}/skills/coding/templates/` 配下のテンプレートを指定し変数を渡すので、そのテンプレートを Read してそのタスクで従う。全タスク共通の変数: plugin_root = ${CLAUDE_PLUGIN_ROOT}、doc_lang = {doc_lang}、main_root = {main_root}。各タスクの結果はそのタスクを割り当てた相手へ報告し（リーダーは `SendMessage` の `to: "main"`、それ以外は依頼元 teammate の name。カウント / パス / 一行サマリのみ）、詳細な指摘はテンプレートの指示どおりに、相手の name 宛 `SendMessage` で peer-to-peer ルーティングする（相手の name は私が各メッセージで渡す）。`${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` を Read し共通禁止事項とレビューセルプロトコルを遵守する。
+あなたはチームに {role} として参加する。私が割り当てる各タスクでは、`${CLAUDE_PLUGIN_ROOT}/skills/coding/templates/` 配下のテンプレートを指定し変数を渡すので、そのテンプレートを Read してそのタスクで従う。全タスク共通の変数: plugin_root = ${CLAUDE_PLUGIN_ROOT}、doc_lang = {doc_lang}、main_root = {main_root}、target_dir = {target_dir}。各タスクの結果はそのタスクを割り当てた相手へ報告し（リーダーは `SendMessage` の `to: "main"`、それ以外は依頼元 teammate の name。カウント / パス / 一行サマリのみ）、詳細な指摘はテンプレートの指示どおりに、相手の name 宛 `SendMessage` で peer-to-peer ルーティングする（相手の name は私が各メッセージで渡す）。`${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` を Read し共通禁止事項とレビューセルプロトコルを遵守する。
 ```
 
 ## レビューセルプロトコル
@@ -124,12 +124,13 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 ## ステップ 1 — チーム編成とペアリング
 
 1. `--worktree` 指定時は § ワークツリー のセットアップを実行する。
-2. 本スキルはクリーンな作業ツリーでのみ動作する: `git status --porcelain -uall` を実行し、`.claude/tmp/` 配下、`.claude/worktrees/` 配下、`--output` の指定先配下を除く出力が非空（ステージ済み・未ステージ・未追跡のいずれかが存在）ならエラーメッセージをコンソールに表示してスキルを終了する。これらには過去の実行の設計ドキュメントと `--worktree` 実行のワークツリーが残るため除外する。
-3. `{tmp_dir}` と `{design_dir}` を確定して作成する（`mkdir -p`）。続いてコーディング開始前のベースラインを記録する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`。
-4. コンソールに表示する: `## Step 1 — Team formation`。
-5. `dev-helper`（種別 `cdev:dev-helper`、name `dev-helper`）を起動する。`dev-helper` 宛に `templates/team-analysis.md` を指定し `task = {タスク指定}`、`output_path = {tmp_dir}/team.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team.jsonl` を Read する: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`（`name` は起動時の subagent_type）。各 producer の `reviewer` はペアの reviewer の `slug`（1 人の reviewer が複数の producer とペアになることもあるが、ドメインが一致する範囲に限る）。
-6. ロスターの各メンバーを起動する。name は `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}`、種別は team-analysis が返す `name` を用いる（architect と coder は `general-purpose`）。ペアリングと `{task_summary}` を保持する。producer のペア reviewer の宛先は `reviewer-{その producer の reviewer slug}`。
-7. コンソールに表示する: 各 producer のペアの reviewer と一行の理由を含むロスター。
+2. すべての teammate が受け取る作業対象 `{target_dir}` を確定する: `--worktree` 指定時は `{worktree_path}`、それ以外は `git rev-parse --show-toplevel` の出力。
+3. 本スキルはクリーンな作業ツリーでのみ動作する: `git status --porcelain -uall` を実行し、`.claude/tmp/` 配下、`.claude/worktrees/` 配下、`--output` の指定先配下を除く出力が非空（ステージ済み・未ステージ・未追跡のいずれかが存在）ならエラーメッセージをコンソールに表示してスキルを終了する。これらには過去の実行の設計ドキュメントと `--worktree` 実行のワークツリーが残るため除外する。
+4. `{tmp_dir}` と `{design_dir}` を確定して作成する（`mkdir -p`）。続いてコーディング開始前のベースラインを記録する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`。
+5. コンソールに表示する: `## Step 1 — Team formation`。
+6. `dev-helper`（種別 `cdev:dev-helper`、name `dev-helper`）を起動する。`dev-helper` 宛に `templates/team-analysis.md` を指定し `task = {タスク指定}`、`output_path = {tmp_dir}/team.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team.jsonl` を Read する: `{task_summary, target_languages, has_test_suite, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`（`name` は起動時の subagent_type）。各 producer の `reviewer` はペアの reviewer の `slug`（1 人の reviewer が複数の producer とペアになることもあるが、ドメインが一致する範囲に限る）。
+7. ロスターの各メンバーを起動する。name は `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}`、種別は team-analysis が返す `name` を用いる（architect と coder は `general-purpose`）。ペアリングと `{task_summary}` を保持する。producer のペア reviewer の宛先は `reviewer-{その producer の reviewer slug}`。
+8. コンソールに表示する: 各 producer のペアの reviewer と一行の理由を含むロスター。
 
 ## ステップ 2 — 設計セル（設計）
 

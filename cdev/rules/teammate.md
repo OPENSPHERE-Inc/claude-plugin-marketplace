@@ -4,6 +4,7 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
 
 ## Prohibitions
 
+- **Work target and write scope**: `{{target_dir}}` is the work target. Resolve repository-relative paths (from a task, a finding, or a diff) against it. Run Bash commands in it and never leave it with a bare `cd`; reach another directory through the command's own option (e.g. `make -C dir`), or through a subshell where your template allows compound commands. Write only under `{{target_dir}}` and to the files outside it that your task tells you to write (the run's working-directory files and its output paths). Every other path is read-only: the main working tree included, an absolute path outside `{{target_dir}}` that the task or a reference document names is a reference only. A path is under `{{target_dir}}` only when it begins with `{{target_dir}}` followed by `/` and has no `..` component; do not normalize it further. When a path you would write is neither under `{{target_dir}}` nor a file your task tells you to write, do not write it; report it to whoever assigned the task.
 - **Output scope / source editing**: A teammate writes only to the target its task assigns:
   - Architect: the design-document section file the task assigns (markdown). No source-code edits.
   - Coder: source code (implementation, plus fixes for QA / review / comment feedback) within its assigned scope.

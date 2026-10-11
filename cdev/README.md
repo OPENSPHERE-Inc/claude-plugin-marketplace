@@ -91,10 +91,10 @@ out in the main working tree cannot be used, because git does not check out one 
 worktrees. The option works only in a session started at the repository root; from a
 subdirectory the skill stops with an error. The worktree starts from committed state — the
 current HEAD for a new branch, the tip of an existing one — so uncommitted changes in the main
-working tree are not part of the task. Paths in the task are rewritten to the worktree, except
-files that exist only in the main working tree (such as a review document under `.claude/tmp/`
-or an untracked note), which are passed with their main-working-tree path as read-only
-references. Gitignored dependencies, virtual environments, build directories, and `.env` are
+working tree are not part of the task. Every teammate receives the worktree as its work target
+(`target_dir`) and writes only under it, to the run's working directory, and to the output paths
+its task names; paths in the task are passed as given, repository-relative paths resolve against
+the worktree, and an absolute path into the main working tree is a read-only reference. Gitignored dependencies, virtual environments, build directories, and `.env` are
 absent from the worktree as well, and so are the contents of submodules, which
 `git worktree add` does not initialize; the build and tests must therefore pass in a fresh
 checkout. Dependency installation and similar setup can go in the configure command of

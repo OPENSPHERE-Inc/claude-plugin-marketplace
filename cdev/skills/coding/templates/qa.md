@@ -8,7 +8,7 @@ Run the destination project's format, build, and test once each (test only when 
 
 Inputs: working directory `{{tmp_dir}}`, working-tree diff `{{diff_path}}` (`fetch-diff.sh` output), attempt number `{{attempt_num}}` (informational).
 
-The command CWD is the project root. Use `{{tmp_dir}}` / `{{diff_path}}` in the form given; write any other path relative to the CWD. Do not pipe through `tee` / `Tee-Object`, and do not use compound commands (`;` / `&&`); the Bash tool returns the exit code automatically.
+Run the commands in `{{target_dir}}`, the project root. Use `{{tmp_dir}}` / `{{diff_path}}` in the form given; write any other path relative to `{{target_dir}}`. Do not pipe through `tee` / `Tee-Object`, and do not use compound commands (`;` / `&&`); the Bash tool returns the exit code automatically.
 
 Procedure:
 

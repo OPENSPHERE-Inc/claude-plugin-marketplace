@@ -33,10 +33,10 @@ Options:
   no uncommitted changes; editing does not start for a target that is missing
   from the worktree or has uncommitted changes. The option works only in a
   session started at the repository root; from a subdirectory the skill stops
-  with an error without creating the worktree. A relative target path is
-  resolved against the working directory at launch and then re-rooted into
-  the worktree; a target outside the repository is edited in place and not
-  committed. A target git ignores cannot be handled with `--worktree`: the
+  with an error without creating the worktree. The target path must be
+  repository-relative and is resolved inside the worktree; an absolute target
+  path stops the skill with an error without creating the worktree. A target
+  git ignores cannot be handled with `--worktree`: the
   skill stops with an error without creating the worktree (run it without
   `--worktree`). At the end the worktree is removed and the branch is kept; a
   worktree left with uncommitted changes is kept and its path is reported.
