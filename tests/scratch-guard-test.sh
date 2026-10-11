@@ -242,14 +242,17 @@ check "del-tmp cross-worktree delete" 0 "${rc}"
 rc=0; bash "${FD}" snapshot "${MAIN}/.claude/tmp/wt-e2e/baseline" 2>/dev/null || rc=$?
 check "fetch-diff cross-worktree snapshot" 0 "${rc}"
 [[ -s "${MAIN}/.claude/tmp/wt-e2e/baseline" ]] || { note "FAIL: cross-worktree baseline"; fail=1; }
-GONE="${SANDBOX}/gone-wt"
-if git worktree add -q --detach "${GONE}" >/dev/null 2>&1; then
-    rm -rf "${GONE}"
-    t 1 -w "${GONE}/.claude/tmp/x/out.txt"
-    git worktree prune
-else
-    note "FAIL: git worktree add for the prunable-worktree case"; fail=1
-fi
+GONE="$(cd "${SANDBOX}" && pwd -P)/gone-wt"
+for lock in '' --lock; do
+    if git worktree add -q --detach ${lock} "${GONE}" >/dev/null 2>&1; then
+        rm -rf "${GONE}"
+        t 1 -w "${GONE}/.claude/tmp/x/out.txt"
+        [[ -z "${lock}" ]] || git worktree unlock "${GONE}"
+        git worktree prune
+    else
+        note "FAIL: git worktree add for the removed-worktree case (${lock:-unlocked})"; fail=1
+    fi
+done
 : > "${WT_PATH}/dirty.txt"
 cd "${MAIN}" || exit 1
 rc=0; bash "${CFD}" HEAD .claude/tmp/e2e/wt-review.txt 2>/dev/null || rc=$?
