@@ -65,9 +65,17 @@ def worktree_roots():
         ).stdout.decode("utf-8", "surrogateescape")
     except (OSError, subprocess.CalledProcessError):
         return
-    for line in listing.splitlines():
-        if line.startswith("worktree "):
-            yield Path(to_windows_drive_path(line[len("worktree "):]))
+    # Bare and prunable (directory gone) entries are not working trees.
+    root, usable = None, True
+    for line in listing.splitlines() + [""]:
+        if not line:
+            if root is not None and usable:
+                yield Path(to_windows_drive_path(root))
+            root, usable = None, True
+        elif line.startswith("worktree "):
+            root = line[len("worktree "):]
+        elif line in ("bare", "prunable") or line.startswith("prunable "):
+            usable = False
 
 
 def locate(target, raw):
