@@ -202,6 +202,8 @@ check "creview fetch-diff range base rejected" 1 "${rc}"
 
 # --- worktree.sh + scratch dir of another working tree ----------------------------
 MAIN="$(git rev-parse --show-toplevel)"
+rc=0; bash "${FD}" snapshot .claude/tmp/e2e/wt-baseline 2>/dev/null || rc=$?
+check "fetch-diff snapshot before worktree" 0 "${rc}"
 out="$(bash "${WT}" create feat/wt 2>/dev/null)"; rc=$?
 check "worktree create new branch" 0 "${rc}"
 WT_PATH="$(printf '%s\n' "${out}" | sed -n 's/^worktree_path=//p')"
@@ -240,8 +242,25 @@ check "del-tmp cross-worktree delete" 0 "${rc}"
 rc=0; bash "${FD}" snapshot "${MAIN}/.claude/tmp/wt-e2e/baseline" 2>/dev/null || rc=$?
 check "fetch-diff cross-worktree snapshot" 0 "${rc}"
 [[ -s "${MAIN}/.claude/tmp/wt-e2e/baseline" ]] || { note "FAIL: cross-worktree baseline"; fail=1; }
+GONE="${SANDBOX}/gone-wt"
+if git worktree add -q --detach "${GONE}" >/dev/null 2>&1; then
+    rm -rf "${GONE}"
+    t 1 -w "${GONE}/.claude/tmp/x/out.txt"
+    git worktree prune
+else
+    note "FAIL: git worktree add for the prunable-worktree case"; fail=1
+fi
 : > "${WT_PATH}/dirty.txt"
 cd "${MAIN}" || exit 1
+rc=0; bash "${CFD}" HEAD .claude/tmp/e2e/wt-review.txt 2>/dev/null || rc=$?
+check "creview fetch-diff with leftover worktree" 0 "${rc}"
+! grep -qF '.claude/worktrees' .claude/tmp/e2e/wt-review.txt \
+    || { note "FAIL: creview fetch-diff listed .claude/worktrees"; fail=1; }
+rc=0; bash "${FD}" diff .claude/tmp/e2e/wt-baseline .claude/tmp/e2e/wt-changes.txt 2>/dev/null \
+    || rc=$?
+check "fetch-diff diff with leftover worktree" 0 "${rc}"
+! grep -qF '.claude/worktrees' .claude/tmp/e2e/wt-changes.txt \
+    || { note "FAIL: cdev fetch-diff listed .claude/worktrees"; fail=1; }
 
 rc=0; bash "${WT}" remove "${WT_PATH}" >/dev/null 2>&1 || rc=$?
 [[ "${rc}" -ne 0 && -d "${WT_PATH}" ]] || { note "FAIL: worktree remove deleted a dirty worktree"; fail=1; }
