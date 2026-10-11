@@ -4,10 +4,10 @@
 Usage: python3 scratch-guard.py [-p|-w] <path>
 
 Prints the normalized path on stdout and exits 0 when <path> stays under
-.claude/tmp/ of the current directory (printed repo-relative) or, for an
-absolute path outside the current directory, under .claude/tmp/ of another
-working tree of the same repository (printed absolute). Exits 1 on any
-violation (message on stderr).
+.claude/tmp/ of the current directory (printed relative to it) or, for an
+absolute path outside the current directory, under .claude/tmp/ of any
+working tree root of the same repository, the current one included (printed
+absolute). Exits 1 on any violation (message on stderr).
 With -p the parent directory is additionally resolved to its physical path
 and re-checked, so a symlinked directory component cannot escape; exits 3
 when the parent directory does not exist and its deepest existing ancestor

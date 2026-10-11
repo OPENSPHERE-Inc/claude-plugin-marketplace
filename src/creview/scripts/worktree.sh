@@ -9,6 +9,7 @@
 #   branch=<branch>.
 # remove: removes a worktree that has no uncommitted changes; the branch is kept.
 #   A dirty worktree is left in place and the script exits non-zero.
+#   Gitignored files do not count as changes and are deleted with the worktree.
 
 set -euo pipefail
 
