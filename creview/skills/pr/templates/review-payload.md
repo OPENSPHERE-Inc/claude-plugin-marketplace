@@ -15,7 +15,7 @@ One comment per selected finding:
 - `id`, and `severity` — the finding's section (`Critical` / `Major` / `Minor`).
 - `location` — the heading's location; `PR description` is translated into the post language.
 - `path` / `line` — from a `file_path:line` location, the path relative to the repository root and the line as an integer (the first line of a range); `line` is null when the location has no line, and both are null for `PR description`.
-- `body` — Markdown in the post language: a first line `**{severity}** [{categories}]` with the categories in the post language, then the finding rewritten for the PR author — the problem, its impact, and the direction of a fix. Leave out the finding-id, the reviewer names, and the triage metadata.
+- `body` — Markdown in the post language: a first line `**{id} {severity}** [{categories}]` (e.g. `**M-1 Major** [Security]`; `{id}` is the finding-id as written in the review document, and the categories are in the post language), then the finding rewritten for the PR author — the problem, its impact, and the direction of a fix. Leave out the reviewer names and the triage metadata.
 
 Also compose, in the post language, `body` — one or two sentences summarizing the posted findings by severity count — and `outside_diff_heading` — a heading for findings that cannot be anchored in the diff.
 

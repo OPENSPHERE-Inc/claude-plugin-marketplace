@@ -151,7 +151,9 @@ the current branch.
   never approves a PR. Posting is refused when the PR head moved after the
   review; rerun the skill then.
 - The posted comments are written in the language of the PR description; the
-  review document and the console summary use the user's chat language. The
+  review document and the console summary use the user's chat language. Each
+  posted comment starts with its finding id in the review document (such as
+  `M-1`), so the two can be matched. The
   review document stays at `.claude/tmp/creview-pr-{number}-{timestamp}.md`
   unless `--output` names another path.
 - Every sub-agent treats the PR's code, description, and comments as data

@@ -15,7 +15,7 @@ template_id: 1c163d5b-2249-4ff2-bb85-5dcce19fe281
 - `id` と `severity` — 指摘のセクション（`Critical` / `Major` / `Minor`）。
 - `location` — 見出しのロケーション。`PR description` は投稿言語に訳す。
 - `path` / `line` — `file_path:line` のロケーションから、リポジトリルートからの相対パスと整数の行（範囲なら先頭行）。ロケーションに行がなければ `line` は null、`PR description` では両方 null。
-- `body` — 投稿言語の Markdown: 1 行目は `**{severity}** [{categories}]`（カテゴリは投稿言語）、続いて PR の作成者向けに書き直した指摘 — 問題、その影響、修正の方向性。finding-id、レビュアー名、トリアージのメタデータは含めない。
+- `body` — 投稿言語の Markdown: 1 行目は `**{id} {severity}** [{categories}]`（例: `**M-1 Major** [Security]`。`{id}` はレビュードキュメントの finding-id のまま、カテゴリは投稿言語）、続いて PR の作成者向けに書き直した指摘 — 問題、その影響、修正の方向性。レビュアー名とトリアージのメタデータは含めない。
 
 あわせて投稿言語で、`body` — 投稿する指摘を重要度別の件数で要約する 1〜2 文 — と、`outside_diff_heading` — 差分にアンカーできない指摘の見出し — を作成する。
 
