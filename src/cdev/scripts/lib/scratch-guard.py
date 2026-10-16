@@ -54,6 +54,19 @@ def cwd_candidates():
             yield pwd
 
 
+def executable(name):
+    # Windows looks a bare program name up in the working directory before
+    # PATH, and the working directory can hold untrusted checked-out files.
+    if os.name == "nt" and not name.lower().endswith(".exe"):
+        name += ".exe"
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        entry = entry.strip('"')
+        path = os.path.join(entry, name)
+        if os.path.isabs(entry) and os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
 def is_worktree(path):
     # A main working tree has a .git directory and a linked one a .git file.
     # Python before 3.13 raises on errors such as EACCES or ESTALE; treat an
@@ -67,9 +80,12 @@ def is_worktree(path):
 def worktree_roots():
     # A session switched into a linked worktree still keeps its scratch files
     # in the working tree it was launched from.
+    git = executable("git")
+    if git is None:
+        return
     try:
         listing = subprocess.run(
-            ["git", "worktree", "list", "--porcelain"],
+            [git, "worktree", "list", "--porcelain"],
             capture_output=True,
             check=True,
         ).stdout.decode("utf-8", "surrogateescape")

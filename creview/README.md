@@ -8,7 +8,7 @@ A multi-agent parallel code review workflow for Claude Code.
 
 | Command | Maps from | Purpose |
 |---------|-----------|---------|
-| `/creview:start` | `parallel-review` | Run a parallel code review; produce a review document with metadata markers. |
+| `/creview:start` | `parallel-review` | Run a parallel code review of local changes or a GitHub pull request; produce a review document with metadata markers. |
 | `/creview:triage` | `review-respond` (triage + estimate) | Triage and estimate findings; persist `triage` / `estimate` into the document. |
 | `/creview:respond` | `review-respond` (fix) | Fix Will-Fix / Maintain / Alternative findings; verify the build; persist `status`. |
 | `/creview:resolve` | `review-resolve` | Verify fix resolutions against the source; persist `verification`. |
@@ -42,6 +42,38 @@ scopes of up to 400 changed lines / 10 files each and picks reviewers per
 scope, so a large change is reviewed slice by slice rather than sampled by
 reviewers that stop exploring once they have produced a few findings. A
 smaller change stays a single scope.
+
+`/creview:start` also takes a GitHub pull request URL
+(`https://{host}/{owner}/{repo}/pull/{number}`) as its review target and then
+reviews that pull request: the diff from its merge base to its head commit.
+The pull request must belong to a repository that is a remote of the current
+clone, and the GitHub CLI (`gh`) must be authenticated for its host. `--base`
+and `--range` cannot be combined with it.
+
+- When HEAD is the pull request's head commit, the working tree is reviewed
+  in place; uncommitted changes stop the run with an error.
+- Otherwise the head commit is checked out, detached, in a temporary worktree
+  under `.claude/worktrees/`, with git hooks disabled and Git LFS smudging
+  skipped. The worktree is removed at the end of the run. It belongs to this
+  run only and is unrelated to `/creview:rounds --worktree`.
+  - The review document and the working directory stay in the main working
+    tree's `.claude/tmp/`, and the project's `.claude/agents/` are read from
+    the main working tree.
+  - Every sub-agent is told to treat the pull request's commit messages and
+    files, `CLAUDE.md`, `AGENTS.md`, and `.claude/**` included, as data, to run
+    nothing from it, and to change nothing on GitHub or any other remote. These
+    are instructions, not enforcement: for a pull request you do not trust,
+    also rely on your environment (a sandbox, hooks, or permission rules).
+
+The review document records the pull request in a header bullet of the form
+`- **PR:** {url} (head {head_sha}, base {merge_base})`. `/creview:triage`,
+`/creview:respond`, and `/creview:resolve` run separately on such a document
+work on the current working tree, not on a worktree of the pull request.
+
+When the review has Critical, Major, or Minor findings, `/creview:start` asks
+at the end whether to run `/creview:triage` on the new review document, and
+runs it in the same session if you agree. After a worktree review, triage runs
+in that worktree before it is removed. Under `/creview:rounds` it does not ask.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review
@@ -121,8 +153,9 @@ Nested sub-agent spawning is required
   sub-agent, which spawns that phase's own sub-agents, and the triage
   sub-agent spawns the challenge sub-agents and the adjudication
   sub-agent.
-- `/creview:triage` on its own — 2 or more. The triage sub-agent spawns
-  the challenge sub-agents and the adjudication sub-agent.
+- `/creview:triage` on its own, or run by `/creview:start` at its end — 2 or
+  more. The triage sub-agent spawns the challenge sub-agents and the
+  adjudication sub-agent.
 
 A long run also consumes many subagent slots — the challenge sub-agents alone
 number three per batch of eight findings, and a split review runs one reviewer

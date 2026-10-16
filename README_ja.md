@@ -29,7 +29,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 
 | コマンド | 目的 |
 |---------|---------|
-| `/creview:start` | 並列コードレビューを実行し、レビュードキュメントを生成する。 |
+| `/creview:start` | ローカルの変更または GitHub プルリクエストの並列コードレビューを実行し、レビュードキュメントを生成する。 |
 | `/creview:triage` | 指摘をトリアージ・見積し、`triage` / `estimate` をドキュメントへ永続化する。 |
 | `/creview:respond` | Will-Fix / Maintain / Alternative の指摘を修正し、`status` を永続化する。 |
 | `/creview:resolve` | 修正をソースに照らして検証し、`verification` を永続化する。 |

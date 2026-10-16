@@ -29,7 +29,7 @@ Add this marketplace, then install the plugins:
 
 | Command | Purpose |
 |---------|---------|
-| `/creview:start` | Run a parallel code review and produce a review document. |
+| `/creview:start` | Run a parallel code review of local changes or a GitHub pull request and produce a review document. |
 | `/creview:triage` | Triage and estimate the findings; persist `triage` / `estimate` into the document. |
 | `/creview:respond` | Fix the Will-Fix / Maintain / Alternative findings; persist `status`. |
 | `/creview:resolve` | Verify fixes against the source; persist `verification`. |
