@@ -6,7 +6,8 @@
 under the MIT license. It publishes three first-party plugins:
 
 - **creview** — a multi-agent parallel code review workflow (`start` → `triage` → `respond`
-  → `resolve`, plus an automatic multi-round driver `rounds`).
+  → `resolve`, plus an automatic multi-round driver `rounds` and a GitHub pull request
+  reviewer `pr`).
 - **cprompt** — create / edit AI-facing prompts and self-check them against
   prompt-discipline rules.
 - **cdev** — a team-native multi-agent coding workflow (`coding`: a standing team runs design
@@ -53,8 +54,9 @@ claude-plugin-marketplace/
 │   │   ├── triage/               # /creview:triage  (review-respond: triage + estimate)
 │   │   ├── respond/              # /creview:respond (review-respond: fix)
 │   │   ├── resolve/              # /creview:resolve (from review-resolve)
-│   │   └── rounds/               # /creview:rounds  (from review-rounds)
-│   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
+│   │   ├── rounds/               # /creview:rounds  (from review-rounds)
+│   │   └── pr/                   # /creview:pr      (GitHub PR review + posting)
+│   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve, scripts/gh-pr.py for pr)
 │   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md
 │   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md
 │   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
@@ -183,7 +185,8 @@ bash tests/scratch-guard-test.sh
 
 Then exercise `/creview:start`, `/creview:triage`, `/creview:respond`, `/creview:resolve`
 in a project that has its own `.claude/agents/` (or none, to test the `general-purpose`
-fallback), `/cprompt:edit`, and `/cdev:coding` (in a runtime with background subagents and
+fallback), `/creview:pr` (against an open pull request of a repository you can post test
+reviews to), `/cprompt:edit`, and `/cdev:coding` (in a runtime with background subagents and
 inter-agent messaging).
 
 ---
@@ -214,6 +217,10 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     the phase's skill and runs it whole) + divergence gate after triage
                     (Round 2 on: detect → investigate → pause with the report) +
                     feedback re-fix inner loop
+/creview:pr      → gh-pr.py fetch → PR head in a worktree → start's review templates +
+                    description reviewer → prior-discussion Sub (persists Won't Fix) →
+                    triage's triage.md → compile → review-payload Sub → present → on the
+                    user's instruction, gh-pr.py post (never approves)
 ```
 
 Each skill's `skills/<skill>/scripts/compile-review.py` (run directly by the leader, not a

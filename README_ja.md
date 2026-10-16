@@ -8,7 +8,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 
 | プラグイン | 説明 |
 |--------|-------------|
-| `creview` | マルチエージェントによる並列コードレビューのワークフロー: start → triage → respond → resolve、および複数ラウンドの自動ドライバ。 |
+| `creview` | マルチエージェントによる並列コードレビューのワークフロー: start → triage → respond → resolve、複数ラウンドの自動ドライバ、および GitHub のプルリクエストレビュー。 |
 | `cprompt` | AI 向けプロンプトを作成・編集し、プロンプト規律ルールに照らしてセルフチェックする。 |
 | `cdev` | チームネイティブなマルチエージェントコーディングワークフロー: 常駐チームが設計とコーディングをペアレビューセルで実行し、最後に QA ゲートを通す。 |
 
@@ -34,6 +34,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 | `/creview:respond` | Will-Fix / Maintain / Alternative の指摘を修正し、`status` を永続化する。 |
 | `/creview:resolve` | 修正をソースに照らして検証し、`verification` を永続化する。 |
 | `/creview:rounds` | 4 つのフェーズを複数ラウンドにわたって自動反復する。 |
+| `/creview:pr` | GitHub のプルリクエストをレビュー・トリアージし、指示があれば結果をインラインレビューとして投稿する。 |
 | `/cprompt:edit` | AI 向けプロンプトを作成・編集し、セルフチェックする。 |
 | `/cdev:coding` | コーディングタスクをエンドツーエンドで実装する: 設計とコーディングをペアレビューセルで行い、最後に QA ゲート。 |
 

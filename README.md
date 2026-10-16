@@ -8,7 +8,7 @@ A Claude Code plugin marketplace maintained by OPENSPHERE Inc.
 
 | Plugin | Description |
 |--------|-------------|
-| `creview` | Multi-agent parallel code review workflow: start → triage → respond → resolve, plus an automatic multi-round driver. |
+| `creview` | Multi-agent parallel code review workflow: start → triage → respond → resolve, plus an automatic multi-round driver and a GitHub pull request reviewer. |
 | `cprompt` | Create and edit AI-facing prompts and self-check them against prompt-discipline rules. |
 | `cdev` | Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. |
 
@@ -34,6 +34,7 @@ Add this marketplace, then install the plugins:
 | `/creview:respond` | Fix the Will-Fix / Maintain / Alternative findings; persist `status`. |
 | `/creview:resolve` | Verify fixes against the source; persist `verification`. |
 | `/creview:rounds` | Automatically iterate the four phases across multiple rounds. |
+| `/creview:pr` | Review and triage a GitHub pull request; post the result as an inline review on instruction. |
 | `/cprompt:edit` | Create or edit an AI-facing prompt and self-check it. |
 | `/cdev:coding` | Implement a coding task end to end: design and coding as paired review cells, then a QA gate. |
 

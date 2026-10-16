@@ -19,7 +19,7 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `.claude-plugin/marketplace.json` — Marketplace listing (creview, cprompt, cdev).
 - `{creview,cprompt,cdev}/.claude-plugin/plugin.json` — Plugin manifests (each carries its
   own semver).
-- `creview/skills/{start,triage,respond,resolve,rounds}/SKILL.md` — The 5 creview skills.
+- `creview/skills/{start,triage,respond,resolve,rounds,pr}/SKILL.md` — The 6 creview skills.
 - `creview/skills/*/templates/*.md` — Sub-agent prompt templates (each has a `template_id`).
 - `creview/agents/` — bundled mechanical agents: `review-helper.md`,
   `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader).
@@ -29,6 +29,7 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `check-jsonl.py`,
   `worktree.sh`, `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
+- `creview/skills/pr/scripts/gh-pr.py` — `/creview:pr`'s `gh` wrapper: fetches the PR and its conversation, and posts the review (never approves).
 - `cprompt/skills/edit/SKILL.md` (+ `templates/`) — The `/cprompt:edit` skill.
 - `cprompt/rules/` — `prompt.md`, `document.md`. `cprompt/scripts/` — `worktree.sh`.
 - `cdev/skills/coding/SKILL.md` (+ `templates/`) — The `/cdev:coding` team-native skill (7 teammate task templates, each with a `template_id`).

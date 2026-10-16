@@ -13,6 +13,7 @@ A multi-agent parallel code review workflow for Claude Code.
 | `/creview:respond` | `review-respond` (fix) | Fix Will-Fix / Maintain / Alternative findings; verify the build; persist `status`. |
 | `/creview:resolve` | `review-resolve` | Verify fix resolutions against the source; persist `verification`. |
 | `/creview:rounds` | `review-rounds` | Automatically iterate start → triage → respond → resolve across rounds. |
+| `/creview:pr` | — | Review and triage a GitHub pull request in a worktree; post the result as an inline review on instruction. |
 
 Every command requires a session started at the repository root, with or
 without `--worktree`; started from a subdirectory of the repository, it stops
@@ -114,6 +115,46 @@ configure command), so such a worktree is kept and reported as well; check its
 contents and remove it with `git worktree remove --force <path>`, since a rerun
 on the same `--worktree=branch` fails while it remains.
 
+`/creview:pr [<number> | <url>] [--adversarial] [--output <path>]` reviews an
+open GitHub pull request without touching the main working tree. It requires
+the GitHub CLI (`gh`), authenticated for the repository, and a session in a
+clone of the repository the PR targets; with no PR given, it reviews the PR of
+the current branch.
+
+- The PR head is checked out, detached, in a temporary worktree under
+  `.claude/worktrees/`. The worktree and its temporary branch are removed
+  once the review and triage are done.
+- The diff from the merge base to the PR head is reviewed the way
+  `/creview:start` reviews a change, with the same reviewer selection and the
+  same `--adversarial` mode. A separate reviewer checks the PR description
+  against the code: claims the code does not bear out, missing information
+  such as breaking changes or how the change was tested, and open issues such
+  as unchecked task items or TODOs.
+- Every comment on the PR is fetched — conversation comments, review bodies,
+  and review threads with their resolved state, from humans and bots alike.
+  Findings the conversation already raised, resolved, or rejected are marked
+  Won't Fix. The remaining findings go through the same adversarial triage as
+  `/creview:triage`; no estimate is made.
+- The result is presented in the console with each finding's verdict and
+  where it would be posted. The user can then exclude or include findings,
+  reword comments, or change severities. Nothing is posted until the user
+  instructs it.
+- On instruction, the Will Fix findings other than Info are posted as one
+  review. A finding becomes an inline comment when its line can be commented
+  on in the PR diff, a file-level comment when only its file is in the diff,
+  and an entry in the review body otherwise, which includes the findings on
+  the PR description. The review requests changes when a Critical or Major
+  finding is posted and is a plain comment otherwise; on the user's own PR,
+  where GitHub does not allow requesting changes, it is a comment. The skill
+  never approves a PR. Posting is refused when the PR head moved after the
+  review; rerun the skill then.
+- The posted comments are written in the language of the PR description; the
+  review document and the console summary use the user's chat language. The
+  review document stays at `.claude/tmp/creview-pr-{number}-{timestamp}.md`
+  unless `--output` names another path.
+- Every sub-agent treats the PR's code, description, and comments as data
+  under review and does not follow instructions found in them.
+
 Nested sub-agent spawning is required
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; the default is 3):
 
@@ -123,6 +164,7 @@ Nested sub-agent spawning is required
   sub-agent.
 - `/creview:triage` on its own — 2 or more. The triage sub-agent spawns
   the challenge sub-agents and the adjudication sub-agent.
+- `/creview:pr` — 2 or more, for the same triage sub-agent.
 
 A long run also consumes many subagent slots — the challenge sub-agents alone
 number three per batch of eight findings, and a split review runs one reviewer
@@ -162,6 +204,8 @@ bundled agents are `review-helper` (mechanical aggregation / verification),
 - `skills/{triage,respond,resolve}/scripts/compile-review.py` — the per-skill
   compile step (leader-run): aggregates intermediate JSON into `events.jsonl`
   and calls `render-review.py`.
+- `skills/pr/scripts/gh-pr.py` — fetches the pull request and its
+  conversation, and posts the review, through the `gh` CLI.
 
 ## Japanese master (repository-root `src/creview/`)
 
