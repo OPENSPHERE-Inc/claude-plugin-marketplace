@@ -1,6 +1,6 @@
 ---
 name: start
-description: Launch a parallel code review with reviewers auto-selected from the destination project agents. Use proactively when the user asks to review changes, a branch, or a PR (e.g. "review this code"), or right after a substantial implementation is completed.
+description: Launch a parallel code review with reviewers auto-selected from the destination project agents. Use proactively when the user asks to review local changes or a branch (e.g. "review this code"), or right after a substantial implementation is completed. For a GitHub pull request, /creview:pr reviews it and posts the review.
 allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*)
 ---
 

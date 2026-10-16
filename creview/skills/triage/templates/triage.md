@@ -60,7 +60,7 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-Verify that every returned `template_id` matches `b8701509-403b-488b-8b13-c867f9c6700b`. On mismatch, relaunch that (batch, challenge_index) pair alone as a fresh instance of the same `subagent_type` with the same `batch_index`, `ids` and `challenge_index`. A pair that mismatches twice in a row, or whose `Agent` launch itself fails (the nested-spawn depth limit is reached, etc.; a refusal for the concurrency limit is not a failure and is relaunched as § Launch mode directs), produces no challenge output; carry on with the pairs that did return a match.
+Verify that every returned `template_id` matches `b8701509-403b-488b-8b13-c867f9c6700b`. On mismatch, relaunch that (batch, challenge_index) pair alone as a fresh instance of the same `subagent_type` with the same `batch_index`, `ids` and `challenge_index`. A pair that mismatches twice in a row, or whose `Agent` launch itself fails (the nested-spawn depth limit is reached, etc.; a refusal for the concurrency limit is relaunched, and counts as a failure only when § Launch mode says so), produces no challenge output; carry on with the pairs that did return a match.
 
 Overturning a draft decision takes two flip votes from the id's own batch, so when no batch produced two or more challenge outputs, skip step 4, adopt the draft `verdict` / `reason` as the final verdicts, Write `{{tmp_dir}}/triage.jsonl` following step 5, and return with `flipped_count: 0` and `adjudication_skipped: true`.
 

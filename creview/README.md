@@ -123,22 +123,25 @@ the GitHub CLI (`gh`), authenticated for the repository, and a session in a
 clone of the repository the PR targets; with no PR given, it reviews the PR of
 the current branch.
 
-- The PR head is checked out, detached, in a temporary worktree under
-  `.claude/worktrees/`. The worktree and its temporary branch are removed
-  once the review and triage are done.
+- The PR head is checked out, detached and with git hooks disabled, in a
+  temporary worktree under `.claude/worktrees/`. The worktree and its
+  temporary branch are removed once the review and triage are done.
 - The diff from the merge base to the PR head is reviewed the way
   `/creview:start` reviews a change, with the same reviewer selection and the
   same `--adversarial` mode. A separate reviewer checks the PR description
   against the code: claims the code does not bear out, missing information
   such as breaking changes or how the change was tested, and open issues such
   as unchecked task items or TODOs.
-- Every comment on the PR is fetched — conversation comments, review bodies,
-  and review threads with their resolved state, from humans and bots alike.
-  Findings the conversation already raised, resolved, or rejected are marked
-  Won't Fix. The remaining findings go through the same adversarial triage as
+- Every submitted comment on the PR is fetched — conversation comments, review
+  bodies, and review threads with their resolved state, from humans and bots
+  alike. Findings the conversation already raised, resolved, or rejected are
+  marked Won't Fix. A finding whose thread was resolved while the problem
+  remains at the PR head is kept, unless the conversation gives a reason for
+  leaving it. The remaining findings go through the same adversarial triage as
   `/creview:triage`; no estimate is made.
-- The result is presented in the console with each finding's verdict and
-  where it would be posted. The user can then exclude or include findings,
+- The result is presented in the console in sections: the text of each
+  comment to be posted with where it will be placed, then each excluded
+  finding with its verdict. The user can then exclude or include findings,
   reword comments, or change severities. Nothing is posted until the user
   instructs it.
 - On instruction, the Will Fix findings other than Info are posted as one
@@ -149,15 +152,18 @@ the current branch.
   finding is posted and is a plain comment otherwise; on the user's own PR,
   where GitHub does not allow requesting changes, it is a comment. The skill
   never approves a PR. Posting is refused when the PR head moved after the
-  review; rerun the skill then.
+  review (rerun the skill then), and while the user has an unsubmitted
+  pending review on the PR (submit or discard it on GitHub first).
 - The posted comments are written in the language of the PR description; the
   review document and the console summary use the user's chat language. Each
   posted comment starts with its finding id in the review document (such as
   `M-1`), so the two can be matched. The
   review document stays at `.claude/tmp/creview-pr-{number}-{timestamp}.md`
   unless `--output` names another path.
-- Every sub-agent treats the PR's code, description, and comments as data
-  under review and does not follow instructions found in them.
+- The skill and every sub-agent treat what comes from the PR — its title,
+  description, comments, commit messages, and files, including `CLAUDE.md`
+  and `.claude/**` in the worktree — as data under review: no instruction in
+  them is followed, and no file of the PR is run.
 
 Nested sub-agent spawning is required
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; the default is 3):
@@ -211,7 +217,8 @@ bundled agents are `review-helper` (mechanical aggregation / verification),
   compile step (leader-run): aggregates intermediate JSON into `events.jsonl`
   and calls `render-review.py`.
 - `skills/pr/scripts/gh-pr.py` — fetches the pull request and its
-  conversation, and posts the review, through the `gh` CLI.
+  conversation, checks out its head with git hooks disabled, and posts the
+  review, through the `gh` CLI.
 
 ## Japanese master (repository-root `src/creview/`)
 

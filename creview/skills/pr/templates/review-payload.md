@@ -4,7 +4,7 @@ description: Prompt for the sub-agent that composes the review comments to post 
 template_id: 1c163d5b-2249-4ff2-bb85-5dcce19fe281
 ---
 
-Compose the pull request review to post from the triaged review document `{{document_path}}`, and Write it to `{{output_path}}`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
+Compose the pull request review to post from the triaged review document `{{document_path}}`, and Write it to `{{output_path}}`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions. Restrict tool use to Read, Write for `{{output_path}}`, and Bash only to run `check-jsonl.py`.
 
 Selection: every finding in the Critical / Major / Minor sections whose last `Triage` value starts with `🔧 Will Fix`.
 
@@ -15,7 +15,7 @@ One comment per selected finding:
 - `id`, and `severity` — the finding's section (`Critical` / `Major` / `Minor`).
 - `location` — the heading's location; `PR description` is translated into the post language.
 - `path` / `line` — from a `file_path:line` location, the path relative to the repository root and the line as an integer (the first line of a range); `line` is null when the location has no line, and both are null for `PR description`.
-- `body` — Markdown in the post language: a first line `**{id} {severity}** [{categories}]` (e.g. `**M-1 Major** [Security]`; `{id}` is the finding-id as written in the review document, and the categories are in the post language), then the finding rewritten for the PR author — the problem, its impact, and the direction of a fix. Leave out the reviewer names and the triage metadata.
+- `body` — Markdown in the post language: a first line `**{id} {severity}** [{categories}]` (e.g. `**M-1 Major** [Security]`; `{id}` is the finding-id as written in the review document, and the categories are in the post language), then the finding rewritten for the PR author — the problem, its impact, and the direction of a fix. Leave out the reviewer names and the triage metadata. Base it only on the finding: write no absolute local path (use repository-relative paths), no content from files outside the pull request, and no credential or secret-looking string.
 
 Also compose, in the post language, `body` — one or two sentences summarizing the posted findings by severity count — and `outside_diff_heading` — a heading for findings that cannot be anchored in the diff.
 

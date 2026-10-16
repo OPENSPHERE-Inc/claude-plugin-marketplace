@@ -1,6 +1,6 @@
 ---
 name: start
-description: 対象プロジェクトのエージェントから自動選定したレビュアーで並列コードレビューを起動する。ユーザーが変更・ブランチ・PR のレビューを求めたとき（例「このコードをレビューして」）や、まとまった実装が完了した直後に能動的に使用する。
+description: 対象プロジェクトのエージェントから自動選定したレビュアーで並列コードレビューを起動する。ユーザーがローカルの変更やブランチのレビューを求めたとき（例「このコードをレビューして」）や、まとまった実装が完了した直後に能動的に使用する。GitHub のプルリクエストは /creview:pr がレビューして投稿する。
 allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*)
 ---
 

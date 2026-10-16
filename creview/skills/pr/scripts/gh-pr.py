@@ -3,21 +3,26 @@
 
 Usage:
     python3 gh-pr.py fetch [<pr>] <out_dir>
+    python3 gh-pr.py checkout <pr_json>
     python3 gh-pr.py post <pr_json> <payload_json> [--dry-run]
 
 fetch: resolves <pr> (a number or URL; the current branch's PR when omitted)
 with gh, requires it to be open and to belong to the repository gh resolves for
 the working directory, and writes <out_dir>/pr.json (metadata, description,
-merge base) and <out_dir>/conversation.json (issue comments, review bodies, and
-review threads with their resolved / outdated state). Prints a summary JSON
-object.
+merge base) and <out_dir>/conversation.json (issue comments, submitted review
+bodies, and review threads with their resolved / outdated state and diff hunk).
+Prints a summary JSON object.
+
+checkout: checks the PR head out, detached, in the working directory with git
+hooks disabled, and confirms HEAD is the head fetch recorded.
 
 post: places each payload comment inline (its line is commentable in the PR
 diff), at file level (its file is in the diff), or in the review body
 (otherwise), then submits one review: REQUEST_CHANGES when a Critical / Major
 comment is posted, COMMENT otherwise or on the viewer's own PR. It never
-approves. Refuses when the PR is closed or its head moved since fetch.
---dry-run prints the plan without posting.
+approves. Refuses when the PR is closed, its head moved since fetch, or the
+viewer already has a pending review on it. --dry-run prints the plan without
+posting.
 
 payload_json:
     {"body": str, "outside_diff_heading": str,
@@ -31,6 +36,8 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+from urllib.parse import urlparse
 
 PAGE_SIZE = 100
 HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
@@ -57,7 +64,7 @@ query($owner: String!, $name: String!, $number: Int!, $after: String) {
           subjectType
           resolvedBy { login }
           comments(first: 100) {
-            nodes { author { __typename login } body createdAt url }
+            nodes { author { __typename login } body createdAt url state diffHunk }
           }
         }
       }
@@ -81,10 +88,10 @@ class GhError(Exception):
     pass
 
 
-def run(cmd, stdin=None):
+def run(cmd, stdin=None, env=None):
     try:
         proc = subprocess.run(
-            cmd, input=stdin, capture_output=True, text=True, encoding="utf-8",
+            cmd, input=stdin, capture_output=True, text=True, encoding="utf-8", env=env,
         )
     except FileNotFoundError:
         raise GhError(f"{cmd[0]} not found on PATH")
@@ -93,26 +100,26 @@ def run(cmd, stdin=None):
     return proc.stdout
 
 
-def api(endpoint, method="GET", body=None):
-    cmd = ["gh", "api", "--method", method, endpoint]
+def api(endpoint, host, method="GET", body=None):
+    cmd = ["gh", "api", "--hostname", host, "--method", method, endpoint]
     if body is not None:
         cmd += ["--input", "-"]
     out = run(cmd, None if body is None else json.dumps(body))
     return json.loads(out) if out.strip() else None
 
 
-def api_pages(endpoint):
+def api_pages(endpoint, host):
     items, page = [], 1
     while True:
-        batch = api(f"{endpoint}?per_page={PAGE_SIZE}&page={page}")
+        batch = api(f"{endpoint}?per_page={PAGE_SIZE}&page={page}", host)
         items.extend(batch)
         if len(batch) < PAGE_SIZE:
             return items
         page += 1
 
 
-def graphql(query, variables):
-    result = api("graphql", "POST", {"query": query, "variables": variables})
+def graphql(query, variables, host):
+    result = api("graphql", host, "POST", {"query": query, "variables": variables})
     if result.get("errors"):
         raise GhError("; ".join(e.get("message", str(e)) for e in result["errors"]))
     return result["data"]
@@ -133,14 +140,17 @@ def read_json(path):
         return json.load(f)
 
 
-def fetch_threads(owner, name, number):
+def fetch_threads(owner, name, number, host):
     threads, after = [], None
     while True:
         data = graphql(THREADS_QUERY, {
             "owner": owner, "name": name, "number": number, "after": after,
-        })
+        }, host)
         conn = data["repository"]["pullRequest"]["reviewThreads"]
         for node in conn["nodes"]:
+            comments = [c for c in node["comments"]["nodes"] if c["state"] != "PENDING"]
+            if not comments:
+                continue
             threads.append({
                 "path": node["path"],
                 "line": node["line"],
@@ -149,6 +159,7 @@ def fetch_threads(owner, name, number):
                 "resolved": node["isResolved"],
                 "outdated": node["isOutdated"],
                 "resolved_by": login_of(node["resolvedBy"]) if node["resolvedBy"] else None,
+                "diff_hunk": comments[0]["diffHunk"],
                 "comments": [
                     {
                         "author": login_of(c["author"]),
@@ -157,7 +168,7 @@ def fetch_threads(owner, name, number):
                         "url": c["url"],
                         "body": c["body"],
                     }
-                    for c in node["comments"]["nodes"]
+                    for c in comments
                 ],
             })
         if not conn["pageInfo"]["hasNextPage"]:
@@ -175,15 +186,16 @@ def cmd_fetch(argv):
     if not m:
         raise GhError(f"cannot parse the repository from {pr['url']}")
     owner, name, number = m.group(1), m.group(2), pr["number"]
-    repo = f"{owner}/{name}"
+    repo, host = f"{owner}/{name}", urlparse(pr["url"]).netloc
     local = run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]).strip()
     if local.lower() != repo.lower():
         raise GhError(f"{pr['url']} belongs to {repo}, not to this repository ({local})")
     if pr["state"] != "OPEN":
         raise GhError(f"PR #{number} is {pr['state'].lower()}, not open")
 
-    compare = api(f"repos/{repo}/compare/{pr['baseRefOid']}...{pr['headRefOid']}")
+    compare = api(f"repos/{repo}/compare/{pr['baseRefOid']}...{pr['headRefOid']}", host)
     write_json(os.path.join(out_dir, "pr.json"), {
+        "host": host,
         "repo": repo,
         "number": number,
         "url": pr["url"],
@@ -207,7 +219,7 @@ def cmd_fetch(argv):
             "url": c["html_url"],
             "body": c["body"],
         }
-        for c in api_pages(f"repos/{repo}/issues/{number}/comments")
+        for c in api_pages(f"repos/{repo}/issues/{number}/comments", host)
     ]
     reviews = [
         {
@@ -218,10 +230,10 @@ def cmd_fetch(argv):
             "url": r["html_url"],
             "body": r["body"],
         }
-        for r in api_pages(f"repos/{repo}/pulls/{number}/reviews")
-        if r.get("body")
+        for r in api_pages(f"repos/{repo}/pulls/{number}/reviews", host)
+        if r.get("body") and r["state"] != "PENDING"
     ]
-    threads = fetch_threads(owner, name, number)
+    threads = fetch_threads(owner, name, number, host)
     write_json(os.path.join(out_dir, "conversation.json"), {
         "issue_comments": issue_comments,
         "reviews": reviews,
@@ -240,6 +252,30 @@ def cmd_fetch(argv):
         "review_threads": len(threads),
         "unresolved_threads": sum(1 for t in threads if not t["resolved"]),
     }
+
+
+def cmd_checkout(argv):
+    if len(argv) != 1:
+        raise GhError("usage: checkout <pr_json>")
+    pr = read_json(argv[0])
+    # A PR can add or change the hooks a relative core.hooksPath points at; an
+    # empty hooks directory keeps the checkout from running any of them.
+    with tempfile.TemporaryDirectory() as no_hooks:
+        env = dict(os.environ)
+        n = int(env.get("GIT_CONFIG_COUNT") or 0)
+        env.update({
+            "GIT_CONFIG_COUNT": str(n + 1),
+            f"GIT_CONFIG_KEY_{n}": "core.hooksPath",
+            f"GIT_CONFIG_VALUE_{n}": no_hooks,
+        })
+        run(["gh", "pr", "checkout", str(pr["number"]), "--detach"], env=env)
+    head = run(["git", "rev-parse", "HEAD"]).strip()
+    if head != pr["head_sha"]:
+        raise GhError(
+            f"checked out {head}, but PR #{pr['number']} was fetched at {pr['head_sha']}; "
+            "the PR was updated since fetch"
+        )
+    return {"head_sha": head}
 
 
 def commentable_lines(patch):
@@ -295,12 +331,33 @@ def place(comment, files):
     return "file"
 
 
+def file_comment_body(comment):
+    if comment.get("line") is None:
+        return comment["body"]
+    return f"**{comment['location']}**\n\n{comment['body']}"
+
+
 def review_body(payload, body_comments):
     parts = [payload["body"].strip()]
     if body_comments:
         parts.append(f"### {payload['outside_diff_heading'].strip()}")
         parts.extend(f"**{c['location']}**\n\n{c['body'].strip()}" for c in body_comments)
     return "\n\n".join(parts)
+
+
+def settle_failed_review(repo, number, review_id, exc, host):
+    """Return the review if GitHub already submitted it; otherwise delete it and return None."""
+    endpoint = f"repos/{repo}/pulls/{number}/reviews/{review_id}"
+    try:
+        review = api(endpoint, host)
+        if review["state"] != "PENDING":
+            return review
+        api(endpoint, host, "DELETE")
+    except GhError as cleanup:
+        raise GhError(
+            f"{exc}; cleaning up the pending review {review_id} also failed: {cleanup}"
+        ) from None
+    return None
 
 
 def cmd_post(argv):
@@ -310,9 +367,9 @@ def cmd_post(argv):
         raise GhError("usage: post <pr_json> <payload_json> [--dry-run]")
     pr, payload = read_json(args[0]), read_json(args[1])
     comments = validate_payload(payload)
-    repo, number = pr["repo"], pr["number"]
+    repo, number, host = pr["repo"], pr["number"], pr["host"]
 
-    live = api(f"repos/{repo}/pulls/{number}")
+    live = api(f"repos/{repo}/pulls/{number}", host)
     if live["state"] != "open":
         raise GhError(f"PR #{number} is {live['state']}, not open")
     if live["head"]["sha"] != pr["head_sha"]:
@@ -320,11 +377,18 @@ def cmd_post(argv):
             f"PR #{number} head moved from {pr['head_sha']} to {live['head']['sha']} since fetch; "
             "the reviewed lines may no longer match"
         )
-    own_pr = api("user")["login"].lower() == login_of(live.get("user")).lower()
+    viewer = api("user", host)["login"].lower()
+    own_pr = viewer == login_of(live.get("user")).lower()
+    for r in api_pages(f"repos/{repo}/pulls/{number}/reviews", host):
+        if r["state"] == "PENDING" and login_of(r.get("user")).lower() == viewer:
+            raise GhError(
+                f"you already have a pending review on PR #{number} ({r['html_url']}); "
+                "submit or discard it on GitHub, then retry"
+            )
 
     files = {
         f["filename"]: commentable_lines(f["patch"]) if f.get("patch") else set()
-        for f in api_pages(f"repos/{repo}/pulls/{number}/files")
+        for f in api_pages(f"repos/{repo}/pulls/{number}/files", host)
     }
     placed = {"inline": [], "file": [], "body": []}
     placements = {}
@@ -354,34 +418,33 @@ def cmd_post(argv):
             }
             for c in placed["inline"]
         ]
-    pending = api(f"repos/{repo}/pulls/{number}/reviews", "POST", request)
+    pending = api(f"repos/{repo}/pulls/{number}/reviews", host, "POST", request)
     try:
         for c in placed["file"]:
-            graphql(ADD_FILE_THREAD, {
-                "review": pending["node_id"], "path": normalize_path(c["path"]), "body": c["body"],
-            })
+            data = graphql(ADD_FILE_THREAD, {
+                "review": pending["node_id"], "path": normalize_path(c["path"]),
+                "body": file_comment_body(c),
+            }, host)
+            if not (data.get("addPullRequestReviewThread") or {}).get("thread"):
+                raise GhError(f"GitHub created no file-level thread for comment {c['id']}")
         submitted = api(
-            f"repos/{repo}/pulls/{number}/reviews/{pending['id']}/events", "POST",
+            f"repos/{repo}/pulls/{number}/reviews/{pending['id']}/events", host, "POST",
             {"event": event, "body": review_body(payload, placed["body"])},
         )
-    except GhError as exc:
-        try:
-            api(f"repos/{repo}/pulls/{number}/reviews/{pending['id']}", "DELETE")
-        except GhError as cleanup:
-            raise GhError(
-                f"{exc}; deleting the pending review {pending['id']} also failed: {cleanup}"
-            )
-        raise
+    except BaseException as exc:
+        submitted = settle_failed_review(repo, number, pending["id"], exc, host)
+        if submitted is None:
+            raise
     result["review_url"] = submitted["html_url"]
     return result
 
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    commands = {"fetch": cmd_fetch, "post": cmd_post}
+    commands = {"fetch": cmd_fetch, "checkout": cmd_checkout, "post": cmd_post}
     if len(sys.argv) < 2 or sys.argv[1] not in commands:
         sys.exit(
-            f"Usage: {sys.argv[0]} fetch [<pr>] <out_dir>"
+            f"Usage: {sys.argv[0]} fetch [<pr>] <out_dir> | checkout <pr_json>"
             " | post <pr_json> <payload_json> [--dry-run]"
         )
     try:

@@ -242,8 +242,9 @@ the launch prompt as the `plugin_root` variable so the template's `{{plugin_root
 references resolve for the sub-agent. See `creview/rules/sub-agent.md`.
 
 The leader also passes `main_root` in every launch prompt: the main working tree's root
-under `--worktree`, `(none)` otherwise. `/creview:rounds` passes it in every launch
-prompt it issues; `review-leader` forwards the value it received, `(none)` included, to every
+when the run works in a worktree — under `--worktree`, and always in `/creview:pr` — and
+`(none)` otherwise. `/creview:rounds` and `/creview:pr` pass it in every launch prompt they
+issue; `review-leader` forwards the value it received, `(none)` included, to every
 sub-agent it launches; the `/creview:start` / `triage` / `respond` / `resolve` leaders pass
 the value an upper flow gave them, or `(none)` when invoked directly; cdev passes it through
 the spawn contract. The detection rules (`agents-detection.md` / `build-format-detection.md`)
@@ -253,8 +254,8 @@ inside a template (the challenge / adjudication sub-agents `triage.md` spawns) d
 receive it, so the templates they run must not depend on it.
 
 Every launch prompt — nested launches included — also passes `target_dir`, the work target:
-the worktree under `--worktree`, otherwise the repository root (`git rev-parse
---show-toplevel`). Every creview and cdev entry point rejects a session started in a
+the worktree when the run works in one (under `--worktree`, and always in `/creview:pr`),
+otherwise the repository root (`git rev-parse --show-toplevel`). Every creview and cdev entry point rejects a session started in a
 subdirectory of the repository (non-empty `git rev-parse --show-prefix`) with an error,
 with or without `--worktree`, so every sub-agent's current working directory is
 `target_dir`, the single base for relative paths, for where commands run, and for the
@@ -306,8 +307,8 @@ never re-rooted by a leader.
 2. Use `${CLAUDE_PLUGIN_ROOT}/...` in the SKILL body / `allowed-tools`; use
    `{{plugin_root}}/...` inside templates and the bundled rules they point to, and pass
    `plugin_root`, `main_root`, and `target_dir` in every launch prompt — `main_root` is the
-   main working tree's root under `--worktree` or the value an upper flow passed, and
-   `(none)` otherwise; `target_dir` is the work target (see Sub-agent launch contract).
+   main working tree's root when the skill works in a worktree (under `--worktree`, or
+   always, as `/creview:pr` does) or the value an upper flow passed, and `(none)` otherwise; `target_dir` is the work target (see Sub-agent launch contract).
 3. Resolve reviewers/fixers via the destination project's `.claude/agents/` with a
    `general-purpose` fallback — do not hardcode specialist agent names.
 4. Add the command to the marketplace `README.md`/`README_ja.md` and the plugin

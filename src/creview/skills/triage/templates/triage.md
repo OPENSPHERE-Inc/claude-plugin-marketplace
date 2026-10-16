@@ -60,7 +60,7 @@ stage 分類（current_meta に基づく）:
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-各戻り値の `template_id` が `b8701509-403b-488b-8b13-c867f9c6700b` と一致することを確認する。不一致の（バッチ, challenge_index）の組のみ、同一 `subagent_type` の新規インスタンスを同じ `batch_index` / `ids` / `challenge_index` で起動して再試行する。2 回連続で不一致となった組、および Agent の起動自体が失敗した組（ネスト起動の深度上限到達等。同時実行数の上限による拒否は失敗に数えず、§ 起動形態に従って起動し直す）は反証出力を持たないものとし、一致を返した組だけで続行する。
+各戻り値の `template_id` が `b8701509-403b-488b-8b13-c867f9c6700b` と一致することを確認する。不一致の（バッチ, challenge_index）の組のみ、同一 `subagent_type` の新規インスタンスを同じ `batch_index` / `ids` / `challenge_index` で起動して再試行する。2 回連続で不一致となった組、および Agent の起動自体が失敗した組（ネスト起動の深度上限到達等。同時実行数の上限による拒否は起動し直し、§ 起動形態が失敗とする場合に限り失敗に数える）は反証出力を持たないものとし、一致を返した組だけで続行する。
 
 draft の判定を覆すには当該 id の所属バッチからの flip 票が 2 票必要なため、反証出力を 2 つ以上持つバッチが 1 つも無い場合は手順 4 をスキップし、draft の `verdict` / `reason` をそのまま最終判定として手順 5 の要領で `{{tmp_dir}}/triage.jsonl` を Write し、`flipped_count: 0` と `adjudication_skipped: true` を返す。
 
