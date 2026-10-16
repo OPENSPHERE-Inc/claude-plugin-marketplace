@@ -104,13 +104,27 @@ class GhError(Exception):
     pass
 
 
+def executable(name):
+    # Windows looks a bare program name up in the working directory before PATH,
+    # and the working directory can be the checked-out PR.
+    if os.name == "nt" and not name.lower().endswith(".exe"):
+        name += ".exe"
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        entry = entry.strip('"')
+        path = os.path.join(entry, name)
+        if os.path.isabs(entry) and os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
 def run(cmd, stdin=None, env=None):
-    try:
-        proc = subprocess.run(
-            cmd, input=stdin, capture_output=True, text=True, encoding="utf-8", env=env,
-        )
-    except FileNotFoundError:
+    program = executable(cmd[0])
+    if program is None:
         raise GhError(f"{cmd[0]} not found on PATH")
+    proc = subprocess.run(
+        [program, *cmd[1:]], input=stdin, capture_output=True, text=True, encoding="utf-8",
+        env=env,
+    )
     if proc.returncode != 0:
         raise GhError(proc.stderr.strip() or f"{' '.join(cmd[:3])} exited with {proc.returncode}")
     return proc.stdout

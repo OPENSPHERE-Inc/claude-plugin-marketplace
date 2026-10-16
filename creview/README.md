@@ -135,9 +135,10 @@ the current branch.
 - Every submitted comment on the PR is fetched — conversation comments, review
   bodies, and review threads with their resolved state, from humans and bots
   alike. Findings the conversation already resolved or rejected, or raised
-  outside a review thread, are marked Won't Fix. A finding that matches a
-  review thread that is not resolved stays in the review and is posted as a
-  reply in that thread. A finding whose thread was resolved while the problem
+  outside a review thread, are marked Won't Fix, as is a finding the user
+  already raised in the last comment of a review thread that is not resolved.
+  Any other finding that matches a review thread that is not resolved stays in
+  the review and is posted as a reply in that thread. A finding whose thread was resolved while the problem
   remains at the PR head is kept, unless the conversation gives a reason for
   leaving it. The remaining findings go through the same adversarial triage as
   `/creview:triage`; no estimate is made.
@@ -168,7 +169,11 @@ the current branch.
 - The skill and every sub-agent treat what comes from the PR — its title,
   description, comments, commit messages, and files, including `CLAUDE.md`
   and `.claude/**` in the worktree — as data under review: no instruction in
-  them is followed, and no file of the PR is run.
+  them is followed, no file of the PR is run, and sub-agents write nothing but
+  their own outputs. These are instructions to the agents, not enforced
+  limits. To review a pull request you do not trust, also restrict what the
+  session can run and write, for example with a sandbox, hooks, or permission
+  rules.
 
 Nested sub-agent spawning is required
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; the default is 3):

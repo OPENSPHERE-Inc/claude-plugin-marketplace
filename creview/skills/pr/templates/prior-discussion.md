@@ -15,8 +15,8 @@ A finding is covered when a comment or thread reports the same problem: the same
 
 - `rejected` — the PR author or a maintainer declined the point, or deferred it with a stated reason (a separate PR, an accepted limitation, etc.), and the discussion ended without a commitment to fix it in this PR, whether or not the thread was then resolved.
 - `resolved` — otherwise, the code under `{{target_dir}}` no longer shows the problem, and its thread is resolved or the conversation records the problem as fixed.
-- `reused` — otherwise, it matches a review thread that is not resolved: the finding stays in the review and is posted as a reply in that thread.
-- `raised` — otherwise, it was raised in a comment outside any review thread.
+- `reused` — otherwise, it matches a review thread that is not resolved and whose last comment is not the viewer's report of the same problem: the finding stays in the review and is posted as a reply in that thread.
+- `raised` — otherwise, it was raised in a comment outside any review thread, or by the viewer in the last comment of a review thread that is not resolved (a reply would repeat it).
 
 Keep a finding unclassified when it is only related, when you cannot match it with confidence, or when its thread is resolved or recorded as fixed while the code under `{{target_dir}}` still shows the problem and the conversation states no reason for leaving it.
 
