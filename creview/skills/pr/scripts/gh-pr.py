@@ -9,26 +9,29 @@ Usage:
 fetch: resolves <pr> (a number or URL; the current branch's PR when omitted)
 with gh, requires it to be open and to belong to the repository gh resolves for
 the working directory, and writes <out_dir>/pr.json (metadata, description,
-merge base) and <out_dir>/conversation.json (issue comments, submitted review
-bodies, and review threads with their resolved / outdated state and diff hunk).
-Prints a summary JSON object.
+merge base) and <out_dir>/conversation.json (the viewer's login, issue comments,
+submitted review bodies, and review threads with their resolved / outdated
+state, diff hunk, whether the viewer started them, and whether the viewer has
+confirmed a fix in them). Prints a summary JSON object.
 
 checkout: checks the PR head out, detached, in the working directory with git
 hooks disabled, and confirms HEAD is the head fetch recorded.
 
-post: places each payload comment inline (its line is commentable in the PR
-diff), at file level (its file is in the diff), or in the review body
-(otherwise), then submits one review: REQUEST_CHANGES when a Critical / Major
-comment is posted, COMMENT otherwise or on the viewer's own PR. It never
-approves. Refuses when the PR is closed, its head moved since fetch, or the
-viewer already has a pending review on it. --dry-run prints the plan without
-posting.
+post: places each payload comment as a reply in an existing thread (it has a
+thread_id), inline (its line is commentable in the PR diff), at file level (its
+file is in the diff), or in the review body (otherwise), adds each confirmation
+as a reply in its thread, then submits one review: REQUEST_CHANGES when a
+Critical / Major comment is posted, COMMENT otherwise or on the viewer's own PR.
+It never approves and never resolves a thread. Refuses when the PR is closed,
+its head moved since fetch, or the viewer already has a pending review on it.
+--dry-run prints the plan without posting.
 
 payload_json:
     {"body": str, "outside_diff_heading": str,
      "comments": [{"id": str, "severity": "Critical|Major|Minor|Info",
                    "location": str, "path": str|null, "line": int|null,
-                   "body": str}]}
+                   "thread_id": str|null, "body": str}],
+     "confirmations": [{"thread_id": str, "body": str}]}
 """
 
 import json
@@ -44,6 +47,8 @@ HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 PR_URL_RE = re.compile(r"/([^/]+)/([^/]+)/pull/(\d+)")
 SEVERITIES = ("Critical", "Major", "Minor", "Info")
 BLOCKING = ("Critical", "Major")
+# Hidden in every fix-confirmation reply; fetch looks for it to tell confirmed threads.
+CONFIRM_MARKER = "<!-- creview-pr:fix-confirmed -->"
 PR_FIELDS = ",".join((
     "number", "url", "title", "body", "state", "isDraft", "author",
     "baseRefName", "baseRefOid", "headRefName", "headRefOid", "isCrossRepository",
@@ -56,6 +61,7 @@ query($owner: String!, $name: String!, $number: Int!, $after: String) {
       reviewThreads(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes {
+          id
           isResolved
           isOutdated
           path
@@ -79,6 +85,16 @@ mutation($review: ID!, $path: String!, $body: String!) {
     pullRequestReviewId: $review, path: $path, body: $body, subjectType: FILE
   }) {
     thread { id }
+  }
+}
+"""
+
+ADD_THREAD_REPLY = """
+mutation($review: ID!, $thread: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: {
+    pullRequestReviewId: $review, pullRequestReviewThreadId: $thread, body: $body
+  }) {
+    comment { id }
   }
 }
 """
@@ -140,7 +156,7 @@ def read_json(path):
         return json.load(f)
 
 
-def fetch_threads(owner, name, number, host):
+def fetch_threads(owner, name, number, viewer, host):
     threads, after = [], None
     while True:
         data = graphql(THREADS_QUERY, {
@@ -151,7 +167,11 @@ def fetch_threads(owner, name, number, host):
             comments = [c for c in node["comments"]["nodes"] if c["state"] != "PENDING"]
             if not comments:
                 continue
+            by_viewer = [c for c in comments if login_of(c["author"]).lower() == viewer]
             threads.append({
+                "id": node["id"],
+                "own": login_of(comments[0]["author"]).lower() == viewer,
+                "confirmed": any(CONFIRM_MARKER in c["body"] for c in by_viewer),
                 "path": node["path"],
                 "line": node["line"],
                 "original_line": node["originalLine"],
@@ -233,8 +253,10 @@ def cmd_fetch(argv):
         for r in api_pages(f"repos/{repo}/pulls/{number}/reviews", host)
         if r.get("body") and r["state"] != "PENDING"
     ]
-    threads = fetch_threads(owner, name, number, host)
+    viewer = api("user", host)["login"]
+    threads = fetch_threads(owner, name, number, viewer.lower(), host)
     write_json(os.path.join(out_dir, "conversation.json"), {
+        "viewer": viewer,
         "issue_comments": issue_comments,
         "reviews": reviews,
         "review_threads": threads,
@@ -302,8 +324,15 @@ def normalize_path(path):
 
 def validate_payload(payload):
     comments = payload.get("comments")
-    if not isinstance(comments, list) or not comments:
-        raise GhError("payload has no comments")
+    confirmations = payload.get("confirmations", [])
+    if not isinstance(comments, list) or not isinstance(confirmations, list):
+        raise GhError("payload comments and confirmations must be lists")
+    if not comments and not confirmations:
+        raise GhError("payload has no comments and no confirmations")
+    for k in confirmations:
+        for key in ("thread_id", "body"):
+            if not isinstance(k.get(key), str) or not k[key].strip():
+                raise GhError(f"confirmation: {key} must be a non-empty string")
     for key in ("body", "outside_diff_heading"):
         if not isinstance(payload.get(key), str) or not payload[key].strip():
             raise GhError(f"payload {key} must be a non-empty string")
@@ -314,15 +343,18 @@ def validate_payload(payload):
         for key in ("id", "location", "body"):
             if not isinstance(c.get(key), str) or not c[key].strip():
                 raise GhError(f"comment {cid}: {key} must be a non-empty string")
-        if c.get("path") is not None and not isinstance(c["path"], str):
-            raise GhError(f"comment {cid}: path must be a string or null")
+        for key in ("path", "thread_id"):
+            if c.get(key) is not None and not isinstance(c[key], str):
+                raise GhError(f"comment {cid}: {key} must be a string or null")
         line = c.get("line")
         if line is not None and (isinstance(line, bool) or not isinstance(line, int)):
             raise GhError(f"comment {cid}: line must be an integer or null")
-    return comments
+    return comments, confirmations
 
 
 def place(comment, files):
+    if comment.get("thread_id"):
+        return "reply"
     path = comment.get("path")
     if not path or normalize_path(path) not in files:
         return "body"
@@ -366,7 +398,7 @@ def cmd_post(argv):
     if len(args) != 2:
         raise GhError("usage: post <pr_json> <payload_json> [--dry-run]")
     pr, payload = read_json(args[0]), read_json(args[1])
-    comments = validate_payload(payload)
+    comments, confirmations = validate_payload(payload)
     repo, number, host = pr["repo"], pr["number"], pr["host"]
 
     live = api(f"repos/{repo}/pulls/{number}", host)
@@ -390,7 +422,7 @@ def cmd_post(argv):
         f["filename"]: commentable_lines(f["patch"]) if f.get("patch") else set()
         for f in api_pages(f"repos/{repo}/pulls/{number}/files", host)
     }
-    placed = {"inline": [], "file": [], "body": []}
+    placed = {"reply": [], "inline": [], "file": [], "body": []}
     placements = {}
     for c in comments:
         where = place(c, files)
@@ -402,7 +434,7 @@ def cmd_post(argv):
     result = {
         "event": event,
         "own_pr": own_pr,
-        "counts": {k: len(v) for k, v in placed.items()},
+        "counts": {**{k: len(v) for k, v in placed.items()}, "confirm": len(confirmations)},
         "placements": placements,
         "review_url": None,
     }
@@ -427,6 +459,14 @@ def cmd_post(argv):
             }, host)
             if not (data.get("addPullRequestReviewThread") or {}).get("thread"):
                 raise GhError(f"GitHub created no file-level thread for comment {c['id']}")
+        replies = [(c["thread_id"], c["body"]) for c in placed["reply"]]
+        replies += [(k["thread_id"], f"{k['body']}\n\n{CONFIRM_MARKER}") for k in confirmations]
+        for thread_id, body in replies:
+            data = graphql(ADD_THREAD_REPLY, {
+                "review": pending["node_id"], "thread": thread_id, "body": body,
+            }, host)
+            if not (data.get("addPullRequestReviewThreadReply") or {}).get("comment"):
+                raise GhError(f"GitHub added no reply to thread {thread_id}")
         submitted = api(
             f"repos/{repo}/pulls/{number}/reviews/{pending['id']}/events", host, "POST",
             {"event": event, "body": review_body(payload, placed["body"])},

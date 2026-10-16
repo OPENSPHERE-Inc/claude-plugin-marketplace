@@ -134,14 +134,19 @@ the current branch.
   as unchecked task items or TODOs.
 - Every submitted comment on the PR is fetched — conversation comments, review
   bodies, and review threads with their resolved state, from humans and bots
-  alike. Findings the conversation already raised, resolved, or rejected are
-  marked Won't Fix. A finding whose thread was resolved while the problem
+  alike. Findings the conversation already resolved or rejected, or raised
+  outside a review thread, are marked Won't Fix. A finding that matches a
+  review thread that is not resolved stays in the review and is posted as a
+  reply in that thread. A finding whose thread was resolved while the problem
   remains at the PR head is kept, unless the conversation gives a reason for
   leaving it. The remaining findings go through the same adversarial triage as
   `/creview:triage`; no estimate is made.
+- For each review thread the user started earlier whose problem is now gone
+  at the PR head, the review also posts a reply confirming the fix, once per
+  thread. The skill never resolves threads.
 - The result is presented in the console in sections: the text of each
-  comment to be posted with where it will be placed, then each excluded
-  finding with its verdict. The user can then exclude or include findings,
+  comment to be posted with where it will be placed, each fix confirmation,
+  then each excluded finding with its verdict. The user can then exclude or include findings,
   reword comments, or change severities. Nothing is posted until the user
   instructs it.
 - On instruction, the Will Fix findings other than Info are posted as one

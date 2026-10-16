@@ -83,14 +83,14 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
    - PR 本文レビュアーを `subagent_type="general-purpose"` で起動する — テンプレート `${CLAUDE_PLUGIN_ROOT}/skills/pr/templates/description-reviewer.md`、`template_id` `2c90357b-cdd9-46bb-b2f7-fae29f38e810`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`、`target_dir = {target_dir}`、`pr_path = {pr_path}`、`diff_path = {diff_path}`、`output_path = {tmp_dir}/reviews/pr/review-pr-description.md`、`doc_lang = {doc_lang}`。
 4. 集約サブエージェントを `subagent_type="review-helper"` で起動する — テンプレート `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/aggregator.md`、`template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`、`target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`reviewer_paths_list = {全レビュアーの出力パス}`、`final_doc_path = {doc_path}`、`round_num_or_omitted = (omitted)`、`targets_description = PR #{number} {title} ({url}) at {head_sha}`、`reviewer_names_csv = {重複排除したレビュアー名、pr-description を含む}`、`review_mode = {review_mode}`、`doc_lang = {doc_lang}`。戻り値: `{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`。
 
-`findings_total == 0` の場合は、ティアダウンを実行し、`${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で `{tmp_dir}` を削除し、レビューで何も見つからなかった旨を `{doc_path}` とともに報告してスキルを終える。
+`findings_total == 0` の場合はステップ 5 をスキップする。さらに `review_threads` も 0 の場合は、ティアダウンを実行し、`${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で `{tmp_dir}` を削除し、レビューで何も見つからなかった旨を `{doc_path}` とともに報告してスキルを終える。
 
 ## ステップ 4 — 会話で既に扱われた指摘の除外
 
 `issue_comments`・`reviews`・`review_threads` がすべて 0 の場合はこのステップをスキップする。
 
 1. `mkdir -p` で `{tmp_dir}/prior` を作成する。
-2. サブエージェントを `subagent_type="general-purpose"` で起動する — テンプレート `${CLAUDE_PLUGIN_ROOT}/skills/pr/templates/prior-discussion.md`、`template_id` `a1c67c6b-a514-48e6-abb5-52dc01f28221`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`、`target_dir = {target_dir}`、`document_path = {doc_path}`、`conversation_path = {conversation_path}`、`output_dir = {tmp_dir}/prior`。戻り値: `{path, excluded_count, raised, resolved, rejected, template_id}`。
+2. サブエージェントを `subagent_type="general-purpose"` で起動する — テンプレート `${CLAUDE_PLUGIN_ROOT}/skills/pr/templates/prior-discussion.md`、`template_id` `a1c67c6b-a514-48e6-abb5-52dc01f28221`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`、`target_dir = {target_dir}`、`document_path = {doc_path}`、`conversation_path = {conversation_path}`、`output_dir = {tmp_dir}/prior`。戻り値: `{path, excluded_count, raised, resolved, rejected, reused, confirmed, template_id}`。
 3. `excluded_count` が 1 以上の場合は `python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py {tmp_dir}/prior {doc_path}` を実行する。非ゼロ終了した場合は中断する。
 
 ## ステップ 5 — トリアージ
@@ -106,25 +106,26 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 ## ステップ 6 — レビューの作成
 
-1. サブエージェントを `subagent_type="review-helper"` で起動する — テンプレート `${CLAUDE_PLUGIN_ROOT}/skills/pr/templates/review-payload.md`、`template_id` `1c163d5b-2249-4ff2-bb85-5dcce19fe281`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`、`target_dir = {target_dir}`、`document_path = {doc_path}`、`pr_path = {pr_path}`、`output_path = {payload_path}`、`doc_lang = {doc_lang}`。戻り値: `{path, comment_count, by_severity, post_lang, template_id}`。
+1. サブエージェントを `subagent_type="review-helper"` で起動する — テンプレート `${CLAUDE_PLUGIN_ROOT}/skills/pr/templates/review-payload.md`、`template_id` `1c163d5b-2249-4ff2-bb85-5dcce19fe281`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`、`target_dir = {target_dir}`、`document_path = {doc_path}`、`pr_path = {pr_path}`、`threads_path = {threads_path}`、`output_path = {payload_path}`、`doc_lang = {doc_lang}`。`{threads_path}` は `{tmp_dir}/prior/threads.jsonl`、ステップ 4 をスキップした場合は `(none)`。戻り値: `{path, comment_count, confirmation_count, by_severity, post_lang, template_id}`。
 2. ティアダウンを実行する。
 
 ## ステップ 7 — 結果の提示
 
-1. `{payload_path}` にコメントが 1 件以上ある場合は `python3 ${CLAUDE_PLUGIN_ROOT}/skills/pr/scripts/gh-pr.py post {pr_path} {payload_path} --dry-run` を実行する。`{event, own_pr, counts: {inline, file, body}, placements: {id: inline | file | body}, review_url}` を出力する。非ゼロ終了した場合はそのエラーを提示に含める: 原因が残る限り投稿は失敗する。
+1. `{payload_path}` にコメントまたは修正確認が 1 件以上ある場合は `python3 ${CLAUDE_PLUGIN_ROOT}/skills/pr/scripts/gh-pr.py post {pr_path} {payload_path} --dry-run` を実行する。`{event, own_pr, counts: {reply, inline, file, body, confirm}, placements: {id: reply | inline | file | body}, review_url}` を出力する。非ゼロ終了した場合はそのエラーを提示に含める: 原因が残る限り投稿は失敗する。
 2. `{doc_path}` と `{payload_path}` を Read し、表ではなくセクション形式で以下を提示する:
-   - `{doc_lang}` の概要: PR（`#{number} {title}`、`{url}`）、`{doc_path}`、ステップ 4 を実行した場合はその除外（`excluded_count` と `raised` / `resolved` / `rejected` の内訳）、トリアージの `summary_line`、投稿対象がある場合はレビューのイベント・投稿言語（`post_lang`）・payload の `body`。`own_pr` が true の場合は、GitHub は PR の作成者による変更要求を認めないため COMMENT で投稿される旨を添える。
-   - `{payload_path}` のコメントごとに 1 セクション: id・重要度・ロケーション・dry run の配置を示す見出し行に続けて、投稿されるとおりの `body` をそのまま示す。
+   - `{doc_lang}` の概要: PR（`#{number} {title}`、`{url}`）、`{doc_path}`、ステップ 4 を実行した場合はその結果（`excluded_count` と `raised` / `resolved` / `rejected` の内訳、`reused` と `confirmed` の件数）、ステップ 5 を実行した場合はトリアージの `summary_line`、投稿対象がある場合はレビューのイベント・投稿言語（`post_lang`）・payload の `body`。`own_pr` が true の場合は、GitHub は PR の作成者による変更要求を認めないため COMMENT で投稿される旨を添える。
+   - `{payload_path}` のコメントごとに 1 セクション: id・重要度・ロケーション・dry run の配置（返信なら `thread_url` も）を示す見出し行に続けて、投稿されるとおりの `body` をそのまま示す。
+   - `{payload_path}` の修正確認ごとに 1 セクション: その `url` に続けて `body` をそのまま示す。
    - `{payload_path}` にない指摘をすべて、`{doc_lang}` で 1 行ずつ: id、重要度、ロケーション、最後の Triage の値と理由の短い句（値がなければ `-`）、1 行の要約。
    - 選択肢: 追加トリアージ（指摘の除外・追加・言い換え・重要度変更）、投稿、投稿せずに終了。
-3. ユーザーの指示を待つ。
+3. `findings_total == 0` かつ `{payload_path}` に修正確認がない場合は終了（ステップ 8）を実行する。それ以外はユーザーの指示を待つ。
 
 ## ステップ 8 — 追加トリアージ・投稿・終了
 
 ユーザーが投稿または終了するまで繰り返す:
 
-- 追加トリアージ — Edit で `{payload_path}` に、その `post_lang` で記述して反映する: 指摘を除外するにはそのコメントを削除する。Won't Fix または Info の指摘を加えるには、`{doc_path}` の当該指摘から `${CLAUDE_PLUGIN_ROOT}/skills/pr/templates/review-payload.md` が定めるコメント形式でコメントを作って追加する。言い換えにはコメントの `body` を編集する。重要度変更では `severity` と `body` の 1 行目の重要度を揃えて変える。payload の `body` のサマリはコメントと整合させる。Will Fix の指摘の除外と Won't Fix の指摘の追加は、それぞれレビュードキュメントに記録する: `{"id": "M-2", "field": "triage", "value": "🚫 Won't Fix — User decision: {reason}"}`（または `🔧 Will Fix — User decision: {reason}`。`{reason}` はユーザーが述べた理由で、述べなかった場合は `: {reason}` を省く）の形のイベントを 1 行に 1 JSON オブジェクトで `{tmp_dir}/user-events-{n}.jsonl`（`{n}`: 指示の回ごとに 1, 2, ...）に Write し、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py {doc_path} {tmp_dir}/user-events-{n}.jsonl {doc_path}` を実行する。その後ステップ 7 を再実行する。
+- 追加トリアージ — Edit で `{payload_path}` に、その `post_lang` で記述して反映する: 指摘を除外するにはそのコメントを、スレッドへの修正確認の返信をやめるにはその修正確認を削除する。Won't Fix または Info の指摘を加えるには、`{doc_path}` の当該指摘から `${CLAUDE_PLUGIN_ROOT}/skills/pr/templates/review-payload.md` が定めるコメント形式でコメントを作って追加する。言い換えにはコメントの `body` を編集する。重要度変更では `severity` と `body` の 1 行目の重要度を揃えて変える。payload の `body` のサマリはコメントと修正確認に整合させる。Will Fix の指摘の除外と Won't Fix の指摘の追加は、それぞれレビュードキュメントに記録する: `{"id": "M-2", "field": "triage", "value": "🚫 Won't Fix — User decision: {reason}"}`（または `🔧 Will Fix — User decision: {reason}`。`{reason}` はユーザーが述べた理由で、述べなかった場合は `: {reason}` を省く）の形のイベントを 1 行に 1 JSON オブジェクトで `{tmp_dir}/user-events-{n}.jsonl`（`{n}`: 指示の回ごとに 1, 2, ...）に Write し、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py {doc_path} {tmp_dir}/user-events-{n}.jsonl {doc_path}` を実行する。その後ステップ 7 を再実行する。
 - 投稿 — `python3 ${CLAUDE_PLUGIN_ROOT}/skills/pr/scripts/gh-pr.py post {pr_path} {payload_path}` を実行する。成功すると dry run と同じフィールドを `review_url` を設定して出力するので、URL・イベント・配置別の件数を報告し、終了を実行する。非ゼロ終了した場合（例: ステップ 1 の後に PR の head が動いた。スキルの再実行が必要）は、そのエラーを表示して次の指示を待つ。
 - 終了 — `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で `{tmp_dir}` を削除し、`{doc_path}` を報告する。
 
-指示されても、いかなる手段でも PR を承認（APPROVE）しない。承認はユーザー自身が行うよう伝える。
+指示されても、いかなる手段でも PR を承認（APPROVE）しない。承認はユーザー自身が行うよう伝える。レビュースレッドは resolve しない。
