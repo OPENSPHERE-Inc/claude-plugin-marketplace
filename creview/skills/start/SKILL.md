@@ -122,7 +122,7 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
 
 ## Step 2 — Launch Parallel Reviewers
 
-Launch one reviewer per (scope, `reviewers[].name`) pair concurrently via the Agent tool. Each reviewer must not return findings to stdout; instead, they Write to a dedicated file. The review leader (you) must not load reviewer output bodies into context (the aggregator sub-agent reads them in a later step).
+Launch one reviewer per (scope, `reviewers[].name`) pair concurrently via the Agent tool. Launch at most 20 in one message, and relaunch a reviewer refused for the concurrency limit once running reviewers have returned (`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch mode). Each reviewer must not return findings to stdout; instead, they Write to a dedicated file. The review leader (you) must not load reviewer output bodies into context (the aggregator sub-agent reads them in a later step).
 
 ### Reviewer Output Files
 

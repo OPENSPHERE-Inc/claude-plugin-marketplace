@@ -122,7 +122,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/script
 
 ## ステップ 2 — 並列レビュアーの起動
 
-（スコープ, `reviewers[].name`）の全組につきレビュアーを 1 体ずつ Agent ツールで同時に起動する。各レビュアーは指摘を stdout に返さず、専用ファイルに Write する。レビューリーダー（あなた）はレビュアー出力本体を context に載せない（後段の集約サブエージェントが読み取る）。
+（スコープ, `reviewers[].name`）の全組につきレビュアーを 1 体ずつ Agent ツールで同時に起動する。1 メッセージで起動するのは 20 体までとし、同時実行数の上限で拒否された起動は実行中のレビュアーが戻ってから起動し直す（`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動形態）。各レビュアーは指摘を stdout に返さず、専用ファイルに Write する。レビューリーダー（あなた）はレビュアー出力本体を context に載せない（後段の集約サブエージェントが読み取る）。
 
 ### レビュアー出力ファイル
 

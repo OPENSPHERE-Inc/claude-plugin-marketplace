@@ -39,7 +39,7 @@ Procedure:
 
 1. Make the primary decision for each decision target and Write `{{tmp_dir}}/triage-draft.jsonl`. Do not resolve the assignee at this stage.
 2. When the draft `items` is empty, skip steps 3 and 4, Write `{{tmp_dir}}/triage.jsonl` with `items: []`, `will_fix_count: 0`, `wontfix_count: 0`, and the draft's `by_stage`, and return with `flipped_count: 0` and `adjudication_skipped: true`.
-3. Split the draft `items` into batches of at most 8 ids in draft order, numbering the batches from 1. Launch three challenge sub-agents per batch with `Agent(subagent_type="general-purpose", prompt=...)`, giving them `challenge_index` 1, 2 and 3, and launch every batch's sub-agents in a single message. Do not specify the model. Fill the values you received into the launch prompt (`{b}` is that instance's batch number, `{n}` its `challenge_index`, `{batch_ids}` the ids of batch `{b}` as a comma-separated list):
+3. Split the draft `items` into batches of at most 8 ids in draft order, numbering the batches from 1. Launch three challenge sub-agents per batch with `Agent(subagent_type="general-purpose", prompt=...)`, giving them `challenge_index` 1, 2 and 3, and launch every batch's sub-agents together, at most 20 in one message (`{{plugin_root}}/rules/sub-agent.md` § Launch mode). Do not specify the model. Fill the values you received into the launch prompt (`{b}` is that instance's batch number, `{n}` its `challenge_index`, `{batch_ids}` the ids of batch `{b}` as a comma-separated list):
 
 ```
 As your first action, you MUST Read `{{plugin_root}}/skills/triage/templates/triage-challenge.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
@@ -60,7 +60,7 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-Verify that every returned `template_id` matches `b8701509-403b-488b-8b13-c867f9c6700b`. On mismatch, relaunch that (batch, challenge_index) pair alone as a fresh instance of the same `subagent_type` with the same `batch_index`, `ids` and `challenge_index`. A pair that mismatches twice in a row, or whose `Agent` launch itself fails (the nested-spawn depth limit is reached, etc.), produces no challenge output; carry on with the pairs that did return a match.
+Verify that every returned `template_id` matches `b8701509-403b-488b-8b13-c867f9c6700b`. On mismatch, relaunch that (batch, challenge_index) pair alone as a fresh instance of the same `subagent_type` with the same `batch_index`, `ids` and `challenge_index`. A pair that mismatches twice in a row, or whose `Agent` launch itself fails (the nested-spawn depth limit is reached, etc.; a refusal for the concurrency limit is not a failure and is relaunched as § Launch mode directs), produces no challenge output; carry on with the pairs that did return a match.
 
 Overturning a draft decision takes two flip votes from the id's own batch, so when no batch produced two or more challenge outputs, skip step 4, adopt the draft `verdict` / `reason` as the final verdicts, Write `{{tmp_dir}}/triage.jsonl` following step 5, and return with `flipped_count: 0` and `adjudication_skipped: true`.
 

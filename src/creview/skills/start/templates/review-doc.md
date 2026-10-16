@@ -1,4 +1,4 @@
-<!-- 骨組み例。散文とラベル（日付 / 範囲 / レビュアー / サマリー / 件 等）は doc_lang で記述する。重要度見出し・finding-id・METADATA マーカーは変更しない。カテゴリラベルはレビュアー出力の表記をそのまま採用する。Mode の箇条書きは adversarial 実行時のみ出力する。値 `adversarial` は訳さない。 -->
+<!-- 骨組み例。散文とラベル（日付 / 範囲 / レビュアー / サマリー / 件 等）は doc_lang で記述する。重要度見出し・finding-id・METADATA マーカーは変更しない。カテゴリラベルは doc_lang で記述する。Mode の箇条書きは adversarial 実行時のみ出力する。値 `adversarial` は訳さない。 -->
 
 # 並列コードレビューレポート — Round {N}
 

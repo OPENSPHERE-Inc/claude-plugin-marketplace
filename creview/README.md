@@ -42,7 +42,9 @@ sub-agent partitions the changed files into at most eight cohesive review
 scopes of up to 400 changed lines / 10 files each and picks reviewers per
 scope, so a large change is reviewed slice by slice rather than sampled by
 reviewers that stop exploring once they have produced a few findings. A
-smaller change stays a single scope.
+smaller change stays a single scope. Changed files whose new content is
+identical, such as a mirrored copy, are kept in one scope and reviewed once;
+a finding is anchored at one of the copies and names the others.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review
@@ -170,7 +172,9 @@ A long run also consumes many subagent slots — the challenge sub-agents alone
 number three per batch of eight findings, and a split review runs one reviewer
 per (scope, reviewer) pair — so raise
 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
-session) when using a high `--max-rounds`.
+session) when using a high `--max-rounds`. Sub-agents that run in parallel are
+launched at most 20 at a time, the default of
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`; the rest follow as running ones return.
 
 ## Reviewer / fixer agents
 

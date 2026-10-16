@@ -17,7 +17,7 @@ Rules:
 - Restrict tool use to Read / Glob / Grep / Bash(grep/ls/find), plus Write for `{{output_path}}`.
 - Location: the code's `file_path:line` when a line the diff changes behaves contrary to what the description states; `PR description` for every other finding, including a claim no changed line implements.
 - Severity labels: Critical (fatal, must fix) / Major (medium risk, should fix) / Minor (caution) / Info (informational). Grade a finding at `PR description` by the harm of trusting the description as written: Major when it leads a reviewer or user to a wrong decision (a check the code does not perform, an omitted breaking change), Minor for a gap that misleads no one, Info for wording.
-- Category labels: one or more of `Bug` / `Maintainability` / `Readability` / `Testing` / `Performance` / `Security` / `Style` / `Documentation` / `Design`, or a new short noun phrase without `/` or `]`; join several with `/` inside one `[ ]`. The labels may be written in `{{doc_lang}}`.
+- Category labels: one or more of `Bug` / `Maintainability` / `Readability` / `Testing` / `Performance` / `Security` / `Style` / `Documentation` / `Design`, or a new short noun phrase without `/` or `]`; join several with `/` inside one `[ ]`. Write the labels in `{{doc_lang}}`, translating the preset names.
 - Read `{{plugin_root}}/rules/review.md` and follow it.
 
 Output:

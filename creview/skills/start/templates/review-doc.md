@@ -1,4 +1,4 @@
-<!-- Skeleton example. Write the prose and labels (Date / Scope / Reviewers / Summary / counts, etc.) in doc_lang. Do not change the severity headings, finding-id, or METADATA markers. Use the category labels exactly as written in the reviewer output. The Mode bullet is output only for an adversarial run; keep its value `adversarial` untranslated. -->
+<!-- Skeleton example. Write the prose and labels (Date / Scope / Reviewers / Summary / counts, etc.) in doc_lang. Do not change the severity headings, finding-id, or METADATA markers. Write the category labels in doc_lang. The Mode bullet is output only for an adversarial run; keep its value `adversarial` untranslated. -->
 
 # Parallel Code Review Report — Round {N}
 
