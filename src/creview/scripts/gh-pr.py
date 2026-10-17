@@ -496,8 +496,9 @@ def checkout_env(overrides):
 
 
 def hook_free_env(no_hooks):
+    # Git before 2.36 takes core.fsmonitor=false as a hook command; an empty value disables it.
     env = checkout_env([
-        ("core.hooksPath", no_hooks), ("core.fsmonitor", "false"), ("core.symlinks", "false"),
+        ("core.hooksPath", no_hooks), ("core.fsmonitor", ""), ("core.symlinks", "false"),
         *filter_overrides(),
     ])
     # Git before 2.31 ignores GIT_CONFIG_COUNT; refuse rather than run hooks.
