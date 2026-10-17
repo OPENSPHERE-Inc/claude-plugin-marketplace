@@ -163,7 +163,12 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
 
 ## Step 2 — Launch Parallel Reviewers
 
-Launch one reviewer per (scope, `reviewers[].name`) pair concurrently via the Agent tool, at most 20 in one message (`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch mode, which also governs relaunching a refused launch). When § Launch mode treats a reviewer as a failed launch, abort, naming its (scope, reviewer) pair. Each reviewer must not return findings to stdout; instead, they Write to a dedicated file. The review leader (you) must not load reviewer output bodies into context (the aggregator sub-agent reads them in a later step).
+Launch one reviewer per (scope, `reviewers[].name`) pair concurrently via the Agent tool, at most 20 in one message (`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch mode, which also governs relaunching a refused launch). When a reviewer's launch fails:
+
+- Its `subagent_type`, other than `general-purpose`, is not an available agent — launch a `general-purpose` reviewer for that scope in its place, with `{output_path}` = `{tmp_dir}/reviews/{scope_id}/review-general-purpose.md`; when the scope already has a `general-purpose` reviewer, drop the pair instead.
+- Any other failure, including a failed launch under § Launch mode and the nested-spawn depth limit — abort, naming the (scope, reviewer) pair and the error.
+
+Each reviewer must not return findings to stdout; instead, they Write to a dedicated file. The review leader (you) must not load reviewer output bodies into context (the aggregator sub-agent reads them in a later step).
 
 ### Reviewer Output Files
 
@@ -184,7 +189,7 @@ The review leader does not perform aggregation work (Reading each reviewer file,
 
 Launch via `Agent(subagent_type="review-helper", prompt=...)` (model follows review-helper's agent definition; do not specify model from the leader).
 
-`{reviewer_paths_list}` lists every reviewer output file across all scopes; `{reviewer_names_csv}` is the reviewer names deduplicated across scopes.
+`{reviewer_paths_list}` lists the output file of every reviewer that ran, across all scopes; `{reviewer_names_csv}` is the names of those reviewers deduplicated across scopes.
 
 Template `aggregator.md`, `template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `reviewer_paths_list = {reviewer_paths_list}`, `final_doc_path = {final_doc_path}`, `round_num_or_omitted = {round_num_or_omitted}`, `targets_description = {targets_description}`, `reviewer_names_csv = {reviewer_names_csv}`, `review_mode = {review_mode}`, `pr_ref = {pr_ref}`, `doc_lang = {doc_lang}`, overrides `(none)`. Return value: `{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`.
 
@@ -208,4 +213,4 @@ Ask the user with AskUserQuestion whether to run `/creview:triage` on `{final_do
 ## Step 6 — Finish
 
 1. In a worktree review, run the teardown.
-2. Report `{final_doc_path}` and its finding counts by severity.
+2. Report `{final_doc_path}`, its finding counts by severity, and each (scope, reviewer) pair Step 2 replaced with `general-purpose` or dropped.

@@ -163,7 +163,12 @@ allowed-tools: Agent, Skill, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}
 
 ## ステップ 2 — 並列レビュアーの起動
 
-（スコープ, `reviewers[].name`）の全組につきレビュアーを 1 体ずつ Agent ツールで同時に起動する。1 メッセージで起動するのは 20 体までとする（拒否された起動のやり直しを含め `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動形態に従う）。§ 起動形態が起動の失敗とするレビュアーが出た場合は、その（スコープ, レビュアー）の組を示して中止する。各レビュアーは指摘を stdout に返さず、専用ファイルに Write する。レビューリーダー（あなた）はレビュアー出力本体を context に載せない（後段の集約サブエージェントが読み取る）。
+（スコープ, `reviewers[].name`）の全組につきレビュアーを 1 体ずつ Agent ツールで同時に起動する。1 メッセージで起動するのは 20 体までとする（拒否された起動のやり直しを含め `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動形態に従う）。レビュアーの起動が失敗した場合:
+
+- その `subagent_type` が `general-purpose` 以外で、利用可能なエージェントでない — そのスコープに代わりに `general-purpose` のレビュアーを起動し、`{output_path}` は `{tmp_dir}/reviews/{scope_id}/review-general-purpose.md` とする。そのスコープに既に `general-purpose` のレビュアーがいる場合は、その組を取りやめる。
+- それ以外の失敗（§ 起動形態による起動の失敗、ネスト起動の深度上限を含む）— その（スコープ, レビュアー）の組とエラーを示して中止する。
+
+各レビュアーは指摘を stdout に返さず、専用ファイルに Write する。レビューリーダー（あなた）はレビュアー出力本体を context に載せない（後段の集約サブエージェントが読み取る）。
 
 ### レビュアー出力ファイル
 
@@ -184,7 +189,7 @@ allowed-tools: Agent, Skill, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}
 
 `Agent(subagent_type="review-helper", prompt=...)` で起動する（model は review-helper の agent 定義に従う。リーダーから model 指定はしない）。
 
-`{reviewer_paths_list}` は全スコープのレビュアー出力ファイルを列挙したもの、`{reviewer_names_csv}` はスコープ間で重複排除したレビュアー名。
+`{reviewer_paths_list}` は全スコープで実際に動いたレビュアーの出力ファイルを列挙したもの、`{reviewer_names_csv}` はそれらのレビュアー名をスコープ間で重複排除したもの。
 
 テンプレート `aggregator.md`、`template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`reviewer_paths_list = {reviewer_paths_list}`、`final_doc_path = {final_doc_path}`、`round_num_or_omitted = {round_num_or_omitted}`、`targets_description = {targets_description}`、`reviewer_names_csv = {reviewer_names_csv}`、`review_mode = {review_mode}`、`pr_ref = {pr_ref}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。戻り値: `{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`。
 
@@ -208,4 +213,4 @@ AskUserQuestion で、`{final_doc_path}` に対して今 `/creview:triage` を�
 ## ステップ 6 — 終了
 
 1. ワークツリーレビューでは、ティアダウンを実行する。
-2. `{final_doc_path}` と重要度別の指摘件数を報告する。
+2. `{final_doc_path}`、重要度別の指摘件数、およびステップ 2 で `general-purpose` に置き換えた、または取りやめた（スコープ, レビュアー）の組を報告する。
