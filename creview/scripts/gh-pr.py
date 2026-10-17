@@ -437,12 +437,23 @@ def leave_out_agent_files(path, env):
                         env)
 
 
+def reraise(e):
+    raise e
+
+
 def agent_file_left(root):
     # The file system, not the sparse patterns, decides which names it resolves to these.
-    for dirpath, _, _ in os.walk(root):
+    # On Windows a path past MAX_PATH also fails as FileNotFoundError, with another winerror.
+    for dirpath, _, _ in os.walk(root, onerror=reraise):
         for name in AGENT_FILES:
-            if os.path.lexists(os.path.join(dirpath, name)):
-                return name
+            path = os.path.join(dirpath, name)
+            try:
+                os.lstat(path)
+            except FileNotFoundError as e:
+                if getattr(e, "winerror", None) in (None, 2):
+                    continue
+                raise
+            return os.path.relpath(path, root).replace(os.sep, "/")
     return None
 
 
@@ -483,8 +494,10 @@ def cmd_checkout(pr_json, *options):
             left = None if options else agent_file_left(path)
             if left:
                 raise Error(
-                    f"the checkout of PR #{number} still resolves {left}; "
-                    "review it with --trust or in place"
+                    f"the checkout of PR #{number} still resolves the agent file {left!r}, "
+                    "which the sparse checkout is meant to leave out, so the PR may be evading "
+                    "that filter; review it only in a sandbox, either with --trust or with the "
+                    "PR head checked out in the working tree"
                 )
         except BaseException as e:
             message = str(e) if isinstance(e, Error) else f"{type(e).__name__}: {e}"
