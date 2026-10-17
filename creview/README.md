@@ -130,7 +130,7 @@ such as the base branch, they triage, fix, and verify code other than the pull
 request's.
 
 A checkout in your working tree has none of a worktree review's protections,
-and the pull request's code can run:
+and the pull request's code can run, for example in these ways:
 
 - Git runs hooks and filter drivers, starting with the checkout itself.
   - With a relative `core.hooksPath` (such as `.husky/_` or `.githooks`), the
@@ -139,7 +139,7 @@ and the pull request's code can run:
     hook.
   - A hook manager installed in `.git/hooks/`, such as pre-commit, lefthook, or
     Husky v4, reads its configuration from the pull request's tree
-    (`.pre-commit-config.yaml`, `lefthook.yml`, or `package.json`), so its hooks
+    (such as `.pre-commit-config.yaml`, `lefthook.yml`, or `package.json`), so its hooks
     run the commands the pull request writes there, even without a
     `core.hooksPath`.
   - With a relative `core.fsmonitor`, git commands such as the checkout and
@@ -153,11 +153,15 @@ and the pull request's code can run:
   - Without a `build-format.md`, it takes those commands from the checkout's
     `CLAUDE.md` or `README.md`.
 
-For a pull request you do not trust, review its changes to all of these files
-(hooks, hook manager configuration, the `core.fsmonitor` script,
-`.gitattributes`, instruction files and their imports, `README.md`, and build
-and test code) before checking it out, and run `/creview:respond` on it only in
-a sandbox.
+creview assumes that, before you run it, you have checked the repository and
+the pull request and trust them. The ways listed above and a worktree review's
+trust confirmation, which lists the instruction files the pull request
+changes, only support that decision: they do not cover every way the pull
+request's code or instructions can take effect, and they cannot guarantee that
+a repository or pull request fetched from the network is safe. Keep the agent
+safe through your environment, such as a sandbox and permission rules, and
+check out a pull request you do not trust, and run `/creview:respond` on it,
+only in a sandbox.
 
 When the review has Critical, Major, or Minor findings, `/creview:start` asks
 at the end whether to run `/creview:triage` on the new review document, and
