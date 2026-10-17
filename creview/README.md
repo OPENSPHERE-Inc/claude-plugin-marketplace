@@ -61,16 +61,18 @@ host. `--base` and `--range` cannot be combined with it.
     the main working tree.
 
 One more reviewer runs alongside the code reviewers: the bundled
-`pr-description-reviewer`, which checks the pull request's title and
-description and its CI results against the change.
+`pr-description-reviewer`, which reviews the change in the light of the pull
+request's title and description and its CI results.
 
 - It reports claims the change does not bear out, information a reviewer
   needs that the description leaves out, open task items, and failed checks,
   tracing a failure to its cause through the failed GitHub Actions job's log.
 - It reads the pull request's comments and reviews for context only; they are
   not review targets.
-- Its findings are located at the code line they trace to, or at
-  `PR description` or `CI: {check name}`, and quote the text they rest on.
+- Every finding is anchored at a changed line of code and quotes the
+  description text or CI output it rests on. A problem that no changed line
+  points at, such as a claim about nothing in the diff or a failed check whose
+  cause lies outside the change, is not reported.
 - It runs with Read, Glob, Grep, and Write only, without shell or network
   access.
 

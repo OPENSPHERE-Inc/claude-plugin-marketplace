@@ -217,7 +217,7 @@ Skip this step when an upper flow runs this skill, or when the review document h
 
 Ask the user with AskUserQuestion whether to run `/creview:triage` on `{final_doc_path}` now. When they choose to, invoke the `creview:triage` skill via the Skill tool with the argument `{final_doc_path}` and act as its triage leader through its last step. In PR mode, also:
 
-- Add the § PR mode override, and in a worktree review the § Worktree review overrides, to every sub-agent launch prompt it issues. Add to the triage sub-agent's also `A finding located at "PR description" or at a "CI:" location concerns the pull request's title and description or its CI results, quoted in the finding; they are part of the change under review, so Won't Fix guideline 1 does not apply to it.` and `Give every challenge and adjudication sub-agent you launch all the overrides you received, verbatim, in place of "(none)".`
+- Add the § PR mode override, and in a worktree review the § Worktree review overrides, to every sub-agent launch prompt it issues. Add to the triage sub-agent's also `Give every challenge and adjudication sub-agent you launch all the overrides you received, verbatim, in place of "(none)".`
 - In a worktree review, give that run this run's `{main_root}` and `{target_dir}`, and create its working directory under `{main_root}/.claude/tmp/`.
 
 ## Step 6 — Finish
