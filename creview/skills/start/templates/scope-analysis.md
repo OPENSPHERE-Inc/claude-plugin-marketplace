@@ -12,7 +12,7 @@ Reviewer pool: enumerate `*.md` from the following locations in priority order, 
 
 1. Project: `.claude/agents/**/*.md` (relative to `main_root` when your launch prompt gives one other than `(none)`, otherwise to `{{target_dir}}`)
 2. User: `~/.claude/agents/**/*.md`
-3. Plugin-bundled: `{{plugin_root}}/agents/**/*.md`
+3. Plugin-bundled: `{{plugin_root}}/agents/**/*.md`, except `review-helper`, `review-leader`, and `pr-description-reviewer`, fixed-role agents the skills launch by name
 
 Procedure:
 

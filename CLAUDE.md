@@ -134,6 +134,9 @@ When changing a plugin:
   namespaced name (`creview:review-helper`, `cdev:dev-helper`); a bare name resolves only
   to a project or user agent of that name. The detection rules and `scope-analysis.md`
   likewise return the namespaced name for an agent they pick from the plugin bundle.
+  In creview, the detection rule and `scope-analysis.md` leave the fixed-role bundled
+  agents (`review-helper`, `review-leader`, `pr-description-reviewer`) out of the
+  candidates, so `comment-sensei` is the only bundled candidate.
 
 ---
 
@@ -218,7 +221,8 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     CI / conversation) → review in place when HEAD is the PR head, else
                     gh-pr.py checkout into a detached worktree (hooks disabled) → code
                     reviewers + pr-description-reviewer → doc header carries a
-                    `- **PR:**` bullet
+                    `- **PR:**` bullet → gh-pr.py remove (hooks disabled) before the
+                    triage offer
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist
                     triage / estimate metadata into the doc
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
@@ -255,10 +259,10 @@ request review that checks the pull request out in one — and `(none)` otherwis
 value it received, `(none)` included, to every sub-agent it launches; the `/creview:start`
 / `triage` / `respond` / `resolve` leaders pass the value an upper flow gave them, or
 `(none)` when invoked directly, except that a `/creview:start` worktree review passes its
-own (and hands it to the `/creview:triage` run it starts); cdev passes it through the spawn
-contract. The detection rules (`agents-detection.md` / `build-format-detection.md`)
-and `scope-analysis.md` resolve the project's `.claude/agents/` / `.claude/rules/` against
-it when it is other than `(none)`, and against `target_dir` otherwise. Launches nested
+own; cdev passes it through the spawn contract. The detection rules
+(`agents-detection.md` / `build-format-detection.md`) and `scope-analysis.md` resolve the
+project's `.claude/agents/` / `.claude/rules/` against it when it is other than `(none)`,
+and against `target_dir` otherwise. Launches nested
 inside a template (the challenge / adjudication sub-agents `triage.md` spawns) do not
 receive it, so the templates they run must not depend on it.
 

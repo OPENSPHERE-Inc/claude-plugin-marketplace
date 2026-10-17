@@ -44,8 +44,10 @@ recursively (`**/*.md`, so subdirectories are included) from the **destination
 project** (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin
 bundle**, reads each agent's `description`, and selects the most relevant agents
 per finding. When no suitable agent exists, it falls back to
-`general-purpose`. The `review-helper` aggregation agent is bundled with the
-`creview` plugin.
+`general-purpose`. The plugin bundles only its workflow helper agents, such as
+the `review-helper` aggregation agent, and one exception to the above:
+`pr-description-reviewer`, a fixed-role reviewer that checks a pull request's
+description and CI results when `/creview:start` reviews a pull request.
 
 ## Source of truth and localization
 

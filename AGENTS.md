@@ -28,7 +28,7 @@ see **[CLAUDE.md](CLAUDE.md)**.
   `adr-format.md`, `agents-detection.md`, `build-format-detection.md` (rules referenced by
   skills).
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `check-jsonl.py`,
-  `worktree.sh`, `gh-pr.py` (pull request resolution and worktree checkout for
+  `worktree.sh`, `gh-pr.py` (pull request resolution and worktree checkout and removal for
   `/creview:start`'s PR mode), `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
 - `cprompt/skills/edit/SKILL.md` (+ `templates/`) — The `/cprompt:edit` skill.

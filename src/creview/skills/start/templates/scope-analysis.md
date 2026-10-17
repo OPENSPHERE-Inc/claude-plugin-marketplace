@@ -12,7 +12,7 @@ template_id: b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85
 
 1. プロジェクト: `.claude/agents/**/*.md`（起動プロンプトが `(該当なし)` 以外の `main_root` を渡した場合はそれを基準、それ以外は `{{target_dir}}` 基準）
 2. ユーザー: `~/.claude/agents/**/*.md`
-3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`
+3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`。ただし、スキルが名前を指定して起動する固定役割のエージェント `review-helper`・`review-leader`・`pr-description-reviewer` は除く
 
 実施内容:
 
