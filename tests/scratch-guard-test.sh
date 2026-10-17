@@ -98,6 +98,15 @@ def expect(case, got, want):
         report(case, repr(want), got)
 
 
+def expect_error(case, func, *parts):
+    try:
+        got = func()
+    except Exception as e:
+        got = e
+    if not isinstance(got, g.Error) or not all(p in str(got) for p in parts):
+        report(case, f"an Error with {parts}", got)
+
+
 job = "https://github.com/o/r/actions/runs/123/job/456"
 for url, run_id in ((job, "123"), ("https://example.com/x", None), (None, None)):
     expect(f"check_key {url}", g.check_key({"workflowName": "w", "name": "n", "detailsUrl": url}),
@@ -144,6 +153,9 @@ else:
     with open(os.path.join(wt, "sub", "CLAUDE.md"), "w"):
         pass
     expect("agent_file_left sub/CLAUDE.md", g.agent_file_left(wt), "sub/CLAUDE.md")
+    expect_error("check_agent_files_left_out sub/CLAUDE.md",
+                 lambda: g.check_agent_files_left_out(wt, 7),
+                 "PR #7 still resolves the agent file 'sub/CLAUDE.md'", "--trust")
     git("worktree", "remove", "--force", wt)
     plain = os.path.join(sys.argv[2], "sparse-plain")
     git("worktree", "add", "-q", "--no-checkout", "--detach", plain, base)
@@ -159,6 +171,30 @@ try:
 except Exception as e:
     raised = type(e).__name__
 expect("agent_file_left on a missing directory", raised, "FileNotFoundError")
+expect_error("check_agent_files_left_out on a missing directory",
+             lambda: g.check_agent_files_left_out(os.path.join(sys.argv[2], "missing"), 7),
+             "PR #7 could not be examined for the agent files", "FileNotFoundError", "--trust")
+lstat_root = os.path.join(sys.argv[2], "lstat-root")
+os.makedirs(lstat_root)
+real_lstat = g.os.lstat
+too_long, not_found = FileNotFoundError(2, "x"), FileNotFoundError(2, "x")
+too_long.winerror, not_found.winerror = 206, 2
+# lstat-root has no subdirectory, so os.walk makes no lstat call of its own.
+for case, error, want in (("PermissionError", PermissionError(13, "x"), "PermissionError"),
+                          ("winerror 206", too_long, "FileNotFoundError"),
+                          ("winerror 2", not_found, "None")):
+    def lstat(path, *args, error=error, **kwargs):
+        if os.path.basename(path) in g.AGENT_FILES:
+            raise error
+        return real_lstat(path, *args, **kwargs)
+    g.os.lstat = lstat
+    try:
+        raised = repr(g.agent_file_left(lstat_root))
+    except Exception as e:
+        raised = type(e).__name__
+    finally:
+        g.os.lstat = real_lstat
+    expect(f"agent_file_left when lstat raises {case}", raised, want)
 sys.exit(1 if failed else 0)
 PY
 for opt in --trusted -t; do
@@ -300,6 +336,43 @@ rc=0; bash "${CFD}" --output=pwn .claude/tmp/e2e/review3.txt 2>/dev/null || rc=$
 check "creview fetch-diff option-like base rejected" 1 "${rc}"
 rc=0; bash "${CFD}" HEAD..HEAD .claude/tmp/e2e/review4.txt 2>/dev/null || rc=$?
 check "creview fetch-diff range base rejected" 1 "${rc}"
+
+# --- fetch-diff.sh (creview) --pr: the pull request's attributes and renames hide nothing -
+PRD="${SANDBOX}/prdiff"
+prd_git() {
+    git -C "${PRD}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
+        -c core.autocrlf=false "$@"
+}
+prd_diff() { # <mode> <output-name>, with rename detection on as diff.renames=true sets it
+    (cd "${PRD}" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.renames GIT_CONFIG_VALUE_0=true \
+        bash "${CFD}" "$1" HEAD~1 HEAD ".claude/tmp/$2")
+}
+mkdir -p "${PRD}" && prd_git init -q && printf 'original\n' > "${PRD}/CLAUDE.md" \
+    && printf 'payload line\n' > "${PRD}/fixture.txt" && prd_git add CLAUDE.md fixture.txt \
+    && prd_git commit -qm base && printf 'CLAUDE.md -diff\n' > "${PRD}/.gitattributes" \
+    && printf 'changed\n' > "${PRD}/CLAUDE.md" && prd_git mv fixture.txt AGENTS.md \
+    && prd_git add .gitattributes CLAUDE.md && prd_git commit -qm head \
+    || { note "FAIL: creview fetch-diff --pr repository setup"; fail=1; }
+rc=0; prd_diff --range range.txt 2>/dev/null || rc=$?
+check "creview fetch-diff --range in the pull request repository" 0 "${rc}"
+grep -q '^Binary files' "${PRD}/.claude/tmp/range.txt" 2>/dev/null \
+    && grep -q '^rename from' "${PRD}/.claude/tmp/range.txt" \
+    || { note "FAIL: creview fetch-diff --range control: no binary CLAUDE.md or rename"; fail=1; }
+rc=0; prd_diff --pr pr.txt 2>"${SANDBOX}/prdiff.err" || rc=$?
+check "creview fetch-diff --pr" 0 "${rc}"
+grep -q '^+payload line$' "${PRD}/.claude/tmp/pr.txt" 2>/dev/null \
+    && ! grep -q '^rename from' "${PRD}/.claude/tmp/pr.txt" \
+    || { note "FAIL: creview fetch-diff --pr hid the content of a renamed file"; fail=1; }
+if git -C "${PRD}" --attr-source=HEAD rev-parse --git-dir >/dev/null 2>&1; then
+    grep -q '^+changed$' "${PRD}/.claude/tmp/pr.txt" 2>/dev/null \
+        && ! grep -q '^Binary files' "${PRD}/.claude/tmp/pr.txt" \
+        && ! grep -qF -- '--attr-source' "${SANDBOX}/prdiff.err" \
+        || { note "FAIL: creview fetch-diff --pr applied the PR's .gitattributes"; fail=1; }
+else
+    grep -qF -- '--attr-source' "${SANDBOX}/prdiff.err" \
+        || { note "FAIL: creview fetch-diff --pr gave no --attr-source warning"; fail=1; }
+    note "SKIP: creview fetch-diff --pr attribute case (git has no --attr-source)"
+fi
 
 # --- worktree.sh + scratch dir of another working tree ----------------------------
 MAIN="$(git rev-parse --show-toplevel)"
