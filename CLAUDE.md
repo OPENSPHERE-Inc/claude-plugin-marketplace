@@ -216,13 +216,13 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
 
 ```
 /creview:start   → review doc with <!-- METADATA(id) --> markers (no decisions yet) →
-                    offers to run /creview:triage on it (not under /creview:rounds)
+                    offers to run /creview:triage on it (not under /creview:rounds,
+                    nor after a worktree review)
                     PR mode (a pull request URL): gh-pr.py fetch (PR + description /
                     CI / conversation) → review in place when HEAD is the PR head, else
                     gh-pr.py checkout into a detached worktree (hooks disabled) → code
                     reviewers + pr-description-reviewer → doc header carries a
-                    `- **PR:**` bullet → gh-pr.py remove (hooks disabled) before the
-                    triage offer
+                    `- **PR:**` bullet → gh-pr.py remove (hooks disabled)
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist
                     triage / estimate metadata into the doc
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
