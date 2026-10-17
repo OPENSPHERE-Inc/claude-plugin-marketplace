@@ -59,13 +59,15 @@ List findings with `Triage: 🚫 Won't Fix` and `Estimate: 🔻 Downgrade` that 
 
 ## Recommended future actions
 
-List findings expected to be addressed later in a separate PR, in the same section format as the review document, with the full body included.
+List findings expected to be addressed later, such as in a separate PR, in the same section format as the review document, with the full description included.
 
-Aggregation targets (any of the following, with a separate-PR recommendation explicitly stated in the reason field):
+Aggregation targets:
 
-- `Triage: 🚫 Won't Fix`
-- `Estimate: 🔻 Downgrade`
-- `Estimate: 🚧 Alternative` (FIXME already attached)
+- Any of the following, with a separate-PR recommendation explicitly stated in the reason field:
+  - `Triage: 🚫 Won't Fix`
+  - `Estimate: 🔻 Downgrade`
+  - `Estimate: 🚧 Alternative` (FIXME already attached)
+- `Triage: 🔧 Will Fix` without `Estimate: 🔻 Downgrade` and without `Status:` (left unfixed when the round loop ended)
 
 Exclusion rule: Among the candidates above, exclude from this section any finding whose same-location, same-content counterpart was resolved as `Status: 🟢 Fixed` in a later round (already fixed, so no need to keep on the roadmap). Identity is judged by matching `file:line` and the finding summary.
 
@@ -81,7 +83,7 @@ This is mutually exclusive with the "Judged not to require action" section. Alte
 
 **Finding:**
 
-{Quote the full body of the corresponding finding from the source review document (do not include METADATA markers)}
+{Transcribe in full the source finding's description: the text below its Finding label}
 
 ---
 
@@ -95,7 +97,7 @@ This is mutually exclusive with the "Judged not to require action" section. Alte
 
 **Finding:**
 
-{Quote the full body of the corresponding finding from the source review document}
+{Transcribe in full the source finding's description: the text below its Finding label}
 
 ---
 
@@ -109,7 +111,21 @@ This is mutually exclusive with the "Judged not to require action" section. Alte
 
 **Finding:**
 
-{Quote the full body of the corresponding finding from the source review document}
+{Transcribe in full the source finding's description: the text below its Finding label}
+
+---
+
+### R3-mi-2 — `README.md:156`
+
+- **Severity:** Minor
+- **Source round:** Round 3
+- **Source ID:** mi-2
+- **Source reviewer:** doc-sensei
+- **Decision:** Estimate: ▶️ Maintain — Cost: S, Future: S, Signals: none — Not fixed: the round loop ended before the fix.
+
+**Finding:**
+
+{Transcribe in full the source finding's description: the text below its Finding label}
 
 ---
 

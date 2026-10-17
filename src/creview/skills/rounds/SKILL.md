@@ -138,7 +138,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
    - `--incremental` が OFF、または `{prev_round_rev}` が `(該当なし)`: `{review_base}` = `--base` の値、`{review_range}` = `(該当なし)`。
    - それ以外: `{review_base}` = `{prev_round_rev}`、`{review_range}` = `{prev_round_rev}..{this_round_rev}`。両リビジョンが等しい場合は前ラウンドがコミットを残していないため、ラウンドループを終了してステップ 3 へ進む。
 4. `templates/phase-review.md`（`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`）でフェーズ Sub を起動する。
-   - 変数: `base`（`{review_base}`）、`review_range`（`{review_range}`）、`document_path`（今ラウンドのファイルパス）、`language`（ユーザーのチャット言語）、`adversarial`（`--adversarial` の状態）
+   - 変数: `round_num`（ラウンドカウンター）、`base`（`{review_base}`）、`review_range`（`{review_range}`）、`document_path`（今ラウンドのファイルパス）、`language`（ユーザーのチャット言語）、`adversarial`（`--adversarial` の状態）
    - オーバーライド: (該当なし)
 5. 戻り値（`{doc_path, findings_total, severity_counts}`）のみ context に保持する。
 

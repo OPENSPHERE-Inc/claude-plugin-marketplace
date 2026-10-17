@@ -138,7 +138,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
    - `--incremental` OFF, or `{prev_round_rev}` is `(none)`: `{review_base}` = the `--base` value, `{review_range}` = `(none)`.
    - Otherwise: `{review_base}` = `{prev_round_rev}`, `{review_range}` = `{prev_round_rev}..{this_round_rev}`. When the two revisions are equal, the previous round left no commit: end the round loop and proceed to Step 3.
 4. Launch the phase sub-agent with `templates/phase-review.md` (`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`).
-   - Variables: `base` (`{review_base}`), `review_range` (`{review_range}`), `document_path` (this round's file path), `language` (user's chat language), `adversarial` (`--adversarial` state)
+   - Variables: `round_num` (the round counter), `base` (`{review_base}`), `review_range` (`{review_range}`), `document_path` (this round's file path), `language` (user's chat language), `adversarial` (`--adversarial` state)
    - Overrides: (none)
 5. Hold only the return value (`{doc_path, findings_total, severity_counts}`) in context.
 
