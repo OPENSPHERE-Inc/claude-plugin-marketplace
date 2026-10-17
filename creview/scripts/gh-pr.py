@@ -457,6 +457,24 @@ def agent_file_left(root):
     return None
 
 
+def check_agent_files_left_out(root, number):
+    advice = ("review it only in a sandbox, either with --trust or with the PR head checked out "
+              "in the working tree")
+    try:
+        left = agent_file_left(root)
+    except OSError as e:
+        raise Error(
+            f"the checkout of PR #{number} could not be examined for the agent files the sparse "
+            f"checkout leaves out ({type(e).__name__}: {e}); {advice}"
+        ) from None
+    if left:
+        raise Error(
+            f"the checkout of PR #{number} still resolves the agent file {left!r}, which the "
+            "sparse checkout is meant to leave out, so the PR may be evading that filter; "
+            + advice
+        )
+
+
 def cmd_checkout(pr_json, *options):
     if options not in ((), ("--trust",)):
         raise Error(f"unknown checkout option: {' '.join(options)}")
@@ -491,14 +509,8 @@ def cmd_checkout(pr_json, *options):
                     f"checked out {head}, but PR #{number} was fetched at {head_sha}; "
                     "the PR was updated after fetch"
                 )
-            left = None if options else agent_file_left(path)
-            if left:
-                raise Error(
-                    f"the checkout of PR #{number} still resolves the agent file {left!r}, "
-                    "which the sparse checkout is meant to leave out, so the PR may be evading "
-                    "that filter; review it only in a sandbox, either with --trust or with the "
-                    "PR head checked out in the working tree"
-                )
+            if not options:
+                check_agent_files_left_out(path, number)
         except BaseException as e:
             message = str(e) if isinstance(e, Error) else f"{type(e).__name__}: {e}"
             raise Error(message + remove_worktree(path)) from None
