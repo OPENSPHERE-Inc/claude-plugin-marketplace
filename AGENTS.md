@@ -22,7 +22,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/skills/{start,triage,respond,resolve,rounds}/SKILL.md` — The 5 creview skills.
 - `creview/skills/*/templates/*.md` — Sub-agent prompt templates (each has a `template_id`).
 - `creview/agents/` — bundled mechanical agents: `review-helper.md`,
-  `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader).
+  `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader), and the
+  tool-restricted `pr-description-reviewer.md` (`/creview:start`'s PR mode).
 - `creview/rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
   `adr-format.md`, `agents-detection.md`, `build-format-detection.md` (rules referenced by
   skills).
@@ -60,7 +61,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
 5. **No bundled specialist reviewers.** Skills resolve reviewers/fixers from the
    destination project's `.claude/agents/`, falling back to `general-purpose`. Only
    the mechanical helpers are bundled (`creview`: `review-helper`, `comment-sensei`,
-   `review-leader`; `cdev`: `dev-helper`, `comment-sensei`).
+   `review-leader`; `cdev`: `dev-helper`, `comment-sensei`), plus creview's
+   tool-restricted `pr-description-reviewer`.
 6. **review-respond split**: `/creview:triage` persists `triage`+`estimate` into the
    review doc; `/creview:respond` reads them back from the doc. The split is the review
    gate — no `--no-confirm`. The handoff is the document, not a shared temp dir.

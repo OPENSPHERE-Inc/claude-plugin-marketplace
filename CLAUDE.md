@@ -55,7 +55,7 @@ claude-plugin-marketplace/
 │   │   ├── resolve/              # /creview:resolve (from review-resolve)
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
-│   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md
+│   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md, pr-description-reviewer.md
 │   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md
 │   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, lib/scratch-guard.py
 │
@@ -127,7 +127,12 @@ When changing a plugin:
   `rules/agents-detection.md`. The triage / analyze / format-build-verify / divergence-check sub-agents read it
   and supply only their match target + result field. `scope-analysis` keeps its own inline
   multi-select variant (it picks *all* relevant reviewers, not one). Only the mechanical
-  helpers (`review-helper`, `comment-sensei`, `review-leader`) are bundled.
+  helpers (`review-helper`, `comment-sensei`, `review-leader`) are bundled, plus
+  `pr-description-reviewer`, the fixed-role reviewer of a pull request's description and CI
+  results in `/creview:start`'s PR mode, bundled so that its `tools:` keep the untrusted
+  pull request text away from a shell and the network. Launch a bundled agent by its
+  namespaced name (`creview:pr-description-reviewer`); a bare name resolves only to a
+  project or user agent of that name.
 
 ---
 
@@ -208,9 +213,11 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
 ```
 /creview:start   → review doc with <!-- METADATA(id) --> markers (no decisions yet) →
                     offers to run /creview:triage on it (not under /creview:rounds)
-                    PR mode (a pull request URL): gh-pr.py fetch → review in place when
-                    HEAD is the PR head, else gh-pr.py checkout into a detached worktree
-                    (hooks disabled) → doc header carries a `- **PR:**` bullet
+                    PR mode (a pull request URL): gh-pr.py fetch (PR + description /
+                    CI / conversation) → review in place when HEAD is the PR head, else
+                    gh-pr.py checkout into a detached worktree (hooks disabled) → code
+                    reviewers + pr-description-reviewer → doc header carries a
+                    `- **PR:**` bullet
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist
                     triage / estimate metadata into the doc
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
@@ -387,8 +394,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `${CLAUDE_PLUGIN_ROOT}` would stay unexpanded there, while `plugin_root` is already in the
   sub-agent's scope (the leader resolves it and passes it in the launch prompt; in cdev, the
   spawn contract). Never put `${CLAUDE_PLUGIN_ROOT}` in a template or a bundled rule; never
-  put `{{plugin_root}}` in a SKILL. (`agents/review-helper.md` / `agents/review-leader.md`
-  mention `{{plugin_root}}` only to name that template variable.)
+  put `{{plugin_root}}` in a SKILL. (`agents/review-helper.md` / `agents/review-leader.md` /
+  `agents/pr-description-reviewer.md` mention `{{plugin_root}}` only to name that template
+  variable.)
   `rules/sub-agent.md`, `rules/teammate.md`, and the detection rules carry
   `{{target_dir}}` on the same basis: every launch passes `target_dir`.
   `rules/wontfix.md` carries `{{previous_round_doc_paths}}` on the same basis: every

@@ -48,8 +48,7 @@ smaller change stays a single scope.
 reviews that pull request: the diff from its merge base to its head commit.
 The pull request must be open and belong to a repository that is a remote of
 the current clone, and the GitHub CLI (`gh`) must be authenticated for its
-host. `--base`
-and `--range` cannot be combined with it.
+host. `--base` and `--range` cannot be combined with it.
 
 - When HEAD is the pull request's head commit, the working tree is reviewed
   in place; uncommitted changes stop the run with an error.
@@ -60,11 +59,28 @@ and `--range` cannot be combined with it.
   - The review document and the working directory stay in the main working
     tree's `.claude/tmp/`, and the project's `.claude/agents/` are read from
     the main working tree.
-  - Every sub-agent is told to treat the pull request's commit messages and
-    files, `CLAUDE.md`, `AGENTS.md`, and `.claude/**` included, as data, to run
-    nothing from it, and to change nothing on GitHub or any other remote. These
-    are instructions, not enforcement: for a pull request you do not trust,
-    also rely on your environment (a sandbox, hooks, or permission rules).
+
+One more reviewer runs alongside the code reviewers: the bundled
+`pr-description-reviewer`, which checks the pull request's title and
+description and its CI results against the change.
+
+- It reports claims the change does not bear out, information a reviewer
+  needs that the description leaves out, open task items, and failed checks,
+  tracing a failure to its cause through the failed GitHub Actions job's log.
+- It reads the pull request's comments and reviews for context only; they are
+  not review targets.
+- Its findings are located at the code line they trace to, or at
+  `PR description` or `CI: {check name}`, and quote the text they rest on.
+- It runs with Read, Glob, Grep, and Write only, without shell or network
+  access.
+
+Every sub-agent is told to treat the pull request's text — its title,
+description, comments, CI output, and commit messages — as data, and to change
+nothing on GitHub or any other remote. In a worktree review, the checked-out
+files, `CLAUDE.md`, `AGENTS.md`, and `.claude/**` included, are data as well,
+and the sub-agents are told to run none of them. These are instructions, not
+enforcement: for a pull request you do not trust, also rely on your
+environment (a sandbox, hooks, or permission rules).
 
 The review document records the pull request in a header bullet of the form
 `- **PR:** {url} (head {head_sha}, base {merge_base})`. `/creview:triage`,
@@ -178,8 +194,10 @@ scope, and adds `general-purpose` to a scope whose picks all cover a narrower
 concern than the code's behavior, such as comments alone). With no match, they
 fall back to `general-purpose`. The
 bundled agents are `review-helper` (mechanical aggregation / verification),
-`comment-sensei` (comment-discipline review), and `review-leader` (the
-`/creview:rounds` phase leader).
+`comment-sensei` (comment-discipline review), `review-leader` (the
+`/creview:rounds` phase leader), and `pr-description-reviewer` (the pull
+request description and CI reviewer of `/creview:start`'s PR mode, bundled so
+that its tools stay restricted).
 
 ## Bundled support files
 
