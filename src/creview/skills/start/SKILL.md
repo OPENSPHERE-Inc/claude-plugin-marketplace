@@ -142,7 +142,7 @@ allowed-tools: Agent, Skill, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}
 
 1. ユーザーの入力に基づき、レビュー対象（`--range` の値・ベースブランチ・対象パス・PR の URL 等）と明示要求レビュアー（あれば）を特定する。
 2. `{timestamp}` を解決して `{tmp_dir}` を確定し、`mkdir -p {tmp_dir}` で作業用ディレクトリを作成する。PR モードでは、ワークツリーレビューがセッションを移動するため、`{tmp_dir}` と `{final_doc_path}` を現在の作業ディレクトリ基準で解決した絶対パスとして保持する。
-3. PR モードでは `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py fetch '{pr_url}' {tmp_dir}/pr.json` を実行する。`{url, number, head_sha, merge_base, in_place}` を出力するので、これらの値を保持する。URL の形式が不正、PR のリポジトリがこのリポジトリのリモートでない、gh が失敗、または `in_place` が true で作業ツリーに未コミットの変更がある場合は非ゼロ終了するので、その場合はそのエラーで中止する。続けてレビューする場所を決め（§ PR モード）、該当する場合はワークツリーレビューのセットアップを実行する。
+3. PR モードでは `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py fetch '{pr_url}' {tmp_dir}/pr.json` を実行する。`{url, number, head_sha, merge_base, in_place}` を出力するので、これらの値を保持する。URL の形式が不正、PR のリポジトリがこのリポジトリのリモートでない、PR が open でない、gh が失敗、または `in_place` が true で作業ツリーに未コミットの変更がある場合は非ゼロ終了するので、その場合はそのエラーで中止する。続けてレビューする場所を決め（§ PR モード）、該当する場合はワークツリーレビューのセットアップを実行する。
 4. 差分情報をスクリプトで取得する:
    - 出力ファイルパス: `{tmp_dir}/diff.txt`
    - PR モード以外で `--range` なしの場合は以下を実行:
@@ -163,7 +163,7 @@ allowed-tools: Agent, Skill, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}
 
 ## ステップ 2 — 並列レビュアーの起動
 
-（スコープ, `reviewers[].name`）の全組につきレビュアーを 1 体ずつ Agent ツールで同時に起動する。各レビュアーは指摘を stdout に返さず、専用ファイルに Write する。レビューリーダー（あなた）はレビュアー出力本体を context に載せない（後段の集約サブエージェントが読み取る）。
+（スコープ, `reviewers[].name`）の全組につきレビュアーを 1 体ずつ Agent ツールで同時に起動する。1 メッセージで起動するのは 20 体までとする（拒否された起動のやり直しを含め `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動形態に従う）。§ 起動形態が起動の失敗とするレビュアーが出た場合は、その（スコープ, レビュアー）の組を示して中止する。各レビュアーは指摘を stdout に返さず、専用ファイルに Write する。レビューリーダー（あなた）はレビュアー出力本体を context に載せない（後段の集約サブエージェントが読み取る）。
 
 ### レビュアー出力ファイル
 

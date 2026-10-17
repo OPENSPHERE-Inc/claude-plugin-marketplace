@@ -6,7 +6,8 @@ Usage:
     python3 gh-pr.py checkout <pr_json>
 
 fetch: resolves <pr_url> (https://<host>/<owner>/<repo>/pull/<number>) with gh,
-requires <owner>/<repo> to be a remote of the current repository, writes
+requires <owner>/<repo> to be a remote of the current repository and the PR to
+be open, writes
 <pr_json> (url, head and base commits, merge base), and prints a JSON object
 whose in_place is true when HEAD of the current working tree is the PR head.
 An in-place working tree with uncommitted changes (outside .claude/tmp and
@@ -100,8 +101,10 @@ def cmd_fetch(pr_url, pr_json):
 
     pr = json.loads(run([
         "gh", "pr", "view", f"https://{host}/{owner}/{name}/pull/{number}",
-        "--json", "url,number,headRefOid,baseRefOid",
+        "--json", "url,number,state,headRefOid,baseRefOid",
     ]))
+    if pr["state"] != "OPEN":
+        raise Error(f"PR #{pr['number']} is {pr['state'].lower()}, not open")
     head_sha = sha(pr["headRefOid"], "head commit")
     base_sha = sha(pr["baseRefOid"], "base commit")
     merge_base = sha(run([
@@ -154,15 +157,19 @@ def checkout_env(no_hooks):
     return env
 
 
+def remove_empty_parent(path):
+    try:
+        os.rmdir(os.path.dirname(path))
+    except OSError:
+        pass
+
+
 def remove_worktree(path):
     try:
         run(["git", "worktree", "remove", "--force", "--", path])
     except Error as e:
         return f"; the worktree {path} could not be removed: {e}"
-    try:
-        os.rmdir(os.path.dirname(path))
-    except OSError:
-        pass
+    remove_empty_parent(path)
     return ""
 
 
@@ -180,8 +187,13 @@ def cmd_checkout(pr_json):
         raise Error(f"worktree path already exists: {path}")
 
     with tempfile.TemporaryDirectory() as no_hooks:
-        run(["git", "-c", f"core.hooksPath={no_hooks}",
-             "worktree", "add", "--quiet", "--detach", "--", path, "HEAD"])
+        try:
+            run(["git", "-c", f"core.hooksPath={no_hooks}",
+                 "worktree", "add", "--quiet", "--detach", "--", path, "HEAD"])
+        except Error:
+            # git removes a worktree it failed to add, but not the parent directory it created.
+            remove_empty_parent(path)
+            raise
         try:
             env = checkout_env(no_hooks)
             # Git before 2.31 ignores GIT_CONFIG_COUNT; refuse rather than run hooks.

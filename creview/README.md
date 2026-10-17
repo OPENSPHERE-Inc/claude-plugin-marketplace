@@ -46,8 +46,9 @@ smaller change stays a single scope.
 `/creview:start` also takes a GitHub pull request URL
 (`https://{host}/{owner}/{repo}/pull/{number}`) as its review target and then
 reviews that pull request: the diff from its merge base to its head commit.
-The pull request must belong to a repository that is a remote of the current
-clone, and the GitHub CLI (`gh`) must be authenticated for its host. `--base`
+The pull request must be open and belong to a repository that is a remote of
+the current clone, and the GitHub CLI (`gh`) must be authenticated for its
+host. `--base`
 and `--range` cannot be combined with it.
 
 - When HEAD is the pull request's head commit, the working tree is reviewed
@@ -161,7 +162,9 @@ A long run also consumes many subagent slots — the challenge sub-agents alone
 number three per batch of eight findings, and a split review runs one reviewer
 per (scope, reviewer) pair — so raise
 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
-session) when using a high `--max-rounds`.
+session) when using a high `--max-rounds`. Sub-agents that run in parallel are
+launched at most 20 at a time, the default of
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`; the rest follow in later batches.
 
 ## Reviewer / fixer agents
 

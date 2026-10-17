@@ -142,7 +142,7 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
 
 1. Based on the user's input, identify the review target (`--range` value, base branch, target paths, PR URL, etc.) and any explicitly requested reviewers (if any).
 2. Resolve `{timestamp}` to fix `{tmp_dir}`, and create the working directory with `mkdir -p {tmp_dir}`. In PR mode, hold `{tmp_dir}` and `{final_doc_path}` as absolute paths resolved against the current working directory, since a worktree review moves the session.
-3. In PR mode, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py fetch '{pr_url}' {tmp_dir}/pr.json`. It prints `{url, number, head_sha, merge_base, in_place}`; hold these values. It exits non-zero when the URL is malformed, the PR's repository is not a remote of this repository, gh fails, or `in_place` is true while the working tree has uncommitted changes; abort with its error then. Then decide where to review it (§ PR mode), running the worktree review setup when it applies.
+3. In PR mode, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py fetch '{pr_url}' {tmp_dir}/pr.json`. It prints `{url, number, head_sha, merge_base, in_place}`; hold these values. It exits non-zero when the URL is malformed, the PR's repository is not a remote of this repository, the PR is not open, gh fails, or `in_place` is true while the working tree has uncommitted changes; abort with its error then. Then decide where to review it (§ PR mode), running the worktree review setup when it applies.
 4. Fetch diff information via script:
    - Output file path: `{tmp_dir}/diff.txt`
    - Run without `--range`, outside PR mode:
@@ -163,7 +163,7 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
 
 ## Step 2 — Launch Parallel Reviewers
 
-Launch one reviewer per (scope, `reviewers[].name`) pair concurrently via the Agent tool. Each reviewer must not return findings to stdout; instead, they Write to a dedicated file. The review leader (you) must not load reviewer output bodies into context (the aggregator sub-agent reads them in a later step).
+Launch one reviewer per (scope, `reviewers[].name`) pair concurrently via the Agent tool, at most 20 in one message (`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch mode, which also governs relaunching a refused launch). When § Launch mode treats a reviewer as a failed launch, abort, naming its (scope, reviewer) pair. Each reviewer must not return findings to stdout; instead, they Write to a dedicated file. The review leader (you) must not load reviewer output bodies into context (the aggregator sub-agent reads them in a later step).
 
 ### Reviewer Output Files
 
