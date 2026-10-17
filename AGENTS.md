@@ -39,7 +39,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
   `.claude-plugin/` and the READMEs).
 - `tests/scratch-guard-test.sh` — repo-level self-test: containment, `worktree.sh`, and
   byte-parity of the shared `lib/scratch-guard.py` / `del-tmp.sh` / `check-jsonl.py` /
-  `worktree.sh` copies (not shipped).
+  `worktree.sh` copies and of `fetch-diff.sh` and `gh-pr.py` with their `src/` mirrors
+  (not shipped).
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
 - `.claude/rules/*.md` — Discipline rules for editing this repo (prompt/document/comment/…).
 
@@ -50,9 +51,10 @@ see **[CLAUDE.md](CLAUDE.md)**.
 2. **`src/` is the editing master.** Edit `src/<plugin>/X` and active `<plugin>/X` as a
    translation-paired change; keep them structurally 1:1. Exception:
    `scripts/lib/scratch-guard.py` / `scripts/del-tmp.sh` / `scripts/check-jsonl.py` are
-   byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors), and
-   `scripts/worktree.sh` across all six (`cprompt/` and its mirror too) — the `src/` copies
-   stay English; see CLAUDE.md.
+   byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors),
+   `scripts/worktree.sh` across all six (`cprompt/` and its mirror too), and
+   `scripts/fetch-diff.sh` (`creview/`, `cdev/`) and `creview/scripts/gh-pr.py` each with its
+   own `src/` mirror — the `src/` copies stay English; see CLAUDE.md.
 3. **Token-placement invariant.** `${CLAUDE_PLUGIN_ROOT}` only in files Claude Code loads
    itself (SKILL.md bodies/`allowed-tools`, bundled `agents/*.md`); `{{plugin_root}}` only
    in files a sub-agent opens with Read (`templates/*.md` and the bundled `rules/*.md` it is

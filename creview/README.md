@@ -115,8 +115,11 @@ Claude Code hooks, which fire on the sub-agents' tool calls as well, and the
 status line command run there. A command they run relative to the current
 directory, such as `npm run lint`, `./scripts/check.sh`, or `git status`,
 therefore runs on the pull request's files without the protections above. For
-a pull request you do not trust, write such commands against
-`$CLAUDE_PROJECT_DIR` or an absolute path, or turn them off.
+a pull request you do not trust, turn such commands off, or write them against
+`$CLAUDE_PROJECT_DIR` or an absolute path. The worktree lies under
+`.claude/worktrees/` in your project, so a command that scans the whole
+project, such as a test runner or a formatter run on `.`, must also leave that
+directory out.
 
 The review document records the pull request in a header bullet of the form
 `- **PR:** {url} (head {head_sha}, base {merge_base})`. When run separately on
@@ -134,6 +137,13 @@ and the pull request's code can run:
     hooks come from the pull request's tree: the checkout runs its
     `post-checkout` hook, and `/creview:respond --commit` its `pre-commit`
     hook.
+  - A hook manager installed in `.git/hooks/`, such as pre-commit, lefthook, or
+    Husky v4, reads its configuration from the pull request's tree
+    (`.pre-commit-config.yaml`, `lefthook.yml`, or `package.json`), so its hooks
+    run the commands the pull request writes there, even without a
+    `core.hooksPath`.
+  - With a relative `core.fsmonitor`, git commands such as the checkout and
+    `git status` run the pull request's version of that script.
   - The pull request's `.gitattributes` chooses which filters run.
 - Claude Code can load the pull request's `CLAUDE.md`, `CLAUDE.local.md`,
   `AGENTS.md`, and `.claude/**` as instructions or skills, along with the files
@@ -144,9 +154,10 @@ and the pull request's code can run:
     `CLAUDE.md` or `README.md`.
 
 For a pull request you do not trust, review its changes to all of these files
-(hooks, `.gitattributes`, instruction files and their imports, `README.md`, and
-build and test code) before checking it out, and run `/creview:respond` on it
-only in a sandbox.
+(hooks, hook manager configuration, the `core.fsmonitor` script,
+`.gitattributes`, instruction files and their imports, `README.md`, and build
+and test code) before checking it out, and run `/creview:respond` on it only in
+a sandbox.
 
 When the review has Critical, Major, or Minor findings, `/creview:start` asks
 at the end whether to run `/creview:triage` on the new review document, and

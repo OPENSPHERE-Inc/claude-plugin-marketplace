@@ -428,8 +428,8 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   because plugins install independently. Edit one copy and replicate to the other three;
   `tests/scratch-guard-test.sh` fails on any drift. `scripts/worktree.sh` is likewise
   byte-identical across all six copies (`creview/`, `cdev/`, `cprompt/`, and their `src/`
-  mirrors). `creview/scripts/gh-pr.py` is likewise byte-identical with its `src/creview/`
-  mirror.
+  mirrors). `scripts/fetch-diff.sh` (in `creview/` and `cdev/`) and `creview/scripts/gh-pr.py`
+  are likewise each byte-identical with its own `src/` mirror.
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
   `SUMMARY`, `FINDINGS`, or `ANALYSIS`** (case-insensitive, basename only). Claude Code's
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output

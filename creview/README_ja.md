@@ -107,7 +107,10 @@ Critical / Major の指摘に具体的な失敗シナリオを求める敵対的
 それらが `npm run lint`、`./scripts/check.sh`、`git status` のように現在
 ディレクトリを基準に実行するコマンドは、上記の保護なしにプルリクエストの
 ファイルに対して動きます。信頼できないプルリクエストでは、そうしたコマンドを
-`$CLAUDE_PROJECT_DIR` や絶対パスを基準に書くか、無効にしてください。
+無効にするか、`$CLAUDE_PROJECT_DIR` や絶対パスを基準に書いてください。
+ワークツリーはプロジェクトの `.claude/worktrees/` の下にあるため、テストランナーや
+`.` を対象にしたフォーマッターのようにプロジェクト全体を走査するコマンドでは、
+そのディレクトリも対象から外してください。
 
 レビュードキュメントは、`- **PR:** {url} (head {head_sha}, base {merge_base})`
 形式のヘッダー箇条書きでプルリクエストを記録します。そのドキュメントに対して
@@ -124,6 +127,12 @@ base ブランチなど別のコミットのままでは、プルリクエスト
   - `core.hooksPath` が相対パス（`.husky/_`、`.githooks` など）の場合、フックは
     プルリクエストの tree のものになり、チェックアウトがその `post-checkout`
     フックを、`/creview:respond --commit` が `pre-commit` フックを実行します。
+  - `.git/hooks/` に導入したフックマネージャー（pre-commit、lefthook、Husky v4
+    など）はプルリクエストの tree の設定ファイル（`.pre-commit-config.yaml`、
+    `lefthook.yml`、`package.json`）を読むため、`core.hooksPath` がなくても、
+    フックはプルリクエストがそこに書いたコマンドを実行します。
+  - `core.fsmonitor` が相対パスの場合、チェックアウトや `git status` などの
+    git コマンドがプルリクエスト版のそのスクリプトを実行します。
   - どのフィルターが実行されるかはプルリクエストの `.gitattributes` が決めます。
 - Claude Code がプルリクエストの `CLAUDE.md`、`CLAUDE.local.md`、`AGENTS.md`、
   `.claude/**` と、それらが `@` 参照で取り込むファイルを指示やスキルとして
@@ -134,9 +143,10 @@ base ブランチなど別のコミットのままでは、プルリクエスト
     または `README.md` から導きます。
 
 信頼できないプルリクエストでは、チェックアウトの前にこれらすべてのファイル
-（フック、`.gitattributes`、指示ファイルとそのインポート先、`README.md`、
-ビルドとテストのコード）への変更を確認し、`/creview:respond` はサンドボックス内
-でのみ実行してください。
+（フック、フックマネージャーの設定、`core.fsmonitor` のスクリプト、
+`.gitattributes`、指示ファイルとそのインポート先、`README.md`、ビルドとテストの
+コード）への変更を確認し、`/creview:respond` はサンドボックス内でのみ
+実行してください。
 
 レビューに Critical / Major / Minor の指摘がある場合、`/creview:start` は
 終了時に、生成したレビュードキュメントに対して `/creview:triage` を実行するかを
