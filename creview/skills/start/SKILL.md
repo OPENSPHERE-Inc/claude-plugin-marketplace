@@ -164,7 +164,7 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
      ```
    - Run in PR mode, where `{base}` is `{merge_base}` and `{targets}` / `{targets_description}` name the PR (`PR #{number} ({url})`):
      ```
-     ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --range {merge_base} {head_sha} {tmp_dir}/diff.txt
+     ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --pr {merge_base} {head_sha} {tmp_dir}/diff.txt
      ```
 5. Launch the scope-analysis sub-agent to analyze the diff — template `scope-analysis.md`, `template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `user_requested = {user_requested}`, overrides `(none)`. Return value: `{line_count, scopes, extension_summary, rationale, template_id}`.
 6. If `line_count == 0`, Write an empty review document at `{final_doc_path}` — the header block of `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` with no severity sections, carrying `- **PR:** {pr_ref}` in PR mode — and proceed directly to Step 4.
@@ -217,4 +217,4 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
 ## Step 5 — Finish
 
 1. In a worktree review, run the teardown.
-2. Report `{final_doc_path}`, its finding counts by severity, and each (scope, reviewer) pair Step 2 replaced with `general-purpose` or dropped. After a worktree review without `--trust`, add that the agent files were left out of the worktree, so their changes were reviewed from the diff only, and that reviewing them with the files present takes a run in a sandbox, either with `--trust` or with the PR head checked out in the working tree.
+2. Report `{final_doc_path}`, its finding counts by severity, and each (scope, reviewer) pair Step 2 replaced with `general-purpose` or dropped. After a worktree review without `--trust`, add that the agent files were left out of the worktree, so their changes were reviewed from the diff only, and that reviewing them with the files present takes a run in a sandbox, either with `--trust` or with the PR head checked out in the working tree. In PR mode, when `fetch-diff.sh` warned in Step 1 that git lacks `--attr-source`, add that the pull request's `.gitattributes` could have hidden changes from the diff and that Git 2.40 or later prevents it.

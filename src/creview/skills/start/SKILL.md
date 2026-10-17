@@ -164,7 +164,7 @@ PR モードでは、全サブエージェントの起動プロンプトに `(no
      ```
    - PR モードでは以下を実行する。`{base}` は `{merge_base}` とし、`{targets}` / `{targets_description}` はその PR（`PR #{number} ({url})`）を指す:
      ```
-     ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --range {merge_base} {head_sha} {tmp_dir}/diff.txt
+     ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --pr {merge_base} {head_sha} {tmp_dir}/diff.txt
      ```
 5. スコープ解析サブエージェントを起動して差分を解析させる — テンプレート `scope-analysis.md`、`template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`user_requested = {user_requested}`、オーバーライド `(none)`。戻り値: `{line_count, scopes, extension_summary, rationale, template_id}`。
 6. `line_count == 0` の場合、空のレビュードキュメント（`${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` のヘッダーブロックのみ、重要度セクションなし、PR モードでは `- **PR:** {pr_ref}` を含む）を `{final_doc_path}` に Write してステップ 4 へ直接進む。
@@ -217,4 +217,4 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
 ## ステップ 5 — 終了
 
 1. ワークツリーレビューでは、ティアダウンを実行する。
-2. `{final_doc_path}`、重要度別の指摘件数、およびステップ 2 で `general-purpose` に置き換えた、または取りやめた（スコープ, レビュアー）の組を報告する。`--trust` なしのワークツリーレビューの後では、エージェントファイルをワークツリーから除外したため、それらの変更は差分だけでレビューしたことを添える。それらをファイルのある状態でレビューするには、サンドボックス内で、`--trust` を付けて実行するか、作業ツリーに PR の head をチェックアウトして実行することも添える。
+2. `{final_doc_path}`、重要度別の指摘件数、およびステップ 2 で `general-purpose` に置き換えた、または取りやめた（スコープ, レビュアー）の組を報告する。`--trust` なしのワークツリーレビューの後では、エージェントファイルをワークツリーから除外したため、それらの変更は差分だけでレビューしたことを添える。それらをファイルのある状態でレビューするには、サンドボックス内で、`--trust` を付けて実行するか、作業ツリーに PR の head をチェックアウトして実行することも添える。PR モードで、ステップ 1 の `fetch-diff.sh` が git に `--attr-source` がない旨を警告した場合は、PR の `.gitattributes` が差分から変更を隠しえたこと、および Git 2.40 以降ならそれを防げることを添える。
