@@ -111,10 +111,11 @@ work on the current working tree, not on a worktree of the pull request. Check
 out the pull request's head commit before running them; on another commit,
 such as the base branch, they triage, fix, and verify code other than the pull
 request's. A checkout in your working tree has none of a worktree review's
-protections: Claude Code can load the pull request's `CLAUDE.md`,
-`CLAUDE.local.md`, `AGENTS.md`, and `.claude/**` as instructions or skills, and
-git hooks and filter drivers are not disabled. For a pull request you do not
-trust, review its changes to those files before checking it out.
+protections: git hooks and filter drivers are not disabled, and Claude Code can
+load the pull request's `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, and
+`.claude/**` as instructions or skills, along with the files they import through
+`@` references. For a pull request you do not trust, review its changes to all
+of those files before checking it out.
 
 When the review has Critical, Major, or Minor findings, `/creview:start` asks
 at the end whether to run `/creview:triage` on the new review document, and
