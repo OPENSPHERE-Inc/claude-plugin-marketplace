@@ -65,14 +65,20 @@ host. `--base` and `--range` cannot be combined with it.
     `AGENTS.md`, or a file under `.claude/`, the run lists those files and
     asks whether you trust the pull request before checking it out: Claude
     Code can load them as instructions or skills once a sub-agent reads files
-    in the worktree. A path with a component shaped like a Windows 8.3 short
-    name (a `~` followed by a digit, such as `CLAUDE~1`) is listed as well,
-    since on NTFS it can stand for `.claude`. `--trust` skips the question.
+    in the worktree.
+    - A path with a component shaped like a Windows 8.3 short name (a `~`
+      followed by a digit, such as `CLAUDE~1`) is listed as well, since on
+      NTFS it can stand for `.claude`.
     - Files that the pull request head's `CLAUDE.md`, `CLAUDE.local.md`,
       `AGENTS.md`, or `.claude/rules/*.md` import through `@` references,
       directly or through other imports, are listed as well when the pull
-      request changes them. When the run cannot read all of those imports, it
-      asks anyway, saying that the files could not be checked.
+      request changes them.
+    - When the pull request changes 300 or more files (GitHub lists at most
+      300 changed files of a comparison) or the run cannot read all of those
+      imports, it asks without a list, saying that the files could not be
+      checked.
+    - `--trust` skips the question, including when the files could not be
+      checked.
   - Checking out the worktree requires Git 2.31 or later; with an older Git
     the run stops with an error.
 
@@ -104,18 +110,43 @@ the worktree. These are instructions, not enforcement: for a pull request you
 do not trust, also rely on your environment (a sandbox, hooks, or permission
 rules).
 
+During a worktree review, the session's working directory is the worktree.
+Claude Code hooks, which fire on the sub-agents' tool calls as well, and the
+status line command run there. A command they run relative to the current
+directory, such as `npm run lint`, `./scripts/check.sh`, or `git status`,
+therefore runs on the pull request's files without the protections above. For
+a pull request you do not trust, write such commands against
+`$CLAUDE_PROJECT_DIR` or an absolute path, or turn them off.
+
 The review document records the pull request in a header bullet of the form
 `- **PR:** {url} (head {head_sha}, base {merge_base})`. When run separately on
 such a document, `/creview:triage`, `/creview:respond`, and `/creview:resolve`
 work on the current working tree, not on a worktree of the pull request. Check
 out the pull request's head commit before running them; on another commit,
 such as the base branch, they triage, fix, and verify code other than the pull
-request's. A checkout in your working tree has none of a worktree review's
-protections: git hooks and filter drivers are not disabled, and Claude Code can
-load the pull request's `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, and
-`.claude/**` as instructions or skills, along with the files they import through
-`@` references. For a pull request you do not trust, review its changes to all
-of those files before checking it out.
+request's.
+
+A checkout in your working tree has none of a worktree review's protections,
+and the pull request's code can run:
+
+- Git runs hooks and filter drivers, starting with the checkout itself.
+  - With a relative `core.hooksPath` (such as `.husky/_` or `.githooks`), the
+    hooks come from the pull request's tree: the checkout runs its
+    `post-checkout` hook, and `/creview:respond --commit` its `pre-commit`
+    hook.
+  - The pull request's `.gitattributes` chooses which filters run.
+- Claude Code can load the pull request's `CLAUDE.md`, `CLAUDE.local.md`,
+  `AGENTS.md`, and `.claude/**` as instructions or skills, along with the files
+  they import through `@` references.
+- `/creview:respond` runs the format, build, and test commands, and with them
+  the pull request's build scripts and tests.
+  - Without a `build-format.md`, it takes those commands from the checkout's
+    `CLAUDE.md` or `README.md`.
+
+For a pull request you do not trust, review its changes to all of these files
+(hooks, `.gitattributes`, instruction files and their imports, `README.md`, and
+build and test code) before checking it out, and run `/creview:respond` on it
+only in a sandbox.
 
 When the review has Critical, Major, or Minor findings, `/creview:start` asks
 at the end whether to run `/creview:triage` on the new review document, and
