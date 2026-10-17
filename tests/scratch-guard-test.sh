@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.py, its consumers, worktree.sh,
-# and gh-pr.py remove's path check.
+# gh-pr.py's pure helpers, and gh-pr.py remove's path check.
 # Usage: bash tests/scratch-guard-test.sh
 # Prints one FAIL line per broken case and exits non-zero; exits 0 when all pass.
 
@@ -39,6 +39,7 @@ same cdev/scripts/check-jsonl.py creview/scripts/check-jsonl.py
 same cdev/scripts/check-jsonl.py src/creview/scripts/check-jsonl.py
 same cdev/scripts/fetch-diff.sh src/cdev/scripts/fetch-diff.sh
 same creview/scripts/fetch-diff.sh src/creview/scripts/fetch-diff.sh
+same creview/scripts/gh-pr.py src/creview/scripts/gh-pr.py
 for d in src/cdev creview src/creview cprompt src/cprompt; do
     same cdev/scripts/worktree.sh "${d}/scripts/worktree.sh"
 done
@@ -74,6 +75,92 @@ PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GUARD}" \
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${CJ}" || { note "FAIL: python3 -m py_compile check-jsonl.py"; fail=1; }
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GHPR}" \
     || { note "FAIL: python3 -m py_compile gh-pr.py"; fail=1; }
+python3 -I -B - "${GHPR}" <<'PY' || fail=1
+import importlib.util
+import json
+import sys
+
+spec = importlib.util.spec_from_file_location("gh_pr", sys.argv[1])
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+failed = False
+
+
+def report(case, want, got):
+    global failed
+    print(f"FAIL: gh-pr.py {case} (expected {want:.300}, got {got!r:.300})")
+    failed = True
+
+
+def expect(case, got, want):
+    if got != want:
+        report(case, repr(want), got)
+
+
+def includes(case, got, want):
+    if got is None or want not in got:
+        report(case, f"a set with {want!r}", got)
+
+
+includes("import_refs @docs/a.md", g.import_refs("@docs/a.md"), "docs/a.md")
+includes("import_refs (@docs/a.md).", g.import_refs("(@docs/a.md)."), "docs/a.md")
+includes("import_refs @docs\\a.md", g.import_refs("@docs\\a.md"), "docs/a.md")
+includes("import_refs @my\\ file.md", g.import_refs("@my\\ file.md"), "my file.md")
+expect("import_refs foo@bar.md", g.import_refs("foo@bar.md"), set())
+expect("import_refs a run of @", g.import_refs("@" * 5000), None)
+expect("import_refs IMPORT_CHARS", g.import_refs("@" + "a" * g.IMPORT_CHARS), None)
+includes("import_refs IMPORT_CHARS - 1",
+         g.import_refs("@" + "a" * (g.IMPORT_CHARS - 1)), "a" * (g.IMPORT_CHARS - 1))
+refs = [f"@r{i}" for i in range(g.MAX_IMPORT_REFS + 1)]
+includes("import_refs MAX_IMPORT_REFS", g.import_refs(" ".join(refs[:-1])), "r0")
+expect("import_refs MAX_IMPORT_REFS + 1", g.import_refs(" ".join(refs)), None)
+
+expect("import_target ../Docs/A.md", g.import_target("sub/CLAUDE.md", "../Docs/A.md"),
+       "docs/a.md")
+for ref in ("../x.md", "..", "~/x.md", "/etc/x", ""):
+    expect(f"import_target {ref!r}", g.import_target("CLAUDE.md", ref), None)
+
+expect("shown_path U+202E", g.shown_path("a\u202eb"), "a\\u202eb")
+expect("shown_path backslash", g.shown_path("a\\b"), "a\\u005cb")
+expect("shown_path U+E0001", g.shown_path("a\U000e0001"), "a\\U000e0001")
+expect("shown_path PATH_CHARS", g.shown_path("x" * 300), "x" * 200 + " [truncated]")
+expect("shown_path escape at PATH_CHARS", g.shown_path("x" * 198 + "\u202e"),
+       "x" * 198 + " [truncated]")
+
+job = "https://github.com/o/r/actions/runs/123/job/456"
+for url, run_id in ((job, "123"), ("https://example.com/x", None), (None, None)):
+    expect(f"check_key {url}", g.check_key({"workflowName": "w", "name": "n", "detailsUrl": url}),
+           ("w", "n", run_id))
+
+files = [{"filename": "-notes~1.md"}, {"filename": "Docs/A.md"}, {"filename": "README.md"},
+         {"filename": "src/CLAUDE.md", "previous_filename": ".claude/x.md"}]
+expect("instruction_paths order", g.instruction_paths(files, {"docs/a.md"}),
+       ["src/CLAUDE.md", ".claude/x.md", "Docs/A.md", "-notes~1.md"])
+
+
+def imported(texts, sizes=None):
+    shas = {path: f"{i:040x}" for i, path in enumerate(texts)}
+    tree = [{"path": path, "type": "blob", "sha": shas[path],
+             "size": (sizes or {}).get(path, len(texts[path]))} for path in texts]
+    blobs = {shas[path]: text for path, text in texts.items()}
+
+    def run(cmd, **kwargs):
+        if "/git/trees/" in cmd[-1]:
+            return json.dumps({"tree": tree, "truncated": False})
+        return blobs[cmd[-1].rsplit("/", 1)[1]]
+
+    g.run = run
+    return g.imported_files("github.com", "o/r", "0" * 40)
+
+
+chain = {"CLAUDE.md": "@docs/a.md", "docs/a.md": "@b.md", "docs/b.md": "", "c.md": ""}
+expect("imported_files chain", imported(chain), {"claude.md", "docs/a.md", "docs/b.md"})
+expect("imported_files MAX_IMPORT_BYTES",
+       imported(chain, {"docs/b.md": g.MAX_IMPORT_BYTES + 1}), None)
+expect("imported_files size missing", imported(chain, {"docs/b.md": None}), None)
+expect("imported_files a run of @", imported({"CLAUDE.md": "@" * 5000}), None)
+sys.exit(1 if failed else 0)
+PY
 mkdir -p "${SANDBOX}/proj/.claude/tmp/sub" "${SANDBOX}/outside"
 : > "${SANDBOX}/proj/.claude/tmp/sub/file.txt"
 : > "${SANDBOX}/outside/victim.txt"
@@ -311,9 +398,28 @@ if git worktree add -q --detach "${PR_WT}" >/dev/null 2>&1; then
     rc=0; python3 "${GHPR}" remove "${WT_PATH}/../${PR_WT##*/}" >/dev/null 2>&1 || rc=$?
     [[ "${rc}" -ne 0 && -d "${PR_WT}" ]] \
         || { note "FAIL: gh-pr.py remove accepted a path with a .. component"; fail=1; }
-    rc=0; python3 "${GHPR}" remove "${PR_WT}" >/dev/null 2>&1 || rc=$?
-    check "gh-pr.py remove a worktree checkout adds" 0 "${rc}"
-    [[ ! -e "${PR_WT}" ]] || { note "FAIL: gh-pr.py remove left the worktree behind"; fail=1; }
+    if [[ "$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=t.k GIT_CONFIG_VALUE_0=v \
+        git config --get t.k 2>/dev/null)" == v ]]; then
+        FSM_HOOK="${SANDBOX}/fsmonitor-hook" FSM_MARK="${SANDBOX}/fsmonitor-ran"
+        printf '#!/bin/sh\n: > "%s"\n' "${FSM_MARK}" > "${FSM_HOOK}"
+        chmod +x "${FSM_HOOK}"
+        git config core.fsmonitor "${FSM_HOOK}"
+        git -C "${PR_WT}" status >/dev/null 2>&1
+        if [[ -e "${FSM_MARK}" ]]; then
+            rm "${FSM_MARK}"
+        else
+            note "SKIP: gh-pr.py remove core.fsmonitor case (git status did not run the hook)"
+        fi
+        rc=0; python3 "${GHPR}" remove "${PR_WT}" >/dev/null 2>&1 || rc=$?
+        git config --unset core.fsmonitor
+        check "gh-pr.py remove a worktree checkout adds" 0 "${rc}"
+        [[ ! -e "${PR_WT}" ]] || { note "FAIL: gh-pr.py remove left the worktree behind"; fail=1; }
+        [[ ! -e "${FSM_MARK}" ]] \
+            || { note "FAIL: gh-pr.py remove ran the core.fsmonitor hook"; fail=1; }
+    else
+        note "SKIP: gh-pr.py remove success case (git does not apply GIT_CONFIG_COUNT)"
+    fi
+    [[ ! -e "${PR_WT}" ]] || git worktree remove --force -- "${PR_WT}" >/dev/null 2>&1
 else
     note "FAIL: git worktree add for the gh-pr.py remove case"; fail=1
 fi
