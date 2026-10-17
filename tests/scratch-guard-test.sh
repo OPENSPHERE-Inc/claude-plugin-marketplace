@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.py, its consumers, and worktree.sh.
+# scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.py, its consumers, worktree.sh,
+# and gh-pr.py remove's path check.
 # Usage: bash tests/scratch-guard-test.sh
 # Prints one FAIL line per broken case and exits non-zero; exits 0 when all pass.
 
@@ -12,6 +13,7 @@ RM="${REPO_ROOT}/cdev/scripts/del-tmp.sh"
 FD="${REPO_ROOT}/cdev/scripts/fetch-diff.sh"
 CFD="${REPO_ROOT}/creview/scripts/fetch-diff.sh"
 WT="${REPO_ROOT}/cdev/scripts/worktree.sh"
+GHPR="${REPO_ROOT}/creview/scripts/gh-pr.py"
 
 fail=0
 note() { printf '%s\n' "$*"; }
@@ -70,6 +72,8 @@ trap 'cd / && { chmod -R u+rwx "${SANDBOX}" 2>/dev/null; rm -rf "${SANDBOX}"; }'
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GUARD}" \
     || { note "FAIL: python3 -m py_compile scratch-guard.py"; fail=1; }
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${CJ}" || { note "FAIL: python3 -m py_compile check-jsonl.py"; fail=1; }
+PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GHPR}" \
+    || { note "FAIL: python3 -m py_compile gh-pr.py"; fail=1; }
 mkdir -p "${SANDBOX}/proj/.claude/tmp/sub" "${SANDBOX}/outside"
 : > "${SANDBOX}/proj/.claude/tmp/sub/file.txt"
 : > "${SANDBOX}/outside/victim.txt"
@@ -297,6 +301,22 @@ check "fetch-diff diff with leftover worktree" 0 "${rc}"
 rc=0; bash "${WT}" remove "${WT_PATH}" >/dev/null 2>&1 || rc=$?
 [[ "${rc}" -ne 0 && -d "${WT_PATH}" ]] || { note "FAIL: worktree remove deleted a dirty worktree"; fail=1; }
 rm "${WT_PATH}/dirty.txt"
+for bad in "${WT_PATH}" "${MAIN}"; do
+    rc=0; python3 "${GHPR}" remove "${bad}" >/dev/null 2>&1 || rc=$?
+    [[ "${rc}" -ne 0 ]] || { note "FAIL: gh-pr.py remove accepted '${bad}'"; fail=1; }
+done
+[[ -d "${WT_PATH}" ]] || { note "FAIL: gh-pr.py remove deleted a worktree checkout did not add"; fail=1; }
+PR_WT="${MAIN}/.claude/worktrees/creview-pr-1-20260101-000000"
+if git worktree add -q --detach "${PR_WT}" >/dev/null 2>&1; then
+    rc=0; python3 "${GHPR}" remove "${WT_PATH}/../${PR_WT##*/}" >/dev/null 2>&1 || rc=$?
+    [[ "${rc}" -ne 0 && -d "${PR_WT}" ]] \
+        || { note "FAIL: gh-pr.py remove accepted a path with a .. component"; fail=1; }
+    rc=0; python3 "${GHPR}" remove "${PR_WT}" >/dev/null 2>&1 || rc=$?
+    check "gh-pr.py remove a worktree checkout adds" 0 "${rc}"
+    [[ ! -e "${PR_WT}" ]] || { note "FAIL: gh-pr.py remove left the worktree behind"; fail=1; }
+else
+    note "FAIL: git worktree add for the gh-pr.py remove case"; fail=1
+fi
 rc=0; bash "${WT}" remove "${WT_PATH}" >/dev/null 2>&1 || rc=$?
 check "worktree remove clean" 0 "${rc}"
 [[ ! -e "${WT_PATH}" && ! -e "${MAIN}/.claude/worktrees" ]] \
