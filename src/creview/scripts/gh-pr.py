@@ -24,13 +24,16 @@ AGENTS.md, .claude, files under .claude/, and the files that the PR head's
 CLAUDE.md, CLAUDE.local.md, AGENTS.md, and .claude/rules/*.md import through @
 references, transitively) and the paths with a component shaped like a Windows
 8.3 short name, such as CLAUDE~1, which can alias them on NTFS, or is null when
-GitHub does not list every changed file, the PR head's tree is truncated, or
-following the imports would read more than MAX_IMPORT_FILES files. The list
-holds at most MAX_LISTED_FILES paths, with non-printable characters and
-backslashes escaped and each cut at PATH_CHARS characters;
-instruction_files_total counts them all, or is null along with it. An in-place
-working tree with uncommitted changes to tracked files (outside .claude/tmp and
-.claude/worktrees) is an error.
+in_place is true, GitHub does not list every changed file, the PR head's tree is
+truncated, or following the imports would read more than MAX_IMPORT_FILES
+files, a file larger than MAX_IMPORT_BYTES bytes, or a file with more than
+MAX_IMPORT_REFS @ references or one of IMPORT_CHARS characters or more. The
+list holds at most MAX_LISTED_FILES paths, the files Claude Code loads by name
+or from .claude first, then the imported files, then the 8.3-shaped paths, with
+non-printable characters and backslashes escaped and each cut at PATH_CHARS
+characters; instruction_files_total counts them all, or is null along with it.
+An in-place working tree with uncommitted changes to tracked files (outside
+.claude/tmp and .claude/worktrees) is an error.
 
 checkout: adds a detached worktree under .claude/worktrees/ of the current
 working tree, checks the PR head out in it with git hooks and the configured
@@ -75,20 +78,24 @@ SHA_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 SCRATCH_EXCLUDES = [":(top,exclude).claude/tmp", ":(top,exclude).claude/worktrees"]
 # The name of a worktree cmd_checkout adds under .claude/worktrees.
 WORKTREE_NAME_RE = re.compile(r"creview-pr-[0-9]+-[0-9]{8}-[0-9]{6}")
-# Files Claude Code can load as instructions or skills from a checked-out tree, and
-# path components shaped like a Windows 8.3 short name, which can alias .claude on NTFS.
+# Files Claude Code can load as instructions or skills from a checked-out tree.
 INSTRUCTION_FILE_RE = re.compile(
-    r"(?:^|/)(?:(?:CLAUDE(?:\.local)?|AGENTS)\.md$|\.claude(?:/|$)|[^/]*~[0-9])", re.IGNORECASE
+    r"(?:^|/)(?:(?:CLAUDE(?:\.local)?|AGENTS)\.md$|\.claude(?:/|$))", re.IGNORECASE
 )
+# A path component shaped like a Windows 8.3 short name, which can alias .claude on NTFS.
+SHORT_NAME_RE = re.compile(r"(?:^|/)[^/]*~[0-9]")
 # Memory files Claude Code loads from a checked-out tree, expanding their @ imports.
 MEMORY_FILE_RE = re.compile(
     r"(?:^|/)(?:(?:CLAUDE(?:\.local)?|AGENTS)\.md|\.claude/rules/.+\.md)$", re.IGNORECASE
 )
+IMPORT_CHARS = 1024
 # Deliberately broad: code spans are not skipped, and @ may follow punctuation.
-IMPORT_RE = re.compile(r"(?<!\w)@(?=((?:\\ |\S)+))")
+IMPORT_RE = re.compile(r"(?<!\w)@(?=((?:\\ |\S){1,%d}))" % IMPORT_CHARS)
 IMPORT_LEADING = "\"'`([{<*_"
 IMPORT_TRAILING = "\"'`)]}>*_,.;:!?"
 MAX_IMPORT_FILES = 50
+MAX_IMPORT_REFS = 1000
+MAX_IMPORT_BYTES = 1_000_000
 ACTIONS_JOB_RE = re.compile(
     r"https://([^/]+)/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/actions/runs/([0-9]+)/job/([0-9]+)"
     r"(?:[/?#].*)?"
@@ -334,7 +341,12 @@ def is_remote(host, owner, name):
 
 def import_refs(text):
     refs = set()
-    for m in IMPORT_RE.finditer(text):
+    for count, m in enumerate(IMPORT_RE.finditer(text), 1):
+        if count > MAX_IMPORT_REFS:
+            return None
+        # A capture cut at IMPORT_CHARS may stop short of the file it names.
+        if len(m.group(1)) >= IMPORT_CHARS:
+            return None
         ref = m.group(1).replace("\\ ", " ")
         for r in (ref, ref.lstrip(IMPORT_LEADING).rstrip(IMPORT_TRAILING)):
             refs.update((r, r.replace("\\", "/")))
@@ -361,25 +373,43 @@ def imported_files(host, repo, head_sha):
     blobs = {}
     for e in entries:
         if isinstance(e, dict) and e.get("type") == "blob" and isinstance(e.get("path"), str):
-            blobs.setdefault(e["path"].lower(), []).append(e.get("sha"))
+            blobs.setdefault(e["path"].lower(), []).append((e.get("sha"), e.get("size")))
     reached = {path for path in blobs if MEMORY_FILE_RE.search(path)}
     queue, reads = sorted(reached), 0
     while queue:
         path = queue.pop()
-        for blob_sha in blobs[path]:
-            if reads == MAX_IMPORT_FILES:
+        for blob_sha, size in blobs[path]:
+            if reads == MAX_IMPORT_FILES or not isinstance(size, int) or size > MAX_IMPORT_BYTES:
                 return None
             reads += 1
             text = run([
                 "gh", "api", "--hostname", host, "-H", "Accept: application/vnd.github.raw+json",
                 f"repos/{repo}/git/blobs/{sha(blob_sha, 'blob')}",
             ])
-            for ref in import_refs(text):
+            refs = import_refs(text)
+            if refs is None:
+                return None
+            for ref in refs:
                 target = import_target(path, ref)
                 if target in blobs and target not in reached:
                     reached.add(target)
                     queue.append(target)
     return reached
+
+
+def instruction_paths(files, imported):
+    paths = (p for f in files for p in (f.get("filename"), f.get("previous_filename")))
+    ranked = []
+    for p in dict.fromkeys(p for p in paths if isinstance(p, str)):
+        if INSTRUCTION_FILE_RE.search(p):
+            ranked.append((0, p))
+        elif p.lower() in imported:
+            ranked.append((1, p))
+        elif SHORT_NAME_RE.search(p):
+            ranked.append((2, p))
+    # 8.3-shaped names are cheap to add, so they go last and cannot crowd the others out of
+    # the shown list.
+    return [p for _, p in sorted(ranked, key=lambda r: r[0])]
 
 
 def cmd_fetch(pr_url, out_dir):
@@ -426,14 +456,10 @@ def cmd_fetch(pr_url, out_dir):
 
     files = compare.get("files")
     instruction_files = None
-    if isinstance(files, list) and len(files) < MAX_COMPARE_FILES:
+    if not in_place and isinstance(files, list) and len(files) < MAX_COMPARE_FILES:
         imported = imported_files(host, repo, head_sha)
         if imported is not None:
-            paths = (p for f in files for p in (f.get("filename"), f.get("previous_filename")))
-            instruction_files = list(dict.fromkeys(
-                p for p in paths if isinstance(p, str)
-                and (INSTRUCTION_FILE_RE.search(p) or p.lower() in imported)
-            ))
+            instruction_files = instruction_paths(files, imported)
 
     write_json(os.path.join(out_dir, "pr.json"), {
         "url": url,
