@@ -61,24 +61,16 @@ host. `--base` and `--range` cannot be combined with it.
   - The review document and the working directory stay in the main working
     tree's `.claude/tmp/`, and the project's `.claude/agents/` are read from
     the main working tree.
-  - When the pull request changes a `CLAUDE.md`, a `CLAUDE.local.md`, an
-    `AGENTS.md`, or a file under `.claude/`, the run lists those files and
-    asks whether you trust the pull request before checking it out: Claude
-    Code can load them as instructions or skills once a sub-agent reads files
-    in the worktree.
-    - A path with a component shaped like a Windows 8.3 short name (a `~`
-      followed by a digit, such as `CLAUDE~1`) is listed as well, since on
-      NTFS it can stand for `.claude`.
-    - Files that the pull request head's `CLAUDE.md`, `CLAUDE.local.md`,
-      `AGENTS.md`, or `.claude/rules/*.md` import through `@` references,
-      directly or through other imports, are listed as well when the pull
-      request changes them.
-    - When the pull request changes 300 or more files (GitHub lists at most
-      300 changed files of a comparison) or the run cannot read all of those
-      imports, it asks without a list, saying that the files could not be
-      checked.
-    - `--trust` skips the question, including when the files could not be
-      checked.
+  - The checkout leaves out the agent files: every file and directory named
+    `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `.mcp.json`, or `.claude`, in
+    any letter case and at any depth. Claude Code or another agent can load
+    them as instructions, skills, or settings once a sub-agent works in the
+    worktree.
+    - The reviewers see the pull request's changes to them in the diff only.
+    - `--trust` checks them out as well.
+    - To review a pull request's agent configuration with those files in
+      place, give `--trust`, or check out the head commit in your working tree
+      for an in-place review, and run the review in a sandbox.
   - Checking out the worktree requires Git 2.31 or later; with an older Git
     the run stops with an error.
 
@@ -104,7 +96,7 @@ changes in files — and quotes of it in the review document as data, and to
 change nothing on GitHub or any other remote. This includes the sub-agents of
 `/creview:triage`, `/creview:respond`, and `/creview:resolve` when run
 separately on the review document. In a worktree review, the checked-out
-files, `CLAUDE.md`, `AGENTS.md`, and `.claude/**` included, are data as well,
+files, including the agent files checked out under `--trust`, are data as well,
 and the sub-agents are told to run none of them and to run no git command in
 the worktree. These are instructions, not enforcement: for a pull request you
 do not trust, also rely on your environment (a sandbox, hooks, or permission
@@ -155,19 +147,12 @@ and the pull request's code can run, for example in these ways:
 
 creview assumes that, before you run it, you have checked the repository and
 the pull request and trust them. The ways listed above and a worktree review's
-trust confirmation, which lists the instruction files the pull request
-changes, only support that decision: they do not cover every way the pull
+protections only support that decision: they do not cover every way the pull
 request's code or instructions can take effect, and they cannot guarantee that
 a repository or pull request fetched from the network is safe. Keep the agent
 safe through your environment, such as a sandbox and permission rules, and
 check out a pull request you do not trust, and run `/creview:respond` on it,
 only in a sandbox.
-
-When the review has Critical, Major, or Minor findings, `/creview:start` asks
-at the end whether to run `/creview:triage` on the new review document, and
-runs it in the same session if you agree. It does not ask after a worktree
-review, where the current working tree is not at the pull request's head, or
-under `/creview:rounds`.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review

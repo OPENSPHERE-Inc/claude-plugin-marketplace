@@ -215,12 +215,11 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
 ### The creview review pipeline (state lives in the review document)
 
 ```
-/creview:start   → review doc with <!-- METADATA(id) --> markers (no decisions yet) →
-                    offers to run /creview:triage on it (not under /creview:rounds,
-                    nor after a worktree review)
+/creview:start   → review doc with <!-- METADATA(id) --> markers (no decisions yet)
                     PR mode (a pull request URL): gh-pr.py fetch (PR + description /
                     CI / conversation) → review in place when HEAD is the PR head, else
-                    gh-pr.py checkout into a detached worktree (hooks disabled) → code
+                    gh-pr.py checkout into a detached worktree (hooks disabled, agent
+                    files such as CLAUDE.md and .claude/ left out unless --trust) → code
                     reviewers + pr-description-reviewer → doc header carries a
                     `- **PR:**` bullet → gh-pr.py remove (hooks disabled)
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist

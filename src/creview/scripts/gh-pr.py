@@ -3,7 +3,7 @@
 
 Usage:
     python3 gh-pr.py fetch <pr_url> <out_dir>
-    python3 gh-pr.py checkout <pr_json>
+    python3 gh-pr.py checkout <pr_json> [--trust]
     python3 gh-pr.py remove <worktree_path>
 
 fetch: resolves <pr_url> (https://<host>/<owner>/<repo>/pull/<number>) with gh,
@@ -18,22 +18,7 @@ the PR to be open, and writes two files to <out_dir>:
                    most MAX_COMMENTS of each kind, with omitted set when any
                    were left out
 It prints a JSON object whose in_place is true when HEAD of the current working
-tree is the PR head, and whose instruction_files lists the files the PR changes
-that Claude Code can load as instructions (CLAUDE.md, CLAUDE.local.md,
-AGENTS.md, .claude, files under .claude/, and the files that the PR head's
-CLAUDE.md, CLAUDE.local.md, AGENTS.md, and .claude/rules/*.md import through @
-references, transitively) and the paths with a component shaped like a Windows
-8.3 short name, such as CLAUDE~1, which can alias them on NTFS, or is null when
-in_place is true, GitHub does not list every changed file, the PR head's tree is
-truncated, or following the imports would read more than MAX_IMPORT_FILES
-files, a file larger than MAX_IMPORT_BYTES bytes, or a file with more than
-MAX_IMPORT_REFS @ references or one of IMPORT_CHARS characters or more. The
-list holds at most MAX_LISTED_FILES paths, the memory files (CLAUDE.md,
-CLAUDE.local.md, AGENTS.md, and .claude/rules/*.md) first, then the imported
-files, then .claude and the other paths under it, then the 8.3-shaped paths,
-with non-printable characters and backslashes escaped and each cut at
-PATH_CHARS characters; instruction_files_total counts them all, or is null
-along with it.
+tree is the PR head.
 An in-place working tree with uncommitted changes to tracked files (outside
 .claude/tmp and .claude/worktrees) is an error.
 
@@ -41,7 +26,10 @@ checkout: adds a detached worktree under .claude/worktrees/ of the current
 working tree, checks the PR head out in it with git hooks and the configured
 filter drivers disabled, Git LFS smudging skipped, and symbolic links checked
 out as plain files, confirms its HEAD is the head fetch recorded, and prints a
-JSON object with main_root and worktree_path.
+JSON object with main_root and worktree_path. Without --trust, the checkout
+leaves out every file and directory named like one of AGENT_FILES, in any
+letter case and at any depth, and fails when the file system still resolves one
+of those names in a directory of the worktree.
 A failed checkout removes the worktree it added.
 
 remove: removes a worktree that checkout added
@@ -55,7 +43,6 @@ Exits 1 with an error message on stderr on any failure.
 
 import json
 import os
-import posixpath
 import re
 import subprocess
 import sys
@@ -80,24 +67,9 @@ SHA_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 SCRATCH_EXCLUDES = [":(top,exclude).claude/tmp", ":(top,exclude).claude/worktrees"]
 # The name of a worktree cmd_checkout adds under .claude/worktrees.
 WORKTREE_NAME_RE = re.compile(r"creview-pr-[0-9]+-[0-9]{8}-[0-9]{6}")
-# Files Claude Code can load as instructions or skills from a checked-out tree.
-INSTRUCTION_FILE_RE = re.compile(
-    r"(?:^|/)(?:(?:CLAUDE(?:\.local)?|AGENTS)\.md$|\.claude(?:/|$))", re.IGNORECASE
-)
-# A path component shaped like a Windows 8.3 short name, which can alias .claude on NTFS.
-SHORT_NAME_RE = re.compile(r"(?:^|/)[^/]*~[0-9]")
-# Memory files Claude Code loads from a checked-out tree, expanding their @ imports.
-MEMORY_FILE_RE = re.compile(
-    r"(?:^|/)(?:(?:CLAUDE(?:\.local)?|AGENTS)\.md|\.claude/rules/.+\.md)$", re.IGNORECASE
-)
-IMPORT_CHARS = 1024
-# Deliberately broad: code spans are not skipped, and @ may follow punctuation.
-IMPORT_RE = re.compile(r"(?<!\w)@(?=((?:\\ |\S){1,%d}))" % IMPORT_CHARS)
-IMPORT_LEADING = "\"'`([{<*_"
-IMPORT_TRAILING = "\"'`)]}>*_,.;:!?"
-MAX_IMPORT_FILES = 50
-MAX_IMPORT_REFS = 1000
-MAX_IMPORT_BYTES = 1_000_000
+# Names of the files and directories Claude Code, or another agent for AGENTS.md, loads
+# from a project on its own.
+AGENT_FILES = ("CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", ".mcp.json", ".claude")
 ACTIONS_JOB_RE = re.compile(
     r"https://([^/]+)/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/actions/runs/([0-9]+)/job/([0-9]+)"
     r"(?:[/?#].*)?"
@@ -111,10 +83,6 @@ COMMENT_CHARS = 4000
 PAGE_SIZE = 100
 MAX_PAGES = 10
 MAX_COMMENTS = 50
-MAX_LISTED_FILES = 20
-PATH_CHARS = 200
-# GitHub lists at most 300 files of a comparison.
-MAX_COMPARE_FILES = 300
 
 
 class Error(Exception):
@@ -156,21 +124,6 @@ def sha(value, what):
 def clip(text, limit):
     text = text or ""
     return text if len(text) <= limit else text[:limit] + "\n[truncated]"
-
-
-def shown_path(path):
-    # A path is shown to the user; bidirectional controls and the like could disguise it.
-    shown, size = [], 0
-    for ch in path:
-        if ch.isprintable() and ch != "\\":
-            piece = ch
-        else:
-            piece = f"\\u{ord(ch):04x}" if ord(ch) <= 0xFFFF else f"\\U{ord(ch):08x}"
-        if size + len(piece) > PATH_CHARS:
-            return "".join(shown) + " [truncated]"
-        shown.append(piece)
-        size += len(piece)
-    return "".join(shown)
 
 
 def login(user):
@@ -341,81 +294,6 @@ def is_remote(host, owner, name):
     return False
 
 
-def import_refs(text):
-    refs = set()
-    for count, m in enumerate(IMPORT_RE.finditer(text), 1):
-        if count > MAX_IMPORT_REFS:
-            return None
-        # A capture cut at IMPORT_CHARS may stop short of the file it names.
-        if len(m.group(1)) >= IMPORT_CHARS:
-            return None
-        ref = m.group(1).replace("\\ ", " ")
-        for r in (ref, ref.lstrip(IMPORT_LEADING).rstrip(IMPORT_TRAILING)):
-            refs.update((r, r.replace("\\", "/")))
-    return refs
-
-
-def import_target(source, ref):
-    # A home-relative or absolute import names a file outside the PR's tree.
-    if not ref or ref.startswith(("~", "/")):
-        return None
-    path = posixpath.normpath(posixpath.join(posixpath.dirname(source), ref)).lower()
-    return None if path == ".." or path.startswith("../") else path
-
-
-def imported_files(host, repo, head_sha):
-    # The lowercased paths of the PR head's memory files and of the files they import,
-    # transitively, or None when they cannot all be read.
-    tree = json.loads(run([
-        "gh", "api", "--hostname", host, f"repos/{repo}/git/trees/{head_sha}?recursive=1",
-    ]))
-    entries = tree.get("tree") if isinstance(tree, dict) else None
-    if not isinstance(entries, list) or tree.get("truncated") is not False:
-        return None
-    blobs = {}
-    for e in entries:
-        if isinstance(e, dict) and e.get("type") == "blob" and isinstance(e.get("path"), str):
-            blobs.setdefault(e["path"].lower(), []).append((e.get("sha"), e.get("size")))
-    reached = {path for path in blobs if MEMORY_FILE_RE.search(path)}
-    queue, reads = sorted(reached), 0
-    while queue:
-        path = queue.pop()
-        for blob_sha, size in blobs[path]:
-            if reads == MAX_IMPORT_FILES or not isinstance(size, int) or size > MAX_IMPORT_BYTES:
-                return None
-            reads += 1
-            text = run([
-                "gh", "api", "--hostname", host, "-H", "Accept: application/vnd.github.raw+json",
-                f"repos/{repo}/git/blobs/{sha(blob_sha, 'blob')}",
-            ])
-            refs = import_refs(text)
-            if refs is None:
-                return None
-            for ref in refs:
-                target = import_target(path, ref)
-                if target in blobs and target not in reached:
-                    reached.add(target)
-                    queue.append(target)
-    return reached
-
-
-def instruction_paths(files, imported):
-    paths = (p for f in files for p in (f.get("filename"), f.get("previous_filename")))
-    ranked = []
-    for p in dict.fromkeys(p for p in paths if isinstance(p, str)):
-        if MEMORY_FILE_RE.search(p):
-            ranked.append((0, p))
-        elif p.lower() in imported:
-            ranked.append((1, p))
-        elif INSTRUCTION_FILE_RE.search(p):
-            ranked.append((2, p))
-        elif SHORT_NAME_RE.search(p):
-            ranked.append((3, p))
-    # Memory files and their imports go first, so paths that are cheap to add (other paths
-    # under .claude, 8.3-shaped names) cannot crowd them out of the shown list.
-    return [p for _, p in sorted(ranked, key=lambda r: r[0])]
-
-
 def cmd_fetch(pr_url, out_dir):
     m = PR_URL_RE.fullmatch(pr_url)
     if not m:
@@ -458,13 +336,6 @@ def cmd_fetch(pr_url, out_dir):
             "commit or stash them first"
         )
 
-    files = compare.get("files")
-    instruction_files = None
-    if not in_place and isinstance(files, list) and len(files) < MAX_COMPARE_FILES:
-        imported = imported_files(host, repo, head_sha)
-        if imported is not None:
-            instruction_files = instruction_paths(files, imported)
-
     write_json(os.path.join(out_dir, "pr.json"), {
         "url": url,
         "repo": repo,
@@ -485,10 +356,6 @@ def cmd_fetch(pr_url, out_dir):
         "head_sha": head_sha,
         "merge_base": merge_base,
         "in_place": in_place,
-        "instruction_files": None if instruction_files is None else [
-            shown_path(p) for p in instruction_files[:MAX_LISTED_FILES]
-        ],
-        "instruction_files_total": None if instruction_files is None else len(instruction_files),
     }
 
 
@@ -504,12 +371,12 @@ def filter_overrides():
     return overrides
 
 
-def checkout_env(overrides):
+def checkout_env(overrides, base=None):
     # A PR can add or change the hooks a relative core.hooksPath or core.fsmonitor points
     # at, its .gitattributes picks which of the user's filter drivers run on its files, and
     # its symbolic links can point outside the worktree; gh runs git itself, so the
     # overrides travel in the environment.
-    env = dict(os.environ)
+    env = dict(os.environ if base is None else base)
     try:
         n = int(env.get("GIT_CONFIG_COUNT") or 0)
     except ValueError:
@@ -554,7 +421,34 @@ def remove_worktree(path):
     return ""
 
 
-def cmd_checkout(pr_json):
+def any_case(name):
+    return "".join(f"[{c.lower()}{c.upper()}]" if c.isalpha() else c for c in name)
+
+
+def leave_out_agent_files(path, env):
+    # A per-worktree sparse-checkout file, enabled only through the environment, leaves the
+    # repository's own configuration as it is.
+    git_dir = run(["git", "rev-parse", "--absolute-git-dir"], cwd=path, env=env).strip()
+    os.makedirs(os.path.join(git_dir, "info"), exist_ok=True)
+    with open(os.path.join(git_dir, "info", "sparse-checkout"), "w", encoding="utf-8",
+              newline="\n") as f:
+        f.write("/*\n" + "".join(f"!{any_case(name)}\n" for name in AGENT_FILES))
+    return checkout_env([("core.sparseCheckout", "true"), ("core.sparseCheckoutCone", "false")],
+                        env)
+
+
+def agent_file_left(root):
+    # The file system, not the sparse patterns, decides which names it resolves to these.
+    for dirpath, _, _ in os.walk(root):
+        for name in AGENT_FILES:
+            if os.path.lexists(os.path.join(dirpath, name)):
+                return name
+    return None
+
+
+def cmd_checkout(pr_json, *options):
+    if options not in ((), ("--trust",)):
+        raise Error(f"unknown checkout option: {' '.join(options)}")
     with open(pr_json, encoding="utf-8") as f:
         pr = json.load(f)
     head_sha = sha(pr["head_sha"], "head commit")
@@ -570,19 +464,27 @@ def cmd_checkout(pr_json):
     with tempfile.TemporaryDirectory() as no_hooks:
         env = hook_free_env(no_hooks)
         try:
-            run(["git", "-c", f"core.hooksPath={no_hooks}",
-                 "worktree", "add", "--quiet", "--detach", "--", path, "HEAD"], env=env)
+            run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "add", "--quiet",
+                 "--no-checkout", "--detach", "--", path, "HEAD"], env=env)
         except Error:
             # git removes a worktree it failed to add, but not the parent directory it created.
             remove_empty_parent(path)
             raise
         try:
+            if not options:
+                env = leave_out_agent_files(path, env)
             run(["gh", "pr", "checkout", pr["url"], "--detach"], cwd=path, env=env)
             head = run(["git", "rev-parse", "HEAD"], cwd=path).strip()
             if head != head_sha:
                 raise Error(
                     f"checked out {head}, but PR #{number} was fetched at {head_sha}; "
                     "the PR was updated after fetch"
+                )
+            left = None if options else agent_file_left(path)
+            if left:
+                raise Error(
+                    f"the checkout of PR #{number} still resolves {left}; "
+                    "review it with --trust or in place"
                 )
         except BaseException as e:
             message = str(e) if isinstance(e, Error) else f"{type(e).__name__}: {e}"
@@ -603,14 +505,18 @@ def cmd_remove(path):
     return {"worktree_path": path}
 
 
-COMMANDS = {"fetch": (cmd_fetch, 2), "checkout": (cmd_checkout, 1), "remove": (cmd_remove, 1)}
+# Each command with the least and the most arguments it takes.
+COMMANDS = {
+    "fetch": (cmd_fetch, 2, 2), "checkout": (cmd_checkout, 1, 2), "remove": (cmd_remove, 1, 1),
+}
 
 
 def main(argv):
-    if not argv or argv[0] not in COMMANDS or len(argv) - 1 != COMMANDS[argv[0]][1]:
+    command = COMMANDS.get(argv[0]) if argv else None
+    if command is None or not command[1] <= len(argv) - 1 <= command[2]:
         print(__doc__.split("\n\n")[1], file=sys.stderr)
         return 1
-    func = COMMANDS[argv[0]][0]
+    func = command[0]
     try:
         result = func(*argv[1:])
     except (Error, OSError, ValueError, KeyError, TypeError) as e:

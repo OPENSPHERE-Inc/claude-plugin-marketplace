@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.py, its consumers, worktree.sh,
-# gh-pr.py's pure helpers, and gh-pr.py remove's path check.
+# gh-pr.py's helpers and sparse checkout, and gh-pr.py remove's path check.
 # Usage: bash tests/scratch-guard-test.sh
 # Prints one FAIL line per broken case and exits non-zero; exits 0 when all pass.
 
@@ -75,9 +75,10 @@ PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GUARD}" \
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${CJ}" || { note "FAIL: python3 -m py_compile check-jsonl.py"; fail=1; }
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GHPR}" \
     || { note "FAIL: python3 -m py_compile gh-pr.py"; fail=1; }
-python3 -I -B - "${GHPR}" <<'PY' || fail=1
+python3 -I -B - "${GHPR}" "${SANDBOX}" <<'PY' || fail=1
 import importlib.util
-import json
+import os
+import subprocess
 import sys
 
 spec = importlib.util.spec_from_file_location("gh_pr", sys.argv[1])
@@ -97,69 +98,41 @@ def expect(case, got, want):
         report(case, repr(want), got)
 
 
-def includes(case, got, want):
-    if got is None or want not in got:
-        report(case, f"a set with {want!r}", got)
-
-
-includes("import_refs @docs/a.md", g.import_refs("@docs/a.md"), "docs/a.md")
-includes("import_refs (@docs/a.md).", g.import_refs("(@docs/a.md)."), "docs/a.md")
-includes("import_refs @docs\\a.md", g.import_refs("@docs\\a.md"), "docs/a.md")
-includes("import_refs @my\\ file.md", g.import_refs("@my\\ file.md"), "my file.md")
-expect("import_refs foo@bar.md", g.import_refs("foo@bar.md"), set())
-expect("import_refs a run of @", g.import_refs("@" * 5000), None)
-expect("import_refs IMPORT_CHARS", g.import_refs("@" + "a" * g.IMPORT_CHARS), None)
-includes("import_refs IMPORT_CHARS - 1",
-         g.import_refs("@" + "a" * (g.IMPORT_CHARS - 1)), "a" * (g.IMPORT_CHARS - 1))
-refs = [f"@r{i}" for i in range(g.MAX_IMPORT_REFS + 1)]
-includes("import_refs MAX_IMPORT_REFS", g.import_refs(" ".join(refs[:-1])), "r0")
-expect("import_refs MAX_IMPORT_REFS + 1", g.import_refs(" ".join(refs)), None)
-
-expect("import_target ../Docs/A.md", g.import_target("sub/CLAUDE.md", "../Docs/A.md"),
-       "docs/a.md")
-for ref in ("../x.md", "..", "~/x.md", "/etc/x", ""):
-    expect(f"import_target {ref!r}", g.import_target("CLAUDE.md", ref), None)
-
-expect("shown_path U+202E", g.shown_path("a\u202eb"), "a\\u202eb")
-expect("shown_path backslash", g.shown_path("a\\b"), "a\\u005cb")
-expect("shown_path U+E0001", g.shown_path("a\U000e0001"), "a\\U000e0001")
-expect("shown_path PATH_CHARS", g.shown_path("x" * 300), "x" * 200 + " [truncated]")
-expect("shown_path escape at PATH_CHARS", g.shown_path("x" * 198 + "\u202e"),
-       "x" * 198 + " [truncated]")
-
 job = "https://github.com/o/r/actions/runs/123/job/456"
 for url, run_id in ((job, "123"), ("https://example.com/x", None), (None, None)):
     expect(f"check_key {url}", g.check_key({"workflowName": "w", "name": "n", "detailsUrl": url}),
            ("w", "n", run_id))
 
-files = [{"filename": "-notes~1.md"}, {"filename": ".claude/-/01.txt"}, {"filename": "Docs/A.md"},
-         {"filename": "README.md"},
-         {"filename": "src/CLAUDE.md", "previous_filename": ".claude/rules/x.md"}]
-expect("instruction_paths order", g.instruction_paths(files, {"docs/a.md"}),
-       ["src/CLAUDE.md", ".claude/rules/x.md", "Docs/A.md", ".claude/-/01.txt", "-notes~1.md"])
+expect("any_case .mcp.json", g.any_case(".mcp.json"), ".[mM][cC][pP].[jJ][sS][oO][nN]")
+
+# The sparse checkout cmd_checkout runs through gh, run here with git checkout.
+repo, wt = os.path.join(sys.argv[2], "sparse"), os.path.join(sys.argv[2], "sparse-wt")
+agent_paths = ["CLAUDE.md", "sub/claude.MD", "sub/.Claude/x.md", "AGENTS.md", ".mcp.json",
+               "docs/CLAUDE.local.md"]
 
 
-def imported(texts, sizes=None):
-    shas = {path: f"{i:040x}" for i, path in enumerate(texts)}
-    tree = [{"path": path, "type": "blob", "sha": shas[path],
-             "size": (sizes or {}).get(path, len(texts[path]))} for path in texts]
-    blobs = {shas[path]: text for path, text in texts.items()}
-
-    def run(cmd, **kwargs):
-        if "/git/trees/" in cmd[-1]:
-            return json.dumps({"tree": tree, "truncated": False})
-        return blobs[cmd[-1].rsplit("/", 1)[1]]
-
-    g.run = run
-    return g.imported_files("github.com", "o/r", "0" * 40)
+def git(*args, cwd=repo, env=None):
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd,
+                   env=env, check=True, capture_output=True)
 
 
-chain = {"CLAUDE.md": "@docs/a.md", "docs/a.md": "@b.md", "docs/b.md": "", "c.md": ""}
-expect("imported_files chain", imported(chain), {"claude.md", "docs/a.md", "docs/b.md"})
-expect("imported_files MAX_IMPORT_BYTES",
-       imported(chain, {"docs/b.md": g.MAX_IMPORT_BYTES + 1}), None)
-expect("imported_files size missing", imported(chain, {"docs/b.md": None}), None)
-expect("imported_files a run of @", imported({"CLAUDE.md": "@" * 5000}), None)
+os.makedirs(repo)
+git("init", "-q")
+for path in ["sub/notes.txt", *agent_paths]:
+    os.makedirs(os.path.dirname(os.path.join(repo, path)), exist_ok=True)
+    with open(os.path.join(repo, path), "w") as f:
+        f.write(path)
+    git("add", "--", path)
+    git("commit", "-qm", path)
+git("worktree", "add", "-q", "--no-checkout", "--detach", wt, f"HEAD~{len(agent_paths)}")
+git("checkout", "-q", "--detach", "HEAD", cwd=wt, env=g.leave_out_agent_files(wt, os.environ))
+expect("sparse checkout keeps sub/notes.txt",
+       os.path.isfile(os.path.join(wt, "sub", "notes.txt")), True)
+expect("sparse checkout leaves out agent files", g.agent_file_left(wt), None)
+with open(os.path.join(wt, "sub", "CLAUDE.md"), "w"):
+    pass
+expect("agent_file_left sub/CLAUDE.md", g.agent_file_left(wt), "CLAUDE.md")
+git("worktree", "remove", "--force", wt)
 sys.exit(1 if failed else 0)
 PY
 mkdir -p "${SANDBOX}/proj/.claude/tmp/sub" "${SANDBOX}/outside"
