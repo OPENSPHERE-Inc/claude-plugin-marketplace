@@ -39,7 +39,7 @@ stage 分類（current_meta に基づく）:
 
 1. 判定対象ごとに一次判定を行い `{{tmp_dir}}/triage-draft.jsonl` に Write する。この段では assignee を解決しない。
 2. draft の `items` が空の場合は手順 3・4 をスキップし、`items: []` / `will_fix_count: 0` / `wontfix_count: 0` / draft の `by_stage` を持つ `{{tmp_dir}}/triage.jsonl` を Write し、`flipped_count: 0` と `adjudication_skipped: true` を返す。
-3. draft の `items` を draft の順序のまま最大 8 件ずつのバッチに分割し、バッチに 1 から番号を振る。各バッチにつき反証 Sub 3 体を `Agent(subagent_type="general-purpose", prompt=...)` で起動し、`challenge_index` に 1 / 2 / 3 を与える。全バッチ分を同一メッセージ内に起動する。モデル指定はしない。受け取った変数値を埋めた起動プロンプト（`{b}` は当該インスタンスのバッチ番号、`{n}` は `challenge_index`、`{batch_ids}` はバッチ `{b}` の id をカンマ区切りで列挙したもの）:
+3. draft の `items` を draft の順序のまま最大 8 件ずつのバッチに分割し、バッチに 1 から番号を振る。各バッチにつき反証 Sub 3 体を `Agent(subagent_type="general-purpose", prompt=...)` で起動し、`challenge_index` に 1 / 2 / 3 を与える。全バッチ分をまとめて起動し、1 メッセージで起動するのは 20 体までとする（`{{plugin_root}}/rules/sub-agent.md` § 起動形態）。モデル指定はしない。受け取った変数値を埋めた起動プロンプト（`{b}` は当該インスタンスのバッチ番号、`{n}` は `challenge_index`、`{batch_ids}` はバッチ `{b}` の id をカンマ区切りで列挙したもの）:
 
 ```
 最初の行動として `{{plugin_root}}/skills/triage/templates/triage-challenge.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
@@ -60,7 +60,7 @@ stage 分類（current_meta に基づく）:
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-各戻り値の `template_id` が `b8701509-403b-488b-8b13-c867f9c6700b` と一致することを確認する。不一致の（バッチ, challenge_index）の組のみ、同一 `subagent_type` の新規インスタンスを同じ `batch_index` / `ids` / `challenge_index` で起動して再試行する。2 回連続で不一致となった組、および Agent の起動自体が失敗した組（ネスト起動の深度上限到達等）は反証出力を持たないものとし、一致を返した組だけで続行する。
+各戻り値の `template_id` が `b8701509-403b-488b-8b13-c867f9c6700b` と一致することを確認する。不一致の（バッチ, challenge_index）の組のみ、同一 `subagent_type` の新規インスタンスを同じ `batch_index` / `ids` / `challenge_index` で起動して再試行する。2 回連続で不一致となった組、および Agent の起動自体が失敗した組（ネスト起動の深度上限到達等。同時実行数の上限による拒否は起動し直し、§ 起動形態が失敗とする場合に限り失敗に数える）は反証出力を持たないものとし、一致を返した組だけで続行する。
 
 draft の判定を覆すには当該 id の所属バッチからの flip 票が 2 票必要なため、反証出力を 2 つ以上持つバッチが 1 つも無い場合は手順 4 をスキップし、draft の `verdict` / `reason` をそのまま最終判定として手順 5 の要領で `{{tmp_dir}}/triage.jsonl` を Write し、`flipped_count: 0` と `adjudication_skipped: true` を返す。
 

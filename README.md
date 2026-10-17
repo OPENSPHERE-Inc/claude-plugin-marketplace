@@ -29,7 +29,7 @@ Add this marketplace, then install the plugins:
 
 | Command | Purpose |
 |---------|---------|
-| `/creview:start` | Run a parallel code review and produce a review document. |
+| `/creview:start` | Run a parallel code review of local changes or a GitHub pull request and produce a review document. |
 | `/creview:triage` | Triage and estimate the findings; persist `triage` / `estimate` into the document. |
 | `/creview:respond` | Fix the Will-Fix / Maintain / Alternative findings; persist `status`. |
 | `/creview:resolve` | Verify fixes against the source; persist `verification`. |
@@ -44,8 +44,10 @@ recursively (`**/*.md`, so subdirectories are included) from the **destination
 project** (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin
 bundle**, reads each agent's `description`, and selects the most relevant agents
 per finding. When no suitable agent exists, it falls back to
-`general-purpose`. The `review-helper` aggregation agent is bundled with the
-`creview` plugin.
+`general-purpose`. The plugin bundles only its workflow helper agents, such as
+the `review-helper` aggregation agent, and one exception to the above:
+`pr-description-reviewer`, a fixed-role reviewer that checks a pull request's
+description and CI results when `/creview:start` reviews a pull request.
 
 ## Source of truth and localization
 

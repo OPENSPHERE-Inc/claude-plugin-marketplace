@@ -29,7 +29,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 
 | コマンド | 目的 |
 |---------|---------|
-| `/creview:start` | 並列コードレビューを実行し、レビュードキュメントを生成する。 |
+| `/creview:start` | ローカルの変更または GitHub プルリクエストの並列コードレビューを実行し、レビュードキュメントを生成する。 |
 | `/creview:triage` | 指摘をトリアージ・見積し、`triage` / `estimate` をドキュメントへ永続化する。 |
 | `/creview:respond` | Will-Fix / Maintain / Alternative の指摘を修正し、`status` を永続化する。 |
 | `/creview:resolve` | 修正をソースに照らして検証し、`verification` を永続化する。 |
@@ -43,8 +43,11 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 （`.claude/agents/`）→**ユーザー**（`~/.claude/agents/`）→**プラグイン同梱**の順に、
 サブディレクトリを含めて再帰的（`**/*.md`）にエージェントを列挙し、各エージェントの
 `description` を読み、指摘ごとに最も関連するエージェントを選定します。適切なエージェント
-が存在しない場合は `general-purpose` にフォールバックします。集約用の
-`review-helper` エージェントは `creview` プラグインに同梱されています。
+が存在しない場合は `general-purpose` にフォールバックします。`creview`
+プラグインに同梱されるのは、集約用の `review-helper` などワークフロー用の補助
+エージェントと、上記の例外となる固定の役割のレビュアー `pr-description-reviewer`
+（`/creview:start` がプルリクエストをレビューするときに、その本文と CI 結果を
+確認する）だけです。
 
 ## 信頼できる原本とローカライズ
 

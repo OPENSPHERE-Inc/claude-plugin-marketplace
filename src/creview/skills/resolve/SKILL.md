@@ -124,7 +124,7 @@ events.jsonl は `compile-review.py` が `verifications/*.jsonl` の `memo_value
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
    ```
-4. 解析サブエージェントを `Agent(subagent_type="review-helper", prompt=...)` で起動する — テンプレート `analyze.md`、`template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、オーバーライド `(該当なし)`。戻り値: `{total, by_assignee, template_id}`。
+4. 解析サブエージェントを `Agent(subagent_type="creview:review-helper", prompt=...)` で起動する — テンプレート `analyze.md`、`template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、オーバーライド `(該当なし)`。戻り値: `{total, by_assignee, template_id}`。
 
 ## ステップ 2 — 各指摘の検証（specialist 単位で並列委譲）
 

@@ -55,9 +55,9 @@ claude-plugin-marketplace/
 │   │   ├── resolve/              # /creview:resolve (from review-resolve)
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
-│   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md
+│   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md, pr-description-reviewer.md
 │   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md
-│   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
+│   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, lib/scratch-guard.py
 │
 ├── cprompt/                      # Plugin: prompt authoring (active, English)
 │   ├── .claude-plugin/plugin.json
@@ -127,7 +127,16 @@ When changing a plugin:
   `rules/agents-detection.md`. The triage / analyze / format-build-verify / divergence-check sub-agents read it
   and supply only their match target + result field. `scope-analysis` keeps its own inline
   multi-select variant (it picks *all* relevant reviewers, not one). Only the mechanical
-  helpers (`review-helper`, `comment-sensei`, `review-leader`) are bundled.
+  helpers (`review-helper`, `comment-sensei`, `review-leader`) are bundled, plus
+  `pr-description-reviewer`, the fixed-role reviewer of a pull request's description and CI
+  results in `/creview:start`'s PR mode, bundled so that its `tools:` keep the untrusted
+  pull request text away from a shell and the network. Launch a bundled agent by its
+  namespaced name (`creview:review-helper`, `cdev:dev-helper`); a bare name resolves only
+  to a project or user agent of that name. The detection rules and `scope-analysis.md`
+  likewise return the namespaced name for an agent they pick from the plugin bundle.
+  In creview, the detection rule and `scope-analysis.md` leave the fixed-role bundled
+  agents (`review-helper`, `review-leader`, `pr-description-reviewer`) out of the
+  candidates, so `comment-sensei` is the only bundled candidate.
 
 ---
 
@@ -183,7 +192,9 @@ bash tests/scratch-guard-test.sh
 
 Then exercise `/creview:start`, `/creview:triage`, `/creview:respond`, `/creview:resolve`
 in a project that has its own `.claude/agents/` (or none, to test the `general-purpose`
-fallback), `/cprompt:edit`, and `/cdev:coding` (in a runtime with background subagents and
+fallback), `/creview:start` with a pull request URL (both with HEAD at the pull request's
+head and elsewhere, which reviews in a worktree; needs an authenticated `gh`),
+`/cprompt:edit`, and `/cdev:coding` (in a runtime with background subagents and
 inter-agent messaging).
 
 ---
@@ -204,7 +215,14 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
 ### The creview review pipeline (state lives in the review document)
 
 ```
-/creview:start   → review doc with <!-- METADATA(id) --> markers (no decisions yet)
+/creview:start   → review doc with <!-- METADATA(id) --> markers (no decisions yet) →
+                    offers to run /creview:triage on it (not under /creview:rounds)
+                    PR mode (a pull request URL): gh-pr.py fetch (PR + description /
+                    CI / conversation) → review in place when HEAD is the PR head, else
+                    gh-pr.py checkout into a detached worktree (hooks disabled) → code
+                    reviewers + pr-description-reviewer → doc header carries a
+                    `- **PR:**` bullet → gh-pr.py remove (hooks disabled) before the
+                    triage offer
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist
                     triage / estimate metadata into the doc
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
@@ -235,21 +253,25 @@ the launch prompt as the `plugin_root` variable so the template's `{{plugin_root
 references resolve for the sub-agent. See `creview/rules/sub-agent.md`.
 
 The leader also passes `main_root` in every launch prompt: the main working tree's root
-under `--worktree`, `(none)` otherwise. `/creview:rounds` passes it in every launch
-prompt it issues; `review-leader` forwards the value it received, `(none)` included, to every
-sub-agent it launches; the `/creview:start` / `triage` / `respond` / `resolve` leaders pass
-the value an upper flow gave them, or `(none)` when invoked directly; cdev passes it through
-the spawn contract. The detection rules (`agents-detection.md` / `build-format-detection.md`)
-and `scope-analysis.md` resolve the project's `.claude/agents/` / `.claude/rules/` against
-it when it is other than `(none)`, and against `target_dir` otherwise. Launches nested
+when the run works in a worktree — under `--worktree`, or in a `/creview:start` pull
+request review that checks the pull request out in one — and `(none)` otherwise.
+`/creview:rounds` passes it in every launch prompt it issues; `review-leader` forwards the
+value it received, `(none)` included, to every sub-agent it launches; the `/creview:start`
+/ `triage` / `respond` / `resolve` leaders pass the value an upper flow gave them, or
+`(none)` when invoked directly, except that a `/creview:start` worktree review passes its
+own; cdev passes it through the spawn contract. The detection rules
+(`agents-detection.md` / `build-format-detection.md`) and `scope-analysis.md` resolve the
+project's `.claude/agents/` / `.claude/rules/` against it when it is other than `(none)`,
+and against `target_dir` otherwise. Launches nested
 inside a template (the challenge / adjudication sub-agents `triage.md` spawns) do not
 receive it, so the templates they run must not depend on it.
 
 Every launch prompt — nested launches included — also passes `target_dir`, the work target:
-the worktree under `--worktree`, otherwise the repository root (`git rev-parse
---show-toplevel`). Every creview and cdev entry point rejects a session started in a
-subdirectory of the repository (non-empty `git rev-parse --show-prefix`) with an error,
-with or without `--worktree`, so every sub-agent's current working directory is
+the worktree when the run works in one (under `--worktree`, or in a `/creview:start`
+worktree review), otherwise the repository root (`git rev-parse --show-toplevel`). Every
+creview and cdev entry point rejects a session started in a subdirectory of the repository
+(non-empty `git rev-parse --show-prefix`) with an error, with or without `--worktree`, so
+every sub-agent's current working directory is
 `target_dir`, the single base for relative paths, for where commands run, and for the
 write scope. The write-scope bullet in `rules/sub-agent.md` / `rules/teammate.md` confines
 every sub-agent's writes to `{{target_dir}}`, its working directory (`tmp_dir`), and the
@@ -377,8 +399,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `${CLAUDE_PLUGIN_ROOT}` would stay unexpanded there, while `plugin_root` is already in the
   sub-agent's scope (the leader resolves it and passes it in the launch prompt; in cdev, the
   spawn contract). Never put `${CLAUDE_PLUGIN_ROOT}` in a template or a bundled rule; never
-  put `{{plugin_root}}` in a SKILL. (`agents/review-helper.md` / `agents/review-leader.md`
-  mention `{{plugin_root}}` only to name that template variable.)
+  put `{{plugin_root}}` in a SKILL. (`agents/review-helper.md` / `agents/review-leader.md` /
+  `agents/pr-description-reviewer.md` mention `{{plugin_root}}` only to name that template
+  variable.)
   `rules/sub-agent.md`, `rules/teammate.md`, and the detection rules carry
   `{{target_dir}}` on the same basis: every launch passes `target_dir`.
   `rules/wontfix.md` carries `{{previous_round_doc_paths}}` on the same basis: every
@@ -411,7 +434,8 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output
   paths whose basename comes from a runtime value therefore carry a fixed prefix — creview's
   `{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md` (the aggregator recovers the
-  reviewer name by stripping it) and cdev's `{design_dir}/design-{slug}.md`. Keep those
+  reviewer name by stripping it; the `:` of a namespaced agent name is written as `__`,
+  since a Windows file name cannot hold `:`) and cdev's `{design_dir}/design-{slug}.md`. Keep those
   prefixes: a destination-project agent name or a team-analysis slug can begin with any of
   the four words.
 - **Agent definitions use `tools:`; skills / commands use `allowed-tools:`.** `allowed-tools`

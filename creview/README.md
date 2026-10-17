@@ -8,7 +8,7 @@ A multi-agent parallel code review workflow for Claude Code.
 
 | Command | Maps from | Purpose |
 |---------|-----------|---------|
-| `/creview:start` | `parallel-review` | Run a parallel code review; produce a review document with metadata markers. |
+| `/creview:start` | `parallel-review` | Run a parallel code review of local changes or a GitHub pull request; produce a review document with metadata markers. |
 | `/creview:triage` | `review-respond` (triage + estimate) | Triage and estimate findings; persist `triage` / `estimate` into the document. |
 | `/creview:respond` | `review-respond` (fix) | Fix Will-Fix / Maintain / Alternative findings; verify the build; persist `status`. |
 | `/creview:resolve` | `review-resolve` | Verify fix resolutions against the source; persist `verification`. |
@@ -42,6 +42,76 @@ scopes of up to 400 changed lines / 10 files each and picks reviewers per
 scope, so a large change is reviewed slice by slice rather than sampled by
 reviewers that stop exploring once they have produced a few findings. A
 smaller change stays a single scope.
+
+`/creview:start` also takes a GitHub pull request URL
+(`https://{host}/{owner}/{repo}/pull/{number}`) as its review target and then
+reviews that pull request: the diff from its merge base to its head commit.
+The pull request must be open, its repository on its host must be a remote of
+the current clone, and the GitHub CLI (`gh`) must be authenticated for that
+host. `--base` and `--range` cannot be combined with it.
+
+- When HEAD is the pull request's head commit, the working tree is reviewed
+  in place; uncommitted changes to tracked files stop the run with an error.
+- Otherwise the head commit is checked out, detached, in a temporary worktree
+  under `.claude/worktrees/`, with git hooks and the filter drivers of your git
+  configuration disabled, Git LFS smudging skipped, and symbolic links checked
+  out as plain files holding the link target. The worktree is removed, with
+  hooks and filter drivers disabled again, at the end of the run. It belongs to
+  this run only and is unrelated to `/creview:rounds --worktree`.
+  - The review document and the working directory stay in the main working
+    tree's `.claude/tmp/`, and the project's `.claude/agents/` are read from
+    the main working tree.
+  - When the pull request changes a `CLAUDE.md`, a `CLAUDE.local.md`, an
+    `AGENTS.md`, or a file under `.claude/`, the run lists those files and
+    asks whether you trust the pull request before checking it out: Claude
+    Code can load them as instructions or skills once a sub-agent reads files
+    in the worktree. `--trust` skips the question.
+    - A file that a `CLAUDE.md` imports through an `@` reference under any
+      other name is not detected; only the data-handling instructions
+      described below, which are not enforcement, cover it.
+  - Checking out the worktree requires Git 2.31 or later; with an older Git
+    the run stops with an error.
+
+One more reviewer runs alongside the code reviewers: the bundled
+`pr-description-reviewer`, which reviews the change in the light of the pull
+request's title and description and its CI results.
+
+- It reports claims the change does not bear out, information a reviewer
+  needs that the description leaves out, open task items, and failed checks,
+  tracing a failure to its cause through the failed GitHub Actions job's log.
+- It reads the pull request's comments and reviews for context only; they are
+  not review targets.
+- Every finding is anchored at a changed line of code and quotes the
+  description text or CI output it rests on. A problem that no changed line
+  points at, such as a claim about nothing in the diff or a failed check whose
+  cause lies outside the change, is not reported.
+- It runs with Read, Glob, Grep, and Write only, without shell or network
+  access.
+
+Every sub-agent is told to treat the pull request's text — its title,
+description, comments, CI output, and commit messages — as data, and to change
+nothing on GitHub or any other remote. In a worktree review, the checked-out
+files, `CLAUDE.md`, `AGENTS.md`, and `.claude/**` included, are data as well,
+and the sub-agents are told to run none of them and to run no git command in
+the worktree. These are instructions, not enforcement: for a pull request you
+do not trust, also rely on your environment (a sandbox, hooks, or permission
+rules).
+
+The review document records the pull request in a header bullet of the form
+`- **PR:** {url} (head {head_sha}, base {merge_base})`. When run separately on
+such a document, `/creview:triage`, `/creview:respond`, and `/creview:resolve`
+work on the current working tree, not on a worktree of the pull request. Check
+out the pull request's head commit before running them; on another commit,
+such as the base branch, they triage, fix, and verify code other than the pull
+request's, and `/creview:respond` applies its fixes to that code. Their
+sub-agents, like every creview sub-agent, treat pull request text quoted in the
+document as data and change nothing on any remote.
+
+When the review has Critical, Major, or Minor findings, `/creview:start` asks
+at the end whether to run `/creview:triage` on the new review document, and
+runs it in the same session if you agree. After a worktree review, it asks once
+the worktree is removed, and triage works on the current working tree as when
+run separately. Under `/creview:rounds` it does not ask.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review
@@ -121,18 +191,22 @@ Nested sub-agent spawning is required
   sub-agent, which spawns that phase's own sub-agents, and the triage
   sub-agent spawns the challenge sub-agents and the adjudication
   sub-agent.
-- `/creview:triage` on its own — 2 or more. The triage sub-agent spawns
-  the challenge sub-agents and the adjudication sub-agent.
+- `/creview:triage` on its own, or run by `/creview:start` at its end — 2 or
+  more. The triage sub-agent spawns the challenge sub-agents and the
+  adjudication sub-agent.
 
 A long run also consumes many subagent slots — the challenge sub-agents alone
 number three per batch of eight findings, and a split review runs one reviewer
 per (scope, reviewer) pair — so raise
 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
-session) when using a high `--max-rounds`.
+session) when using a high `--max-rounds`. Sub-agents that run in parallel are
+launched at most 20 at a time, the default of
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`; the rest follow in later batches.
 
 ## Reviewer / fixer agents
 
-This plugin does not bundle specialist agents. The triage / scope-analysis /
+Apart from the bundled agents listed at the end of this section, this plugin
+does not bundle specialist agents. The triage / scope-analysis /
 analysis / format-build-verify / divergence-detection sub-agents enumerate agents recursively
 (`**/*.md`, including subdirectories) from the **destination project**
 (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin bundle**, read
@@ -142,21 +216,27 @@ scope, and adds `general-purpose` to a scope whose picks all cover a narrower
 concern than the code's behavior, such as comments alone). With no match, they
 fall back to `general-purpose`. The
 bundled agents are `review-helper` (mechanical aggregation / verification),
-`comment-sensei` (comment-discipline review), and `review-leader` (the
-`/creview:rounds` phase leader).
+`comment-sensei` (comment-discipline review), `review-leader` (the
+`/creview:rounds` phase leader), and `pr-description-reviewer` (the pull
+request description and CI reviewer of `/creview:start`'s PR mode, bundled so
+that its tools stay restricted). Only `comment-sensei` is a selection
+candidate; the skills launch the other three by name.
 
 ## Bundled support files
 
 - `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
   `adr-format.md` (only the rules the skills reference).
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`,
-  `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it), and
+  `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it),
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
   `fetch-diff.sh` / `del-tmp.sh`; from a linked worktree it also accepts the
-  `.claude/tmp/` of another working tree of the same repository), and
-  `worktree.sh` (creates and removes the `--worktree` worktree). The scripts
-  require `python3` (3.9 or later)
-  on the `PATH`. Skills invoke them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`;
+  `.claude/tmp/` of another working tree of the same repository),
+  `worktree.sh` (creates and removes the `--worktree` worktree), and
+  `gh-pr.py` (resolves a pull request for `/creview:start`, checks its head
+  commit out in a worktree, and removes that worktree). The scripts require
+  `python3` (3.9 or later) on the `PATH`; `gh-pr.py` also requires an
+  authenticated GitHub CLI (`gh`), and its worktree commands require Git 2.31
+  or later. Skills invoke them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`;
   sub-agent templates receive the resolved path through the `{{plugin_root}}`
   launch variable.
 - `skills/{triage,respond,resolve}/scripts/compile-review.py` — the per-skill

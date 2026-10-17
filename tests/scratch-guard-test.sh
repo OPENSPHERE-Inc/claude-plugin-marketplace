@@ -230,6 +230,16 @@ t 1 "${SANDBOX}/outside/victim.txt"
 out="$(run_guard "${MAIN}/.claude/tmp//sub/." 2>/dev/null)"
 [[ "${out}" == "${MAIN}/.claude/tmp/sub" ]] \
     || { note "FAIL: cross-worktree normalization (got '${out}')"; fail=1; }
+# Windows looks a bare program name up in the working directory before PATH, so a
+# git.exe planted in a checked-out tree must not stand in for git.
+if [[ "$(python3 -c 'import os; print(os.name)')" == nt ]]; then
+    cp "$(type -P true)" git.exe
+    rc=0
+    env -u NoDefaultCurrentDirectoryInExePath python3 "${GUARD}" \
+        -w "${MAIN}/.claude/tmp/sub/newfile" >/dev/null 2>&1 || rc=$?
+    check "scratch-guard ignores a git.exe in the working directory" 0 "${rc}"
+    rm git.exe
+fi
 MSYS=winsymlinks:nativestrict ln -s ../../../outside "${MAIN}/.claude/tmp/esc" 2>/dev/null || true
 if [[ -L "${MAIN}/.claude/tmp/esc" ]]; then
     t 1 -w "${MAIN}/.claude/tmp/esc/sub/out.txt"
