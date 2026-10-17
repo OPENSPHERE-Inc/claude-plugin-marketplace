@@ -131,8 +131,9 @@ When changing a plugin:
   `pr-description-reviewer`, the fixed-role reviewer of a pull request's description and CI
   results in `/creview:start`'s PR mode, bundled so that its `tools:` keep the untrusted
   pull request text away from a shell and the network. Launch a bundled agent by its
-  namespaced name (`creview:pr-description-reviewer`); a bare name resolves only to a
-  project or user agent of that name.
+  namespaced name (`creview:review-helper`, `cdev:dev-helper`); a bare name resolves only
+  to a project or user agent of that name. The detection rules and `scope-analysis.md`
+  likewise return the namespaced name for an agent they pick from the plugin bundle.
 
 ---
 
@@ -429,7 +430,8 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output
   paths whose basename comes from a runtime value therefore carry a fixed prefix — creview's
   `{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md` (the aggregator recovers the
-  reviewer name by stripping it) and cdev's `{design_dir}/design-{slug}.md`. Keep those
+  reviewer name by stripping it; the `:` of a namespaced agent name is written as `__`,
+  since a Windows file name cannot hold `:`) and cdev's `{design_dir}/design-{slug}.md`. Keep those
   prefixes: a destination-project agent name or a team-analysis slug can begin with any of
   the four words.
 - **Agent definitions use `tools:`; skills / commands use `allowed-tools:`.** `allowed-tools`

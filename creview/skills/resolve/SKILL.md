@@ -124,7 +124,7 @@ The leader (you) does not Read the diff content. Verification is insufficient wi
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
    ```
-4. Launch the analysis sub-agent via `Agent(subagent_type="review-helper", prompt=...)` — template `analyze.md`, `template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `document_path = {document_path}`, overrides `(none)`. Return value: `{total, by_assignee, template_id}`.
+4. Launch the analysis sub-agent via `Agent(subagent_type="creview:review-helper", prompt=...)` — template `analyze.md`, `template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `document_path = {document_path}`, overrides `(none)`. Return value: `{total, by_assignee, template_id}`.
 
 ## Step 2 — Verify each finding (delegate in parallel per specialist)
 

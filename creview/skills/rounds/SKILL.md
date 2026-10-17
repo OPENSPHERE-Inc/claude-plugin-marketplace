@@ -56,14 +56,14 @@ Write the review document in the user's chat language.
 ## Sub-agent usage rules
 
 - **For common prohibitions and the one-shot launch mode (`run_in_background: false`), see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md`.**
-- **Each phase is delegated whole to a phase leader sub-agent** (`subagent_type="review-leader"`). The phase sub-agent invokes the corresponding skill and runs it end to end — that skill's own sub-agents, its compile step, and its internal re-execution loops. The phase sub-agent in turn spawns sub-agents, and the triage sub-agent spawns its own challenge / adjudication sub-agents, so a nested spawn depth of 3 or more is required.
+- **Each phase is delegated whole to a phase leader sub-agent** (`subagent_type="creview:review-leader"`). The phase sub-agent invokes the corresponding skill and runs it end to end — that skill's own sub-agents, its compile step, and its internal re-execution loops. The phase sub-agent in turn spawns sub-agents, and the triage sub-agent spawns its own challenge / adjudication sub-agents, so a nested spawn depth of 3 or more is required.
   - Review phase (Step 2.1) — `creview:start`
   - Triage & estimate phase (Step 2.2 / 2.5) — `creview:triage`
   - Respond phase (Step 2.3 / 2.5) — `creview:respond`
   - Resolve phase (Step 2.4 / 2.5) — `creview:resolve`
-- **Divergence pattern detection sub-agent (Step 2.2)** — `subagent_type="review-helper"`; detects every divergence of the round loop from the chains in which a fix for a finding produces a finding in a later round.
+- **Divergence pattern detection sub-agent (Step 2.2)** — `subagent_type="creview:review-helper"`; detects every divergence of the round loop from the chains in which a fix for a finding produces a finding in a later round.
 - **Divergence investigation sub-agent (Step 2.2)** — its `subagent_type` is the `investigator` the divergence pattern detection sub-agent returns; identifies each divergence's source and writes fix proposals into the divergence investigation report.
-- **Final report aggregator sub-agent (Step 3)** — `subagent_type="review-helper"`; generates the final report from all rounds' review documents.
+- **Final report aggregator sub-agent (Step 3)** — `subagent_type="creview:review-helper"`; generates the final report from all rounds' review documents.
 - **What you handle directly is limited to the following:**
   - Console headings, round loop control, and the feedback re-fix loop.
   - Phase sub-agent launch and aggregation of their return values (counters, paths, one-line summaries).
@@ -77,7 +77,7 @@ Write the review document in the user's chat language.
 
 ## Phase sub-agent launch
 
-Launch every phase via `Agent(subagent_type="review-leader", prompt=...)`:
+Launch every phase via `Agent(subagent_type="creview:review-leader", prompt=...)`:
 
 ```
 As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/{template}`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
@@ -150,7 +150,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
 3. Hold only the return value (`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, tmp_dir, error}`) in context.
 4. Divergence pattern detection gate: run it from Round 2 on, outside the feedback loop, when `error` is null, `will_fix_count` is at least 1, and `maintain_count` plus `alternative_count` is at least 1.
-   1. Detection: launch the sub-agent via `Agent(subagent_type="review-helper", prompt=...)` with `templates/divergence-check.md` (`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`) and hold only the return value (`{divergence_count, investigator}`) in context.
+   1. Detection: launch the sub-agent via `Agent(subagent_type="creview:review-helper", prompt=...)` with `templates/divergence-check.md` (`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`) and hold only the return value (`{divergence_count, investigator}`) in context.
       - Variables: `document_path` (this round's file path), `previous_round_doc_paths` (doc_paths of Round 1..N-1), `output_path` (`{tmp_dir}/divergence.jsonl`)
       - Overrides: (none)
    2. Investigation: when `divergence_count` is at least 1, launch the sub-agent via `Agent(subagent_type="{investigator}", prompt=...)` with `templates/divergence-investigate.md` (`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`) and hold only the return value (`{report_path}`) in context.
@@ -227,7 +227,7 @@ If not met, proceed to final report generation.
 
 Final report path: `{base-path}/{branch-dir}/final-report.md`
 
-1. Launch the sub-agent via `Agent(subagent_type="review-helper", prompt=...)` with `templates/final-report-compile.md` (`template_id`: `4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16`).
+1. Launch the sub-agent via `Agent(subagent_type="creview:review-helper", prompt=...)` with `templates/final-report-compile.md` (`template_id`: `4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16`).
    - Variables:
      - `round_doc_paths`: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
      - `round_stats`: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ... (for rounds whose workflow_warning is non-null, append workflow_warning="..." at the end)

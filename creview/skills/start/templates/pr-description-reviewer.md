@@ -29,7 +29,7 @@ Rules:
 - Location: `PR description` for a finding about the title or description; cite the lines of code it concerns in the issue description. For a failed check, the changed line its cause traces to as `file_path:line` (the real line number Read reports for the file, not a position in `{{diff_path}}`), or `CI: {check name}` when it traces to no changed line. A failed check and a description claim it contradicts are two findings.
 - In the issue description, quote briefly the description text or CI output the finding rests on, or, for an omission, state what is missing: later phases do not have the pull request data.
 - Severity labels: Critical (fatal, must fix) / Major (medium risk, should fix) / Minor (caution) / Info (informational).
-- Category labels: assign one or more category labels indicating the nature of the finding. Presets: `Bug` / `Maintainability` / `Readability` / `Testing` / `Performance` / `Security` / `Style` / `Documentation` / `Design`. If no preset fits, create a new label (short noun phrase, must not contain `/` or `]`). When multiple apply, join with `/` inside a single `[ ]`. The label body itself may be written in `{{doc_lang}}` (preset names may be substituted with translations).
+- Category labels: assign one or more category labels indicating the nature of the finding. Presets: `Bug` / `Maintainability` / `Readability` / `Testing` / `Performance` / `Security` / `Style` / `Documentation` / `Design`. If no preset fits, create a new label (short noun phrase, must not contain `/` or `]`). When multiple apply, join with `/` inside a single `[ ]`. Write the labels in `{{doc_lang}}`, translating the preset names.
 - Read `{{plugin_root}}/rules/review.md` and follow it.
 
 Output:

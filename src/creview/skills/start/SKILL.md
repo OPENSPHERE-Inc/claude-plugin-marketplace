@@ -178,15 +178,15 @@ PR モードでは、全サブエージェントの起動プロンプトに `(no
 
 ### レビュアー出力ファイル
 
-- （スコープ, レビュアー）の組ごとに 1 ファイル: `{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md`
+- （スコープ, レビュアー）の組ごとに 1 ファイル: `{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md`。名前中の `:` は `__` と書く（Windows のファイル名は `:` を含められない）
 - 内容は「指摘の番号付きリスト」だけ（前後の挨拶や全体サマリは入れない）
 - フォーマット: `[重要度] [カテゴリ] file_path:line — 問題の説明とその重要性。` の番号付きリスト。カテゴリは 1 件以上付与し、複数の場合は `/` で連結して 1 つの `[ ]` にまとめる（例: `[バグ/保守性]`）。プリセットの詳細はレビュアー向けテンプレート参照。
 
 ### レビュアーの起動
 
-`subagent_type={name}`（スコープ解析 Sub が対象プロジェクトの `.claude/agents/` から解決した名前、または `general-purpose`）を指定する。agent 定義の persona と観点は自動でロードされる。起動プロンプトに persona / 観点は含めない。
+`subagent_type={name}`（スコープ解析 Sub が返した名前、または `general-purpose`）を指定する。agent 定義の persona と観点は自動でロードされる。起動プロンプトに persona / 観点は含めない。
 
-テンプレート `{reviewer_template}`、`template_id` `{reviewer_template_id}`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`targets = {targets}`、`base = {base}`、`diff_path = {diff_path}`、`scope_paths = {scope_paths}`、`output_path = {output_path}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。`{scope_paths}` は当該組のスコープの `paths`、`{output_path}` は `{tmp_dir}/reviews/{scope_id}/review-{name}.md`。各レビュアーの戻り値: `{path, critical, major, minor, info, template_id}`。
+テンプレート `{reviewer_template}`、`template_id` `{reviewer_template_id}`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`targets = {targets}`、`base = {base}`、`diff_path = {diff_path}`、`scope_paths = {scope_paths}`、`output_path = {output_path}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。`{scope_paths}` は当該組のスコープの `paths`、`{output_path}` は `{tmp_dir}/reviews/{scope_id}/review-{name}.md` で、`{name}` 中の `:` は `__` と書く。各レビュアーの戻り値: `{path, critical, major, minor, info, template_id}`。
 
 ### プルリクエスト本文レビュアーの起動
 
@@ -197,7 +197,7 @@ PR モードでは `Agent(subagent_type="creview:pr-description-reviewer", promp
 すべてのレビュアーが完了した後、集約サブエージェントを起動してレポート統合を委任する。
 レビューリーダーは集約処理（各レビュアーファイルの Read・重複排除・並べ替え・成果物 Write）を行わず、レビュアー出力本体を context に載せない。
 
-`Agent(subagent_type="review-helper", prompt=...)` で起動する（model は review-helper の agent 定義に従う。リーダーから model 指定はしない）。
+`Agent(subagent_type="creview:review-helper", prompt=...)` で起動する（model は review-helper の agent 定義に従う。リーダーから model 指定はしない）。
 
 `{reviewer_paths_list}` は全スコープで実際に動いたレビュアーの出力ファイルを列挙したもの、`{reviewer_names_csv}` はそれらのレビュアー名をスコープ間で重複排除したもの。
 

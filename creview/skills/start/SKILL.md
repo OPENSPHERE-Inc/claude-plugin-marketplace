@@ -178,15 +178,15 @@ Each reviewer must not return findings to stdout; instead, they Write to a dedic
 
 ### Reviewer Output Files
 
-- One file per (scope, reviewer) pair: `{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md`
+- One file per (scope, reviewer) pair: `{tmp_dir}/reviews/{scope_id}/review-{reviewer-name}.md`, with each `:` of the name written as `__` (a Windows file name cannot hold `:`)
 - Content is only the "numbered list of findings" (no greetings or overall summaries before or after)
 - Format: numbered list of `[severity] [category] file_path:line — Description of the issue and its importance.`. Assign one or more category labels; if multiple, join them with `/` inside a single `[ ]` (e.g., `[Bug/Maintainability]`). See the reviewer template for preset details.
 
 ### Reviewer Launch
 
-Specify `subagent_type={name}` (the name resolved by the scope-analysis Sub from the destination project's `.claude/agents/`, or `general-purpose`). The agent definition's persona and perspective load automatically; do not include the persona / perspective in the launch prompt.
+Specify `subagent_type={name}` (the name the scope-analysis Sub returned, or `general-purpose`). The agent definition's persona and perspective load automatically; do not include the persona / perspective in the launch prompt.
 
-Template `{reviewer_template}`, `template_id` `{reviewer_template_id}`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `targets = {targets}`, `base = {base}`, `diff_path = {diff_path}`, `scope_paths = {scope_paths}`, `output_path = {output_path}`, `doc_lang = {doc_lang}`, overrides `(none)`. `{scope_paths}` is that pair's scope `paths`; `{output_path}` is `{tmp_dir}/reviews/{scope_id}/review-{name}.md`. Return value from each reviewer: `{path, critical, major, minor, info, template_id}`.
+Template `{reviewer_template}`, `template_id` `{reviewer_template_id}`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `targets = {targets}`, `base = {base}`, `diff_path = {diff_path}`, `scope_paths = {scope_paths}`, `output_path = {output_path}`, `doc_lang = {doc_lang}`, overrides `(none)`. `{scope_paths}` is that pair's scope `paths`; `{output_path}` is `{tmp_dir}/reviews/{scope_id}/review-{name}.md`, with each `:` of `{name}` written as `__`. Return value from each reviewer: `{path, critical, major, minor, info, template_id}`.
 
 ### PR Description Reviewer Launch
 
@@ -197,7 +197,7 @@ In PR mode, launch `Agent(subagent_type="creview:pr-description-reviewer", promp
 After all reviewers complete, launch the aggregator sub-agent and delegate report consolidation to it.
 The review leader does not perform aggregation work (Reading each reviewer file, deduplicating, sorting, Writing the deliverable) and does not load reviewer output bodies into context.
 
-Launch via `Agent(subagent_type="review-helper", prompt=...)` (model follows review-helper's agent definition; do not specify model from the leader).
+Launch via `Agent(subagent_type="creview:review-helper", prompt=...)` (model follows review-helper's agent definition; do not specify model from the leader).
 
 `{reviewer_paths_list}` lists the output file of every reviewer that ran, across all scopes; `{reviewer_names_csv}` is the names of those reviewers deduplicated across scopes.
 
