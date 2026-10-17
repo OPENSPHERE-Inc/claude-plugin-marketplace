@@ -65,10 +65,14 @@ host. `--base` and `--range` cannot be combined with it.
     `AGENTS.md`, or a file under `.claude/`, the run lists those files and
     asks whether you trust the pull request before checking it out: Claude
     Code can load them as instructions or skills once a sub-agent reads files
-    in the worktree. `--trust` skips the question.
-    - A file that a `CLAUDE.md` imports through an `@` reference under any
-      other name is not detected; only the data-handling instructions
-      described below, which are not enforcement, cover it.
+    in the worktree. A path with a component shaped like a Windows 8.3 short
+    name (a `~` followed by a digit, such as `CLAUDE~1`) is listed as well,
+    since on NTFS it can stand for `.claude`. `--trust` skips the question.
+    - Files that the pull request head's `CLAUDE.md`, `CLAUDE.local.md`,
+      `AGENTS.md`, or `.claude/rules/*.md` import through `@` references,
+      directly or through other imports, are listed as well when the pull
+      request changes them. When the run cannot read all of those imports, it
+      asks anyway, saying that the files could not be checked.
   - Checking out the worktree requires Git 2.31 or later; with an older Git
     the run stops with an error.
 
@@ -88,9 +92,12 @@ request's title and description and its CI results.
 - It runs with Read, Glob, Grep, and Write only, without shell or network
   access.
 
-Every sub-agent is told to treat the pull request's text — its title,
-description, comments, CI output, and commit messages — as data, and to change
-nothing on GitHub or any other remote. In a worktree review, the checked-out
+Every creview sub-agent is told to treat the pull request's text — its title,
+description, comments, CI output, commit messages, and the lines it adds or
+changes in files — and quotes of it in the review document as data, and to
+change nothing on GitHub or any other remote. This includes the sub-agents of
+`/creview:triage`, `/creview:respond`, and `/creview:resolve` when run
+separately on the review document. In a worktree review, the checked-out
 files, `CLAUDE.md`, `AGENTS.md`, and `.claude/**` included, are data as well,
 and the sub-agents are told to run none of them and to run no git command in
 the worktree. These are instructions, not enforcement: for a pull request you
@@ -103,15 +110,17 @@ such a document, `/creview:triage`, `/creview:respond`, and `/creview:resolve`
 work on the current working tree, not on a worktree of the pull request. Check
 out the pull request's head commit before running them; on another commit,
 such as the base branch, they triage, fix, and verify code other than the pull
-request's, and `/creview:respond` applies its fixes to that code. Their
-sub-agents, like every creview sub-agent, treat pull request text quoted in the
-document as data and change nothing on any remote.
+request's. A checkout in your working tree has none of a worktree review's
+protections: Claude Code can load the pull request's `CLAUDE.md`,
+`CLAUDE.local.md`, `AGENTS.md`, and `.claude/**` as instructions or skills, and
+git hooks and filter drivers are not disabled. For a pull request you do not
+trust, review its changes to those files before checking it out.
 
 When the review has Critical, Major, or Minor findings, `/creview:start` asks
 at the end whether to run `/creview:triage` on the new review document, and
-runs it in the same session if you agree. After a worktree review, it asks once
-the worktree is removed, and triage works on the current working tree as when
-run separately. Under `/creview:rounds` it does not ask.
+runs it in the same session if you agree. It does not ask after a worktree
+review, where the current working tree is not at the pull request's head, or
+under `/creview:rounds`.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review

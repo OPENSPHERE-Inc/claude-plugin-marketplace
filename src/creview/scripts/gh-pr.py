@@ -10,18 +10,27 @@ fetch: resolves <pr_url> (https://<host>/<owner>/<repo>/pull/<number>) with gh,
 requires <owner>/<repo> on <host> to be a remote of the current repository and
 the PR to be open, and writes two files to <out_dir>:
   pr.json          url, head and base commits, merge base
-  pr-context.json  title and body, CI check results (the latest run of each
-                   check; the first MAX_JOB_LOGS failed GitHub Actions jobs
-                   carry a log excerpt, or log_error when it could not be
-                   fetched), and the conversation: issue comments, submitted
-                   review bodies, and review comments, at most MAX_COMMENTS of
-                   each kind, with omitted set when any were left out
+  pr-context.json  title and body, CI check results (the latest attempt of each
+                   check in each workflow run; the first MAX_JOB_LOGS failed
+                   GitHub Actions jobs carry a log excerpt, or log_error when
+                   it could not be fetched), and the conversation: issue
+                   comments, submitted review bodies, and review comments, at
+                   most MAX_COMMENTS of each kind, with omitted set when any
+                   were left out
 It prints a JSON object whose in_place is true when HEAD of the current working
 tree is the PR head, and whose instruction_files lists the files the PR changes
 that Claude Code can load as instructions (CLAUDE.md, CLAUDE.local.md,
-AGENTS.md, .claude, and files under .claude/), or is null when GitHub does not
-list every changed file. An in-place working tree with uncommitted changes to
-tracked files (outside .claude/tmp and .claude/worktrees) is an error.
+AGENTS.md, .claude, files under .claude/, and the files that the PR head's
+CLAUDE.md, CLAUDE.local.md, AGENTS.md, and .claude/rules/*.md import through @
+references, transitively) and the paths with a component shaped like a Windows
+8.3 short name, such as CLAUDE~1, which can alias them on NTFS, or is null when
+GitHub does not list every changed file, the PR head's tree is truncated, or
+following the imports would read more than MAX_IMPORT_FILES files. The list
+holds at most MAX_LISTED_FILES paths, with non-printable characters and
+backslashes escaped and each cut at PATH_CHARS characters;
+instruction_files_total counts them all, or is null along with it. An in-place
+working tree with uncommitted changes to tracked files (outside .claude/tmp and
+.claude/worktrees) is an error.
 
 checkout: adds a detached worktree under .claude/worktrees/ of the current
 working tree, checks the PR head out in it with git hooks and the configured
@@ -30,15 +39,18 @@ out as plain files, confirms its HEAD is the head fetch recorded, and prints a
 JSON object with main_root and worktree_path.
 A failed checkout removes the worktree it added.
 
-remove: removes a worktree checkout added, with git hooks and the configured
-filter drivers disabled, and its parent directory when left empty. A worktree
-with uncommitted changes is kept, and the exit status is 1.
+remove: removes a worktree that checkout added
+(<main_root>/.claude/worktrees/creview-pr-<number>-<timestamp>; any other path
+is an error), with git hooks and the configured filter drivers disabled, and its
+parent directory when left empty. A worktree with uncommitted changes is kept,
+and the exit status is 1.
 
 Exits 1 with an error message on stderr on any failure.
 """
 
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -61,12 +73,24 @@ SSH_SCHEMES = {"ssh", "git+ssh", "ssh+git"}
 SHA_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 # Scratch and worktree directories of the creview skills, not part of the review.
 SCRATCH_EXCLUDES = [":(top,exclude).claude/tmp", ":(top,exclude).claude/worktrees"]
-# Files Claude Code can load as instructions or skills from a checked-out tree.
+# The name of a worktree cmd_checkout adds under .claude/worktrees.
+WORKTREE_NAME_RE = re.compile(r"creview-pr-[0-9]+-[0-9]{8}-[0-9]{6}")
+# Files Claude Code can load as instructions or skills from a checked-out tree, and
+# path components shaped like a Windows 8.3 short name, which can alias .claude on NTFS.
 INSTRUCTION_FILE_RE = re.compile(
-    r"(?:^|/)(?:(?:CLAUDE(?:\.local)?|AGENTS)\.md$|\.claude(?:/|$))", re.IGNORECASE
+    r"(?:^|/)(?:(?:CLAUDE(?:\.local)?|AGENTS)\.md$|\.claude(?:/|$)|[^/]*~[0-9])", re.IGNORECASE
 )
+# Memory files Claude Code loads from a checked-out tree, expanding their @ imports.
+MEMORY_FILE_RE = re.compile(
+    r"(?:^|/)(?:(?:CLAUDE(?:\.local)?|AGENTS)\.md|\.claude/rules/.+\.md)$", re.IGNORECASE
+)
+# Deliberately broad: code spans are not skipped, and @ may follow punctuation.
+IMPORT_RE = re.compile(r"(?<!\w)@(?=((?:\\ |\S)+))")
+IMPORT_LEADING = "\"'`([{<*_"
+IMPORT_TRAILING = "\"'`)]}>*_,.;:!?"
+MAX_IMPORT_FILES = 50
 ACTIONS_JOB_RE = re.compile(
-    r"https://([^/]+)/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/actions/runs/[0-9]+/job/([0-9]+)"
+    r"https://([^/]+)/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/actions/runs/([0-9]+)/job/([0-9]+)"
     r"(?:[/?#].*)?"
 )
 FAILED_CONCLUSIONS = {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"}
@@ -78,8 +102,10 @@ COMMENT_CHARS = 4000
 PAGE_SIZE = 100
 MAX_PAGES = 10
 MAX_COMMENTS = 50
-# GitHub lists at most 3000 files of a pull request.
-MAX_FILE_PAGES = 3000 // PAGE_SIZE
+MAX_LISTED_FILES = 20
+PATH_CHARS = 200
+# GitHub lists at most 300 files of a comparison.
+MAX_COMPARE_FILES = 300
 
 
 class Error(Exception):
@@ -123,6 +149,21 @@ def clip(text, limit):
     return text if len(text) <= limit else text[:limit] + "\n[truncated]"
 
 
+def shown_path(path):
+    # A path is shown to the user; bidirectional controls and the like could disguise it.
+    shown, size = [], 0
+    for ch in path:
+        if ch.isprintable() and ch != "\\":
+            piece = ch
+        else:
+            piece = f"\\u{ord(ch):04x}" if ord(ch) <= 0xFFFF else f"\\U{ord(ch):08x}"
+        if size + len(piece) > PATH_CHARS:
+            return "".join(shown) + " [truncated]"
+        shown.append(piece)
+        size += len(piece)
+    return "".join(shown)
+
+
 def login(user):
     return (user or {}).get("login") or "ghost"
 
@@ -159,13 +200,19 @@ def started_at(check):
     return check.get("startedAt") or ""
 
 
+def check_key(check):
+    # A rerun keeps its workflow run's ID; a run for another event on the same head has its own.
+    job = ACTIONS_JOB_RE.fullmatch(check.get("detailsUrl") or "")
+    return check.get("workflowName"), check.get("name"), job.group(3) if job else None
+
+
 def ci_checks(rollup, host, repos):
     rollup = rollup or []
     # Reruns leave the earlier runs of a check in the rollup; a status context comes once.
     latest = {}
     for c in rollup:
         if c.get("__typename") != "StatusContext":
-            key = (c.get("workflowName"), c.get("name"))
+            key = check_key(c)
             if key not in latest or started_at(c) > started_at(latest[key]):
                 latest[key] = c
     checks, logs = [], 0
@@ -178,7 +225,7 @@ def ci_checks(rollup, host, repos):
                 "url": c.get("targetUrl"),
             })
             continue
-        if latest[(c.get("workflowName"), c.get("name"))] is not c:
+        if latest[check_key(c)] is not c:
             continue
         check = {
             "name": c.get("name"),
@@ -192,7 +239,7 @@ def ci_checks(rollup, host, repos):
                 and job.group(2).lower() in repos and logs < MAX_JOB_LOGS):
             logs += 1
             try:
-                check["log_excerpt"] = job_log_excerpt(host, job.group(2), job.group(3))
+                check["log_excerpt"] = job_log_excerpt(host, job.group(2), job.group(4))
             except Error as e:
                 check["log_error"] = str(e)
         checks.append(check)
@@ -285,6 +332,56 @@ def is_remote(host, owner, name):
     return False
 
 
+def import_refs(text):
+    refs = set()
+    for m in IMPORT_RE.finditer(text):
+        ref = m.group(1).replace("\\ ", " ")
+        for r in (ref, ref.lstrip(IMPORT_LEADING).rstrip(IMPORT_TRAILING)):
+            refs.update((r, r.replace("\\", "/")))
+    return refs
+
+
+def import_target(source, ref):
+    # A home-relative or absolute import names a file outside the PR's tree.
+    if not ref or ref.startswith(("~", "/")):
+        return None
+    path = posixpath.normpath(posixpath.join(posixpath.dirname(source), ref)).lower()
+    return None if path == ".." or path.startswith("../") else path
+
+
+def imported_files(host, repo, head_sha):
+    # The lowercased paths of the PR head's memory files and of the files they import,
+    # transitively, or None when they cannot all be read.
+    tree = json.loads(run([
+        "gh", "api", "--hostname", host, f"repos/{repo}/git/trees/{head_sha}?recursive=1",
+    ]))
+    entries = tree.get("tree") if isinstance(tree, dict) else None
+    if not isinstance(entries, list) or tree.get("truncated") is not False:
+        return None
+    blobs = {}
+    for e in entries:
+        if isinstance(e, dict) and e.get("type") == "blob" and isinstance(e.get("path"), str):
+            blobs.setdefault(e["path"].lower(), []).append(e.get("sha"))
+    reached = {path for path in blobs if MEMORY_FILE_RE.search(path)}
+    queue, reads = sorted(reached), 0
+    while queue:
+        path = queue.pop()
+        for blob_sha in blobs[path]:
+            if reads == MAX_IMPORT_FILES:
+                return None
+            reads += 1
+            text = run([
+                "gh", "api", "--hostname", host, "-H", "Accept: application/vnd.github.raw+json",
+                f"repos/{repo}/git/blobs/{sha(blob_sha, 'blob')}",
+            ])
+            for ref in import_refs(text):
+                target = import_target(path, ref)
+                if target in blobs and target not in reached:
+                    reached.add(target)
+                    queue.append(target)
+    return reached
+
+
 def cmd_fetch(pr_url, out_dir):
     m = PR_URL_RE.fullmatch(pr_url)
     if not m:
@@ -313,11 +410,10 @@ def cmd_fetch(pr_url, out_dir):
     head_name = (pr.get("headRepository") or {}).get("name")
     if isinstance(head_owner, str) and isinstance(head_name, str):
         job_repos.add(f"{head_owner}/{head_name}".lower())
-    merge_base = sha(run([
-        "gh", "api", "--hostname", host,
-        f"repos/{repo}/compare/{base_sha}...{head_sha}",
-        "--jq", ".merge_base_commit.sha",
-    ]).strip(), "merge base")
+    compare = json.loads(run([
+        "gh", "api", "--hostname", host, f"repos/{repo}/compare/{base_sha}...{head_sha}",
+    ]))
+    merge_base = sha((compare.get("merge_base_commit") or {}).get("sha"), "merge base")
 
     in_place = run(["git", "rev-parse", "HEAD"]).strip() == head_sha
     if in_place and run([
@@ -328,13 +424,16 @@ def cmd_fetch(pr_url, out_dir):
             "commit or stash them first"
         )
 
-    files, complete = api_pages(f"repos/{repo}/pulls/{number}/files", host, MAX_FILE_PAGES)
+    files = compare.get("files")
     instruction_files = None
-    if complete:
-        paths = (p for f in files for p in (f.get("filename"), f.get("previous_filename")))
-        instruction_files = list(dict.fromkeys(
-            p for p in paths if isinstance(p, str) and INSTRUCTION_FILE_RE.search(p)
-        ))
+    if isinstance(files, list) and len(files) < MAX_COMPARE_FILES:
+        imported = imported_files(host, repo, head_sha)
+        if imported is not None:
+            paths = (p for f in files for p in (f.get("filename"), f.get("previous_filename")))
+            instruction_files = list(dict.fromkeys(
+                p for p in paths if isinstance(p, str)
+                and (INSTRUCTION_FILE_RE.search(p) or p.lower() in imported)
+            ))
 
     write_json(os.path.join(out_dir, "pr.json"), {
         "url": url,
@@ -356,7 +455,10 @@ def cmd_fetch(pr_url, out_dir):
         "head_sha": head_sha,
         "merge_base": merge_base,
         "in_place": in_place,
-        "instruction_files": instruction_files,
+        "instruction_files": None if instruction_files is None else [
+            shown_path(p) for p in instruction_files[:MAX_LISTED_FILES]
+        ],
+        "instruction_files_total": None if instruction_files is None else len(instruction_files),
     }
 
 
@@ -373,10 +475,10 @@ def filter_overrides():
 
 
 def checkout_env(overrides):
-    # A PR can add or change the hooks a relative core.hooksPath points at, its
-    # .gitattributes picks which of the user's filter drivers run on its files, and its
-    # symbolic links can point outside the worktree; gh runs git itself, so the overrides
-    # travel in the environment.
+    # A PR can add or change the hooks a relative core.hooksPath or core.fsmonitor points
+    # at, its .gitattributes picks which of the user's filter drivers run on its files, and
+    # its symbolic links can point outside the worktree; gh runs git itself, so the
+    # overrides travel in the environment.
     env = dict(os.environ)
     try:
         n = int(env.get("GIT_CONFIG_COUNT") or 0)
@@ -395,7 +497,8 @@ def checkout_env(overrides):
 
 def hook_free_env(no_hooks):
     env = checkout_env([
-        ("core.hooksPath", no_hooks), ("core.symlinks", "false"), *filter_overrides(),
+        ("core.hooksPath", no_hooks), ("core.fsmonitor", "false"), ("core.symlinks", "false"),
+        *filter_overrides(),
     ])
     # Git before 2.31 ignores GIT_CONFIG_COUNT; refuse rather than run hooks.
     hooks = run(["git", "config", "--get", "core.hooksPath"], env=env, ok=(0, 1)).strip()
@@ -457,6 +560,10 @@ def cmd_checkout(pr_json):
 
 
 def cmd_remove(path):
+    main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
+    parent, _, name = path.rpartition("/")
+    if parent != f"{main_root}/.claude/worktrees" or not WORKTREE_NAME_RE.fullmatch(name):
+        raise Error(f"not a worktree that checkout adds: {path}")
     with tempfile.TemporaryDirectory() as no_hooks:
         env = hook_free_env(no_hooks)
         # git checks that the worktree is clean with a git status that inherits the overrides.
