@@ -39,14 +39,16 @@ Add this marketplace, then install the plugins:
 
 ## Reviewer / fixer agents
 
-`creview` does **not** bundle specialist reviewer agents. It enumerates agents
-recursively (`**/*.md`, so subdirectories are included) from the **destination
-project** (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin
-bundle**, reads each agent's `description`, and selects the most relevant agents
-per finding. When no suitable agent exists, it falls back to
-`general-purpose`. The plugin bundles only its workflow helper agents, such as
-the `review-helper` aggregation agent, and one exception to the above:
-`pr-description-reviewer`, a fixed-role reviewer that checks a pull request's
+Apart from the bundled agents described below, `creview` does **not** bundle
+specialist reviewer agents. It enumerates agents recursively (`**/*.md`, so
+subdirectories are included) from the **destination project**
+(`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin bundle**, reads
+each agent's `description`, and selects the most relevant agents per finding.
+When no suitable agent exists, it falls back to `general-purpose`.
+From the plugin bundle, only the comment-discipline reviewer `comment-sensei` is
+a selection candidate. The skills launch the other bundled agents by name:
+workflow helper agents such as the `review-helper` aggregation agent, and the
+fixed-role reviewer `pr-description-reviewer`, which checks a pull request's
 description and CI results when `/creview:start` reviews a pull request.
 
 ## Source of truth and localization
