@@ -112,8 +112,9 @@ agent_paths = ["CLAUDE.md", "sub/claude.MD", "sub/.Claude/x.md", "AGENTS.md", ".
 
 
 def git(*args, cwd=repo, env=None):
-    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd,
-                   env=env, check=True, capture_output=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t",
+                    "-c", "commit.gpgsign=false", *args],
+                   cwd=cwd, env=env, check=True, capture_output=True)
 
 
 os.makedirs(repo)
@@ -124,17 +125,52 @@ for path in ["sub/notes.txt", *agent_paths]:
         f.write(path)
     git("add", "--", path)
     git("commit", "-qm", path)
-git("worktree", "add", "-q", "--no-checkout", "--detach", wt, f"HEAD~{len(agent_paths)}")
-git("checkout", "-q", "--detach", "HEAD", cwd=wt, env=g.leave_out_agent_files(wt, os.environ))
-expect("sparse checkout keeps sub/notes.txt",
-       os.path.isfile(os.path.join(wt, "sub", "notes.txt")), True)
-expect("sparse checkout leaves out agent files", g.agent_file_left(wt), None)
-with open(os.path.join(wt, "sub", "CLAUDE.md"), "w"):
-    pass
-expect("agent_file_left sub/CLAUDE.md", g.agent_file_left(wt), "CLAUDE.md")
-git("worktree", "remove", "--force", wt)
+git("branch", "tip")
+base = f"HEAD~{len(agent_paths)}"
+probe = dict(os.environ, GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="t.k", GIT_CONFIG_VALUE_0="v")
+if subprocess.run(["git", "config", "--get", "t.k"], env=probe, capture_output=True,
+                  text=True).stdout.strip() != "v":
+    print("SKIP: gh-pr.py sparse checkout cases (git does not apply GIT_CONFIG_COUNT)")
+else:
+    # Under core.ignorecase=false the sparse patterns match case-sensitively, as on Linux.
+    checkout = ("-c", "core.ignorecase=false", "checkout", "-q", "--detach", "tip")
+    git("worktree", "add", "-q", "--no-checkout", "--detach", wt, base)
+    git(*checkout, cwd=wt, env=g.leave_out_agent_files(wt, os.environ))
+    expect("sparse checkout keeps sub/notes.txt",
+           os.path.isfile(os.path.join(wt, "sub", "notes.txt")), True)
+    expect("sparse checkout leaves out agent files", g.agent_file_left(wt), None)
+    for p in agent_paths:
+        expect(f"sparse checkout leaves out {p}", os.path.lexists(os.path.join(wt, p)), False)
+    with open(os.path.join(wt, "sub", "CLAUDE.md"), "w"):
+        pass
+    expect("agent_file_left sub/CLAUDE.md", g.agent_file_left(wt), "sub/CLAUDE.md")
+    git("worktree", "remove", "--force", wt)
+    plain = os.path.join(sys.argv[2], "sparse-plain")
+    git("worktree", "add", "-q", "--no-checkout", "--detach", plain, base)
+    git(*checkout, cwd=plain)
+    for p in agent_paths:
+        expect(f"checkout without sparse env resolves {p}",
+               os.path.lexists(os.path.join(plain, p)), True)
+    expect("checkout without sparse env resolves CLAUDE.md", g.agent_file_left(plain),
+           "CLAUDE.md")
+    git("worktree", "remove", "--force", plain)
+try:
+    raised = repr(g.agent_file_left(os.path.join(sys.argv[2], "missing")))
+except Exception as e:
+    raised = type(e).__name__
+expect("agent_file_left on a missing directory", raised, "FileNotFoundError")
 sys.exit(1 if failed else 0)
 PY
+for opt in --trusted -t; do
+    out="$(python3 "${GHPR}" checkout "${SANDBOX}/no-pr.json" "${opt}" 2>&1)"; rc=$?
+    check "gh-pr.py checkout rejects ${opt}" 1 "${rc}"
+    [[ "${out}" == *"unknown checkout option"* ]] \
+        || { note "FAIL: gh-pr.py checkout ${opt} printed '${out}'"; fail=1; }
+done
+out="$(python3 "${GHPR}" checkout a b c 2>&1)"; rc=$?
+check "gh-pr.py checkout with three arguments" 1 "${rc}"
+[[ "${out}" == *"Usage:"* ]] \
+    || { note "FAIL: gh-pr.py checkout with three arguments printed '${out}'"; fail=1; }
 mkdir -p "${SANDBOX}/proj/.claude/tmp/sub" "${SANDBOX}/outside"
 : > "${SANDBOX}/proj/.claude/tmp/sub/file.txt"
 : > "${SANDBOX}/outside/victim.txt"

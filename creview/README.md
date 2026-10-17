@@ -69,8 +69,8 @@ host. `--base` and `--range` cannot be combined with it.
     - The reviewers see the pull request's changes to them in the diff only.
     - `--trust` checks them out as well.
     - To review a pull request's agent configuration with those files in
-      place, give `--trust`, or check out the head commit in your working tree
-      for an in-place review, and run the review in a sandbox.
+      place, run the review in a sandbox, either with `--trust` or with the
+      head commit checked out in your working tree for an in-place review.
   - Checking out the worktree requires Git 2.31 or later; with an older Git
     the run stops with an error.
 
@@ -138,8 +138,8 @@ and the pull request's code can run, for example in these ways:
     `git status` run the pull request's version of that script.
   - The pull request's `.gitattributes` chooses which filters run.
 - Claude Code can load the pull request's `CLAUDE.md`, `CLAUDE.local.md`,
-  `AGENTS.md`, and `.claude/**` as instructions or skills, along with the files
-  they import through `@` references.
+  `AGENTS.md`, `.mcp.json`, and `.claude/**` as instructions, skills, or
+  settings, along with the files they import through `@` references.
 - `/creview:respond` runs the format, build, and test commands, and with them
   the pull request's build scripts and tests.
   - Without a `build-format.md`, it takes those commands from the checkout's
@@ -232,9 +232,8 @@ Nested sub-agent spawning is required
   sub-agent, which spawns that phase's own sub-agents, and the triage
   sub-agent spawns the challenge sub-agents and the adjudication
   sub-agent.
-- `/creview:triage` on its own, or run by `/creview:start` at its end — 2 or
-  more. The triage sub-agent spawns the challenge sub-agents and the
-  adjudication sub-agent.
+- `/creview:triage` on its own — 2 or more. The triage sub-agent spawns
+  the challenge sub-agents and the adjudication sub-agent.
 
 A long run also consumes many subagent slots — the challenge sub-agents alone
 number three per batch of eight findings, and a split review runs one reviewer
