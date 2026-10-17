@@ -28,10 +28,12 @@ in_place is true, GitHub does not list every changed file, the PR head's tree is
 truncated, or following the imports would read more than MAX_IMPORT_FILES
 files, a file larger than MAX_IMPORT_BYTES bytes, or a file with more than
 MAX_IMPORT_REFS @ references or one of IMPORT_CHARS characters or more. The
-list holds at most MAX_LISTED_FILES paths, the files Claude Code loads by name
-or from .claude first, then the imported files, then the 8.3-shaped paths, with
-non-printable characters and backslashes escaped and each cut at PATH_CHARS
-characters; instruction_files_total counts them all, or is null along with it.
+list holds at most MAX_LISTED_FILES paths, the memory files (CLAUDE.md,
+CLAUDE.local.md, AGENTS.md, and .claude/rules/*.md) first, then the imported
+files, then .claude and the other paths under it, then the 8.3-shaped paths,
+with non-printable characters and backslashes escaped and each cut at
+PATH_CHARS characters; instruction_files_total counts them all, or is null
+along with it.
 An in-place working tree with uncommitted changes to tracked files (outside
 .claude/tmp and .claude/worktrees) is an error.
 
@@ -401,14 +403,16 @@ def instruction_paths(files, imported):
     paths = (p for f in files for p in (f.get("filename"), f.get("previous_filename")))
     ranked = []
     for p in dict.fromkeys(p for p in paths if isinstance(p, str)):
-        if INSTRUCTION_FILE_RE.search(p):
+        if MEMORY_FILE_RE.search(p):
             ranked.append((0, p))
         elif p.lower() in imported:
             ranked.append((1, p))
-        elif SHORT_NAME_RE.search(p):
+        elif INSTRUCTION_FILE_RE.search(p):
             ranked.append((2, p))
-    # 8.3-shaped names are cheap to add, so they go last and cannot crowd the others out of
-    # the shown list.
+        elif SHORT_NAME_RE.search(p):
+            ranked.append((3, p))
+    # Memory files and their imports go first, so paths that are cheap to add (other paths
+    # under .claude, 8.3-shaped names) cannot crowd them out of the shown list.
     return [p for _, p in sorted(ranked, key=lambda r: r[0])]
 
 

@@ -132,10 +132,11 @@ for url, run_id in ((job, "123"), ("https://example.com/x", None), (None, None))
     expect(f"check_key {url}", g.check_key({"workflowName": "w", "name": "n", "detailsUrl": url}),
            ("w", "n", run_id))
 
-files = [{"filename": "-notes~1.md"}, {"filename": "Docs/A.md"}, {"filename": "README.md"},
-         {"filename": "src/CLAUDE.md", "previous_filename": ".claude/x.md"}]
+files = [{"filename": "-notes~1.md"}, {"filename": ".claude/-/01.txt"}, {"filename": "Docs/A.md"},
+         {"filename": "README.md"},
+         {"filename": "src/CLAUDE.md", "previous_filename": ".claude/rules/x.md"}]
 expect("instruction_paths order", g.instruction_paths(files, {"docs/a.md"}),
-       ["src/CLAUDE.md", ".claude/x.md", "Docs/A.md", "-notes~1.md"])
+       ["src/CLAUDE.md", ".claude/rules/x.md", "Docs/A.md", ".claude/-/01.txt", "-notes~1.md"])
 
 
 def imported(texts, sizes=None):
