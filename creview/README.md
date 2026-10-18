@@ -48,13 +48,14 @@ smaller change stays a single scope.
 reviews that pull request: the diff from its merge base to its head commit.
 The pull request must be open, its repository on its host must be a remote of
 the current clone, and the GitHub CLI (`gh`) must be authenticated for that
-host. `--base` and `--range` cannot be combined with it.
-The diff is taken without rename detection, with every submodule change shown,
-and, with Git 2.41 or later, with the `.gitattributes` of the merge base, so
-neither an exact rename nor the pull request's `.gitmodules` or
-`.gitattributes` can hide a change from the reviewers. With an older Git, the
-review of a pull request that changes a `.gitattributes` file stops with an
-error that asks for Git 2.41 or later.
+host. Reviewing a pull request requires Git 2.41 or later; with an older Git
+the run stops with an error. `--base` and `--range` cannot be combined with a
+pull request URL.
+The diff is taken without rename detection and with the `.gitattributes` of
+the merge base. It includes every change to the commit a submodule points to,
+but not the diff of the files inside a submodule. Neither an exact rename nor
+the pull request's `.gitmodules` or `.gitattributes` can therefore hide a
+change from the reviewers.
 
 - When HEAD is the pull request's head commit, the working tree is reviewed
   in place; uncommitted changes to tracked files stop the run with an error.
@@ -77,8 +78,6 @@ error that asks for Git 2.41 or later.
     - To review a pull request's agent configuration with those files in
       place, run the review in a sandbox, either with `--trust` or with the
       head commit checked out in your working tree for an in-place review.
-  - Checking out the worktree requires Git 2.31 or later; with an older Git
-    the run stops with an error.
 
 One more reviewer runs alongside the code reviewers: the bundled
 `pr-description-reviewer`, which reviews the change in the light of the pull
@@ -281,10 +280,8 @@ candidate; the skills launch the other three by name.
   `gh-pr.py` (resolves a pull request for `/creview:start`, checks its head
   commit out in a worktree, and removes that worktree). The scripts require
   `python3` (3.9 or later) on the `PATH`; `gh-pr.py` also requires an
-  authenticated GitHub CLI (`gh`), and its worktree commands require Git 2.31
-  or later. `fetch-diff.sh --pr` requires Git 2.41 or later for a pull request
-  that changes a `.gitattributes` file. Skills invoke them via
-  `${CLAUDE_PLUGIN_ROOT}/scripts/...`;
+  authenticated GitHub CLI (`gh`), and `fetch-diff.sh --pr` requires Git 2.41
+  or later. Skills invoke them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`;
   sub-agent templates receive the resolved path through the `{{plugin_root}}`
   launch variable.
 - `skills/{triage,respond,resolve}/scripts/compile-review.py` — the per-skill
