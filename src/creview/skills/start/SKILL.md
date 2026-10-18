@@ -166,7 +166,7 @@ PR モードでは、全サブエージェントの起動プロンプトに `(no
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --pr {merge_base} {head_sha} {tmp_dir}/diff.txt
      ```
-     git に `--attr-source` がなく（Git 2.40 で追加）、PR が `.gitattributes` を変更する場合は非ゼロ終了するので、その場合はそのエラーで中止する。
+     非ゼロ終了の場合は、そのエラーで中止する。
 5. スコープ解析サブエージェントを起動して差分を解析させる — テンプレート `scope-analysis.md`、`template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`user_requested = {user_requested}`、オーバーライド `(none)`。戻り値: `{line_count, scopes, extension_summary, rationale, template_id}`。
 6. `line_count == 0` の場合、空のレビュードキュメント（`${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` のヘッダーブロックのみ、重要度セクションなし、PR モードでは `- **PR:** {pr_ref}` を含む）を `{final_doc_path}` に Write してステップ 4 へ直接進む。
 7. `scopes` をそのまま確定する（要素は常に 1 つ以上、各要素は `{scope_id, paths, line_count, reviewers: [{name, reason}]}`）。`s` に数字が続く形以外の `scope_id` は不正な戻り値として扱い、スコープ解析サブエージェントを再起動する。2 回連続した場合は中止する。各スコープの出力ディレクトリを `mkdir -p {tmp_dir}/reviews/{scope_id}` で作成し、PR モードでは `{tmp_dir}/reviews/pr` も作成する。
