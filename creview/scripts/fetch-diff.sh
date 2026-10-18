@@ -92,6 +92,8 @@ fi
 # Reviewers parse these sections as plain unified diffs: pin the prefix
 # options and disable external diff / textconv / color so user git config
 # cannot change the format (or run arbitrary commands).
+# FIXME: text git renders as binary (a NUL byte, or a binary / -diff attribute) shows no
+# changed lines, so a pull request can hide an edit in it. Diff such text with --text.
 review_diff() {
     git ${ATTR_SOURCE:+"--attr-source=${ATTR_SOURCE}"} \
         -c diff.noprefix=false -c diff.mnemonicPrefix=false \
