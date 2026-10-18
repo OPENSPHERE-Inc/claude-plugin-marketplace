@@ -166,7 +166,7 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --pr {merge_base} {head_sha} {tmp_dir}/diff.txt
      ```
-     On a non-zero exit, abort with its error.
+   On a non-zero exit of any of these runs, abort with its error.
 5. Launch the scope-analysis sub-agent to analyze the diff — template `scope-analysis.md`, `template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `user_requested = {user_requested}`, overrides `(none)`. Return value: `{line_count, scopes, extension_summary, rationale, template_id}`.
 6. If `line_count == 0`, Write an empty review document at `{final_doc_path}` — the header block of `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` with no severity sections, carrying `- **PR:** {pr_ref}` in PR mode — and proceed directly to Step 4.
 7. Adopt `scopes` as-is — always at least one element, each `{scope_id, paths, line_count, reviewers: [{name, reason}]}`. A `scope_id` other than `s` followed by digits is a malformed return value: relaunch the scope-analysis sub-agent, and abort when it happens twice in a row. Create each scope's output directory with `mkdir -p {tmp_dir}/reviews/{scope_id}`, and in PR mode also `{tmp_dir}/reviews/pr`.
