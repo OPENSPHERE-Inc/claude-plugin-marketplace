@@ -17,10 +17,10 @@
 # commit, so it is outside any <from>..<to> range.
 #
 # --pr is --range for a pull request checked out in the working tree: renames
-# are not detected and, with Git 2.40 or later, attributes are read from the
-# merge base, so neither an exact rename nor the pull request's .gitattributes
-# can hide a change. An older Git has no --attr-source: the diff then reads the
-# checked-out .gitattributes, and a warning naming --attr-source goes to stderr.
+# are not detected and attributes are read from the merge base, so neither an
+# exact rename nor the pull request's .gitattributes can hide a change. A Git
+# older than 2.40 has no --attr-source: --pr then fails when the range changes
+# a .gitattributes file at any depth, in any letter case.
 
 set -euo pipefail
 
@@ -81,9 +81,14 @@ if [[ "${PR_MODE}" -eq 1 ]]; then
     NO_RENAMES="--no-renames"
     if git --attr-source="${DIFF_FROM}" rev-parse --git-dir >/dev/null 2>&1; then
         ATTR_SOURCE="${DIFF_FROM}"
-    else
-        echo "Warning: git lacks --attr-source (added in Git 2.40), so the pull request's" \
-            ".gitattributes can hide changes in this diff" >&2
+    # icase: a case-insensitive file system reads .GitAttributes as .gitattributes.
+    # --no-literal-pathspecs: GIT_LITERAL_PATHSPECS=1 would turn the pathspec magic off.
+    elif ! git --no-literal-pathspecs diff --quiet --no-ext-diff --no-textconv --no-renames \
+            "${DIFF_FROM}" "${TO}" -- ':(glob,icase)**/.gitattributes'; then
+        echo "Error: the pull request changes a .gitattributes file and git lacks --attr-source" \
+            "(added in Git 2.40), so its attributes could hide changes from the diff;" \
+            "use Git 2.40 or later" >&2
+        exit 1
     fi
 fi
 

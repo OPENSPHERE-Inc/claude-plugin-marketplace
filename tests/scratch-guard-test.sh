@@ -343,34 +343,40 @@ prd_git() {
     git -C "${PRD}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
         -c core.autocrlf=false "$@"
 }
-prd_diff() { # <mode> <output-name>, with rename detection on as diff.renames=true sets it
+prd_diff() { # <mode> <from> <to> <output-name>, with rename detection on (diff.renames=true)
     (cd "${PRD}" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.renames GIT_CONFIG_VALUE_0=true \
-        bash "${CFD}" "$1" HEAD~1 HEAD ".claude/tmp/$2")
+        bash "${CFD}" "$1" "$2" "$3" ".claude/tmp/$4")
 }
-mkdir -p "${PRD}" && prd_git init -q && printf 'original\n' > "${PRD}/CLAUDE.md" \
+# Commits: base (HEAD~3), rename (HEAD~2), attrs (HEAD~1), nested (HEAD).
+mkdir -p "${PRD}/sub" && prd_git init -q && printf 'original\n' > "${PRD}/CLAUDE.md" \
     && printf 'payload line\n' > "${PRD}/fixture.txt" && prd_git add CLAUDE.md fixture.txt \
-    && prd_git commit -qm base && printf 'CLAUDE.md -diff\n' > "${PRD}/.gitattributes" \
-    && printf 'changed\n' > "${PRD}/CLAUDE.md" && prd_git mv fixture.txt AGENTS.md \
-    && prd_git add .gitattributes CLAUDE.md && prd_git commit -qm head \
+    && prd_git commit -qm base && prd_git mv fixture.txt AGENTS.md && prd_git commit -qm rename \
+    && printf 'CLAUDE.md -diff\n' > "${PRD}/.gitattributes" \
+    && printf 'changed\n' > "${PRD}/CLAUDE.md" && prd_git add .gitattributes CLAUDE.md \
+    && prd_git commit -qm attrs && printf 'x -diff\n' > "${PRD}/sub/.GitAttributes" \
+    && prd_git add sub/.GitAttributes && prd_git commit -qm nested \
     || { note "FAIL: creview fetch-diff --pr repository setup"; fail=1; }
-rc=0; prd_diff --range range.txt 2>/dev/null || rc=$?
-check "creview fetch-diff --range in the pull request repository" 0 "${rc}"
-grep -q '^Binary files' "${PRD}/.claude/tmp/range.txt" 2>/dev/null \
-    && grep -q '^rename from' "${PRD}/.claude/tmp/range.txt" \
-    || { note "FAIL: creview fetch-diff --range control: no binary CLAUDE.md or rename"; fail=1; }
-rc=0; prd_diff --pr pr.txt 2>"${SANDBOX}/prdiff.err" || rc=$?
-check "creview fetch-diff --pr" 0 "${rc}"
-grep -q '^+payload line$' "${PRD}/.claude/tmp/pr.txt" 2>/dev/null \
-    && ! grep -q '^rename from' "${PRD}/.claude/tmp/pr.txt" \
+rc=0; prd_diff --range HEAD~3 HEAD~2 range-rename.txt 2>/dev/null || rc=$?
+check "creview fetch-diff --range over a rename" 0 "${rc}"
+grep -q '^rename from' "${PRD}/.claude/tmp/range-rename.txt" 2>/dev/null \
+    || { note "FAIL: creview fetch-diff --range control: no rename detected"; fail=1; }
+rc=0; prd_diff --pr HEAD~3 HEAD~2 pr-rename.txt 2>/dev/null || rc=$?
+check "creview fetch-diff --pr over a rename" 0 "${rc}"
+grep -q '^+payload line$' "${PRD}/.claude/tmp/pr-rename.txt" 2>/dev/null \
+    && ! grep -q '^rename from' "${PRD}/.claude/tmp/pr-rename.txt" \
     || { note "FAIL: creview fetch-diff --pr hid the content of a renamed file"; fail=1; }
 if git -C "${PRD}" --attr-source=HEAD rev-parse --git-dir >/dev/null 2>&1; then
-    grep -q '^+changed$' "${PRD}/.claude/tmp/pr.txt" 2>/dev/null \
-        && ! grep -q '^Binary files' "${PRD}/.claude/tmp/pr.txt" \
+    rc=0; prd_diff --range HEAD~2 HEAD~1 range-attrs.txt 2>/dev/null || rc=$?
+    check "creview fetch-diff --range over a .gitattributes change" 0 "${rc}"
+    grep -q '^Binary files' "${PRD}/.claude/tmp/range-attrs.txt" 2>/dev/null \
+        || { note "FAIL: creview fetch-diff --range control: CLAUDE.md is not binary"; fail=1; }
+    rc=0; prd_diff --pr HEAD~2 HEAD~1 pr-attrs.txt 2>"${SANDBOX}/prdiff.err" || rc=$?
+    check "creview fetch-diff --pr over a .gitattributes change" 0 "${rc}"
+    grep -q '^+changed$' "${PRD}/.claude/tmp/pr-attrs.txt" 2>/dev/null \
+        && ! grep -q '^Binary files' "${PRD}/.claude/tmp/pr-attrs.txt" \
         && ! grep -qF -- '--attr-source' "${SANDBOX}/prdiff.err" \
         || { note "FAIL: creview fetch-diff --pr applied the PR's .gitattributes"; fail=1; }
 else
-    grep -qF -- '--attr-source' "${SANDBOX}/prdiff.err" \
-        || { note "FAIL: creview fetch-diff --pr gave no --attr-source warning"; fail=1; }
     note "SKIP: creview fetch-diff --pr attribute case (git has no --attr-source)"
 fi
 # A shim stands in for a Git older than 2.40, which rejects --attr-source as an unknown option.
@@ -380,13 +386,23 @@ mkdir -p "${OLDGIT}" \
         'case "${1:-}" in --attr-source=*) exit 129 ;; esac' "$(command -v git)" \
         > "${OLDGIT}/git" && chmod +x "${OLDGIT}/git" \
     || { note "FAIL: creview fetch-diff --pr old git shim setup"; fail=1; }
-rc=0; (export PATH="${OLDGIT}:${PATH}"; prd_diff --pr oldgit.txt) 2>"${SANDBOX}/prdiff-old.err" \
-    || rc=$?
-check "creview fetch-diff --pr without --attr-source" 0 "${rc}"
-grep -qF -- '--attr-source' "${SANDBOX}/prdiff-old.err" \
-    && grep -q '^Binary files' "${PRD}/.claude/tmp/oldgit.txt" 2>/dev/null \
-    && grep -q '^+payload line$' "${PRD}/.claude/tmp/oldgit.txt" \
-    || { note "FAIL: creview fetch-diff --pr without --attr-source: no warning or diff"; fail=1; }
+old_diff() { # <from> <to> <output-name>: prd_diff --pr with the shim first on the PATH
+    (export PATH="${OLDGIT}:${PATH}"; prd_diff --pr "$@") 2>"${SANDBOX}/prdiff-old.err"
+}
+rc=0; old_diff HEAD~3 HEAD~2 old-rename.txt || rc=$?
+check "creview fetch-diff --pr without --attr-source, .gitattributes unchanged" 0 "${rc}"
+grep -q '^+payload line$' "${PRD}/.claude/tmp/old-rename.txt" 2>/dev/null \
+    && ! grep -qF -- '--attr-source' "${SANDBOX}/prdiff-old.err" \
+    || { note "FAIL: creview fetch-diff --pr without --attr-source: no diff or a warning"; fail=1; }
+rc=0; old_diff HEAD~2 HEAD~1 old-attrs.txt || rc=$?
+check "creview fetch-diff --pr without --attr-source, .gitattributes changed" 1 "${rc}"
+grep -qF '.gitattributes' "${SANDBOX}/prdiff-old.err" \
+    && [[ ! -e "${PRD}/.claude/tmp/old-attrs.txt" ]] \
+    || { note "FAIL: creview fetch-diff --pr without --attr-source: no error or a diff"; fail=1; }
+rc=0; old_diff HEAD~1 HEAD old-nested.txt || rc=$?
+check "creview fetch-diff --pr without --attr-source, sub/.GitAttributes added" 1 "${rc}"
+rc=0; (export GIT_LITERAL_PATHSPECS=1; old_diff HEAD~2 HEAD~1 old-literal.txt) || rc=$?
+check "creview fetch-diff --pr without --attr-source under GIT_LITERAL_PATHSPECS=1" 1 "${rc}"
 
 # --- worktree.sh + scratch dir of another working tree ----------------------------
 MAIN="$(git rev-parse --show-toplevel)"
