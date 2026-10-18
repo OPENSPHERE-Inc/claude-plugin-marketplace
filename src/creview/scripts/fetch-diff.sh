@@ -91,12 +91,13 @@ fi
 
 # Reviewers parse these sections as plain unified diffs: pin the prefix
 # options and disable external diff / textconv / color so user git config
-# cannot change the format (or run arbitrary commands).
+# cannot change the format (or run arbitrary commands). Paths are printed
+# unescaped, since reviewers Read the files by these paths.
 # FIXME: text git renders as binary (a NUL byte, or a binary / -diff attribute) shows no
 # changed lines, so a pull request can hide an edit in it. Diff such text with --text.
 review_diff() {
     git ${ATTR_SOURCE:+"--attr-source=${ATTR_SOURCE}"} \
-        -c diff.noprefix=false -c diff.mnemonicPrefix=false \
+        -c diff.noprefix=false -c diff.mnemonicPrefix=false -c core.quotePath=false \
         diff --no-ext-diff --no-textconv --no-color ${NO_RENAMES:+"${NO_RENAMES}"} \
         --submodule=short ${IGNORE_SUBMODULES:+"${IGNORE_SUBMODULES}"} "$@"
 }
