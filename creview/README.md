@@ -49,11 +49,12 @@ reviews that pull request: the diff from its merge base to its head commit.
 The pull request must be open, its repository on its host must be a remote of
 the current clone, and the GitHub CLI (`gh`) must be authenticated for that
 host. `--base` and `--range` cannot be combined with it.
-The diff is taken without rename detection and, with Git 2.40 or later, with
-the `.gitattributes` of the merge base, so neither an exact rename nor the pull
-request's `.gitattributes` can hide a change from the reviewers. With an older
-Git, the review of a pull request that changes a `.gitattributes` file stops
-with an error that asks for Git 2.40 or later.
+The diff is taken without rename detection, with every submodule change shown,
+and, with Git 2.41 or later, with the `.gitattributes` of the merge base, so
+neither an exact rename nor the pull request's `.gitmodules` or
+`.gitattributes` can hide a change from the reviewers. With an older Git, the
+review of a pull request that changes a `.gitattributes` file stops with an
+error that asks for Git 2.41 or later.
 
 - When HEAD is the pull request's head commit, the working tree is reviewed
   in place; uncommitted changes to tracked files stop the run with an error.
@@ -281,7 +282,7 @@ candidate; the skills launch the other three by name.
   commit out in a worktree, and removes that worktree). The scripts require
   `python3` (3.9 or later) on the `PATH`; `gh-pr.py` also requires an
   authenticated GitHub CLI (`gh`), and its worktree commands require Git 2.31
-  or later. `fetch-diff.sh --pr` requires Git 2.40 or later for a pull request
+  or later. `fetch-diff.sh --pr` requires Git 2.41 or later for a pull request
   that changes a `.gitattributes` file. Skills invoke them via
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`;
   sub-agent templates receive the resolved path through the `{{plugin_root}}`

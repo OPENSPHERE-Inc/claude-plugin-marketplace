@@ -17,10 +17,11 @@
 # commit, so it is outside any <from>..<to> range.
 #
 # --pr is --range for a pull request checked out in the working tree: renames
-# are not detected and attributes are read from the merge base, so neither an
-# exact rename nor the pull request's .gitattributes can hide a change. A Git
-# older than 2.40 has no --attr-source: --pr then fails when the range changes
-# a .gitattributes file at any depth, in any letter case.
+# are not detected, submodule changes are always shown, and attributes are read
+# from the merge base, so neither an exact rename, the pull request's
+# .gitmodules, nor its .gitattributes can hide a change. A Git older than 2.41
+# has no --attr-source: --pr then fails when the range changes, at any depth, a
+# file that a case-insensitive file system may read as .gitattributes.
 
 set -euo pipefail
 
@@ -77,17 +78,28 @@ DIFF_FROM="$(git merge-base "${FROM}" "${TO}" 2>/dev/null || printf '%s' "${FROM
 # is not used: a Git without --attr-source ignores it silently.
 ATTR_SOURCE=""
 NO_RENAMES=""
+IGNORE_SUBMODULES=""
 if [[ "${PR_MODE}" -eq 1 ]]; then
     NO_RENAMES="--no-renames"
+    IGNORE_SUBMODULES="--ignore-submodules=none"
     if git --attr-source="${DIFF_FROM}" rev-parse --git-dir >/dev/null 2>&1; then
         ATTR_SOURCE="${DIFF_FROM}"
-    # icase: a case-insensitive file system reads .GitAttributes as .gitattributes.
-    # --no-literal-pathspecs: GIT_LITERAL_PATHSPECS=1 would turn the pathspec magic off.
-    elif ! git --no-literal-pathspecs diff --quiet --no-ext-diff --no-textconv --no-renames \
-            "${DIFF_FROM}" "${TO}" -- ':(glob,icase)**/.gitattributes'; then
+    # A case-insensitive file system may open .gitattributes under a name that differs in
+    # Unicode case or normalization, or by HFS+ ignorable code points.
+    # -I: the working tree is the pull request's, so its modules must not shadow unicodedata.
+    elif ! git diff --name-only -z --no-relative --no-renames "${DIFF_FROM}" "${TO}" \
+            | python3 -I -c '
+import sys, unicodedata
+ignorable = dict.fromkeys(
+    [*range(0x200C, 0x2010), *range(0x202A, 0x202F), *range(0x206A, 0x2070), 0xFEFF])
+def fold(name):
+    name = unicodedata.normalize("NFD", name.decode("utf-8", "surrogateescape"))
+    return unicodedata.normalize("NFD", name.translate(ignorable).casefold())
+paths = sys.stdin.buffer.read().split(b"\0")
+sys.exit(any(fold(p.rsplit(b"/", 1)[-1]) == ".gitattributes" for p in paths))'; then
         echo "Error: the pull request changes a .gitattributes file and git lacks --attr-source" \
-            "(added in Git 2.40), so its attributes could hide changes from the diff;" \
-            "use Git 2.40 or later" >&2
+            "(added in Git 2.41), so its attributes could hide changes from the diff;" \
+            "use Git 2.41 or later" >&2
         exit 1
     fi
 fi
@@ -98,7 +110,8 @@ fi
 review_diff() {
     git ${ATTR_SOURCE:+"--attr-source=${ATTR_SOURCE}"} \
         -c diff.noprefix=false -c diff.mnemonicPrefix=false \
-        diff --no-ext-diff --no-textconv --no-color ${NO_RENAMES:+"${NO_RENAMES}"} "$@"
+        diff --no-ext-diff --no-textconv --no-color ${NO_RENAMES:+"${NO_RENAMES}"} \
+        ${IGNORE_SUBMODULES:+"${IGNORE_SUBMODULES}"} "$@"
 }
 
 # git diff reports no untracked file in any of its modes. Register them in a

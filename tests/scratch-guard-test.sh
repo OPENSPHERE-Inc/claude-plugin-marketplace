@@ -379,7 +379,7 @@ if git -C "${PRD}" --attr-source=HEAD rev-parse --git-dir >/dev/null 2>&1; then
 else
     note "SKIP: creview fetch-diff --pr attribute case (git has no --attr-source)"
 fi
-# A shim stands in for a Git older than 2.40, which rejects --attr-source as an unknown option.
+# A shim stands in for a Git older than 2.41, which rejects --attr-source as an unknown option.
 OLDGIT="${SANDBOX}/oldgit"
 mkdir -p "${OLDGIT}" \
     && printf '#!/usr/bin/env bash\n%s\nexec %q "$@"\n' \
@@ -403,6 +403,106 @@ rc=0; old_diff HEAD~1 HEAD old-nested.txt || rc=$?
 check "creview fetch-diff --pr without --attr-source, sub/.GitAttributes added" 1 "${rc}"
 rc=0; (export GIT_LITERAL_PATHSPECS=1; old_diff HEAD~2 HEAD~1 old-literal.txt) || rc=$?
 check "creview fetch-diff --pr without --attr-source under GIT_LITERAL_PATHSPECS=1" 1 "${rc}"
+rc=0; (export PATH="${OLDGIT}:${PATH}"; cd "${PRD}/sub" && GIT_CONFIG_COUNT=2 \
+    GIT_CONFIG_KEY_0=diff.renames GIT_CONFIG_VALUE_0=true \
+    GIT_CONFIG_KEY_1=diff.relative GIT_CONFIG_VALUE_1=true \
+    bash "${CFD}" --pr HEAD~2 HEAD~1 .claude/tmp/old-sub.txt) 2>"${SANDBOX}/prdiff-old.err" \
+    || rc=$?
+check "creview fetch-diff --pr without --attr-source from sub/ under diff.relative" 1 "${rc}"
+grep -qF '.gitattributes' "${SANDBOX}/prdiff-old.err" \
+    && [[ ! -e "${PRD}/sub/.claude/tmp/old-sub.txt" ]] \
+    || { note "FAIL: creview fetch-diff --pr from sub/ missed the root .gitattributes"; fail=1; }
+# Each case commits on top of HEAD outside the index and the working tree, so names that a
+# case-insensitive file system folds together never meet on disk.
+ALIAS_BLOB="$(printf '* -diff\n' | prd_git hash-object -w --stdin)"
+alias_commit() { # <path>...: print a commit on top of HEAD that adds each <path>
+    local p idx="${SANDBOX}/alias-index"
+    rm -f "${idx}"
+    GIT_INDEX_FILE="${idx}" prd_git read-tree HEAD \
+        && for p in "$@"; do printf '100644 %s\t%s\0' "${ALIAS_BLOB}" "${p}"; done \
+            | GIT_INDEX_FILE="${idx}" prd_git update-index -z --index-info \
+        && prd_git commit-tree -p HEAD -m alias "$(GIT_INDEX_FILE="${idx}" prd_git write-tree)"
+}
+alias_n=0
+alias_case() { # <case> <expected-rc> <path>...: old_diff from HEAD to alias_commit <path>...
+    local commit out rc=0 name="$1" want="$2"
+    shift 2
+    alias_n=$((alias_n + 1))
+    out="old-alias-${alias_n}.txt"
+    commit="$(alias_commit "$@")" \
+        || { note "FAIL: creview fetch-diff --pr alias setup: ${name}"; fail=1; return; }
+    old_diff HEAD "${commit}" "${out}" || rc=$?
+    check "creview fetch-diff --pr without --attr-source, ${name}" "${want}" "${rc}"
+    if [[ "${want}" -eq 1 ]]; then
+        grep -qF '.gitattributes' "${SANDBOX}/prdiff-old.err" \
+            && [[ ! -e "${PRD}/.claude/tmp/${out}" ]] \
+            || { note "FAIL: creview fetch-diff --pr, ${name}: no error or a diff"; fail=1; }
+    else
+        [[ -s "${PRD}/.claude/tmp/${out}" ]] \
+            || { note "FAIL: creview fetch-diff --pr, ${name}: no diff"; fail=1; }
+    fi
+}
+LONG_S=$'\xc5\xbf' # U+017F, which Unicode case folding maps to s
+# HFS+ ignores U+200C-U+200F, U+202A-U+202E, U+206A-U+206F, U+FEFF: the ends of each range.
+HFS_IGNORABLE=$'\xe2\x80\x8c\xe2\x80\x8f\xe2\x80\xaa\xe2\x80\xae\xe2\x81\xaa\xe2\x81\xaf\xef\xbb\xbf'
+alias_case "sub/.gitattributeſ added" 1 "sub/.gitattribute${LONG_S}"
+alias_case "nested .GITATTRIBUTEſ added" 1 "a/b/c/.GITATTRIBUTE${LONG_S}"
+alias_case "nested .GITATTRIBUTES added" 1 "a/b/c/.GITATTRIBUTES"
+alias_case ".gitattributes with HFS+ ignorables inside added" 1 ".git${HFS_IGNORABLE}attributes"
+alias_case ".gitattributes with a leading HFS+ ignorable added" 1 $'\xef\xbb\xbf'".gitattributes"
+# Near misses: other names, the precomposed and the decomposed ś, and the neighbors of each
+# ignorable range (U+200B, U+2010, U+2029, U+202F, U+2069, U+2070).
+alias_case "near misses added" 0 near/.gitattributes.bak near/x.gitattributes \
+    near/.gitattribute near/gitattributes near/.gitattributes/x \
+    "near/.gitattribute"$'\xc5\x9b' "near/.gitattributes"$'\xcc\x81' \
+    "near/.gitattributes"$'\xe2\x80\x8b' "near/.gitattributes"$'\xe2\x80\x90' \
+    "near/.gitattributes"$'\xe2\x80\xa9' "near/.gitattributes"$'\xe2\x80\xaf' \
+    "near/.gitattributes"$'\xe2\x81\xa9' "near/.gitattributes"$'\xe2\x81\xb0'
+# A module in the pull request's working tree must not replace the one the check imports.
+printf 'import sys\nsys.exit(0)\n' > "${PRD}/unicodedata.py"
+alias_case "sub/.gitattributeſ added, unicodedata.py in the working tree" 1 \
+    "sub/.gitattribute${LONG_S}"
+rm -f "${PRD}/unicodedata.py"
+# A shim in front of the old git shim fails diff --name-only, as for a comparison git cannot make.
+NONAMES="${SANDBOX}/nonames"
+mkdir -p "${NONAMES}" \
+    && printf '#!/usr/bin/env bash\n%s\nexec %q "$@"\n' \
+        'case " $* " in *" --name-only "*) exit 128 ;; esac' "${OLDGIT}/git" \
+        > "${NONAMES}/git" && chmod +x "${NONAMES}/git" \
+    || { note "FAIL: creview fetch-diff --pr failing git shim setup"; fail=1; }
+rc=0; (export PATH="${NONAMES}:${PATH}"; prd_diff --pr HEAD~3 HEAD~2 old-nonames.txt) 2>/dev/null \
+    || rc=$?
+check "creview fetch-diff --pr without --attr-source when the comparison fails" 1 "${rc}"
+[[ ! -e "${PRD}/.claude/tmp/old-nonames.txt" ]] \
+    || { note "FAIL: creview fetch-diff --pr wrote a diff after the comparison failed"; fail=1; }
+
+# --- fetch-diff.sh (creview) --pr: the pull request's .gitmodules hides no submodule change -
+PRS="${SANDBOX}/prsub"
+prs_git() {
+    git -C "${PRS}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
+        -c core.autocrlf=false "$@"
+}
+prs_diff() { # <mode> <output-name>: fetch-diff.sh <mode> HEAD~1 HEAD
+    (cd "${PRS}" && bash "${CFD}" "$1" HEAD~1 HEAD ".claude/tmp/$2")
+}
+# Commits: base, lib added as a submodule with ignore = all (HEAD~1), lib moved (HEAD).
+mkdir -p "${PRS}" && prs_git init -q && prs_git commit -q --allow-empty -m base \
+    && SUB_OLD="$(prs_git rev-parse HEAD)" \
+    && printf '[submodule "lib"]\n\tpath = lib\n\tignore = all\n' > "${PRS}/.gitmodules" \
+    && prs_git add .gitmodules && prs_git update-index --add --cacheinfo "160000,${SUB_OLD},lib" \
+    && prs_git commit -qm submodule && SUB_NEW="$(prs_git rev-parse HEAD)" \
+    && prs_git update-index --cacheinfo "160000,${SUB_NEW},lib" && prs_git commit -qm bump \
+    || { note "FAIL: creview fetch-diff --pr submodule repository setup"; fail=1; }
+rc=0; prs_diff --range range-sub.txt 2>/dev/null || rc=$?
+check "creview fetch-diff --range over a submodule with ignore = all" 0 "${rc}"
+[[ -s "${PRS}/.claude/tmp/range-sub.txt" ]] \
+    && ! grep -q 'Subproject commit' "${PRS}/.claude/tmp/range-sub.txt" \
+    || { note "FAIL: creview fetch-diff --range control: the submodule change is shown"; fail=1; }
+rc=0; prs_diff --pr pr-sub.txt 2>/dev/null || rc=$?
+check "creview fetch-diff --pr over a submodule with ignore = all" 0 "${rc}"
+grep -q $'^M\tlib$' "${PRS}/.claude/tmp/pr-sub.txt" 2>/dev/null \
+    && grep -qxF "+Subproject commit ${SUB_NEW}" "${PRS}/.claude/tmp/pr-sub.txt" \
+    || { note "FAIL: creview fetch-diff --pr hid a submodule change behind .gitmodules"; fail=1; }
 
 # --- worktree.sh + scratch dir of another working tree ----------------------------
 MAIN="$(git rev-parse --show-toplevel)"
