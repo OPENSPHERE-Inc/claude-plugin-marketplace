@@ -56,6 +56,13 @@ needs, and reads the file when it needs review. A reviewer can view an image,
 but judges other binary formats, such as fonts or archives, from their uses
 only.
 
+Git also treats as binary a text file with a NUL byte in its first 8,000 bytes
+and a path that `.gitattributes` marks `binary` or `-diff`, so the diff does
+not show its content. A reviewer reads such a text file in full and reviews it
+as text, whatever uses it; for a modified one, whose changed lines the diff
+does not show, it also reports as a finding that the change could not be
+located.
+
 `/creview:start` also takes a GitHub pull request URL
 (`https://{host}/{owner}/{repo}/pull/{number}`) as its review target and then
 reviews that pull request: the diff from its merge base to its head commit.
@@ -68,13 +75,8 @@ The diff is taken without rename detection, with the `.gitattributes` of the
 merge base, and with every change of the commit a submodule points to, so
 neither an exact rename nor the pull request's `.gitmodules` or `.gitattributes`
 can hide a change from the reviewers. For a submodule, the diff shows only its
-old and new commits, not the changes to the files inside it. Git also
-treats as binary a text file with a NUL byte in its first 8,000 bytes and a
-path that the merge base's `.gitattributes` marks `binary` or `-diff`, so the
-diff does not show its content. A reviewer reads such a text file in full from
-the checked-out pull request and reviews it as text, whatever uses it; for a
-modified one, whose changed lines the diff does not show, it also reports as a
-finding that the change could not be located.
+old and new commits, not the changes to the files inside it. A reviewer reads
+a text file that the diff shows as binary from the checked-out pull request.
 
 - When HEAD is the pull request's head commit, the working tree is reviewed
   in place; uncommitted changes to tracked files stop the run with an error.
