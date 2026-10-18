@@ -373,6 +373,20 @@ else
         || { note "FAIL: creview fetch-diff --pr gave no --attr-source warning"; fail=1; }
     note "SKIP: creview fetch-diff --pr attribute case (git has no --attr-source)"
 fi
+# A shim stands in for a Git older than 2.40, which rejects --attr-source as an unknown option.
+OLDGIT="${SANDBOX}/oldgit"
+mkdir -p "${OLDGIT}" \
+    && printf '#!/usr/bin/env bash\n%s\nexec %q "$@"\n' \
+        'case "${1:-}" in --attr-source=*) exit 129 ;; esac' "$(command -v git)" \
+        > "${OLDGIT}/git" && chmod +x "${OLDGIT}/git" \
+    || { note "FAIL: creview fetch-diff --pr old git shim setup"; fail=1; }
+rc=0; (export PATH="${OLDGIT}:${PATH}"; prd_diff --pr oldgit.txt) 2>"${SANDBOX}/prdiff-old.err" \
+    || rc=$?
+check "creview fetch-diff --pr without --attr-source" 0 "${rc}"
+grep -qF -- '--attr-source' "${SANDBOX}/prdiff-old.err" \
+    && grep -q '^Binary files' "${PRD}/.claude/tmp/oldgit.txt" 2>/dev/null \
+    && grep -q '^+payload line$' "${PRD}/.claude/tmp/oldgit.txt" \
+    || { note "FAIL: creview fetch-diff --pr without --attr-source: no warning or diff"; fail=1; }
 
 # --- worktree.sh + scratch dir of another working tree ----------------------------
 MAIN="$(git rev-parse --show-toplevel)"
