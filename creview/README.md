@@ -55,7 +55,12 @@ The diff is taken without rename detection, with the `.gitattributes` of the
 merge base, and with every change of the commit a submodule points to, so
 neither an exact rename nor the pull request's `.gitmodules` or `.gitattributes`
 can hide a change from the reviewers. For a submodule, the diff shows only its
-old and new commits, not the changes to the files inside it.
+old and new commits, not the changes to the files inside it. For a file git
+treats as binary, the diff states only that it changed, not its contents. Such
+files include a text file with a NUL byte in its first 8,000 bytes and a path
+that the merge base's `.gitattributes` marks `binary` or `-diff`. When a change
+consists only of such files, no reviewer is launched: the review document is
+empty because nothing was reviewed, not because nothing was found.
 
 - When HEAD is the pull request's head commit, the working tree is reviewed
   in place; uncommitted changes to tracked files stop the run with an error.
