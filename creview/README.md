@@ -43,14 +43,18 @@ scope, so a large change is reviewed slice by slice rather than sampled by
 reviewers that stop exploring once they have produced a few findings. A
 smaller change stays a single scope.
 
-Every changed file is reviewed, including a change with no added or removed
-lines, such as a binary file, a mode change, or an empty file; the review
-document is empty only when the change touches no file. For a binary file the
-diff states only that it changed. The scope-analysis sub-agent picks its
-reviewers from what uses it in the source as well as from its extension, and
-each reviewer judges from that context and its own perspective whether the
-file needs review, for example whether an updated image changes a web page's
-layout or lacks the resolution its target DPI needs, and then reads the file.
+Every changed file is assigned to reviewers, including a change with no added
+or removed lines, such as a binary file, a mode change, or an empty file added
+or deleted. A change that touches no file launches no reviewer and yields a
+review document with only its header and no severity sections. For a binary
+file the diff states only that it changed. The scope-analysis sub-agent picks the
+reviewers for such a file from what uses the file in the source as well as
+from its extension, and each reviewer judges from that context and its own
+perspective whether the file needs review, for example whether an updated
+image changes a web page's layout or lacks the resolution its target DPI
+needs, and reads the file when it needs review. A reviewer can view an image,
+but judges other binary formats, such as fonts or archives, from their uses
+only.
 
 `/creview:start` also takes a GitHub pull request URL
 (`https://{host}/{owner}/{repo}/pull/{number}`) as its review target and then
@@ -66,9 +70,11 @@ neither an exact rename nor the pull request's `.gitmodules` or `.gitattributes`
 can hide a change from the reviewers. For a submodule, the diff shows only its
 old and new commits, not the changes to the files inside it. Git also
 treats as binary a text file with a NUL byte in its first 8,000 bytes and a
-path that the merge base's `.gitattributes` marks `binary` or `-diff`; like any
-binary file, its content is not in the diff, and a reviewer reads it from the
-checked-out pull request when it reviews the file.
+path that the merge base's `.gitattributes` marks `binary` or `-diff`, so the
+diff does not show its content. A reviewer reads such a text file in full from
+the checked-out pull request and reviews it as text, whatever uses it; for a
+modified one, whose changed lines the diff does not show, it also reports as a
+finding that the change could not be located.
 
 - When HEAD is the pull request's head commit, the working tree is reviewed
   in place; uncommitted changes to tracked files stop the run with an error.
@@ -87,8 +93,8 @@ checked-out pull request when it reviews the file.
     them as instructions, skills, or settings once a sub-agent works in the
     worktree.
     - The reviewers see the pull request's changes to them in the diff only.
-      When the diff shows one only as binary, they report that its content
-      could not be reviewed.
+      When the diff shows one only as binary, they report as a finding that
+      its content could not be reviewed.
     - `--trust` checks them out as well.
     - To review a pull request's agent configuration with those files in
       place, run the review in a sandbox, either with `--trust` or with the
