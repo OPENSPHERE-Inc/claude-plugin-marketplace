@@ -2,6 +2,7 @@
 # fetch-diff.sh — Fetch all git diff sections for parallel-review.
 # Usage: <path>/fetch-diff.sh <base-branch> <output-file>
 #        <path>/fetch-diff.sh --range <from-rev> <to-rev> <output-file>
+#        <path>/fetch-diff.sh --pr <merge-base> <head> <output-file>
 #
 # Writes the following sections to <output-file>:
 #   === Changed Files (<from>..<to>) ===
@@ -14,6 +15,12 @@
 # Without --range, <from> is <base-branch> and <to> is HEAD. With --range, the
 # three working-tree sections are omitted: working-tree state belongs to no
 # commit, so it is outside any <from>..<to> range.
+#
+# --pr is --range for a pull request checked out in the working tree: renames
+# are not detected, submodule changes are always shown, and attributes are read
+# from the merge base, so neither an exact rename, the pull request's
+# .gitmodules, nor its .gitattributes can hide a change. --pr requires Git 2.41
+# or later (--attr-source) and always fails on an older Git.
 
 set -euo pipefail
 
@@ -38,10 +45,12 @@ prepare_out() {
 }
 
 RANGE_MODE=0
-if [[ "${1:-}" == "--range" ]]; then
+PR_MODE=0
+if [[ "${1:-}" == "--range" || "${1:-}" == "--pr" ]]; then
     RANGE_MODE=1
-    FROM="${2:?Error: --range requires a from revision}"
-    TO="${3:?Error: --range requires a to revision}"
+    [[ "$1" == "--range" ]] || PR_MODE=1
+    FROM="${2:?Error: $1 requires a from revision}"
+    TO="${3:?Error: $1 requires a to revision}"
     OUT="${4:?Error: output file path argument required}"
 else
     FROM="${1:?Error: base branch argument required}"
@@ -64,12 +73,32 @@ OUT="$(prepare_out "${OUT}")" || exit 1
 # shallow clone) there is no merge base: fall back to FROM rather than aborting.
 DIFF_FROM="$(git merge-base "${FROM}" "${TO}" 2>/dev/null || printf '%s' "${FROM}")"
 
+# git diff reads attributes from the working tree even between two commits. GIT_ATTR_SOURCE
+# is not used: a Git without --attr-source ignores it silently.
+ATTR_SOURCE=""
+NO_RENAMES=""
+IGNORE_SUBMODULES=""
+if [[ "${PR_MODE}" -eq 1 ]]; then
+    NO_RENAMES="--no-renames"
+    IGNORE_SUBMODULES="--ignore-submodules=none"
+    ATTR_SOURCE="${DIFF_FROM}"
+    if ! git --attr-source="${ATTR_SOURCE}" rev-parse --git-dir >/dev/null 2>&1; then
+        echo "Error: git does not accept --attr-source;" \
+            "fetch-diff.sh --pr requires Git 2.41 or later" >&2
+        exit 1
+    fi
+fi
+
 # Reviewers parse these sections as plain unified diffs: pin the prefix
 # options and disable external diff / textconv / color so user git config
 # cannot change the format (or run arbitrary commands).
+# FIXME: a diff of only binary changes (incl. text a NUL byte turns binary) has no +/- lines,
+# so /creview:start launches no reviewers. Decide how to show binary changes in the diff.
 review_diff() {
-    git -c diff.noprefix=false -c diff.mnemonicPrefix=false \
-        diff --no-ext-diff --no-textconv --no-color "$@"
+    git ${ATTR_SOURCE:+"--attr-source=${ATTR_SOURCE}"} \
+        -c diff.noprefix=false -c diff.mnemonicPrefix=false \
+        diff --no-ext-diff --no-textconv --no-color ${NO_RENAMES:+"${NO_RENAMES}"} \
+        --submodule=short ${IGNORE_SUBMODULES:+"${IGNORE_SUBMODULES}"} "$@"
 }
 
 # git diff reports no untracked file in any of its modes. Register them in a

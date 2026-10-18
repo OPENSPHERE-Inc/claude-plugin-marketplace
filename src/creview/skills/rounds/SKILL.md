@@ -56,14 +56,14 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Ba
 ## サブエージェント利用ルール
 
 - **共通禁止事項とワンショット起動形態（`run_in_background: false`）は `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` を参照**。
-- **各フェーズはフェーズリーダーサブエージェント（`subagent_type="review-leader"`）へ丸ごと委譲する**。フェーズ Sub は対応するスキルを起動し、そのスキルのサブエージェント群・compile ステップ・内部の再実行ループを含めて最後まで実行する。フェーズ Sub 自身がさらにサブエージェントを起動し、triage Sub がさらに反証 / 裁定 Sub を起動するため、ネスト起動の深度 3 以上が必要。
+- **各フェーズはフェーズリーダーサブエージェント（`subagent_type="creview:review-leader"`）へ丸ごと委譲する**。フェーズ Sub は対応するスキルを起動し、そのスキルのサブエージェント群・compile ステップ・内部の再実行ループを含めて最後まで実行する。フェーズ Sub 自身がさらにサブエージェントを起動し、triage Sub がさらに反証 / 裁定 Sub を起動するため、ネスト起動の深度 3 以上が必要。
   - レビューフェーズ（ステップ 2.1） — `creview:start`
   - トリアージ&見積フェーズ（ステップ 2.2 / 2.5） — `creview:triage`
   - 対応フェーズ（ステップ 2.3 / 2.5） — `creview:respond`
   - 検証フェーズ（ステップ 2.4 / 2.5） — `creview:resolve`
-- **発散パターン検出サブエージェント（ステップ 2.2）** — `subagent_type="review-helper"`。指摘への修正が後のラウンドの指摘を生む連鎖から、ラウンドループの発散をすべて検出する。
+- **発散パターン検出サブエージェント（ステップ 2.2）** — `subagent_type="creview:review-helper"`。指摘への修正が後のラウンドの指摘を生む連鎖から、ラウンドループの発散をすべて検出する。
 - **発散調査サブエージェント（ステップ 2.2）** — `subagent_type` は発散パターン検出サブエージェントが返す `investigator`。各発散の源泉を特定し、修正案を発散調査レポートに書き出す。
-- **最終レポート編纂サブエージェント（ステップ 3）** — `subagent_type="review-helper"`。全ラウンドのレビュードキュメントから最終レポートを生成する。
+- **最終レポート編纂サブエージェント（ステップ 3）** — `subagent_type="creview:review-helper"`。全ラウンドのレビュードキュメントから最終レポートを生成する。
 - **オーケストレーター（あなた自身）が直接担うのは以下に限定する**:
   - コンソール見出しの表示、ラウンドループ制御、フィードバック再修正ループ。
   - フェーズサブエージェントの起動と戻り値（カウンタ・パス・1 行サマリ）の集約。
@@ -77,7 +77,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Ba
 
 ## フェーズサブエージェントの起動
 
-各フェーズは `Agent(subagent_type="review-leader", prompt=...)` で起動する:
+各フェーズは `Agent(subagent_type="creview:review-leader", prompt=...)` で起動する:
 
 ```
 最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/{template}` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
@@ -138,7 +138,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
    - `--incremental` が OFF、または `{prev_round_rev}` が `(該当なし)`: `{review_base}` = `--base` の値、`{review_range}` = `(該当なし)`。
    - それ以外: `{review_base}` = `{prev_round_rev}`、`{review_range}` = `{prev_round_rev}..{this_round_rev}`。両リビジョンが等しい場合は前ラウンドがコミットを残していないため、ラウンドループを終了してステップ 3 へ進む。
 4. `templates/phase-review.md`（`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`）でフェーズ Sub を起動する。
-   - 変数: `base`（`{review_base}`）、`review_range`（`{review_range}`）、`document_path`（今ラウンドのファイルパス）、`language`（ユーザーのチャット言語）、`adversarial`（`--adversarial` の状態）
+   - 変数: `round_num`（ラウンドカウンター）、`base`（`{review_base}`）、`review_range`（`{review_range}`）、`document_path`（今ラウンドのファイルパス）、`language`（ユーザーのチャット言語）、`adversarial`（`--adversarial` の状態）
    - オーバーライド: (該当なし)
 5. 戻り値（`{doc_path, findings_total, severity_counts}`）のみ context に保持する。
 
@@ -150,7 +150,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの
 3. 戻り値（`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, tmp_dir, error}`）のみ context に保持する。
 4. 発散パターン検出ゲート: Round 2 以降のフィードバックループ外で、`error` が null、`will_fix_count` が 1 以上、かつ `maintain_count` と `alternative_count` の合計が 1 以上の場合に実行する。
-   1. 検出: `Agent(subagent_type="review-helper", prompt=...)` で `templates/divergence-check.md`（`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`）のサブエージェントを起動し、戻り値（`{divergence_count, investigator}`）のみ context に保持する。
+   1. 検出: `Agent(subagent_type="creview:review-helper", prompt=...)` で `templates/divergence-check.md`（`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`）のサブエージェントを起動し、戻り値（`{divergence_count, investigator}`）のみ context に保持する。
       - 変数: `document_path`（今ラウンドのファイルパス）、`previous_round_doc_paths`（Round 1〜N-1 の doc_path）、`output_path`（`{tmp_dir}/divergence.jsonl`）
       - オーバーライド: (該当なし)
    2. 調査: `divergence_count` が 1 以上の場合、`Agent(subagent_type="{investigator}", prompt=...)` で `templates/divergence-investigate.md`（`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`）のサブエージェントを起動し、戻り値（`{report_path}`）のみ context に保持する。
@@ -227,7 +227,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 最終レポートのパス: `{base-path}/{branch-dir}/final-report.md`
 
-1. `Agent(subagent_type="review-helper", prompt=...)` で `templates/final-report-compile.md`（`template_id`: `4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16`）のサブエージェントを起動する。
+1. `Agent(subagent_type="creview:review-helper", prompt=...)` で `templates/final-report-compile.md`（`template_id`: `4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16`）のサブエージェントを起動する。
    - 変数:
      - `round_doc_paths`: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
      - `round_stats`: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...（workflow_warning が非 null のラウンドは末尾に workflow_warning="..." を付す）

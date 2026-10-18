@@ -8,6 +8,7 @@ Run the `creview:start` skill as its review leader for one round of `/creview:ro
 
 Input:
 
+- Round number: `{{round_num}}`
 - Base branch: `{{base}}`
 - Review range: `{{review_range}}` (`(none)` when the whole branch diff is the target)
 - This round's review document path: `{{document_path}}`
@@ -16,7 +17,7 @@ Input:
 
 What to do:
 
-1. Invoke the `creview:start` skill and act as its review leader through its Steps 1-4, including deleting the working directory. Pass `--output {{document_path}}`, plus `--range {{review_range}}` when `{{review_range}}` is not `(none)` and `--base {{base}}` otherwise, appending `--adversarial` when `{{adversarial}}` is on. Name no review target of your own.
+1. Invoke the `creview:start` skill and act as its review leader through its Steps 1-4, including deleting the working directory. Pass `Round {{round_num}}` and `--output {{document_path}}`, plus `--range {{review_range}}` when `{{review_range}}` is not `(none)` and `--base {{base}}` otherwise, appending `--adversarial` when `{{adversarial}}` is on. Name no review target of your own.
 2. Add the following to the "Round-specific overrides" section of every sub-agent launch prompt you issue:
    - Do not pass any past round's review document to the reviewers, and do not deduplicate against a past round.
    - Never include in a reviewer's prompt: past round finding counts, count trends, wording such as "appears to be converging", past round finding ids (`C-1`, `M-1`, etc.), or Fixed / Won't Fix statistics.

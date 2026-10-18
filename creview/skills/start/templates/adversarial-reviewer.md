@@ -15,7 +15,7 @@ Rules:
 - Restrict tool use to Read / Glob / Grep / Bash(grep/ls/find). Re-running git diff/log/show is unnecessary (the diff is already consolidated in `{{diff_path}}`). Use Read when inspecting surrounding code as well.
 - Review the changed hunks under the scope paths, and cover all of them before returning; do not stop at a finding count. Anchor every finding at a line inside a scope path — a cause lying outside the scope may be cited in the description, but a finding located outside it belongs to another reviewer.
 - Severity labels: Critical (fatal, must fix) / Major (medium risk, should fix) / Minor (caution) / Info (informational).
-- Category labels: assign one or more category labels indicating the nature of the finding. Presets: `Bug` / `Maintainability` / `Readability` / `Testing` / `Performance` / `Security` / `Style` / `Documentation` / `Design`. If no preset fits, create a new label (short noun phrase, must not contain `/` or `]`). When multiple apply, join with `/` inside a single `[ ]`. The label body itself may be written in `{{doc_lang}}` (preset names may be substituted with translations).
+- Category labels: assign one or more category labels indicating the nature of the finding. Presets: `Bug` / `Maintainability` / `Readability` / `Testing` / `Performance` / `Security` / `Style` / `Documentation` / `Design`. If no preset fits, create a new label (short noun phrase, must not contain `/` or `]`). When multiple apply, join with `/` inside a single `[ ]`. Write the labels in `{{doc_lang}}`, translating the preset names.
 - Read `{{plugin_root}}/rules/review.md` and follow it.
 
 Adversarial stance:

@@ -22,12 +22,14 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/skills/{start,triage,respond,resolve,rounds}/SKILL.md` — The 5 creview skills.
 - `creview/skills/*/templates/*.md` — Sub-agent prompt templates (each has a `template_id`).
 - `creview/agents/` — bundled mechanical agents: `review-helper.md`,
-  `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader).
+  `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader), and the
+  tool-restricted `pr-description-reviewer.md` (`/creview:start`'s PR mode).
 - `creview/rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
   `adr-format.md`, `agents-detection.md`, `build-format-detection.md` (rules referenced by
   skills).
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `check-jsonl.py`,
-  `worktree.sh`, `lib/scratch-guard.py`.
+  `worktree.sh`, `gh-pr.py` (pull request resolution and worktree checkout and removal for
+  `/creview:start`'s PR mode), `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
 - `cprompt/skills/edit/SKILL.md` (+ `templates/`) — The `/cprompt:edit` skill.
 - `cprompt/rules/` — `prompt.md`, `document.md`. `cprompt/scripts/` — `worktree.sh`.
@@ -37,7 +39,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
   `.claude-plugin/` and the READMEs).
 - `tests/scratch-guard-test.sh` — repo-level self-test: containment, `worktree.sh`, and
   byte-parity of the shared `lib/scratch-guard.py` / `del-tmp.sh` / `check-jsonl.py` /
-  `worktree.sh` copies (not shipped).
+  `worktree.sh` copies and of `fetch-diff.sh` and `gh-pr.py` with their `src/` mirrors
+  (not shipped).
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
 - `.claude/rules/*.md` — Discipline rules for editing this repo (prompt/document/comment/…).
 
@@ -48,9 +51,10 @@ see **[CLAUDE.md](CLAUDE.md)**.
 2. **`src/` is the editing master.** Edit `src/<plugin>/X` and active `<plugin>/X` as a
    translation-paired change; keep them structurally 1:1. Exception:
    `scripts/lib/scratch-guard.py` / `scripts/del-tmp.sh` / `scripts/check-jsonl.py` are
-   byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors), and
-   `scripts/worktree.sh` across all six (`cprompt/` and its mirror too) — the `src/` copies
-   stay English; see CLAUDE.md.
+   byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors),
+   `scripts/worktree.sh` across all six (`cprompt/` and its mirror too), and
+   `scripts/fetch-diff.sh` (`creview/`, `cdev/`) and `creview/scripts/gh-pr.py` each with its
+   own `src/` mirror — the `src/` copies stay English; see CLAUDE.md.
 3. **Token-placement invariant.** `${CLAUDE_PLUGIN_ROOT}` only in files Claude Code loads
    itself (SKILL.md bodies/`allowed-tools`, bundled `agents/*.md`); `{{plugin_root}}` only
    in files a sub-agent opens with Read (`templates/*.md` and the bundled `rules/*.md` it is
@@ -59,7 +63,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
 5. **No bundled specialist reviewers.** Skills resolve reviewers/fixers from the
    destination project's `.claude/agents/`, falling back to `general-purpose`. Only
    the mechanical helpers are bundled (`creview`: `review-helper`, `comment-sensei`,
-   `review-leader`; `cdev`: `dev-helper`, `comment-sensei`).
+   `review-leader`; `cdev`: `dev-helper`, `comment-sensei`), plus creview's
+   tool-restricted `pr-description-reviewer`.
 6. **review-respond split**: `/creview:triage` persists `triage`+`estimate` into the
    review doc; `/creview:respond` reads them back from the doc. The split is the review
    gate — no `--no-confirm`. The handoff is the document, not a shared temp dir.

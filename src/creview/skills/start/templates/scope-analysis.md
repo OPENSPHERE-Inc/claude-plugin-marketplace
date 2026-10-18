@@ -8,11 +8,11 @@ template_id: b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85
 
 ユーザー明示要求レビュアー: `{{user_requested}}`（空配列あり）
 
-レビュアープール: 以下の優先順位で `*.md` を列挙し、各ファイルの frontmatter の `name` / `description` を Read して専門性を把握する。`name` 値は別の Agent 呼び出しの `subagent_type` に渡す値である。同一 `name` が複数箇所に存在する場合は上位のものを採用する。存在しない箇所はスキップする。
+レビュアープール: 以下の優先順位で `*.md` を列挙し、各ファイルの frontmatter の `name` / `description` を Read して専門性を把握する。`name` 値は別の Agent 呼び出しの `subagent_type` に渡す値である。プラグイン同梱（3）のエージェントでは、名前空間を前置した `creview:{name}`（例 `creview:comment-sensei`）がその値となる。同一 `name` が複数箇所に存在する場合は上位のものを採用する。存在しない箇所はスキップする。
 
 1. プロジェクト: `.claude/agents/**/*.md`（起動プロンプトが `(該当なし)` 以外の `main_root` を渡した場合はそれを基準、それ以外は `{{target_dir}}` 基準）
 2. ユーザー: `~/.claude/agents/**/*.md`
-3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`
+3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`。ただし、スキルが名前を指定して起動する固定役割のエージェント `review-helper`・`review-leader`・`pr-description-reviewer` は除く
 
 実施内容:
 

@@ -29,7 +29,7 @@ Add this marketplace, then install the plugins:
 
 | Command | Purpose |
 |---------|---------|
-| `/creview:start` | Run a parallel code review and produce a review document. |
+| `/creview:start` | Run a parallel code review of local changes or a GitHub pull request and produce a review document. |
 | `/creview:triage` | Triage and estimate the findings; persist `triage` / `estimate` into the document. |
 | `/creview:respond` | Fix the Will-Fix / Maintain / Alternative findings; persist `status`. |
 | `/creview:resolve` | Verify fixes against the source; persist `verification`. |
@@ -39,13 +39,17 @@ Add this marketplace, then install the plugins:
 
 ## Reviewer / fixer agents
 
-`creview` does **not** bundle specialist reviewer agents. It enumerates agents
-recursively (`**/*.md`, so subdirectories are included) from the **destination
-project** (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin
-bundle**, reads each agent's `description`, and selects the most relevant agents
-per finding. When no suitable agent exists, it falls back to
-`general-purpose`. The `review-helper` aggregation agent is bundled with the
-`creview` plugin.
+Apart from the bundled agents described below, `creview` does **not** bundle
+specialist reviewer agents. It enumerates agents recursively (`**/*.md`, so
+subdirectories are included) from the **destination project**
+(`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin bundle**, reads
+each agent's `description`, and selects the most relevant agents per finding.
+When no suitable agent exists, it falls back to `general-purpose`.
+From the plugin bundle, only the comment-discipline reviewer `comment-sensei` is
+a selection candidate. The skills launch the other bundled agents by name:
+workflow helper agents such as the `review-helper` aggregation agent, and the
+fixed-role reviewer `pr-description-reviewer`, which checks a pull request's
+description and CI results when `/creview:start` reviews a pull request.
 
 ## Source of truth and localization
 

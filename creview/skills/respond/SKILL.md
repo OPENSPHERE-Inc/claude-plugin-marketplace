@@ -117,7 +117,7 @@ Template `fix.md`, `template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`, variabl
 
 Have comment-sensei review whether comments added or modified by the fix sub-agents violate the discipline in `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` and fix any violations. Pass comment-sensei the current fix diff (`fetch-diff.sh` output) and the review document (`{document_path}`) so it sees the changed comments and adjusts them only within bounds that do not distort each finding's intent. If no added or modified comments exist, the sub-agent may finish without making any changes.
 
-Before launching, the leader runs `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the fix diff. Launch via `Agent(subagent_type="comment-sensei", prompt=...)`.
+Before launching, the leader runs `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the fix diff. Launch via `Agent(subagent_type="creview:comment-sensei", prompt=...)`.
 
 Template `comment-review.md`, `template_id` `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `document_path = {document_path}`, overrides `(none)`. Return value: `{reviewed_paths, fix_count, template_id}`.
 
@@ -129,7 +129,7 @@ The leader (you) does not run the formatter or build commands directly and does 
 
 Maximum attempts: 5. Repeat the following up to the maximum:
 
-1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the current fix diff (working tree), then launch the format / build / test verification Sub via `Agent(subagent_type="review-helper", prompt=...)` — template `format-build-verify.md`, `template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {attempt_num}`, overrides `(none)`.
+1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the current fix diff (working tree), then launch the format / build / test verification Sub via `Agent(subagent_type="creview:review-helper", prompt=...)` — template `format-build-verify.md`, `template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {attempt_num}`, overrides `(none)`.
 2. Receive the return value (`{path, success, environmental, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`). If `workflow_warning` is non-null, retain it for presentation in Step 7.
 3. If `success == true`, exit the loop.
 4. If `success == false` and `environmental == true`, do not launch the build/test-fix specialist Sub. Read `error_summary` from the `failure` section of `{tmp_dir}/format-build-result.jsonl`, set the retained `workflow_warning` to "Build / test verification did not complete for an environmental cause: {error_summary}", present `error_summary` to the user, exit the loop, and proceed to Step 5.

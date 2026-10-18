@@ -8,7 +8,7 @@ A multi-agent parallel code review workflow for Claude Code.
 
 | Command | Maps from | Purpose |
 |---------|-----------|---------|
-| `/creview:start` | `parallel-review` | Run a parallel code review; produce a review document with metadata markers. |
+| `/creview:start` | `parallel-review` | Run a parallel code review of local changes or a GitHub pull request; produce a review document with metadata markers. |
 | `/creview:triage` | `review-respond` (triage + estimate) | Triage and estimate findings; persist `triage` / `estimate` into the document. |
 | `/creview:respond` | `review-respond` (fix) | Fix Will-Fix / Maintain / Alternative findings; verify the build; persist `status`. |
 | `/creview:resolve` | `review-resolve` | Verify fix resolutions against the source; persist `verification`. |
@@ -42,6 +42,127 @@ scopes of up to 400 changed lines / 10 files each and picks reviewers per
 scope, so a large change is reviewed slice by slice rather than sampled by
 reviewers that stop exploring once they have produced a few findings. A
 smaller change stays a single scope.
+
+`/creview:start` also takes a GitHub pull request URL
+(`https://{host}/{owner}/{repo}/pull/{number}`) as its review target and then
+reviews that pull request: the diff from its merge base to its head commit.
+The pull request must be open, its repository on its host must be a remote of
+the current clone, and the GitHub CLI (`gh`) must be authenticated for that
+host. Reviewing a pull request requires Git 2.41 or later; with an older Git
+the run stops with an error. `--base` and `--range` cannot be combined with a
+pull request URL.
+The diff is taken without rename detection, with the `.gitattributes` of the
+merge base, and with every change of the commit a submodule points to, so
+neither an exact rename nor the pull request's `.gitmodules` or `.gitattributes`
+can hide a change from the reviewers. For a submodule, the diff shows only its
+old and new commits, not the changes to the files inside it. For a file git
+treats as binary, the diff states only that it changed, not its contents. Such
+files include a text file with a NUL byte in its first 8,000 bytes and a path
+that the merge base's `.gitattributes` marks `binary` or `-diff`. When a change
+consists only of such files, no reviewer is launched: the review document is
+empty because nothing was reviewed, not because nothing was found.
+
+- When HEAD is the pull request's head commit, the working tree is reviewed
+  in place; uncommitted changes to tracked files stop the run with an error.
+- Otherwise the head commit is checked out, detached, in a temporary worktree
+  under `.claude/worktrees/`, with git hooks and the filter drivers of your git
+  configuration disabled, Git LFS smudging skipped, and symbolic links checked
+  out as plain files holding the link target. The worktree is removed, with
+  hooks and filter drivers disabled again, at the end of the run. It belongs to
+  this run only and is unrelated to `/creview:rounds --worktree`.
+  - The review document and the working directory stay in the main working
+    tree's `.claude/tmp/`, and the project's `.claude/agents/` are read from
+    the main working tree.
+  - The checkout leaves out the agent files: every file and directory named
+    `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `.mcp.json`, or `.claude`, in
+    any letter case and at any depth. Claude Code or another agent can load
+    them as instructions, skills, or settings once a sub-agent works in the
+    worktree.
+    - The reviewers see the pull request's changes to them in the diff only.
+    - `--trust` checks them out as well.
+    - To review a pull request's agent configuration with those files in
+      place, run the review in a sandbox, either with `--trust` or with the
+      head commit checked out in your working tree for an in-place review.
+
+One more reviewer runs alongside the code reviewers: the bundled
+`pr-description-reviewer`, which reviews the change in the light of the pull
+request's title and description and its CI results.
+
+- It reports claims the change does not bear out, information a reviewer
+  needs that the description leaves out, open task items, and failed checks,
+  tracing a failure to its cause through the failed GitHub Actions job's log.
+- It reads the pull request's comments and reviews for context only; they are
+  not review targets.
+- Every finding is anchored at a changed line of code and quotes the
+  description text or CI output it rests on. A problem that no changed line
+  points at, such as a claim about nothing in the diff or a failed check whose
+  cause lies outside the change, is not reported.
+- It runs with Read, Glob, Grep, and Write only, without shell or network
+  access.
+
+Every creview sub-agent is told to treat the pull request's text — its title,
+description, comments, CI output, commit messages, and the lines it adds or
+changes in files — and quotes of it in the review document as data, and to
+change nothing on GitHub or any other remote. This includes the sub-agents of
+`/creview:triage`, `/creview:respond`, and `/creview:resolve` when run
+separately on the review document. In a worktree review, the checked-out
+files, including the agent files checked out under `--trust`, are data as well,
+and the sub-agents are told to run none of them and to run no git command in
+the worktree. These are instructions, not enforcement: for a pull request you
+do not trust, also rely on your environment (a sandbox, hooks, or permission
+rules).
+
+During a worktree review, the session's working directory is the worktree.
+Claude Code hooks, which fire on the sub-agents' tool calls as well, and the
+status line command run there. A command they run relative to the current
+directory, such as `npm run lint`, `./scripts/check.sh`, or `git status`,
+therefore runs on the pull request's files without the protections above. For
+a pull request you do not trust, turn such commands off, or write them against
+`$CLAUDE_PROJECT_DIR` or an absolute path. The worktree lies under
+`.claude/worktrees/` in your project, so a command that scans the whole
+project, such as a test runner or a formatter run on `.`, must also leave that
+directory out.
+
+The review document records the pull request in a header bullet of the form
+`- **PR:** {url} (head {head_sha}, base {merge_base})`. When run separately on
+such a document, `/creview:triage`, `/creview:respond`, and `/creview:resolve`
+work on the current working tree, not on a worktree of the pull request. Check
+out the pull request's head commit before running them; on another commit,
+such as the base branch, they triage, fix, and verify code other than the pull
+request's.
+
+A checkout in your working tree has none of a worktree review's protections,
+and the pull request's code can run, for example in these ways:
+
+- Git runs hooks and filter drivers, starting with the checkout itself.
+  - With a relative `core.hooksPath` (such as `.husky/_` or `.githooks`), the
+    hooks come from the pull request's tree: the checkout runs its
+    `post-checkout` hook, and `/creview:respond --commit` its `pre-commit`
+    hook.
+  - A hook manager installed in `.git/hooks/`, such as pre-commit, lefthook, or
+    Husky v4, reads its configuration from the pull request's tree
+    (such as `.pre-commit-config.yaml`, `lefthook.yml`, or `package.json`), so its hooks
+    run the commands the pull request writes there, even without a
+    `core.hooksPath`.
+  - With a relative `core.fsmonitor`, git commands such as the checkout and
+    `git status` run the pull request's version of that script.
+  - The pull request's `.gitattributes` chooses which filters run.
+- Claude Code can load the pull request's `CLAUDE.md`, `CLAUDE.local.md`,
+  `AGENTS.md`, `.mcp.json`, and `.claude/**` as instructions, skills, or
+  settings, along with the files they import through `@` references.
+- `/creview:respond` runs the format, build, and test commands, and with them
+  the pull request's build scripts and tests.
+  - Without a `build-format.md`, it takes those commands from the checkout's
+    `CLAUDE.md` or `README.md`.
+
+creview assumes that, before you run it, you have checked the repository and
+the pull request and trust them. The ways listed above and a worktree review's
+protections only support that decision: they do not cover every way the pull
+request's code or instructions can take effect, and they cannot guarantee that
+a repository or pull request fetched from the network is safe. Keep the agent
+safe through your environment, such as a sandbox and permission rules, and
+check out a pull request you do not trust, and run `/creview:respond` on it,
+only in a sandbox.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review
@@ -128,11 +249,14 @@ A long run also consumes many subagent slots — the challenge sub-agents alone
 number three per batch of eight findings, and a split review runs one reviewer
 per (scope, reviewer) pair — so raise
 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
-session) when using a high `--max-rounds`.
+session) when using a high `--max-rounds`. Sub-agents that run in parallel are
+launched at most 20 at a time, the default of
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`; the rest follow in later batches.
 
 ## Reviewer / fixer agents
 
-This plugin does not bundle specialist agents. The triage / scope-analysis /
+Apart from the bundled agents listed at the end of this section, this plugin
+does not bundle specialist agents. The triage / scope-analysis /
 analysis / format-build-verify / divergence-detection sub-agents enumerate agents recursively
 (`**/*.md`, including subdirectories) from the **destination project**
 (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin bundle**, read
@@ -142,21 +266,27 @@ scope, and adds `general-purpose` to a scope whose picks all cover a narrower
 concern than the code's behavior, such as comments alone). With no match, they
 fall back to `general-purpose`. The
 bundled agents are `review-helper` (mechanical aggregation / verification),
-`comment-sensei` (comment-discipline review), and `review-leader` (the
-`/creview:rounds` phase leader).
+`comment-sensei` (comment-discipline review), `review-leader` (the
+`/creview:rounds` phase leader), and `pr-description-reviewer` (the pull
+request description and CI reviewer of `/creview:start`'s PR mode, bundled so
+that its tools stay restricted). Only `comment-sensei` is a selection
+candidate; the skills launch the other three by name.
 
 ## Bundled support files
 
 - `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
   `adr-format.md` (only the rules the skills reference).
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`,
-  `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it), and
+  `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it),
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
   `fetch-diff.sh` / `del-tmp.sh`; from a linked worktree it also accepts the
-  `.claude/tmp/` of another working tree of the same repository), and
-  `worktree.sh` (creates and removes the `--worktree` worktree). The scripts
-  require `python3` (3.9 or later)
-  on the `PATH`. Skills invoke them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`;
+  `.claude/tmp/` of another working tree of the same repository),
+  `worktree.sh` (creates and removes the `--worktree` worktree), and
+  `gh-pr.py` (resolves a pull request for `/creview:start`, checks its head
+  commit out in a worktree, and removes that worktree). The scripts require
+  `python3` (3.9 or later) on the `PATH`; `gh-pr.py` also requires an
+  authenticated GitHub CLI (`gh`), and `fetch-diff.sh --pr` requires Git 2.41
+  or later. Skills invoke them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`;
   sub-agent templates receive the resolved path through the `{{plugin_root}}`
   launch variable.
 - `skills/{triage,respond,resolve}/scripts/compile-review.py` — the per-skill

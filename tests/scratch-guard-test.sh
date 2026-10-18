@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.py, its consumers, and worktree.sh.
+# scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.py, its consumers, worktree.sh,
+# gh-pr.py's helpers and sparse checkout, and gh-pr.py remove's path check.
 # Usage: bash tests/scratch-guard-test.sh
 # Prints one FAIL line per broken case and exits non-zero; exits 0 when all pass.
 
@@ -12,6 +13,7 @@ RM="${REPO_ROOT}/cdev/scripts/del-tmp.sh"
 FD="${REPO_ROOT}/cdev/scripts/fetch-diff.sh"
 CFD="${REPO_ROOT}/creview/scripts/fetch-diff.sh"
 WT="${REPO_ROOT}/cdev/scripts/worktree.sh"
+GHPR="${REPO_ROOT}/creview/scripts/gh-pr.py"
 
 fail=0
 note() { printf '%s\n' "$*"; }
@@ -37,6 +39,7 @@ same cdev/scripts/check-jsonl.py creview/scripts/check-jsonl.py
 same cdev/scripts/check-jsonl.py src/creview/scripts/check-jsonl.py
 same cdev/scripts/fetch-diff.sh src/cdev/scripts/fetch-diff.sh
 same creview/scripts/fetch-diff.sh src/creview/scripts/fetch-diff.sh
+same creview/scripts/gh-pr.py src/creview/scripts/gh-pr.py
 for d in src/cdev creview src/creview cprompt src/cprompt; do
     same cdev/scripts/worktree.sh "${d}/scripts/worktree.sh"
 done
@@ -70,6 +73,140 @@ trap 'cd / && { chmod -R u+rwx "${SANDBOX}" 2>/dev/null; rm -rf "${SANDBOX}"; }'
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GUARD}" \
     || { note "FAIL: python3 -m py_compile scratch-guard.py"; fail=1; }
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${CJ}" || { note "FAIL: python3 -m py_compile check-jsonl.py"; fail=1; }
+PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GHPR}" \
+    || { note "FAIL: python3 -m py_compile gh-pr.py"; fail=1; }
+python3 -I -B - "${GHPR}" "${SANDBOX}" <<'PY' || fail=1
+import importlib.util
+import os
+import subprocess
+import sys
+
+spec = importlib.util.spec_from_file_location("gh_pr", sys.argv[1])
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+failed = False
+
+
+def report(case, want, got):
+    global failed
+    print(f"FAIL: gh-pr.py {case} (expected {want:.300}, got {got!r:.300})")
+    failed = True
+
+
+def expect(case, got, want):
+    if got != want:
+        report(case, repr(want), got)
+
+
+def expect_error(case, func, *parts):
+    try:
+        got = func()
+    except Exception as e:
+        got = e
+    if not isinstance(got, g.Error) or not all(p in str(got) for p in parts):
+        report(case, f"an Error with {parts}", got)
+
+
+job = "https://github.com/o/r/actions/runs/123/job/456"
+for url, run_id in ((job, "123"), ("https://example.com/x", None), (None, None)):
+    expect(f"check_key {url}", g.check_key({"workflowName": "w", "name": "n", "detailsUrl": url}),
+           ("w", "n", run_id))
+
+expect("any_case .mcp.json", g.any_case(".mcp.json"), ".[mM][cC][pP].[jJ][sS][oO][nN]")
+
+# The sparse checkout cmd_checkout runs through gh, run here with git checkout.
+repo, wt = os.path.join(sys.argv[2], "sparse"), os.path.join(sys.argv[2], "sparse-wt")
+agent_paths = ["CLAUDE.md", "sub/claude.MD", "sub/.Claude/x.md", "AGENTS.md", ".mcp.json",
+               "docs/CLAUDE.local.md"]
+
+
+def git(*args, cwd=repo, env=None):
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t",
+                    "-c", "commit.gpgsign=false", *args],
+                   cwd=cwd, env=env, check=True, capture_output=True)
+
+
+os.makedirs(repo)
+git("init", "-q")
+for path in ["sub/notes.txt", *agent_paths]:
+    os.makedirs(os.path.dirname(os.path.join(repo, path)), exist_ok=True)
+    with open(os.path.join(repo, path), "w") as f:
+        f.write(path)
+    git("add", "--", path)
+    git("commit", "-qm", path)
+git("branch", "tip")
+base = f"HEAD~{len(agent_paths)}"
+probe = dict(os.environ, GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="t.k", GIT_CONFIG_VALUE_0="v")
+if subprocess.run(["git", "config", "--get", "t.k"], env=probe, capture_output=True,
+                  text=True).stdout.strip() != "v":
+    print("SKIP: gh-pr.py sparse checkout cases (git does not apply GIT_CONFIG_COUNT)")
+else:
+    # Under core.ignorecase=false the sparse patterns match case-sensitively, as on Linux.
+    checkout = ("-c", "core.ignorecase=false", "checkout", "-q", "--detach", "tip")
+    git("worktree", "add", "-q", "--no-checkout", "--detach", wt, base)
+    git(*checkout, cwd=wt, env=g.leave_out_agent_files(wt, os.environ))
+    expect("sparse checkout keeps sub/notes.txt",
+           os.path.isfile(os.path.join(wt, "sub", "notes.txt")), True)
+    expect("sparse checkout leaves out agent files", g.agent_file_left(wt), None)
+    for p in agent_paths:
+        expect(f"sparse checkout leaves out {p}", os.path.lexists(os.path.join(wt, p)), False)
+    with open(os.path.join(wt, "sub", "CLAUDE.md"), "w"):
+        pass
+    expect("agent_file_left sub/CLAUDE.md", g.agent_file_left(wt), "sub/CLAUDE.md")
+    expect_error("check_agent_files_left_out sub/CLAUDE.md",
+                 lambda: g.check_agent_files_left_out(wt, 7),
+                 "PR #7 still resolves the agent file 'sub/CLAUDE.md'", "--trust")
+    git("worktree", "remove", "--force", wt)
+    plain = os.path.join(sys.argv[2], "sparse-plain")
+    git("worktree", "add", "-q", "--no-checkout", "--detach", plain, base)
+    git(*checkout, cwd=plain)
+    for p in agent_paths:
+        expect(f"checkout without sparse env resolves {p}",
+               os.path.lexists(os.path.join(plain, p)), True)
+    expect("checkout without sparse env resolves CLAUDE.md", g.agent_file_left(plain),
+           "CLAUDE.md")
+    git("worktree", "remove", "--force", plain)
+try:
+    raised = repr(g.agent_file_left(os.path.join(sys.argv[2], "missing")))
+except Exception as e:
+    raised = type(e).__name__
+expect("agent_file_left on a missing directory", raised, "FileNotFoundError")
+expect_error("check_agent_files_left_out on a missing directory",
+             lambda: g.check_agent_files_left_out(os.path.join(sys.argv[2], "missing"), 7),
+             "PR #7 could not be examined for the agent files", "FileNotFoundError", "--trust")
+lstat_root = os.path.join(sys.argv[2], "lstat-root")
+os.makedirs(lstat_root)
+real_lstat = g.os.lstat
+too_long, not_found = FileNotFoundError(2, "x"), FileNotFoundError(2, "x")
+too_long.winerror, not_found.winerror = 206, 2
+# lstat-root has no subdirectory, so os.walk makes no lstat call of its own.
+for case, error, want in (("PermissionError", PermissionError(13, "x"), "PermissionError"),
+                          ("winerror 206", too_long, "FileNotFoundError"),
+                          ("winerror 2", not_found, "None")):
+    def lstat(path, *args, error=error, **kwargs):
+        if os.path.basename(path) in g.AGENT_FILES:
+            raise error
+        return real_lstat(path, *args, **kwargs)
+    g.os.lstat = lstat
+    try:
+        raised = repr(g.agent_file_left(lstat_root))
+    except Exception as e:
+        raised = type(e).__name__
+    finally:
+        g.os.lstat = real_lstat
+    expect(f"agent_file_left when lstat raises {case}", raised, want)
+sys.exit(1 if failed else 0)
+PY
+for opt in --trusted -t; do
+    out="$(python3 "${GHPR}" checkout "${SANDBOX}/no-pr.json" "${opt}" 2>&1)"; rc=$?
+    check "gh-pr.py checkout rejects ${opt}" 1 "${rc}"
+    [[ "${out}" == *"unknown checkout option"* ]] \
+        || { note "FAIL: gh-pr.py checkout ${opt} printed '${out}'"; fail=1; }
+done
+out="$(python3 "${GHPR}" checkout a b c 2>&1)"; rc=$?
+check "gh-pr.py checkout with three arguments" 1 "${rc}"
+[[ "${out}" == *"Usage:"* ]] \
+    || { note "FAIL: gh-pr.py checkout with three arguments printed '${out}'"; fail=1; }
 mkdir -p "${SANDBOX}/proj/.claude/tmp/sub" "${SANDBOX}/outside"
 : > "${SANDBOX}/proj/.claude/tmp/sub/file.txt"
 : > "${SANDBOX}/outside/victim.txt"
@@ -200,6 +337,100 @@ check "creview fetch-diff option-like base rejected" 1 "${rc}"
 rc=0; bash "${CFD}" HEAD..HEAD .claude/tmp/e2e/review4.txt 2>/dev/null || rc=$?
 check "creview fetch-diff range base rejected" 1 "${rc}"
 
+# --- fetch-diff.sh (creview) --pr: the pull request's attributes and renames hide nothing -
+PRD="${SANDBOX}/prdiff"
+prd_git() {
+    git -C "${PRD}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
+        -c core.autocrlf=false "$@"
+}
+prd_diff() { # <mode> <from> <to> <output-name>, with rename detection on (diff.renames=true)
+    (cd "${PRD}" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.renames GIT_CONFIG_VALUE_0=true \
+        bash "${CFD}" "$1" "$2" "$3" ".claude/tmp/$4")
+}
+# Commits: base (HEAD~2), rename (HEAD~1), attrs (HEAD).
+mkdir -p "${PRD}" && prd_git init -q && printf 'original\n' > "${PRD}/CLAUDE.md" \
+    && printf 'payload line\n' > "${PRD}/fixture.txt" && prd_git add CLAUDE.md fixture.txt \
+    && prd_git commit -qm base && prd_git mv fixture.txt AGENTS.md && prd_git commit -qm rename \
+    && printf 'CLAUDE.md -diff\n' > "${PRD}/.gitattributes" \
+    && printf 'changed\n' > "${PRD}/CLAUDE.md" && prd_git add .gitattributes CLAUDE.md \
+    && prd_git commit -qm attrs \
+    || { note "FAIL: creview fetch-diff --pr repository setup"; fail=1; }
+# fetch-diff.sh --pr runs only on a git that accepts --attr-source (Git 2.41 or later).
+ATTR_SOURCE_OK=0
+git -C "${PRD}" --attr-source=HEAD rev-parse --git-dir >/dev/null 2>&1 && ATTR_SOURCE_OK=1
+rc=0; prd_diff --range HEAD~2 HEAD~1 range-rename.txt 2>/dev/null || rc=$?
+check "creview fetch-diff --range over a rename" 0 "${rc}"
+grep -q '^rename from' "${PRD}/.claude/tmp/range-rename.txt" 2>/dev/null \
+    || { note "FAIL: creview fetch-diff --range control: no rename detected"; fail=1; }
+if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
+    rc=0; prd_diff --pr HEAD~2 HEAD~1 pr-rename.txt 2>/dev/null || rc=$?
+    check "creview fetch-diff --pr over a rename" 0 "${rc}"
+    grep -q '^+payload line$' "${PRD}/.claude/tmp/pr-rename.txt" 2>/dev/null \
+        && ! grep -q '^rename from' "${PRD}/.claude/tmp/pr-rename.txt" \
+        || { note "FAIL: creview fetch-diff --pr hid the content of a renamed file"; fail=1; }
+    rc=0; prd_diff --range HEAD~1 HEAD range-attrs.txt 2>/dev/null || rc=$?
+    check "creview fetch-diff --range over a .gitattributes change" 0 "${rc}"
+    grep -q '^Binary files' "${PRD}/.claude/tmp/range-attrs.txt" 2>/dev/null \
+        || { note "FAIL: creview fetch-diff --range control: CLAUDE.md is not binary"; fail=1; }
+    rc=0; prd_diff --pr HEAD~1 HEAD pr-attrs.txt 2>"${SANDBOX}/prdiff.err" || rc=$?
+    check "creview fetch-diff --pr over a .gitattributes change" 0 "${rc}"
+    grep -q '^+changed$' "${PRD}/.claude/tmp/pr-attrs.txt" 2>/dev/null \
+        && ! grep -q '^Binary files' "${PRD}/.claude/tmp/pr-attrs.txt" \
+        && ! grep -qF -- '--attr-source' "${SANDBOX}/prdiff.err" \
+        || { note "FAIL: creview fetch-diff --pr applied the PR's .gitattributes"; fail=1; }
+else
+    note "SKIP: creview fetch-diff --pr rename and attribute cases (git has no --attr-source)"
+fi
+# A shim stands in for a Git older than 2.41, which rejects --attr-source as an unknown option.
+OLDGIT="${SANDBOX}/oldgit"
+mkdir -p "${OLDGIT}" \
+    && printf '#!/usr/bin/env bash\n%s\nexec %q "$@"\n' \
+        'case "${1:-}" in --attr-source=*) exit 129 ;; esac' "$(command -v git)" \
+        > "${OLDGIT}/git" && chmod +x "${OLDGIT}/git" \
+    || { note "FAIL: creview fetch-diff --pr old git shim setup"; fail=1; }
+old_case() { # <case> <from> <to> <output-name>: prd_diff --pr with the shim first on the PATH
+    local rc=0 err="${SANDBOX}/prdiff-old.err"
+    (export PATH="${OLDGIT}:${PATH}"; prd_diff --pr "$2" "$3" "$4") 2>"${err}" || rc=$?
+    check "creview fetch-diff --pr without --attr-source, $1" 1 "${rc}"
+    grep -qF 'Git 2.41 or later' "${err}" && [[ ! -e "${PRD}/.claude/tmp/$4" ]] \
+        || { note "FAIL: creview fetch-diff --pr on an old git, $1: no error or a diff"; fail=1; }
+}
+old_case ".gitattributes unchanged" HEAD~2 HEAD~1 old-rename.txt
+old_case ".gitattributes changed" HEAD~1 HEAD old-attrs.txt
+
+# --- fetch-diff.sh (creview) --pr: the pull request's .gitmodules hides no submodule change -
+PRS="${SANDBOX}/prsub"
+prs_git() {
+    git -C "${PRS}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
+        -c core.autocrlf=false "$@"
+}
+prs_diff() { # <mode> <output-name>: fetch-diff.sh <mode> HEAD~1 HEAD, with diff.submodule=log
+    (cd "${PRS}" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.submodule GIT_CONFIG_VALUE_0=log \
+        bash "${CFD}" "$1" HEAD~1 HEAD ".claude/tmp/$2")
+}
+# Commits: base, lib added as a submodule with ignore = all (HEAD~1), lib moved (HEAD).
+mkdir -p "${PRS}" && prs_git init -q && prs_git commit -q --allow-empty -m base \
+    && SUB_OLD="$(prs_git rev-parse HEAD)" \
+    && printf '[submodule "lib"]\n\tpath = lib\n\tignore = all\n' > "${PRS}/.gitmodules" \
+    && prs_git add .gitmodules && prs_git update-index --add --cacheinfo "160000,${SUB_OLD},lib" \
+    && prs_git commit -qm submodule && SUB_NEW="$(prs_git rev-parse HEAD)" \
+    && prs_git update-index --cacheinfo "160000,${SUB_NEW},lib" && prs_git commit -qm bump \
+    || { note "FAIL: creview fetch-diff --pr submodule repository setup"; fail=1; }
+rc=0; prs_diff --range range-sub.txt 2>/dev/null || rc=$?
+check "creview fetch-diff --range over a submodule with ignore = all" 0 "${rc}"
+[[ -s "${PRS}/.claude/tmp/range-sub.txt" ]] \
+    && ! grep -q 'Subproject commit' "${PRS}/.claude/tmp/range-sub.txt" \
+    || { note "FAIL: creview fetch-diff --range control: the submodule change is shown"; fail=1; }
+if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
+    rc=0; prs_diff --pr pr-sub.txt 2>/dev/null || rc=$?
+    check "creview fetch-diff --pr over a submodule with ignore = all" 0 "${rc}"
+    grep -q $'^M\tlib$' "${PRS}/.claude/tmp/pr-sub.txt" 2>/dev/null \
+        && grep -qxF "+Subproject commit ${SUB_NEW}" "${PRS}/.claude/tmp/pr-sub.txt" \
+        || { note "FAIL: creview fetch-diff --pr hid or reformatted a submodule change"; fail=1; }
+else
+    note "SKIP: creview fetch-diff --pr submodule case (git has no --attr-source)"
+fi
+
 # --- worktree.sh + scratch dir of another working tree ----------------------------
 MAIN="$(git rev-parse --show-toplevel)"
 rc=0; bash "${FD}" snapshot .claude/tmp/e2e/wt-baseline 2>/dev/null || rc=$?
@@ -230,6 +461,16 @@ t 1 "${SANDBOX}/outside/victim.txt"
 out="$(run_guard "${MAIN}/.claude/tmp//sub/." 2>/dev/null)"
 [[ "${out}" == "${MAIN}/.claude/tmp/sub" ]] \
     || { note "FAIL: cross-worktree normalization (got '${out}')"; fail=1; }
+# Windows looks a bare program name up in the working directory before PATH, so a
+# git.exe planted in a checked-out tree must not stand in for git.
+if [[ "$(python3 -c 'import os; print(os.name)')" == nt ]]; then
+    cp "$(type -P true)" git.exe
+    rc=0
+    env -u NoDefaultCurrentDirectoryInExePath python3 "${GUARD}" \
+        -w "${MAIN}/.claude/tmp/sub/newfile" >/dev/null 2>&1 || rc=$?
+    check "scratch-guard ignores a git.exe in the working directory" 0 "${rc}"
+    rm git.exe
+fi
 MSYS=winsymlinks:nativestrict ln -s ../../../outside "${MAIN}/.claude/tmp/esc" 2>/dev/null || true
 if [[ -L "${MAIN}/.claude/tmp/esc" ]]; then
     t 1 -w "${MAIN}/.claude/tmp/esc/sub/out.txt"
@@ -287,6 +528,41 @@ check "fetch-diff diff with leftover worktree" 0 "${rc}"
 rc=0; bash "${WT}" remove "${WT_PATH}" >/dev/null 2>&1 || rc=$?
 [[ "${rc}" -ne 0 && -d "${WT_PATH}" ]] || { note "FAIL: worktree remove deleted a dirty worktree"; fail=1; }
 rm "${WT_PATH}/dirty.txt"
+for bad in "${WT_PATH}" "${MAIN}"; do
+    rc=0; python3 "${GHPR}" remove "${bad}" >/dev/null 2>&1 || rc=$?
+    [[ "${rc}" -ne 0 ]] || { note "FAIL: gh-pr.py remove accepted '${bad}'"; fail=1; }
+done
+[[ -d "${WT_PATH}" ]] || { note "FAIL: gh-pr.py remove deleted a worktree checkout did not add"; fail=1; }
+PR_WT="${MAIN}/.claude/worktrees/creview-pr-1-20260101-000000"
+if git worktree add -q --detach "${PR_WT}" >/dev/null 2>&1; then
+    rc=0; python3 "${GHPR}" remove "${WT_PATH}/../${PR_WT##*/}" >/dev/null 2>&1 || rc=$?
+    [[ "${rc}" -ne 0 && -d "${PR_WT}" ]] \
+        || { note "FAIL: gh-pr.py remove accepted a path with a .. component"; fail=1; }
+    if [[ "$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=t.k GIT_CONFIG_VALUE_0=v \
+        git config --get t.k 2>/dev/null)" == v ]]; then
+        FSM_HOOK="${SANDBOX}/fsmonitor-hook" FSM_MARK="${SANDBOX}/fsmonitor-ran"
+        printf '#!/bin/sh\n: > "%s"\n' "${FSM_MARK}" > "${FSM_HOOK}"
+        chmod +x "${FSM_HOOK}"
+        git config core.fsmonitor "${FSM_HOOK}"
+        git -C "${PR_WT}" status >/dev/null 2>&1
+        if [[ -e "${FSM_MARK}" ]]; then
+            rm "${FSM_MARK}"
+        else
+            note "SKIP: gh-pr.py remove core.fsmonitor case (git status did not run the hook)"
+        fi
+        rc=0; python3 "${GHPR}" remove "${PR_WT}" >/dev/null 2>&1 || rc=$?
+        git config --unset core.fsmonitor
+        check "gh-pr.py remove a worktree checkout adds" 0 "${rc}"
+        [[ ! -e "${PR_WT}" ]] || { note "FAIL: gh-pr.py remove left the worktree behind"; fail=1; }
+        [[ ! -e "${FSM_MARK}" ]] \
+            || { note "FAIL: gh-pr.py remove ran the core.fsmonitor hook"; fail=1; }
+    else
+        note "SKIP: gh-pr.py remove success case (git does not apply GIT_CONFIG_COUNT)"
+    fi
+    [[ ! -e "${PR_WT}" ]] || git worktree remove --force -- "${PR_WT}" >/dev/null 2>&1
+else
+    note "FAIL: git worktree add for the gh-pr.py remove case"; fail=1
+fi
 rc=0; bash "${WT}" remove "${WT_PATH}" >/dev/null 2>&1 || rc=$?
 check "worktree remove clean" 0 "${rc}"
 [[ ! -e "${WT_PATH}" && ! -e "${MAIN}/.claude/worktrees" ]] \

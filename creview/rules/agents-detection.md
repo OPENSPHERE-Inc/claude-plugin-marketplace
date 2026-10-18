@@ -8,7 +8,7 @@ Enumerate agent `**/*.md` from the following scopes in priority order and Read e
 
 1. Project scope: `.claude/agents/**/*.md` (relative to `main_root` when your launch prompt gives one other than `(none)`, otherwise to `{{target_dir}}`)
 2. User scope: `~/.claude/agents/**/*.md`
-3. Plugin-bundled: `{{plugin_root}}/agents/**/*.md`
+3. Plugin-bundled: `{{plugin_root}}/agents/**/*.md`, except `review-helper`, `review-leader`, and `pr-description-reviewer`, fixed-role agents the skills launch by name
 
 ## Selection
 
@@ -16,4 +16,4 @@ Match each agent's `description`-stated specialty against the match target suppl
 
 ## Result
 
-Store the selected agent's `name` (the value another Agent call passes to `subagent_type`) into the result field designated by the caller.
+Store the selected agent's `name` (the value another Agent call passes to `subagent_type`) into the result field designated by the caller. For a plugin-bundled (scope 3) agent, store the namespaced value (e.g. `creview:comment-sensei`).
