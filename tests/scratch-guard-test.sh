@@ -431,6 +431,25 @@ else
     note "SKIP: creview fetch-diff --pr submodule case (git has no --attr-source)"
 fi
 
+# --- fetch-diff.sh (creview): a non-ASCII path is printed as it is, not octal-escaped -
+PRQ="${SANDBOX}/prquote"
+QNAME=$'\xe7\x94\xbb\xe5\x83\x8f.png'
+prq_git() {
+    git -C "${PRQ}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
+        -c core.autocrlf=false "$@"
+}
+mkdir -p "${PRQ}" && prq_git init -q && prq_git commit -q --allow-empty -m base \
+    && printf '\x89PNG\0\1' > "${PRQ}/${QNAME}" && prq_git add -- "${QNAME}" \
+    && prq_git commit -qm image \
+    || { note "FAIL: creview fetch-diff non-ASCII path repository setup"; fail=1; }
+rc=0
+(cd "${PRQ}" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.quotePath GIT_CONFIG_VALUE_0=true \
+    bash "${CFD}" --range HEAD~1 HEAD .claude/tmp/quote.txt) 2>/dev/null || rc=$?
+check "creview fetch-diff --range over a non-ASCII path" 0 "${rc}"
+grep -qF "$(printf 'A\t%s' "${QNAME}")" "${PRQ}/.claude/tmp/quote.txt" 2>/dev/null \
+    && grep -qF "Binary files /dev/null and b/${QNAME} differ" "${PRQ}/.claude/tmp/quote.txt" \
+    || { note "FAIL: creview fetch-diff octal-escaped a non-ASCII path"; fail=1; }
+
 # --- worktree.sh + scratch dir of another working tree ----------------------------
 MAIN="$(git rev-parse --show-toplevel)"
 rc=0; bash "${FD}" snapshot .claude/tmp/e2e/wt-baseline 2>/dev/null || rc=$?
