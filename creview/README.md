@@ -61,7 +61,8 @@ and a path that `.gitattributes` marks `binary` or `-diff`, so the diff does
 not show its content. A reviewer reads such a text file in full and reviews it
 as text, whatever uses it; for a modified one, whose changed lines the diff
 does not show, it also reports as a finding that the change could not be
-located.
+located. It reports the same finding when it cannot view such a file in full,
+whether the file is added or modified.
 
 `/creview:start` also takes a GitHub pull request URL
 (`https://{host}/{owner}/{repo}/pull/{number}`) as its review target and then
