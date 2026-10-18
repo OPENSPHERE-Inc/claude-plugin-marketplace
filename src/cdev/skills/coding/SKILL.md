@@ -1,7 +1,7 @@
 ---
 name: coding
 description: ペアレビューセルを用いて、設計セルステップ・コーディングセルステップ・QA ゲートでコーディングタスクをエンドツーエンドに統括する、常駐エージェントチーム方式のワークフロー。reviewer は対象プロジェクトのエージェントから自動選定する。ユーザーが機能の実装・変更の構築・コーディングタスクの遂行を求めたとき能動的に使用する。バックグラウンドのサブエージェント（Agent の run_in_background）とエージェント間メッセージング（SendMessage）が利用可能なランタイムを要する。
-allowed-tools: Agent, SendMessage, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # マルチエージェントコーディング
@@ -54,7 +54,7 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 
 パスの基点: `{tmp_dir}`、デフォルトの `{design_dir}`、相対パスの `--output` は `{main_root}` を基点に解決する。タスク指定はそのまま team-analysis へ渡す。teammate は `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` に従ってそのパスを `{target_dir}` 基準で解決し、`{target_dir}` 外の絶対パスは読み取り専用の参照とする。`--worktree` を指定しない場合、`{main_root}` は `(none)` で、これらのパスは作業ディレクトリ基準とする。
 
-ティアダウン — セットアップ後のあらゆる終了経路で、稼働中の teammate がなくなってから実行する:
+ティアダウン — セットアップ後のあらゆる終了経路で、起動した teammate を停止（Step 5 の手順 2）してから実行する:
 
 1. Bash の `cd {main_root}` でセッションを戻す。
 2. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}` を実行する。未コミットの変更があるワークツリーは残して非ゼロ終了するので、その場合はそのワークツリーのパスを報告する。
@@ -167,7 +167,7 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 ## ステップ 5 — クリーンアップと報告
 
 1. `--commit` が ON かつ QA が通過した場合、実装をコミットする: 変更されたソースファイルのみをステージし（`.claude/tmp`、`.claude/worktrees`、`{design_dir}` は除く）、簡潔なメッセージで 1 回コミットする（finding ID なし）。
-2. teammate をシャットダウンする: 各 teammate の name 宛に `SendMessage` で `{type: "shutdown_request"}` を送り、シャットダウンを待つ。
+2. teammate を停止する: roster の各 name を `task_id` として `TaskStop` を呼び、応答や通知を待たずに次の手順へ進む。アイドルの teammate には稼働中のタスクがないため、稼働していない旨の失敗は停止済みとみなす。`shutdown_request` は送らない: リーダーが待てる完了の合図がない。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`。
 4. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
-5. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、QA 結果（`summary_line`、あれば `workflow_warning`）、および未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
+5. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、QA 結果（`summary_line`、あれば `workflow_warning`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、および稼働していない以外の理由で `TaskStop` が失敗した teammate。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。

@@ -59,9 +59,10 @@ status, severity counts, paths, and the QA result, never the bodies.
 
 This skill uses background subagents (`Agent` with `run_in_background`) and `SendMessage`
 between named teammates. The session has a single implicit team — no explicit team creation
-or deletion, and no shared task list; the leader tracks each cell's status itself. It runs
-only in a runtime where these are available — a deliberate trade-off favoring efficiency over
-the broad portability of a one-shot, stateless agent design.
+or deletion, and no shared task list; the leader tracks each cell's status itself. When the
+run ends, the leader stops the teammates with `TaskStop`. It runs only in a runtime where
+these are available — a deliberate trade-off favoring efficiency over the broad portability
+of a one-shot, stateless agent design.
 
 The skill requires a session started at the repository root, with or without `--worktree`;
 started from a subdirectory of the repository, it stops with an error.
