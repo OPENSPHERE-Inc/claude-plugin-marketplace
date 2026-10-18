@@ -1,7 +1,7 @@
 ---
 name: coding
 description: Orchestrate a coding task end to end with a standing agent team using paired review cells — a design cell step, a coding cell step, and a QA gate. Reviewers are auto-selected from the destination project agents. Use proactively when the user asks to implement a feature, build a change, or carry out a coding task. Requires a runtime with background subagents (Agent run_in_background) and inter-agent messaging (SendMessage).
-allowed-tools: Agent, SendMessage, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # Multi-Agent Coding
@@ -54,7 +54,7 @@ Setup:
 
 Path base: resolve `{tmp_dir}`, the default `{design_dir}`, and a relative `--output` against `{main_root}`. Pass the task specification to team-analysis as given; teammates resolve its paths against `{target_dir}` per `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md`, where an absolute path outside `{target_dir}` stays a read-only reference. Without `--worktree`, `{main_root}` is `(none)` and those paths are relative to the working directory.
 
-Teardown — on every exit after setup, once no teammate is running:
+Teardown — on every exit after setup, after stopping the spawned teammates (Step 5 step 2):
 
 1. Return the session with a Bash `cd {main_root}`.
 2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}`. It keeps a worktree with uncommitted changes and exits non-zero; report that worktree's path then.
@@ -167,7 +167,7 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 ## Step 5 — Clean up and report
 
 1. If `--commit` is on and QA passed, commit the implementation: stage only the changed source files (not `.claude/tmp`, `.claude/worktrees`, or `{design_dir}`), and commit once with a concise message (no finding IDs).
-2. Shut down the teammates: to each teammate's name, `SendMessage` `{type: "shutdown_request"}` and wait for shutdown.
+2. Stop the teammates: call `TaskStop` with each roster name as `task_id`, and go on to the next step without waiting for a reply or a notification. An idle teammate has no running task, so a failure saying it is not running means it is already stopped. Do not send `shutdown_request`: it gives the leader no completion signal to wait on.
 3. Remove the working directory: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 4. Under `--worktree`, run the teardown in § Worktree.
-5. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the QA result (`summary_line`, plus `workflow_warning` if any), and any unfixed QA failure, stated as environmental when `environmental` is true. Under `--worktree`, add the branch and any worktree the teardown kept.
+5. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the QA result (`summary_line`, plus `workflow_warning` if any), any unfixed QA failure, stated as environmental when `environmental` is true, and any teammate whose `TaskStop` failed for a reason other than not running. Under `--worktree`, add the branch and any worktree the teardown kept.

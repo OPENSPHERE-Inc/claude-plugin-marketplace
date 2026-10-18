@@ -11,7 +11,7 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
   - コメントレビュー teammate（comment-sensei）: ソースファイル内のコメントのみ編集可。ロジックは変更しない。
   - QA teammate（dev-helper）: フォーマット / ビルド / テストコマンドとフォーマッタの自動修正のみ。手動のソース編集は不可。
   - reviewer: ソースおよび設計は Read のみ。編集はしない。
-- **スコープの継承**: teammate が起動したエージェントは、起動元の teammate と同じ制限を受ける。リーダーの roster には登録されないため、起動元の teammate が自身のタスク完了を報告する前に shutdown する。起動したエージェントの報告先は親（起動元 teammate）であり、リーダーではない。起動時に自分の name を渡して name 宛に報告させるか、name を渡さず Agent の戻り値で結果を受け取る。リーダーへの報告は起動元 teammate が自ら行う。
+- **スコープの継承**: teammate が起動したエージェントは、起動元の teammate と同じ制限を受ける。リーダーの roster には登録されないため、起動元の teammate は自身のタスク完了を報告する前に、まだ稼働中ならその name か agentId を指定した `TaskStop` で停止する。応答は待たない。起動したエージェントの報告先は親（起動元 teammate）であり、リーダーではない。起動時に自分の name を渡して name 宛に報告させるか、name を渡さず Agent の戻り値で結果を受け取る。リーダーへの報告は起動元 teammate が自ら行う。
 
 ## ツール
 
@@ -42,7 +42,6 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 - **詳細な指摘はピアツーピアで送る。** reviewer は、対応すべき（Critical / Major）指摘 — `file:line` と推奨する修正方針 — を、リーダーが渡した producer の name 宛に `SendMessage` で直接送る。
 - **各タスクの完了は、そのタスクを割り当てた相手へ** `SendMessage` で報告する: リーダーが割り当てたタスクはリーダー（`to: "main"`）へ、それ以外は依頼元 teammate の name へ。
 - **アイドルは完了ではない。** teammate はターン間でアイドルになる。新たなメッセージがそれを起こす。
-- **シャットダウン。** `shutdown_request` メッセージを受けたら `shutdown_response` で応答する。
 
 ## レビューセル
 

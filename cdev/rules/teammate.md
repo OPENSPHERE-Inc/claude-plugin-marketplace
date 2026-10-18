@@ -11,7 +11,7 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
   - Comment-review teammate (comment-sensei): comment-only edits in source files; no logic changes.
   - QA teammate (dev-helper): format / build / test commands and formatter auto-fixes only; no manual source edits.
   - Reviewers: Read-only on sources and design; they do not edit.
-- **Inherited scope**: An agent a teammate launches is bound by the same restrictions as that teammate. It is not in the leader's roster, so the teammate that launched it shuts it down before reporting its own task complete. A launched agent reports to its parent (the launching teammate), never to the leader. Pass your own name at launch to receive its reports by `SendMessage`, or pass no name and receive the result via the Agent call's return value. The launching teammate itself reports to the leader.
+- **Inherited scope**: An agent a teammate launches is bound by the same restrictions as that teammate. It is not in the leader's roster, so before reporting its own task complete, the teammate that launched it stops it if it is still running — `TaskStop` with its name or agentId, without waiting for a reply. A launched agent reports to its parent (the launching teammate), never to the leader. Pass your own name at launch to receive its reports by `SendMessage`, or pass no name and receive the result via the Agent call's return value. The launching teammate itself reports to the leader.
 
 ## Tools
 
@@ -42,7 +42,6 @@ When editing source code, follow `comment.md` in the same directory as this file
 - **Route detailed findings peer-to-peer.** A reviewer sends its actionable (Critical / Major) findings — `file:line` plus the recommended fix direction — by `SendMessage` directly to its paired producer's name (the leader provides it).
 - **Report each task's completion to whoever assigned it** via `SendMessage`, as it completes: the leader at `to: "main"` for a leader-assigned task, otherwise the requesting teammate's name.
 - **Idle is not done.** A teammate goes idle between turns; a new message wakes it.
-- **Shutdown.** On a `shutdown_request` message, reply with a `shutdown_response`.
 
 ## Review cell
 
