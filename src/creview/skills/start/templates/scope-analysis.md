@@ -4,7 +4,7 @@ description: /creview:start ステップ 1 で差分をレビュースコープ�
 template_id: b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85
 ---
 
-レビュー範囲解析担当として `{{tmp_dir}}/diff.txt` を Read し、行数算出・差分のレビュースコープへの分割・各スコープのレビュアー選定を行う。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
+レビュー範囲解析担当として `{{tmp_dir}}/diff.txt` を Read し、行数とファイル数の算出・差分のレビュースコープへの分割・各スコープのレビュアー選定を行う。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
 
 ユーザー明示要求レビュアー: `{{user_requested}}`（空配列あり）
 
@@ -16,9 +16,9 @@ template_id: b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85
 
 実施内容:
 
-1. 差分から変更ファイルの種別 / パス / 内容領域（言語、サブシステム、ビルド / CI、A/V、コメント & FIXME / TODO 等）と拡張子別サマリを判定する。`line_count` = 差分中の +/- 行合計。
+1. 差分から変更ファイルの種別 / パス / 内容領域（言語、サブシステム、ビルド / CI、A/V、コメント & FIXME / TODO 等）と拡張子別サマリを判定する。`line_count` = 差分中の +/- 行合計。`file_count` = 差分が変更するファイルの数で、+/- 行を持たない変更（バイナリファイル、モード変更、空ファイルの追加・削除、リネーム）も数える。`file_count` が 0 の場合は、`scopes` を空にして手順 2〜4 を飛ばす。
 2. 下記のサイズ規則に従って変更ファイルをレビュースコープに分割する。各変更ファイルはいずれか 1 つのスコープにのみ属する。スコープには形成順に `s1`、`s2`、… と番号を振る。
-3. 各スコープについて、列挙した各エージェントの `description` から、その専門性が差分全体ではなく**当該スコープのファイル**に関連するかを判定する。関連するエージェントはすべて、合致した拡張子 / パス / 内容領域を示す短い `reason` を付して当該スコープの `reviewers` に追加する。関連するエージェントが 1 つも無いスコープには代わりに `{name: "general-purpose", reason: "no matching specialist agent"}` を置く。スコープに追加したエージェントがすべてコードの振る舞いより狭い関心（例: コメント規律のみ）しか扱わない場合は、`{name: "general-purpose", reason: "no selected specialist reviews the code logic"}` も追加する。
+3. 各スコープについて、列挙した各エージェントの `description` から、その専門性が差分全体ではなく**当該スコープのファイル**に関連するかを判定する。関連するエージェントはすべて、合致した拡張子 / パス / 内容領域を示す短い `reason` を付して当該スコープの `reviewers` に追加する。関連するエージェントが 1 つも無いスコープには代わりに `{name: "general-purpose", reason: "no matching specialist agent"}` を置く。スコープに追加したエージェントがすべてコードの振る舞いより狭い関心（例: コメント規律のみ）しか扱わない場合は、`{name: "general-purpose", reason: "no selected specialist reviews the code logic"}` も追加する。画像などテキスト行を持たないファイルは、拡張子だけでなく、ソース中でそれを使う箇所からも判定する。例: Web ページがレイアウトする画像は、そのページのレイアウトや描画をレビューするエージェントに関連する。
 4. 未追加の `user_requested` レビュアーを全スコープに補完する（reason: `"user explicitly requested"`）。
 
 サイズ規則:
@@ -29,4 +29,4 @@ template_id: b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85
 - まず凝集性（同一サブシステム / ディレクトリ / 言語 / 関心事）でまとめ、そのまとまりの中でサイズ上限を適用する。
 - 分割は 8 スコープを上限とする。上限に達する場合はサイズ上限を各スコープ均等に超過させ、その旨を `rationale` に記す。
 
-戻り値: `{line_count, scopes: [{scope_id, paths（当該スコープの変更ファイルパス）, line_count, reviewers: [{name, reason}]}], extension_summary（例: ".cpp(12), .hpp(5)"）, rationale（分割と選定の根拠 1〜2 文）, template_id}`。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
+戻り値: `{line_count, file_count, scopes: [{scope_id, paths（当該スコープの変更ファイルパス）, line_count, reviewers: [{name, reason}]}], extension_summary（例: ".cpp(12), .hpp(5)"）, rationale（分割と選定の根拠 1〜2 文）, template_id}`。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

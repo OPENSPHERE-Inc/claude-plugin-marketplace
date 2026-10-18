@@ -4,7 +4,7 @@ description: Prompt for the scope-analysis sub-agent in /creview:start Step 1, w
 template_id: b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85
 ---
 
-As the review-scope analysis owner, Read `{{tmp_dir}}/diff.txt` to count lines, split the diff into review scopes, and select each scope's reviewers. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
+As the review-scope analysis owner, Read `{{tmp_dir}}/diff.txt` to count its lines and files, split the diff into review scopes, and select each scope's reviewers. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
 
 User-explicitly-requested reviewers: `{{user_requested}}` (may be an empty array)
 
@@ -16,9 +16,9 @@ Reviewer pool: enumerate `*.md` from the following locations in priority order, 
 
 Procedure:
 
-1. From the diff, determine the changed file kinds / paths / content areas (language, subsystem, build / CI, A/V, comments & FIXME / TODO, etc.) and a per-extension summary. `line_count` = total of +/- lines in the diff.
+1. From the diff, determine the changed file kinds / paths / content areas (language, subsystem, build / CI, A/V, comments & FIXME / TODO, etc.) and a per-extension summary. `line_count` = total of +/- lines in the diff. `file_count` = number of files the diff changes, counting the changes with no +/- lines (a binary file, a mode change, an empty file added or deleted, a rename) as well. When `file_count` is 0, return an empty `scopes` and skip steps 2-4.
 2. Split the changed files into review scopes per the sizing rule below. Every changed file belongs to exactly one scope. Number the scopes `s1`, `s2`, ... in the order formed.
-3. For each scope, decide from each enumerated agent's `description` whether its specialty is relevant to **that scope's files** — not to the whole diff — and add every relevant agent to that scope's `reviewers` with a short `reason` citing the matching extension / path / content area. A scope no agent is relevant to gets `{name: "general-purpose", reason: "no matching specialist agent"}` instead. When every agent added to a scope covers only a concern narrower than the code's behavior (e.g. comment discipline alone), also add `{name: "general-purpose", reason: "no selected specialist reviews the code logic"}`.
+3. For each scope, decide from each enumerated agent's `description` whether its specialty is relevant to **that scope's files** — not to the whole diff — and add every relevant agent to that scope's `reviewers` with a short `reason` citing the matching extension / path / content area. A scope no agent is relevant to gets `{name: "general-purpose", reason: "no matching specialist agent"}` instead. When every agent added to a scope covers only a concern narrower than the code's behavior (e.g. comment discipline alone), also add `{name: "general-purpose", reason: "no selected specialist reviews the code logic"}`. Judge a file without text lines, such as an image, by what uses it in the source as well as by its extension: e.g., an image a web page lays out is relevant to an agent that reviews the page's layout or rendering.
 4. Add every `user_requested` reviewer not already present to every scope (reason: `"user explicitly requested"`).
 
 Sizing rule:
@@ -29,4 +29,4 @@ Sizing rule:
 - Group by cohesion first (same subsystem / directory / language / concern), then apply the size bound inside that grouping.
 - Cap the split at 8 scopes. When the cap binds, let the scopes exceed the size bound evenly and say so in `rationale`.
 
-Return value: `{line_count, scopes: [{scope_id, paths (the scope's changed file paths), line_count, reviewers: [{name, reason}]}], extension_summary (e.g., ".cpp(12), .hpp(5)"), rationale (1-2 sentences justifying the split and the selection), template_id}`. Include `template_id` exactly as Read from this template's frontmatter.
+Return value: `{line_count, file_count, scopes: [{scope_id, paths (the scope's changed file paths), line_count, reviewers: [{name, reason}]}], extension_summary (e.g., ".cpp(12), .hpp(5)"), rationale (1-2 sentences justifying the split and the selection), template_id}`. Include `template_id` exactly as Read from this template's frontmatter.

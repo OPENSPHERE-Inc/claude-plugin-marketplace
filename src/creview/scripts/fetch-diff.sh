@@ -92,8 +92,6 @@ fi
 # Reviewers parse these sections as plain unified diffs: pin the prefix
 # options and disable external diff / textconv / color so user git config
 # cannot change the format (or run arbitrary commands).
-# FIXME: a diff of only binary changes (incl. text a NUL byte turns binary) has no +/- lines,
-# so /creview:start launches no reviewers. Decide how to show binary changes in the diff.
 review_diff() {
     git ${ATTR_SOURCE:+"--attr-source=${ATTR_SOURCE}"} \
         -c diff.noprefix=false -c diff.mnemonicPrefix=false \
