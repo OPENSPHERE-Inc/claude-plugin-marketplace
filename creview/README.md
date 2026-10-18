@@ -51,11 +51,11 @@ the current clone, and the GitHub CLI (`gh`) must be authenticated for that
 host. Reviewing a pull request requires Git 2.41 or later; with an older Git
 the run stops with an error. `--base` and `--range` cannot be combined with a
 pull request URL.
-The diff is taken without rename detection and with the `.gitattributes` of
-the merge base. It includes every change to the commit a submodule points to,
-but not the diff of the files inside a submodule. Neither an exact rename nor
-the pull request's `.gitmodules` or `.gitattributes` can therefore hide a
-change from the reviewers.
+The diff is taken without rename detection, with the `.gitattributes` of the
+merge base, and with every change of the commit a submodule points to, so
+neither an exact rename nor the pull request's `.gitmodules` or `.gitattributes`
+can hide a change from the reviewers. For a submodule, the diff shows only its
+old and new commits, not the changes to the files inside it.
 
 - When HEAD is the pull request's head commit, the working tree is reviewed
   in place; uncommitted changes to tracked files stop the run with an error.
