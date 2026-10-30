@@ -65,9 +65,12 @@ creview-branch-<timestamp>; any other path is an error), a PR worktree with git
 hooks and the configured filter drivers disabled, and its parent directory when
 left empty. A worktree with uncommitted changes, including changes to the
 symbolic links a PR worktree holds as plain files, is kept, and the exit status
-is 1. So is a worktree with initialized submodules, which git refuses to
-remove; its error then says to check the worktree and remove it with
-git worktree remove --force.
+is 1. So is a PR worktree with such a link it cannot examine (on Windows, a path
+that is not UTF-8 or is past MAX_PATH), and so is a worktree with initialized
+submodules, which git refuses to remove; its error then says to check the
+worktree and remove it with git worktree remove --force. A PR worktree's error
+says instead not to run git in it, to copy out what to keep, and to remove it
+with git worktree remove --force.
 
 Exits 1 with an error message on stderr on any failure.
 """
@@ -494,24 +497,40 @@ def skip_worktree_links(path, env):
 
 
 def changed_links(path, env):
+    # Returns the changed links and, apart, those it cannot compare, as bytes when they do not
+    # decode.
     git_dir = run(["git", "rev-parse", "--absolute-git-dir"], cwd=path, env=env).strip()
     sparse = os.path.isfile(os.path.join(git_dir, "info", "sparse-checkout"))
-    agent_names = {name.lower() for name in AGENT_FILES}
-    changed = []
+    agent_names = {name.lower().encode() for name in AGENT_FILES}
+    changed, unexamined = [], []
     entries = run(["git", "ls-files", "-v", "--stage", "-z"], cwd=path, env=env, text=False)
     for entry in entries.split(b"\0"):
         info, _, name = entry.partition(b"\t")
         fields = info.split(b" ")
         if len(fields) != 4 or fields[0] not in (b"S", b"s") or fields[1] != b"120000":
             continue
-        link = os.fsdecode(name)
+        # The sparse checkout of a worktree without the agent files leaves those out.
+        left_out = sparse and any(part.lower() in agent_names for part in name.split(b"/"))
+        try:
+            link = os.fsdecode(name)
+        except UnicodeDecodeError:
+            # Windows decodes a path as strict UTF-8, and Git for Windows checks out one that
+            # is not UTF-8 under another name.
+            if not left_out:
+                unexamined.append(name)
+            continue
         file = os.path.join(path, link)
         try:
             mode = os.lstat(file).st_mode
-        except (FileNotFoundError, NotADirectoryError):
-            # The sparse checkout of a worktree without the agent files leaves those out.
-            if not (sparse and any(part.lower() in agent_names for part in link.split("/"))):
+        except (FileNotFoundError, NotADirectoryError) as e:
+            if left_out:
+                continue
+            # On Windows a path past MAX_PATH also fails as FileNotFoundError, with another
+            # winerror.
+            if getattr(e, "winerror", None) in (None, 2):
                 changed.append(link)
+            else:
+                unexamined.append(link)
             continue
         if not stat.S_ISREG(mode):
             changed.append(link)
@@ -524,7 +543,12 @@ def changed_links(path, env):
                            b"blob %d\0" % len(data) + data, usedforsecurity=False)
         if blob.hexdigest() != oid:
             changed.append(link)
-    return changed
+    return changed, unexamined
+
+
+def quoted(names, limit=3):
+    shown = ", ".join(repr(name) for name in names[:limit])
+    return shown + (f" and {len(names) - limit} more" if len(names) > limit else "")
 
 
 def reraise(e):
@@ -755,12 +779,15 @@ def check_free(branch):
     if busy and added_worktree(busy, PR_WORKTREE_RE, BRANCH_WORKTREE_RE):
         script = os.path.abspath(__file__).replace(os.sep, "/")
         command = shlex.join(["python3", script, "remove", busy])
+        if added_worktree(busy, PR_WORKTREE_RE):
+            steps, note = "", "; it holds a pull request's code, so do not run git in it"
+        else:
+            steps, note = "review its changes, commit or discard them, and ", ""
         raise Error(
             f"branch {branch} is checked out in the worktree {busy}, which a creview skill kept "
-            "for uncommitted changes or initialized submodules; review its changes, commit or "
-            f"discard them, and remove it by running {command} in "
-            f"{shlex.quote(busy.rsplit('/', 3)[0])} "
-            "(follow its error when it refuses) before running the skill again"
+            f"for uncommitted changes or initialized submodules; {steps}remove it by running "
+            f"{command} in {shlex.quote(busy.rsplit('/', 3)[0])} "
+            f"(follow its error when it refuses{note}) before running the skill again"
         )
     if busy:
         raise Error(
@@ -842,11 +869,18 @@ def submodules_note(path, env=None):
             f"then remove it with {command}")
 
 
-def worktree_remove(path, *config, env=None):
+def pr_worktree_note(path, main_root):
+    command = shlex.join(["git", "worktree", "remove", "--force", "--", path])
+    return (f"; {path} holds a pull request's code, and git run in it can run the pull "
+            "request's hooks and filters: do not run git in it; copy out what to keep, then "
+            f"remove it by running {command} in {shlex.quote(main_root)}")
+
+
+def worktree_remove(path, *config, env=None, note=None):
     try:
         run(["git", *config, "worktree", "remove", "--", path], env=env)
     except Error as e:
-        raise Error(f"{e}{submodules_note(path, env)}") from None
+        raise Error(f"{e}{submodules_note(path, env) if note is None else note}") from None
 
 
 def cmd_remove(path):
@@ -859,17 +893,22 @@ def cmd_remove(path):
     elif PR_WORKTREE_RE.fullmatch(name):
         with tempfile.TemporaryDirectory() as no_hooks:
             env = hook_free_env(no_hooks)
-            changed = changed_links(path, env) if os.path.isdir(path) else []
+            note = pr_worktree_note(path, main_root) if os.path.isdir(path) else ""
+            changed, unexamined = changed_links(path, env) if os.path.isdir(path) else ([], [])
+            reasons = []
             if changed:
-                raise Error(
-                    f"the worktree {path} is kept: it changes the symbolic links "
-                    f"{', '.join(changed)}, which it holds as plain files that git status does "
-                    "not show; commit them with git -c core.symlinks=false after git "
-                    "update-index --no-skip-worktree, or restore them, and remove it again"
-                )
+                reasons.append(f"it changes the symbolic links {quoted(changed)}, which it holds "
+                               "as plain files that git status does not show")
+            if unexamined:
+                reasons.append(f"its symbolic links {quoted(unexamined)}, which it holds as "
+                               "plain files, could not be examined for changes (a path that is "
+                               "not UTF-8, or one Windows cannot open, such as one past "
+                               "MAX_PATH)")
+            if reasons:
+                raise Error(f"the worktree {path} is kept: {', and '.join(reasons)}{note}")
             # git checks that the worktree is clean with a git status that inherits the
             # overrides and skips the skip-worktree links, which changed_links compares.
-            worktree_remove(path, "-c", f"core.hooksPath={no_hooks}", env=env)
+            worktree_remove(path, "-c", f"core.hooksPath={no_hooks}", env=env, note=note)
     else:
         raise Error(f"not a worktree that checkout or doc-checkout adds: {path}")
     remove_empty_parent(path)

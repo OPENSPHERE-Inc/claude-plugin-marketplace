@@ -313,6 +313,36 @@ except g.Error as e:
 expect("skip_worktree_links marks a path that is not UTF-8",
        subprocess.run(["git", "ls-files", "-v", "-z"], cwd=links, capture_output=True).stdout,
        b"S a\0S l\xe9\0")
+# Windows decodes a path as strict UTF-8; subprocess passes str arguments through fsdecode.
+real_fsdecode = g.os.fsdecode
+g.os.fsdecode = lambda name: name if isinstance(name, str) else name.decode("utf-8")
+try:
+    expect("changed_links sets apart a path that does not decode",
+           g.changed_links(links, os.environ), (["a"], [b"l\xe9"]))
+
+    def lstat(path, *args, **kwargs):
+        if path == os.path.join(links, "a"):
+            raise too_long
+        return real_lstat(path, *args, **kwargs)
+    g.os.lstat = lstat
+    expect("changed_links sets apart a path lstat fails on with winerror 206",
+           g.changed_links(links, os.environ), ([], ["a", b"l\xe9"]))
+    g.os.lstat = real_lstat
+    os.makedirs(os.path.join(links, ".git", "info"), exist_ok=True)
+    with open(os.path.join(links, ".git", "info", "sparse-checkout"), "w") as f:
+        f.write("/*\n")
+    for args, data in ((["--index-info"], b"120000 %s\t.CLAUDE/m\xe9\0" % blob),
+                       (["--skip-worktree", "--stdin"], b".CLAUDE/m\xe9\0")):
+        subprocess.run(["git", "update-index", "-z", *args], cwd=links, input=data,
+                       capture_output=True, check=True)
+    expect("changed_links passes over an agent path a sparse checkout leaves out",
+           g.changed_links(links, os.environ), (["a"], [b"l\xe9"]))
+finally:
+    g.os.fsdecode, g.os.lstat = real_fsdecode, real_lstat
+expect("quoted escapes the names and shows the first 3",
+       g.quoted(["a\nb", "c", "d", b"l\xe9"]), "'a\\nb', 'c', 'd' and 1 more")
+expect("quoted one name", g.quoted(["x"]), "'x'")
+expect("quoted a name that does not decode", g.quoted([b"l\xe9"]), "b'l\\xe9'")
 sys.exit(1 if failed else 0)
 PY
 for opt in --trusted -t; do
@@ -732,6 +762,9 @@ field() { # <name>: prints a field of the JSON object on stdin, JSON-encoded unl
 v = json.load(sys.stdin)[sys.argv[1]]
 sys.stdout.buffer.write((v if isinstance(v, str) else json.dumps(v)).encode() + b"\n")' "$1"
 }
+shlex_join() {
+    python3 -c 'import shlex, sys; sys.stdout.buffer.write(shlex.join(sys.argv[1:]).encode())' "$@"
+}
 doc_checkout() { python3 "${GHPR}" doc-checkout "$@"; }
 write_doc none.md
 write_doc bad.md "- **Trust:** yes"
@@ -825,9 +858,11 @@ drop_worktree() { # <path>: removes a worktree a failed case left behind
         || { git worktree remove --force -- "$1" >/dev/null 2>&1; rmdir -- "${1%/*}" 2>/dev/null; }
 }
 kept_link() { # <doc> <worktree> <change>: gh-pr.py remove keeps the worktree, naming sub/link
-    local out rc=0
+    local out rc=0 want
+    want="$(shlex_join git worktree remove --force -- "$2") in $(shlex_join "${MAIN}")"
     out="$(python3 "${GHPR}" remove "$2" 2>&1)" || rc=$?
-    [[ "${rc}" -eq 1 && -d "$2" && "${out}" == *"symbolic links sub/link, which"* ]] && return
+    [[ "${rc}" -eq 1 && -d "$2" && "${out}" == *"symbolic links 'sub/link', which"* \
+        && "${out}" == *"do not run git in it"* && "${out}" == *"${want}"* ]] && return
     note "FAIL: gh-pr.py remove did not keep the worktree of $1 with sub/link $3: '${out}'"
     fail=1
     drop_worktree "$2"
@@ -873,8 +908,14 @@ check_worktree() {
             || { note "FAIL: gh-pr.py doc-checkout $1 left the worktree dirty"; fail=1; }
     fi
     : > "${wt}/uncommitted.txt"
-    rc=0; python3 "${GHPR}" remove "${wt}" >/dev/null 2>&1 || rc=$?
+    rc=0; out="$(python3 "${GHPR}" remove "${wt}" 2>&1)" || rc=$?
     if [[ "${rc}" -eq 1 && -f "${wt}/uncommitted.txt" ]]; then
+        if [[ "$3" == true ]]; then
+            [[ "${out}" == *"do not run git in it"* \
+                && "${out}" == *"$(shlex_join git worktree remove --force -- "${wt}")"* ]]
+        else
+            [[ "${out}" != *"do not run git in it"* ]]
+        fi || { note "FAIL: gh-pr.py remove the dirty worktree of $1 printed '${out}'"; fail=1; }
         rm "${wt}/uncommitted.txt"
         rc=0; python3 "${GHPR}" remove "${wt}" >/dev/null 2>&1 || rc=$?
         check "gh-pr.py remove the worktree of $1" 0 "${rc}"
@@ -894,7 +935,7 @@ if [[ -d "${wt}" ]] && modules="$(git -C "${wt}" rev-parse --absolute-git-dir)/m
     && mkdir "${modules}"; then
     out="$(python3 "${GHPR}" remove "${wt}" 2>&1)"; rc=$?
     check "gh-pr.py remove a worktree with initialized submodules" 1 "${rc}"
-    [[ -d "${wt}" && "${out}" == *"git worktree remove --force -- ${wt}"* ]] || {
+    [[ -d "${wt}" && "${out}" == *"$(shlex_join git worktree remove --force -- "${wt}")"* ]] || {
         note "FAIL: gh-pr.py remove a worktree with initialized submodules printed '${out}'"
         fail=1
     }
@@ -1028,7 +1069,9 @@ KEPT="${MAIN}/.claude/worktrees/creview-pr-3-20260101-000000"
 if git worktree add -q "${KEPT}" pr-src >/dev/null 2>&1; then
     out="$(doc_checkout "${DOCS}/branch.md" 2>&1)"; rc=$?
     check "gh-pr.py doc-checkout branch.md on a branch a kept PR worktree holds" 1 "${rc}"
-    [[ "${out}" == *"which a creview skill kept"*"/gh-pr.py remove ${KEPT} in ${MAIN} "* \
+    want="$(shlex_join remove "${KEPT}") in $(shlex_join "${MAIN}") "
+    [[ "${out}" == *"which a creview skill kept"*"/gh-pr.py"*" ${want}"* \
+        && "${out}" == *"do not run git in it"* && "${out}" != *"commit or discard"* \
         && "${out}" != *\\* ]] \
         || { note "FAIL: gh-pr.py doc-checkout on a kept PR worktree's branch printed '${out}'"
              fail=1; }
