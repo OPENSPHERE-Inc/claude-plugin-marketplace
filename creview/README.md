@@ -94,14 +94,9 @@ a text file that the diff shows as binary from the checked-out pull request.
 - Otherwise the head commit is checked out, detached, in a temporary worktree
   under `.claude/worktrees/`, with git hooks and the filter drivers of your git
   configuration disabled, Git LFS smudging skipped, and symbolic links checked
-  out as plain files holding the link target. The worktree is removed, with
-  hooks and filter drivers disabled again, at the end of the run. When it
-  cannot be removed (for example, on Windows, when it holds a symbolic link
-  whose path is not UTF-8 or is past MAX_PATH), it is kept and its path and
-  error are reported: run no git in it, since git run there can run the pull
-  request's hooks and filters; copy out what to keep, then remove it by
-  running `git worktree remove --force -- <path>` in the main working tree.
-  It belongs to this run only and is unrelated to `/creview:rounds --worktree`.
+  out as plain files holding the link target. The worktree and everything in it
+  are removed, with hooks and filter drivers disabled again, at the end of the
+  run. It belongs to this run only and is unrelated to `/creview:rounds --worktree`.
   - The review document and the working directory stay in the main working
     tree's `.claude/tmp/`, and the project's `.claude/agents/` are read from
     the main working tree.
@@ -214,11 +209,15 @@ branch for such a document, it records that branch the same way. With Trust
 summary lists it with the reason.
 
 At the end the worktree is removed and its branch kept; a worktree with
-uncommitted changes is kept and its path reported. In a worktree for a
-document with a PR bullet, a change to a file that is a symbolic link in the
-pull request, which the worktree holds as a plain file, counts as an
-uncommitted change although `git status` does not show it; the error names
-those files. Like the
+uncommitted changes is kept and its path reported. A worktree for a document
+with a PR bullet is kept by `/creview:respond` only: `/creview:triage` and
+`/creview:resolve`, which do not change the code, remove it and everything in
+it without checking for changes. When `/creview:respond` removes such a
+worktree, a change to a file that is a symbolic link in the pull request, which
+the worktree holds as a plain file, counts as an uncommitted change although
+`git status` does not show it, and such a file it cannot examine (on Windows,
+one whose path is not UTF-8 or is past MAX_PATH) keeps the worktree as well;
+the error names those files. Like the
 `/creview:rounds --worktree` worktree described below, the worktree is a fresh
 checkout without gitignored dependencies, virtual environments, build
 directories, `.env`, or the contents of submodules, so `/creview:respond`'s
@@ -238,7 +237,7 @@ names (following that command's error when it refuses), and run the skill
 again. Neither recovery above applies to a worktree for a document with a PR
 bullet: it holds the pull request's code, and git run in it can run the pull
 request's hooks and filters. Whatever kept such a worktree, run no git in it;
-as its error says, copy out what to keep, then remove it by running
+copy out what to keep, then remove it by running
 `git worktree remove --force -- <path>` in the main working tree.
 The three skills refuse to run in a session started in a pull request worktree
 that creview added. Run by `/creview:rounds`, the three skills create no worktree and
