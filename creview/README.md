@@ -147,9 +147,11 @@ directory out.
 The review document records the pull request in a header bullet of the form
 `- **PR:** {url} (head {head_sha}, base {merge_base})`, and the branch the
 review ran on in a `- **Branch:** {branch}` bullet. A worktree review runs on a
-detached HEAD and records no branch. Run on their own, `/creview:triage`,
-`/creview:respond`, and `/creview:resolve` locate the document's code from
-these bullets:
+detached HEAD and records no branch. A `- **Trust:** on` or `off` bullet
+records whether the reviewed tree had the agent files: `on` for an in-place
+review or a worktree review with `--trust`, `off` for a worktree review without
+it. Run on their own, `/creview:triage`, `/creview:respond`, and
+`/creview:resolve` locate the document's code from the PR and Branch bullets:
 
 - With a Branch bullet, they work in place when that branch is checked out,
   and otherwise in a temporary worktree on that local branch under
@@ -164,20 +166,23 @@ these bullets:
 A worktree for a document with a PR bullet holds the pull request's code and
 is checked out like a worktree review: git hooks and filter drivers disabled,
 Git LFS smudging skipped, symbolic links as plain files, and the agent files
-left out unless `--trust` is given, which the three skills also take. Their
-sub-agents are told what a worktree review's sub-agents are told, except that
-`/creview:respond`, which fixes, builds, and tests the code, is not told to
-leave the files unrun and git unused. It runs the pull request's code as it
-does in place: its build scripts and tests, and, when it commits, the git hooks
-a relative `core.hooksPath` takes from the pull request's tree.
+left out unless the Trust bullet is `on`. The three skills take no `--trust`:
+following the Trust bullet, they work with the files the review had, and a
+document without one counts as `off`. To work with the agent files, review the
+pull request again with `--trust`. Their sub-agents are told what a worktree
+review's sub-agents are told, except that `/creview:respond`, which fixes,
+builds, and tests the code, is not told to leave the files unrun and git
+unused. It runs the pull request's code as it does in place: its build scripts
+and tests, and, when it commits, the git hooks a relative `core.hooksPath`
+takes from the pull request's tree.
 
 In a worktree, `/creview:respond` turns `--commit` on. For a document with a
 PR bullet only, it commits to a local branch `creview-pr-{number}`, which it
 creates at the head commit or uses when the branch already points there, and
 it records that branch in a Branch bullet, so later runs work on the fixes.
 Pushing the branch to the pull request is left to you. Run in place on a
-branch for such a document, it records that branch the same way. Without
-`--trust`, a finding whose fix needs a left-out agent file stays unfixed.
+branch for such a document, it records that branch the same way. With Trust
+`off`, a finding whose fix needs a left-out agent file stays unfixed.
 
 At the end the worktree is removed and its branch kept; a worktree with
 uncommitted changes is kept and its path reported. The review document, the

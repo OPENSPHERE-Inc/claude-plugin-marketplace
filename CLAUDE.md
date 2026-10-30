@@ -223,7 +223,9 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     files such as CLAUDE.md and .claude/ left out unless --trust) → code
                     reviewers + pr-description-reviewer → doc header carries a
                     `- **PR:**` bullet → gh-pr.py remove (hooks disabled); the header
-                    also carries a `- **Branch:**` bullet when the review ran on a branch
+                    also carries a `- **Branch:**` bullet when the review ran on a branch,
+                    and in PR mode a `- **Trust:** on|off` bullet (whether the reviewed
+                    tree had the agent files)
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist
                     triage / estimate metadata into the doc
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
@@ -232,8 +234,9 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     (triage / respond / resolve invoked directly: a doc whose Branch /
                     PR bullet the working tree does not have checked out is worked on
                     in a worktree — worktree.sh create on the branch, or gh-pr.py
-                    checkout-branch / checkout for a PR doc; respond commits a PR doc's
-                    fixes to creview-pr-{number} and records it as the Branch bullet)
+                    checkout-branch / checkout for a PR doc, with --trust exactly when
+                    the doc's Trust bullet is on; respond commits a PR doc's fixes to
+                    creview-pr-{number} and records it as the Branch bullet)
 /creview:rounds  → launches one review-leader Sub per phase per round (each Sub invokes
                     the phase's skill and runs it whole) + divergence gate after triage
                     (Round 2 on: detect → investigate → pause with the report) +
