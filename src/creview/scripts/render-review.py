@@ -21,6 +21,8 @@ Behavior:
 - New events are inserted in fixed order (triage → estimate → status → verification)
   immediately before the closing marker.
 - Same (id, field) pair in events: last write wins.
+- A line break in a value is folded into a space, so a value never starts a line of
+  its own.
 - Events for IDs whose closing marker is not found are appended at the end of the
   output as an "## Orphan Metadata" section.
 - The script does NOT deduplicate; running it twice with the same events produces
@@ -69,6 +71,10 @@ def load_events(jsonl_path):
     return fields
 
 
+def one_line(value):
+    return " ".join(str(value).splitlines())
+
+
 def render(md_path, fields):
     """Render markdown lines and return (lines, seen_ids)."""
     seen_ids = set()
@@ -84,7 +90,7 @@ def render(md_path, fields):
                 fv = fields.get(cur_id, {})
                 for field in DISPLAY_ORDER:
                     if field in fv:
-                        out_lines.append(f"- **{LABELS[field]}:** {fv[field]}")
+                        out_lines.append(f"- **{LABELS[field]}:** {one_line(fv[field])}")
             out_lines.append(line)
     return out_lines, seen_ids
 
@@ -102,7 +108,7 @@ def append_orphans(out_lines, fields, seen_ids):
         out_lines.append("")
         for field in DISPLAY_ORDER:
             if field in fields[orphan_id]:
-                out_lines.append(f"- **{LABELS[field]}:** {fields[orphan_id][field]}")
+                out_lines.append(f"- **{LABELS[field]}:** {one_line(fields[orphan_id][field])}")
 
 
 def main():

@@ -1,7 +1,7 @@
 ---
 name: triage
 description: Triage and estimate the cost of review findings, then persist the triage / estimate metadata into the review document (no source fixes). Use proactively when a review document from /creview:start exists and the next step is deciding which findings to address or estimating their fix cost.
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Triage & Estimate
@@ -23,6 +23,13 @@ The user supplies a path to a review document (markdown). When the argument is `
 ## Options
 
 - `--adr` (default OFF) — Permit the estimate sub-agents to record design decisions as ADR files next to the review document (file name `{review-doc basename}-adr-{finding-id}.md`, skeleton: `${CLAUDE_PLUGIN_ROOT}/rules/adr-format.md`). The user may edit the ADR files before `/creview:respond`, which reads and updates referenced ADRs regardless of its own `--adr`.
+
+## Worktree
+
+Follow `${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, appending `--discard` to `remove`. Add these PR worktree overrides:
+
+- `Do not run, build, test, install, or source any file under {target_dir}.`
+- `Run no git command in {target_dir}, read-only ones included: the pull request's files can make git run hooks and filter / diff drivers there.`
 
 ## Review document format
 
@@ -105,7 +112,9 @@ Each decision is written to an intermediate file, and `compile-review.py` compil
 {tmp_dir}/events.jsonl            ← output of compile-review.py (input to render-review.py)
 ```
 
-`{main_root}` is the `main_root` your launch prompt gives when an upper flow (e.g. `/creview:rounds`) runs this skill, or `(none)` when the skill is invoked directly. `{target_dir}` is likewise the `target_dir` your launch prompt gives, or the output of `git rev-parse --show-toplevel` when the skill is invoked directly.
+`{main_root}` is the `main_root` your launch prompt gives when an upper flow (e.g. `/creview:rounds`) runs this skill, or `(none)` when the skill is invoked directly. `{target_dir}` is likewise the `target_dir` your launch prompt gives, or the output of `git rev-parse --show-toplevel` when the skill is invoked directly. A worktree replaces both (§ Worktree).
+
+To abort: show the error, run the teardown when it is due (§ Worktree), remove `{tmp_dir}` with `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`, and terminate the skill.
 
 Each sub-agent obtains finding-body information such as description / location / existing metadata directly by Read-ing around the METADATA marker in the review document, keyed by `id`.
 
@@ -124,12 +133,12 @@ At the start of Step 1, the leader (you) creates `{tmp_dir}` with `mkdir -p {tmp
 
 ## Step 1 — Adversarial triage (delegate to the triage sub-agent)
 
-Before creating `{tmp_dir}`, if `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill.
+Before creating `{tmp_dir}`, if `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill. When the skill is invoked directly, locate the document's code after creating `{tmp_dir}` (§ Worktree).
 
 Delegate triage to a **single sub-agent that is separate from the specialist agents who will perform the fixes** (to isolate bias). The triage Sub reads the review document directly, extracts findings, performs stage classification, and runs adversarial triage in three stages: propose → parallel challenges → majority-gated adjudication. It makes the primary decision itself, spawns three challenge sub-agents per finding batch and an adjudication sub-agent of its own, and reflects the final verdicts into `triage.jsonl` itself. Verifying the nested sub-agents' `template_id` and relaunching them on mismatch is the triage Sub's responsibility. Make it **Write** the result to a file; do not load the decision body into the leader's context.
 
 1. Launch the sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`; do not specify the model. Template `triage.md`, `template_id` `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, `previous_round_doc_paths = {previous_round_doc_paths}` (in the standard flow, "(none)"; non-empty only when an upstream flow such as /creview:rounds passes a list of past rounds' doc_paths), overrides `(none)`. Return value: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}` — do not load the triage body.
-2. When the return value carries `error`, do not proceed to Step 2 or beyond: remove the working directory with `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`, report the failure to the user, and abort.
+2. When the return value carries `error`, do not proceed to Step 2 or beyond: abort with that error.
 3. Present the triage summary (counts, including `flipped_count` — the number of decisions overturned by adjudication) to the user.
 
 When `will_fix_count == 0`, skip Step 2 and proceed to Step 3 (compile; persists Won't Fix triage values only).
@@ -162,3 +171,4 @@ The leader (you) does not load decision bodies into context. `compile-review.py`
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
+4. In a worktree, run the teardown (§ Worktree).

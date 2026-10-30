@@ -39,7 +39,7 @@ stage 分類（current_meta に基づく）:
 
 1. 判定対象ごとに一次判定を行い `{{tmp_dir}}/triage-draft.jsonl` に Write する。この段では assignee を解決しない。
 2. draft の `items` が空の場合は手順 3・4 をスキップし、`items: []` / `will_fix_count: 0` / `wontfix_count: 0` / draft の `by_stage` を持つ `{{tmp_dir}}/triage.jsonl` を Write し、`flipped_count: 0` と `adjudication_skipped: true` を返す。
-3. draft の `items` を draft の順序のまま最大 8 件ずつのバッチに分割し、バッチに 1 から番号を振る。各バッチにつき反証 Sub 3 体を `Agent(subagent_type="general-purpose", prompt=...)` で起動し、`challenge_index` に 1 / 2 / 3 を与える。全バッチ分をまとめて起動し、1 メッセージで起動するのは 20 体までとする（`{{plugin_root}}/rules/sub-agent.md` § 起動形態）。モデル指定はしない。受け取った変数値を埋めた起動プロンプト（`{b}` は当該インスタンスのバッチ番号、`{n}` は `challenge_index`、`{batch_ids}` はバッチ `{b}` の id をカンマ区切りで列挙したもの）:
+3. draft の `items` を draft の順序のまま最大 8 件ずつのバッチに分割し、バッチに 1 から番号を振る。各バッチにつき反証 Sub 3 体を `Agent(subagent_type="general-purpose", prompt=...)` で起動し、`challenge_index` に 1 / 2 / 3 を与える。全バッチ分をまとめて起動し、1 メッセージで起動するのは 20 体までとする（`{{plugin_root}}/rules/sub-agent.md` § 起動形態）。モデル指定はしない。受け取った変数値を埋めた起動プロンプト（`{b}` は当該インスタンスのバッチ番号、`{n}` は `challenge_index`、`{batch_ids}` はバッチ `{b}` の id をカンマ区切りで列挙したもの、`{overrides}` は自分の起動プロンプトが与えるラウンド固有のオーバーライドの各項目を 1 項目 1 行の `- ` でそのまま写したもの。与えられていなければ `(none)`）:
 
 ```
 最初の行動として `{{plugin_root}}/skills/triage/templates/triage-challenge.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
@@ -55,7 +55,7 @@ stage 分類（current_meta に基づく）:
 - ids: {batch_ids}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (none)
+- {overrides}
 
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
@@ -64,7 +64,7 @@ stage 分類（current_meta に基づく）:
 
 draft の判定を覆すには当該 id の所属バッチからの flip 票が 2 票必要なため、反証出力を 2 つ以上持つバッチが 1 つも無い場合は手順 4 をスキップし、draft の `verdict` / `reason` をそのまま最終判定として手順 5 の要領で `{{tmp_dir}}/triage.jsonl` を Write し、`flipped_count: 0` と `adjudication_skipped: true` を返す。
 
-4. 裁定 Sub を `Agent(subagent_type="general-purpose", prompt=...)` で起動する。手順 3 の全 Sub の戻り値を受け取ってから起動する。手順 3 と同一メッセージで並列起動しない。モデル指定はしない。受け取った変数値を埋めた起動プロンプト:
+4. 裁定 Sub を `Agent(subagent_type="general-purpose", prompt=...)` で起動する。手順 3 の全 Sub の戻り値を受け取ってから起動する。手順 3 と同一メッセージで並列起動しない。モデル指定はしない。受け取った変数値を埋めた起動プロンプト（`{overrides}` は手順 3 と同じ）:
 
 ```
 最初の行動として `{{plugin_root}}/skills/triage/templates/triage-adjudicate.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
@@ -78,7 +78,7 @@ draft の判定を覆すには当該 id の所属バッチからの flip 票が 
 - challenge_paths: {生成された {{tmp_dir}}/challenge-{b}-{n}.jsonl のパスをカンマ区切りで列挙}
 
 ラウンド固有のオーバーライド（テンプレートの指示に従った後に適用）:
-- (none)
+- {overrides}
 
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```

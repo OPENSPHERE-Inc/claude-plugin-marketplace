@@ -1,7 +1,7 @@
 ---
 name: triage
 description: レビュー指摘事項のトリアージと修正コストの見積を行い、トリアージ / 見積メタデータをレビュードキュメントに永続化する（ソース修正は行わない）。/creview:start のレビュードキュメントが存在し、どの指摘に対応するかの判断や修正コストの見積が次の作業となるときに能動的に使用する。
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュートリアージ & 見積
@@ -23,6 +23,13 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 ## オプション
 
 - `--adr`（デフォルト OFF）— 見積サブエージェントが設計判断を ADR ファイルとしてレビュードキュメントの隣に記録することを許可する（ファイル名 `{レビュードキュメント basename}-adr-{finding-id}.md`、スケルトン: `${CLAUDE_PLUGIN_ROOT}/rules/adr-format.md`）。ユーザーは `/creview:respond` の前に ADR ファイルを編集してよい。`/creview:respond` は自身の `--adr` に寄らず、参照されている ADR を読み・更新する。
+
+## ワークツリー
+
+`${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}` とし、`remove` の末尾に `--discard` を付ける。PR ワークツリー向けに以下のオーバーライドを追加する:
+
+- `{target_dir} 配下のファイルを実行・ビルド・テスト・インストール・source しない。`
+- `{target_dir} では読み取り専用のものを含め git コマンドを実行しない。プルリクエストのファイルによって、git がそこでフックや filter / diff ドライバを実行しうる。`
 
 ## レビュードキュメント形式
 
@@ -105,7 +112,9 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 {tmp_dir}/events.jsonl            ← compile-review.py の出力（render-review.py 入力）
 ```
 
-`{main_root}` は、上位フロー（例: `/creview:rounds`）がこのスキルを実行する場合は起動プロンプトが渡した `main_root`、スキルを直接起動した場合は `(該当なし)` とする。`{target_dir}` も同様に起動プロンプトが渡した `target_dir` とし、スキルを直接起動した場合は `git rev-parse --show-toplevel` の出力とする。
+`{main_root}` は、上位フロー（例: `/creview:rounds`）がこのスキルを実行する場合は起動プロンプトが渡した `main_root`、スキルを直接起動した場合は `(該当なし)` とする。`{target_dir}` も同様に起動プロンプトが渡した `target_dir` とし、スキルを直接起動した場合は `git rev-parse --show-toplevel` の出力とする。ワークツリーでは両者を置き換える（§ ワークツリー）。
+
+中止する場合: エラーを表示し、実行すべき時点であればティアダウン（§ ワークツリー）を実行し、`${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で `{tmp_dir}` を削除してスキルを終了する。
 
 各サブエージェントは description / location / 既存メタデータ等の指摘本体情報を、`id` をキーにレビュードキュメントの METADATA マーカー前後から直接 Read して取得する。
 
@@ -124,12 +133,12 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## ステップ 1 — 敵対的トリアージ（トリアージサブエージェントへ委譲）
 
-`{tmp_dir}` を作成する前に、`git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。
+`{tmp_dir}` を作成する前に、`git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。スキルを直接起動した場合は、`{tmp_dir}` を作成した後にドキュメントのコードの場所を決める（§ ワークツリー）。
 
 トリアージは**修正作業を行う専門エージェントとは別個の単一サブエージェント**に委譲する（バイアス分離のため）。トリアージ Sub はレビュードキュメントを直接 Read して指摘抽出とステージ判定を行い、トリアージ判定を提案 → 並列反証 → 多数決を条件とする裁定の三段（敵対的トリアージ）で行う。一次判定は自身で行い、指摘バッチごとに反証 Sub 3 体と、裁定 Sub を自らネスト起動し、最終判定を自ら `triage.jsonl` に反映する。ネスト Sub の `template_id` 照合と不一致時の再起動はトリアージ Sub が担う。判定結果は**ファイルに Write** させ、リーダーの context に判定本体を載せない。
 
 1. `Agent(subagent_type="general-purpose", prompt=...)` でサブエージェントを起動する。モデル指定はしない。テンプレート `triage.md`、`template_id` `1e9c4f7a-5b82-4d63-a1c8-3f7d2e9b4a15`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`previous_round_doc_paths = {previous_round_doc_paths}`（標準フローでは "(none)"。/creview:rounds 等の上位フローから過去ラウンドの doc_path 一覧が渡される場合のみ非空）、オーバーライド `(none)`。戻り値: `{path, will_fix_count, wontfix_count, flipped_count, by_stage, by_assignee, template_id}` — triage の本文は読み込まない。
-2. 戻り値に `error` が含まれる場合はステップ 2 以降に進まず、`${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で作業ディレクトリを削除し、失敗をユーザーに報告して中断する。
+2. 戻り値に `error` が含まれる場合はステップ 2 以降に進まず、そのエラーで中止する。
 3. トリアージサマリ（件数。裁定で反転した件数 `flipped_count` を含む）をユーザーに提示する。
 
 `will_fix_count == 0` の場合、ステップ 2 をスキップしてステップ 3（編纂。Won't Fix の triage 値のみ永続化）へ進む。
@@ -162,3 +171,4 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
+4. ワークツリーでは、ティアダウンを実行する（§ ワークツリー）。

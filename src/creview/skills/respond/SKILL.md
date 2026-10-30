@@ -1,7 +1,7 @@
 ---
 name: respond
 description: Will-Fix / Maintain / Alternative のレビュー指摘を修正し、ビルドを検証し、修正状況をレビュードキュメントに反映する。triage / estimate メタデータ付きのレビュードキュメントが存在し、ユーザーが指摘への対応を求めたとき（例「レビュー指摘を修正して」）に能動的に使用する。
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュー対応（修正）
@@ -22,8 +22,15 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## オプション
 
-- `--commit`（デフォルト OFF）— 修正後のソースコードをステップ 5 でコミットする。
+- `--commit`（デフォルト OFF）— 修正後のソースコードをステップ 5 でコミットする。ワークツリーでは ON になる（§ ワークツリー）。
 - `--adr`（デフォルト OFF）— 実装時の設計判断にまだ ADR が無い場合に、修正サブエージェントが ADR ファイルを新規作成することを許可する（スケルトン: `${CLAUDE_PLUGIN_ROOT}/rules/adr-format.md`）。`Estimate:` メタデータから参照されている ADR ファイル（`/creview:triage --adr` が作成。ユーザーが編集している場合もある）の修正前の読み込みと修正後の更新は、このオプションに寄らず実行される。
+
+## ワークツリー
+
+`${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}` とし、`doc-checkout` の末尾に `--fix-branch` を付ける。`pr_worktree` が true の場合は、次の PR ワークツリー向けオーバーライドを追加する:
+
+- フォーマット・ビルド・テスト検証サブエージェントへ: `build-format-detection.md の段階 2 は、{target_dir} 配下のファイルからではなく、{main_root}/CLAUDE.md、次に {main_root}/README.md から解決する。コマンドは通常どおり {target_dir} で実行する。`
+- `trust` が `off` のとき、select-fix-targets サブエージェントへ: `location または fix_plan が、{target_dir} に置いていないエージェントファイルのいずれかのパスを指す修正対象は、--trust なしでレビューしたためそのファイルをチェックアウトしていないという理由で not_ready へ移す。`
 
 ## レビュードキュメント形式
 
@@ -91,7 +98,9 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 {tmp_dir}/events.jsonl         ← compile-review.py の出力（render-review.py 入力）
 ```
 
-`{main_root}` は、上位フロー（例: `/creview:rounds`）がこのスキルを実行する場合は起動プロンプトが渡した `main_root`、スキルを直接起動した場合は `(該当なし)` とする。`{target_dir}` も同様に起動プロンプトが渡した `target_dir` とし、スキルを直接起動した場合は `git rev-parse --show-toplevel` の出力とする。
+`{main_root}` は、上位フロー（例: `/creview:rounds`）がこのスキルを実行する場合は起動プロンプトが渡した `main_root`、スキルを直接起動した場合は `(該当なし)` とする。`{target_dir}` も同様に起動プロンプトが渡した `target_dir` とし、スキルを直接起動した場合は `git rev-parse --show-toplevel` の出力とする。ワークツリーでは両者を置き換える（§ ワークツリー）。
+
+中止する場合: エラーを表示し、実行すべき時点であればティアダウン（§ ワークツリー）を実行し、`${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で `{tmp_dir}` を削除してスキルを終了する。
 
 書き出しには **Write ツール**を使う。Bash の cat heredoc は値内のアポストロフィ（例: `Won't`）でクォーティングが破綻するため使用不可。
 
@@ -99,11 +108,11 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## ステップ 1 — 修正対象の選別（select-fix-targets サブエージェントへ委譲）
 
-`{tmp_dir}` を作成する前に、`git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。
+`{tmp_dir}` を作成する前に、`git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。スキルを直接起動した場合は、`{tmp_dir}` を作成した後にドキュメントのコードの場所を決める（§ ワークツリー）。
 
 `Agent(subagent_type="general-purpose", prompt=...)` で起動する。Sub はレビュードキュメントを Read し、修正対象選別ルールを適用し、`{tmp_dir}/targets.jsonl` を Write する。
 
-テンプレート `select-fix-targets.md`、`template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — 本文は読み込まない。
+テンプレート `select-fix-targets.md`、`template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}` — 本文は読み込まない。`not_ready` はステップ 7 のために保持する。
 
 `fix_count == 0` の場合、ステップ 2〜5 をスキップしてステップ 6（編纂。反映するものなし → 「修正対象なし」を報告）へ進む。
 
@@ -168,4 +177,6 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## ステップ 7 — サマリー
 
-リーダーはステップ 6 で受け取った `summary_line` をコンソールに表示する。ステップ 4 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。
+リーダーはステップ 6 で受け取った `summary_line` をコンソールに表示する。ステップ 4 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。ステップ 1 の `not_ready` が空でなければ、その id と理由を未修正のまま残った指摘として `summary_line` と併せて表示する（`fix_count == 0` でステップ 2〜5 をスキップした場合も同じ）。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。
+
+ワークツリーでは、ティアダウンを実行し（§ ワークツリー）、修正をコミットしたブランチを報告する。

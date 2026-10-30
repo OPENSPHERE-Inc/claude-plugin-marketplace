@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""gh-pr.py — resolve a GitHub pull request for a creview PR review and check it out.
+"""gh-pr.py — resolve a GitHub pull request for a creview PR review and check it out,
+and check out the code a creview review document names.
 
 Usage:
     python3 gh-pr.py fetch <pr_url> <out_dir>
     python3 gh-pr.py checkout <pr_json> [--trust]
-    python3 gh-pr.py remove <worktree_path>
+    python3 gh-pr.py doc-checkout <document> [--fix-branch]
+    python3 gh-pr.py remove <worktree_path> [--discard]
 
 fetch: resolves <pr_url> (https://<host>/<owner>/<repo>/pull/<number>) with gh,
 requires <owner>/<repo> on <host> to be a remote of the current repository and
@@ -25,25 +27,64 @@ An in-place working tree with uncommitted changes to tracked files (outside
 checkout: adds a detached worktree under .claude/worktrees/ of the current
 working tree, checks the PR head out in it with git hooks and the configured
 filter drivers disabled, Git LFS smudging skipped, and symbolic links checked
-out as plain files, confirms its HEAD is the head fetch recorded, and prints a
-JSON object with main_root and worktree_path. Without --trust, the checkout
-leaves out every file and directory named like one of AGENT_FILES, in any
-letter case and at any depth, and fails when the file system still resolves one
-of those names in a directory of the worktree.
+out as plain files marked skip-worktree (so that git under core.symlinks=true
+sees no type change in them), confirms its HEAD is the head fetch recorded, and
+prints a JSON object with main_root and worktree_path. Without --trust, the
+checkout leaves out every file and directory named like one of AGENT_FILES, in
+any letter case and at any depth, and fails when the file system still resolves
+one of those names in a directory of the worktree.
 A failed checkout removes the worktree it added.
 
-remove: removes a worktree that checkout added
-(<main_root>/.claude/worktrees/creview-pr-<number>-<timestamp>; any other path
-is an error), with git hooks and the configured filter drivers disabled, and its
-parent directory when left empty. A worktree with uncommitted changes is kept,
-and the exit status is 1.
+doc-checkout: reads the header bullets of a review document (the lines before
+its first "## " heading): "- **PR:** <url> (head <sha>, base <sha>)",
+"- **Branch:** <branch>", and "- **Trust:** on|off" (off when absent). A
+malformed value is an error. It decides where the document's code is:
+  Branch bullet  in place when <branch> is checked out here, otherwise a
+                 worktree on that local branch: with a PR bullet, a PR worktree
+                 checked out like checkout, with the agent files only when Trust
+                 is on; without one, a plain worktree (creview-branch-<timestamp>)
+  PR bullet only in place when HEAD contains the head commit, otherwise a PR
+                 worktree at the head commit, which the open PR must still have;
+                 with --fix-branch, on local branch creview-pr-<number> (created
+                 there, or used when it points there)
+  neither        in place
+A branch checked out in another worktree is an error naming that worktree,
+which for a worktree checkout or doc-checkout added says to remove it first.
+doc-checkout fails when the current working tree is a PR worktree that checkout
+or doc-checkout added.
+With --fix-branch, a document with a PR bullet and no Branch bullet gets
+"- **Branch:** <branch>" after its PR bullet when the work is on a branch whose
+name a Branch bullet can hold (letters, digits, and _ . / + @ -).
+It prints a JSON object: in_place, pr_worktree, trust, main_root and
+worktree_path (null in place), branch (the branch worked on, null on a detached
+HEAD), and merge_base (the PR bullet's, or null).
+
+remove: removes a worktree that checkout or doc-checkout added
+(<main_root>/.claude/worktrees/creview-pr-<number>-<timestamp> or
+creview-branch-<timestamp>; any other path is an error), a PR worktree with git
+hooks and the configured filter drivers disabled, and its parent directory when
+left empty. With --discard, a PR worktree is removed with --force, keeping
+nothing in it and examining neither its changes nor its symbolic links; when
+that fails, the error says not to run git in it and to remove it with git
+worktree remove --force. --discard does nothing to a creview-branch worktree.
+Otherwise a worktree with uncommitted changes, including changes to the
+symbolic links a PR worktree holds as plain files, is kept, and the exit status
+is 1. So is a PR worktree with such a link it cannot examine (on Windows, a path
+that is not UTF-8 or is past MAX_PATH), and so is a worktree with initialized
+submodules, which git refuses to remove; its error then says to check the
+worktree and remove it with git worktree remove --force. A kept PR worktree's
+error says instead not to run git in it, to copy out what to keep, and to
+remove it with git worktree remove --force.
 
 Exits 1 with an error message on stderr on any failure.
 """
 
+import hashlib
 import json
 import os
 import re
+import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -65,8 +106,13 @@ SSH_SCHEMES = {"ssh", "git+ssh", "ssh+git"}
 SHA_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 # Scratch and worktree directories of the creview skills, not part of the review.
 SCRATCH_EXCLUDES = [":(top,exclude).claude/tmp", ":(top,exclude).claude/worktrees"]
-# The name of a worktree cmd_checkout adds under .claude/worktrees.
-WORKTREE_NAME_RE = re.compile(r"creview-pr-[0-9]+-[0-9]{8}-[0-9]{6}")
+# The names of the worktrees add_checkout and branch_worktree add under .claude/worktrees.
+PR_WORKTREE_RE = re.compile(r"creview-pr-[0-9]+-[0-9]{8}-[0-9]{6}")
+BRANCH_WORKTREE_RE = re.compile(r"creview-branch-[0-9]{8}-[0-9]{6}")
+HEADER_BULLET_RE = re.compile(r"- \*\*(PR|Branch|Trust):\*\* (.*)")
+PR_BULLET_RE = re.compile(r"(\S+) \(head (\S+), base (\S+)\)")
+# Characters a branch name in a review document header may hold, none special to a shell.
+BRANCH_NAME_RE = re.compile(r"[\w./+@-]+")
 # Names of the files and directories Claude Code, or another agent for AGENTS.md, loads
 # from a project on its own.
 AGENT_FILES = ("CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", ".mcp.json", ".claude")
@@ -102,16 +148,17 @@ def executable(name):
     return None
 
 
-def run(cmd, cwd=None, env=None, ok=(0,)):
+def run(cmd, cwd=None, env=None, ok=(0,), input=None, text=True):
     program = executable(cmd[0])
     if program is None:
         raise Error(f"{cmd[0]} not found on PATH")
+    decoding = {"text": True, "encoding": "utf-8", "errors": "replace"} if text else {}
     proc = subprocess.run(
-        [program, *cmd[1:]], cwd=cwd, env=env, capture_output=True,
-        text=True, encoding="utf-8", errors="replace",
+        [program, *cmd[1:]], cwd=cwd, env=env, input=input, capture_output=True, **decoding,
     )
     if proc.returncode not in ok:
-        raise Error(proc.stderr.strip() or f"{' '.join(cmd[:2])} exited with {proc.returncode}")
+        stderr = proc.stderr if text else proc.stderr.decode("utf-8", "replace")
+        raise Error(stderr.strip() or f"{' '.join(cmd[:2])} exited with {proc.returncode}")
     return proc.stdout
 
 
@@ -294,7 +341,7 @@ def is_remote(host, owner, name):
     return False
 
 
-def cmd_fetch(pr_url, out_dir):
+def view_pr(pr_url, fields=""):
     m = PR_URL_RE.fullmatch(pr_url)
     if not m:
         raise Error(f"not a pull request URL: {pr_url}")
@@ -304,16 +351,18 @@ def cmd_fetch(pr_url, out_dir):
         raise Error(f"{repo} on {host} is not a remote of this repository")
     url = f"https://{host}/{repo}/pull/{number}"
 
-    pr = json.loads(run([
-        "gh", "pr", "view", url,
-        "--json", "number,state,headRefOid,baseRefOid,headRepository,headRepositoryOwner,"
-        "title,body,statusCheckRollup",
-    ]))
+    pr = json.loads(run(["gh", "pr", "view", url, "--json", "number,state,headRefOid" + fields]))
     got = pr.get("number")
     if not isinstance(got, int) or isinstance(got, bool) or got != number:
         raise Error(f"gh did not return PR #{number}")
     if pr.get("state") != "OPEN":
         raise Error(f"PR #{number} is not open")
+    return host, repo, number, url, pr
+
+
+def cmd_fetch(pr_url, out_dir):
+    host, repo, number, url, pr = view_pr(
+        pr_url, ",baseRefOid,headRepository,headRepositoryOwner,title,body,statusCheckRollup")
     head_sha = sha(pr["headRefOid"], "head commit")
     base_sha = sha(pr["baseRefOid"], "base commit")
     # A check's detailsUrl can name any repository; job logs are read only from the PR's own.
@@ -437,6 +486,75 @@ def leave_out_agent_files(path, env):
                         env)
 
 
+def skip_worktree_links(path, env):
+    # Under core.symlinks=true, the default outside Windows, git status, diff, add, and commit
+    # take a symbolic link checked out as a plain file for a type change; the skip-worktree
+    # bit keeps them from seeing one. Set it without core.sparseCheckout, under which git
+    # clears the bit from the files present in the worktree. Paths stay bytes, so that one
+    # that is not UTF-8 still matches its index entry.
+    entries = run(["git", "ls-files", "--stage", "-z"], cwd=path, env=env, text=False)
+    links = [entry.partition(b"\t")[2] for entry in entries.split(b"\0")
+             if entry.startswith(b"120000 ")]
+    if links:
+        run(["git", "update-index", "--skip-worktree", "-z", "--stdin"], cwd=path, env=env,
+            input=b"".join(link + b"\0" for link in links), text=False)
+
+
+def changed_links(path, env):
+    # Returns the changed links and, apart, those it cannot compare, as bytes when they do not
+    # decode.
+    git_dir = run(["git", "rev-parse", "--absolute-git-dir"], cwd=path, env=env).strip()
+    sparse = os.path.isfile(os.path.join(git_dir, "info", "sparse-checkout"))
+    agent_names = {name.lower().encode() for name in AGENT_FILES}
+    changed, unexamined = [], []
+    entries = run(["git", "ls-files", "-v", "--stage", "-z"], cwd=path, env=env, text=False)
+    for entry in entries.split(b"\0"):
+        info, _, name = entry.partition(b"\t")
+        fields = info.split(b" ")
+        if len(fields) != 4 or fields[0] not in (b"S", b"s") or fields[1] != b"120000":
+            continue
+        # The sparse checkout of a worktree without the agent files leaves those out.
+        left_out = sparse and any(part.lower() in agent_names for part in name.split(b"/"))
+        try:
+            link = os.fsdecode(name)
+        except UnicodeDecodeError:
+            # Windows decodes a path as strict UTF-8, and Git for Windows checks out one that
+            # is not UTF-8 under another name.
+            if not left_out:
+                unexamined.append(name)
+            continue
+        file = os.path.join(path, link)
+        try:
+            mode = os.lstat(file).st_mode
+        except (FileNotFoundError, NotADirectoryError) as e:
+            if left_out:
+                continue
+            # On Windows a path past MAX_PATH also fails as FileNotFoundError, with another
+            # winerror.
+            if getattr(e, "winerror", None) in (None, 2):
+                changed.append(link)
+            else:
+                unexamined.append(link)
+            continue
+        if not stat.S_ISREG(mode):
+            changed.append(link)
+            continue
+        with open(file, "rb") as f:
+            data = f.read()
+        # The blob ID git hash-object --no-filters computes; a 40-digit ID is SHA-1.
+        oid = fields[2].decode("ascii")
+        blob = hashlib.new("sha1" if len(oid) == 40 else "sha256",
+                           b"blob %d\0" % len(data) + data, usedforsecurity=False)
+        if blob.hexdigest() != oid:
+            changed.append(link)
+    return changed, unexamined
+
+
+def quoted(names, limit=3):
+    shown = ", ".join(repr(name) for name in names[:limit])
+    return shown + (f" and {len(names) - limit} more" if len(names) > limit else "")
+
+
 def reraise(e):
     raise e
 
@@ -475,6 +593,111 @@ def check_agent_files_left_out(root, number):
         )
 
 
+def valid_branch(name):
+    # A leading "-" would be parsed as an option by check-ref-format.
+    if not name.startswith("-"):
+        try:
+            return run(["git", "check-ref-format", "--branch", name]).strip()
+        except Error:
+            pass
+    raise Error(f"invalid branch name: {name!r}")
+
+
+def header_branch(name):
+    try:
+        return bool(BRANCH_NAME_RE.fullmatch(name)) and valid_branch(name) == name
+    except Error:
+        return False
+
+
+def branch_tip(branch, cwd=None):
+    return run(["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"],
+               cwd=cwd, ok=(0, 1)).strip()
+
+
+def attach_branch(path, branch, head_sha, env):
+    # The worktree is at head_sha, so checking out a branch there changes no file, and git
+    # refuses a branch checked out in another worktree.
+    tip = branch_tip(branch, cwd=path)
+    if tip and tip != head_sha:
+        raise Error(
+            f"branch {branch} already exists at {tip}, not at the PR head {head_sha}, and may "
+            "hold fixes an earlier /creview:respond committed; rename it "
+            f"(git branch -m {branch} <new-name>) to keep them, then run the skill again"
+        )
+    run(["git", "checkout", "--quiet", *([] if tip else ["-b"]), branch], cwd=path, env=env)
+
+
+def add_checkout(number, trust, populate, branch=None):
+    # populate(path, env) fills the worktree git adds with --no-checkout.
+    main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
+    path = f"{main_root}/.claude/worktrees/creview-pr-{number}-{time.strftime('%Y%m%d-%H%M%S')}"
+    if os.path.lexists(path):
+        raise Error(f"worktree path already exists: {path}")
+    target = ["--", path, branch] if branch else ["--detach", "--", path, "HEAD"]
+
+    with tempfile.TemporaryDirectory() as no_hooks:
+        base = env = hook_free_env(no_hooks)
+        try:
+            run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "add", "--quiet",
+                 "--no-checkout", *target], env=env)
+        except Error:
+            # git removes a worktree it failed to add, but not the parent directory it created.
+            remove_empty_parent(path)
+            raise
+        try:
+            if not trust:
+                env = leave_out_agent_files(path, env)
+            populate(path, env)
+            skip_worktree_links(path, base)
+            if not trust:
+                check_agent_files_left_out(path, number)
+        except BaseException as e:
+            message = str(e) if isinstance(e, Error) else f"{type(e).__name__}: {e}"
+            raise Error(message + remove_worktree(path)) from None
+    return {"main_root": main_root, "worktree_path": path}
+
+
+def checkout_pr(url, number, head_sha, trust, branch=None):
+    def populate(path, env):
+        run(["gh", "pr", "checkout", url, "--detach"], cwd=path, env=env)
+        head = run(["git", "rev-parse", "HEAD"], cwd=path).strip()
+        if head != head_sha:
+            raise Error(
+                f"checked out {head}, but PR #{number} was fetched at {head_sha}; "
+                "the PR was updated after fetch"
+            )
+        if branch is not None:
+            attach_branch(path, branch, head_sha, env)
+
+    return add_checkout(number, trust, populate)
+
+
+def checkout_branch(number, branch, trust):
+    def populate(path, env):
+        # read-tree fills the empty index and the files the sparse patterns keep, and runs
+        # no hook.
+        run(["git", "read-tree", "-mu", "HEAD"], cwd=path, env=env)
+
+    return add_checkout(number, trust, populate, branch=branch)
+
+
+def branch_worktree(branch):
+    main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
+    path = f"{main_root}/.claude/worktrees/creview-branch-{time.strftime('%Y%m%d-%H%M%S')}"
+    if os.path.lexists(path):
+        raise Error(f"worktree path already exists: {path}")
+    try:
+        run(["git", "worktree", "add", "--quiet", "--", path, branch])
+    except Error as e:
+        # git keeps a worktree whose post-checkout hook fails.
+        if os.path.lexists(path):
+            raise Error(str(e) + remove_worktree(path)) from None
+        remove_empty_parent(path)
+        raise
+    return {"main_root": main_root, "worktree_path": path}
+
+
 def cmd_checkout(pr_json, *options):
     if options not in ((), ("--trust",)):
         raise Error(f"unknown checkout option: {' '.join(options)}")
@@ -484,55 +707,243 @@ def cmd_checkout(pr_json, *options):
     number = pr["number"]
     if not isinstance(number, int) or not PR_URL_RE.fullmatch(pr["url"]):
         raise Error(f"malformed {pr_json}")
+    return checkout_pr(pr["url"], number, head_sha, bool(options))
 
-    main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
-    path = f"{main_root}/.claude/worktrees/creview-pr-{number}-{time.strftime('%Y%m%d-%H%M%S')}"
-    if os.path.lexists(path):
-        raise Error(f"worktree path already exists: {path}")
 
-    with tempfile.TemporaryDirectory() as no_hooks:
-        env = hook_free_env(no_hooks)
-        try:
-            run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "add", "--quiet",
-                 "--no-checkout", "--detach", "--", path, "HEAD"], env=env)
-        except Error:
-            # git removes a worktree it failed to add, but not the parent directory it created.
-            remove_empty_parent(path)
-            raise
-        try:
-            if not options:
-                env = leave_out_agent_files(path, env)
-            run(["gh", "pr", "checkout", pr["url"], "--detach"], cwd=path, env=env)
-            head = run(["git", "rev-parse", "HEAD"], cwd=path).strip()
-            if head != head_sha:
+def malformed(label, value, note=None):
+    return Error(f"malformed review document header: {label} bullet {value!r}"
+                 + (f"; {note}" if note else ""))
+
+
+def parse_header(document):
+    with open(document, encoding="utf-8", newline="") as f:
+        lines = f.readlines()
+    found = {}
+    for i, line in enumerate(lines):
+        if line.startswith("## "):
+            break
+        m = HEADER_BULLET_RE.fullmatch(line.rstrip())
+        if m:
+            if m.group(1) in found:
+                raise Error(f"malformed review document header: more than one {m.group(1)} bullet")
+            found[m.group(1)] = (i, m.group(2))
+    header = {"pr": None, "branch": None, "trust": "off"}
+    if "PR" in found:
+        i, value = found["PR"]
+        m = PR_BULLET_RE.fullmatch(value)
+        url = m and PR_URL_RE.fullmatch(m.group(1))
+        if not url or url.end(4) != len(m.group(1)) \
+                or not all(SHA_RE.fullmatch(s) for s in m.group(2, 3)):
+            raise malformed("PR", value)
+        header["pr"] = {"url": m.group(1), "number": int(url.group(4)), "head_sha": m.group(2),
+                        "merge_base": m.group(3), "line": i}
+    if "Branch" in found:
+        value = found["Branch"][1]
+        if not header_branch(value):
+            raise malformed("Branch", value, "a Branch bullet names a branch of letters, digits, "
+                            "and _ . / + @ - only")
+        header["branch"] = value
+    if "Trust" in found:
+        value = found["Trust"][1]
+        if value not in ("on", "off"):
+            raise malformed("Trust", value)
+        header["trust"] = value
+    return header
+
+
+def record_branch(document, line, branch):
+    with open(document, encoding="utf-8", newline="") as f:
+        lines = f.readlines()
+    eol = lines[line][len(lines[line].rstrip("\r\n")):]
+    if not eol:
+        eol = "\n"
+        lines[line] += eol
+    lines.insert(line + 1, f"- **Branch:** {branch}{eol}")
+    with open(document, "w", encoding="utf-8", newline="") as f:
+        f.writelines(lines)
+
+
+def checked_out_at(branch):
+    path = None
+    for line in run(["git", "worktree", "list", "--porcelain"]).splitlines():
+        if line.startswith("worktree "):
+            path = line[len("worktree "):]
+        elif line == f"branch refs/heads/{branch}":
+            return path
+    return None
+
+
+def added_worktree(path, *names):
+    parent, _, name = path.rpartition("/")
+    return parent.endswith("/.claude/worktrees") and any(n.fullmatch(name) for n in names)
+
+
+def check_free(branch):
+    busy = checked_out_at(branch)
+    if busy and added_worktree(busy, PR_WORKTREE_RE, BRANCH_WORKTREE_RE):
+        script = os.path.abspath(__file__).replace(os.sep, "/")
+        command = shlex.join(["python3", script, "remove", busy])
+        if added_worktree(busy, PR_WORKTREE_RE):
+            steps, note = "", "; it holds a pull request's code, so do not run git in it"
+        else:
+            steps, note = "review its changes, commit or discard them, and ", ""
+        raise Error(
+            f"branch {branch} is checked out in the worktree {busy}, which a creview skill kept "
+            f"for uncommitted changes or initialized submodules; {steps}remove it by running "
+            f"{command} in {shlex.quote(busy.rsplit('/', 3)[0])} "
+            f"(follow its error when it refuses{note}) before running the skill again"
+        )
+    if busy:
+        raise Error(
+            f"branch {branch} is checked out in the worktree {busy}; run the skill in a session "
+            "started at that worktree's root"
+        )
+
+
+def contains(commit):
+    try:
+        run(["git", "merge-base", "--is-ancestor", commit, "HEAD"])
+    except Error:
+        return False
+    return True
+
+
+def cmd_doc_checkout(document, *options):
+    if options not in ((), ("--fix-branch",)):
+        raise Error(f"unknown doc-checkout option: {' '.join(options)}")
+    top = run(["git", "rev-parse", "--show-toplevel"]).strip()
+    if added_worktree(top, PR_WORKTREE_RE):
+        raise Error(
+            f"this session is in {top}, a worktree holding a pull request's code; run the skill "
+            "in a session started at the main working tree"
+        )
+    header = parse_header(document)
+    pr, branch = header["pr"], header["branch"]
+    trust = header["trust"] == "on"
+    current = run(["git", "branch", "--show-current"]).strip() or None
+    result = {
+        "in_place": True, "pr_worktree": False, "trust": header["trust"], "main_root": None,
+        "worktree_path": None, "branch": current, "merge_base": pr and pr["merge_base"],
+    }
+    if branch is not None:
+        if branch != current:
+            if not branch_tip(branch):
+                raise Error(f"no local branch {branch}")
+            check_free(branch)
+            added = checkout_branch(pr["number"], branch, trust) if pr else branch_worktree(branch)
+            result.update(added, in_place=False, pr_worktree=pr is not None, branch=branch)
+    elif pr is not None:
+        if not contains(pr["head_sha"]):
+            _, _, number, url, view = view_pr(pr["url"])
+            head = sha(view["headRefOid"], "head commit")
+            if head != pr["head_sha"]:
                 raise Error(
-                    f"checked out {head}, but PR #{number} was fetched at {head_sha}; "
-                    "the PR was updated after fetch"
+                    f"PR #{number} changed after the review (reviewed at {pr['head_sha']}, now "
+                    f"at {head}); review it again with /creview:start"
                 )
-            if not options:
-                check_agent_files_left_out(path, number)
-        except BaseException as e:
-            message = str(e) if isinstance(e, Error) else f"{type(e).__name__}: {e}"
-            raise Error(message + remove_worktree(path)) from None
-    return {"main_root": main_root, "worktree_path": path}
+            name = f"creview-pr-{number}" if options else None
+            if name:
+                check_free(name)
+            added = checkout_pr(url, number, head, trust, name)
+            result.update(added, in_place=False, pr_worktree=True, branch=name)
+        if options and result["branch"] and header_branch(result["branch"]):
+            try:
+                record_branch(document, pr["line"], result["branch"])
+            except OSError as e:
+                if result["in_place"]:
+                    raise
+                raise Error(f"the review document could not be updated ({e})"
+                            + remove_worktree(result["worktree_path"])) from None
+    return result
 
 
-def cmd_remove(path):
+def submodules_note(path, env=None):
+    # git refuses to remove a worktree whose git directory has a modules directory, which git
+    # submodule deinit leaves in place; only --force skips that check.
+    try:
+        top, git_dir = run(["git", "rev-parse", "--show-toplevel", "--absolute-git-dir"],
+                           cwd=path, env=env).splitlines()
+    except (Error, OSError, ValueError):
+        return ""
+    if top != path or not os.path.isdir(os.path.join(git_dir, "modules")):
+        return ""
+    command = shlex.join(["git", "worktree", "remove", "--force", "--", path])
+    return (f"; the worktree {path} has initialized submodules, which git worktree remove "
+            "refuses: check that neither it nor its submodules hold changes or commits to keep, "
+            f"then remove it with {command}")
+
+
+def pr_worktree_note(path, main_root, keep=True):
+    command = shlex.join(["git", "worktree", "remove", "--force", "--", path])
+    return (f"; {path} holds a pull request's code, and git run in it can run the pull "
+            "request's hooks and filters: do not run git in it; "
+            + ("copy out what to keep, then " if keep else "")
+            + f"remove it by running {command} in {shlex.quote(main_root)}")
+
+
+def worktree_remove(path, *config, env=None, note=None):
+    try:
+        run(["git", *config, "worktree", "remove", "--", path], env=env)
+    except Error as e:
+        raise Error(f"{e}{submodules_note(path, env) if note is None else note}") from None
+
+
+def discard_pr_worktree(path, main_root, no_hooks, env):
+    # --force skips the clean check, which runs git status in the worktree.
+    try:
+        run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "remove", "--force", "--",
+             path], cwd=main_root, env=env)
+    except Error as e:
+        raise Error(f"{e}{pr_worktree_note(path, main_root, keep=False)}") from None
+
+
+def cmd_remove(path, *options):
+    if options not in ((), ("--discard",)):
+        raise Error(f"unknown remove option: {' '.join(options)}")
     main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
     parent, _, name = path.rpartition("/")
-    if parent != f"{main_root}/.claude/worktrees" or not WORKTREE_NAME_RE.fullmatch(name):
-        raise Error(f"not a worktree that checkout adds: {path}")
-    with tempfile.TemporaryDirectory() as no_hooks:
-        env = hook_free_env(no_hooks)
-        # git checks that the worktree is clean with a git status that inherits the overrides.
-        run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "remove", "--", path], env=env)
+    if parent != f"{main_root}/.claude/worktrees":
+        name = ""
+    if BRANCH_WORKTREE_RE.fullmatch(name):
+        worktree_remove(path)
+    elif PR_WORKTREE_RE.fullmatch(name) and options:
+        with tempfile.TemporaryDirectory() as no_hooks:
+            discard_pr_worktree(path, main_root, no_hooks, hook_free_env(no_hooks))
+    elif PR_WORKTREE_RE.fullmatch(name):
+        with tempfile.TemporaryDirectory() as no_hooks:
+            env = hook_free_env(no_hooks)
+            note, changed, unexamined = "", [], []
+            if os.path.isdir(path):
+                note = pr_worktree_note(path, main_root)
+                try:
+                    changed, unexamined = changed_links(path, env)
+                except (Error, OSError) as e:
+                    raise Error(f"the worktree {path} is kept: its symbolic links could not be "
+                                f"examined for changes ({e}){note}") from None
+            reasons = []
+            if changed:
+                reasons.append(f"it changes the symbolic links {quoted(changed)}, which it holds "
+                               "as plain files that git status does not show")
+            if unexamined:
+                reasons.append(f"its symbolic links {quoted(unexamined)}, which it holds as "
+                               "plain files, could not be examined for changes (a path that is "
+                               "not UTF-8, or one Windows cannot open, such as one past "
+                               "MAX_PATH)")
+            if reasons:
+                raise Error(f"the worktree {path} is kept: {', and '.join(reasons)}{note}")
+            # git checks that the worktree is clean with a git status that inherits the
+            # overrides and skips the skip-worktree links, which changed_links compares.
+            worktree_remove(path, "-c", f"core.hooksPath={no_hooks}", env=env, note=note)
+    else:
+        raise Error(f"not a worktree that checkout or doc-checkout adds: {path}")
     remove_empty_parent(path)
     return {"worktree_path": path}
 
 
 # Each command with the least and the most arguments it takes.
 COMMANDS = {
-    "fetch": (cmd_fetch, 2, 2), "checkout": (cmd_checkout, 1, 2), "remove": (cmd_remove, 1, 1),
+    "fetch": (cmd_fetch, 2, 2), "checkout": (cmd_checkout, 1, 2),
+    "doc-checkout": (cmd_doc_checkout, 1, 2), "remove": (cmd_remove, 1, 2),
 }
 
 

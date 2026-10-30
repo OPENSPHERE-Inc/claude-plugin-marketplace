@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.py, its consumers, worktree.sh,
-# gh-pr.py's helpers and sparse checkout, and gh-pr.py remove's path check.
+# gh-pr.py's helpers, header parsing, and sparse checkout, gh-pr.py doc-checkout, gh-pr.py
+# remove's path check, and render-review.py's metadata lines.
 # Usage: bash tests/scratch-guard-test.sh
 # Prints one FAIL line per broken case and exits non-zero; exits 0 when all pass.
 
@@ -14,6 +15,7 @@ FD="${REPO_ROOT}/cdev/scripts/fetch-diff.sh"
 CFD="${REPO_ROOT}/creview/scripts/fetch-diff.sh"
 WT="${REPO_ROOT}/cdev/scripts/worktree.sh"
 GHPR="${REPO_ROOT}/creview/scripts/gh-pr.py"
+RR="${REPO_ROOT}/creview/scripts/render-review.py"
 
 fail=0
 note() { printf '%s\n' "$*"; }
@@ -114,6 +116,83 @@ for url, run_id in ((job, "123"), ("https://example.com/x", None), (None, None))
 
 expect("any_case .mcp.json", g.any_case(".mcp.json"), ".[mM][cC][pP].[jJ][sS][oO][nN]")
 
+for name in ("-x", "a..b", "", "bad name"):
+    expect_error(f"valid_branch {name!r}", lambda name=name: g.valid_branch(name),
+                 "invalid branch name")
+expect("valid_branch creview-pr-12", g.valid_branch("creview-pr-12"), "creview-pr-12")
+
+docs = os.path.join(sys.argv[2], "docs")
+os.makedirs(docs)
+
+
+def doc(name, *bullets, eol="\n"):
+    # A bullet under a severity heading is a finding's text, not a header bullet.
+    path = os.path.join(docs, name)
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(eol.join(["# Report", "", "- **Date:** 2026-01-01", *bullets, "- **Scope:** x", "",
+                          "## Major", "", "- **Trust:** on", "- **Branch:** x", ""]))
+    return path
+
+
+A, B = "a" * 40, "b" * 64
+PR_LINE = f"- **PR:** https://github.com/o/r/pull/3 (head {A}, base {B})"
+expect("parse_header with no header bullets", g.parse_header(doc("none.md")),
+       {"pr": None, "branch": None, "trust": "off"})
+expect("parse_header PR, Branch, and Trust",
+       g.parse_header(doc("full.md", PR_LINE, "- **Branch:** feat/x", "- **Trust:** on",
+                          eol="\r\n")),
+       {"pr": {"url": "https://github.com/o/r/pull/3", "number": 3, "head_sha": A,
+               "merge_base": B, "line": 3},
+        "branch": "feat/x", "trust": "on"})
+expect("parse_header a non-ASCII branch",
+       g.parse_header(doc("ja.md", "- **Branch:** feature/日本語"))["branch"], "feature/日本語")
+for bullet in (f"- **PR:** https://github.com/o/r/pull/3/files (head {A}, base {B})",
+               f"- **PR:** https://example.com/x (head {A}, base {B})",
+               f"- **PR:** https://github.com/o/r/pull/3 (head {A[:39]}, base {B})",
+               f"- **PR:** https://github.com/o/r/pull/3 (head {A.upper()}, base {B})",
+               "- **PR:** https://github.com/o/r/pull/3",
+               "- **Branch:** a$(touch x)", "- **Branch:** it's", "- **Branch:** a b",
+               "- **Branch:** -x", "- **Branch:** a..b", "- **Branch:** feature/#123",
+               "- **Trust:** yes", "- **Trust:** ON"):
+    expect_error(f"parse_header {bullet!r}", lambda b=bullet: g.parse_header(doc("bad.md", b)),
+                 "malformed review document header")
+expect_error("parse_header two Trust bullets",
+             lambda: g.parse_header(doc("dup.md", "- **Trust:** off", "- **Trust:** on")),
+             "more than one Trust bullet")
+record = doc("record.md", PR_LINE, "- **Trust:** off", eol="\r\n")
+g.record_branch(record, 3, "creview-pr-3")
+with open(record, encoding="utf-8", newline="") as f:
+    expect("record_branch inserts the Branch bullet after the PR bullet", f.readlines()[3:6],
+           [PR_LINE + "\r\n", "- **Branch:** creview-pr-3\r\n", "- **Trust:** off\r\n"])
+expect("record_branch writes a bullet parse_header reads", g.parse_header(record)["branch"],
+       "creview-pr-3")
+
+# A document doc-checkout cannot update after adding a PR worktree.
+saved = {name: getattr(g, name) for name in ("run", "contains", "view_pr", "checkout_pr",
+                                              "record_branch", "remove_worktree")}
+added_path, removed = "/m/.claude/worktrees/creview-pr-3-20260101-000000", []
+
+
+def deny(*args):
+    raise PermissionError("denied")
+
+
+g.run = lambda cmd, **kw: saved["run"](cmd, **kw) if cmd[1] == "check-ref-format" else ""
+g.contains = lambda commit: False
+g.view_pr = lambda url, fields="": ("github.com", "o/r", 3, url, {"headRefOid": A})
+g.checkout_pr = lambda *args: {"main_root": "/m", "worktree_path": added_path}
+g.record_branch = deny
+g.remove_worktree = lambda path: removed.append(path) or ""
+try:
+    expect_error("doc-checkout --fix-branch with a document it cannot update",
+                 lambda: g.cmd_doc_checkout(doc("locked.md", PR_LINE), "--fix-branch"),
+                 "the review document could not be updated")
+    expect("doc-checkout removes the worktree it added for a document it cannot update",
+           removed, [added_path])
+finally:
+    for name, value in saved.items():
+        setattr(g, name, value)
+
 # The sparse checkout cmd_checkout runs through gh, run here with git checkout.
 repo, wt = os.path.join(sys.argv[2], "sparse"), os.path.join(sys.argv[2], "sparse-wt")
 agent_paths = ["CLAUDE.md", "sub/claude.MD", "sub/.Claude/x.md", "AGENTS.md", ".mcp.json",
@@ -137,19 +216,44 @@ for path in ["sub/notes.txt", *agent_paths]:
 git("branch", "tip")
 base = f"HEAD~{len(agent_paths)}"
 probe = dict(os.environ, GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="t.k", GIT_CONFIG_VALUE_0="v")
-if subprocess.run(["git", "config", "--get", "t.k"], env=probe, capture_output=True,
-                  text=True).stdout.strip() != "v":
+config_count = subprocess.run(["git", "config", "--get", "t.k"], env=probe,
+                              capture_output=True, text=True).stdout.strip() == "v"
+if not config_count:
     print("SKIP: gh-pr.py sparse checkout cases (git does not apply GIT_CONFIG_COUNT)")
 else:
     # Under core.ignorecase=false the sparse patterns match case-sensitively, as on Linux.
     checkout = ("-c", "core.ignorecase=false", "checkout", "-q", "--detach", "tip")
     git("worktree", "add", "-q", "--no-checkout", "--detach", wt, base)
-    git(*checkout, cwd=wt, env=g.leave_out_agent_files(wt, os.environ))
+    sparse_env = g.leave_out_agent_files(wt, os.environ)
+    git(*checkout, cwd=wt, env=sparse_env)
     expect("sparse checkout keeps sub/notes.txt",
            os.path.isfile(os.path.join(wt, "sub", "notes.txt")), True)
     expect("sparse checkout leaves out agent files", g.agent_file_left(wt), None)
     for p in agent_paths:
         expect(f"sparse checkout leaves out {p}", os.path.lexists(os.path.join(wt, p)), False)
+
+    def current(path):
+        return subprocess.run(["git", "branch", "--show-current"], cwd=path,
+                              capture_output=True, text=True).stdout.strip()
+
+    tip = subprocess.run(["git", "rev-parse", "tip"], cwd=repo, capture_output=True,
+                         text=True).stdout.strip()
+    g.attach_branch(wt, "fix", tip, sparse_env)
+    expect("attach_branch creates the branch", current(wt), "fix")
+    expect("attach_branch keeps agent files left out", g.agent_file_left(wt), None)
+    other = os.path.join(sys.argv[2], "sparse-other")
+    git("worktree", "add", "-q", "--detach", other, "tip")
+    git("branch", "stale", base)
+    expect_error("attach_branch on a branch at another commit",
+                 lambda: g.attach_branch(other, "stale", tip, os.environ), "stale",
+                 "already exists")
+    expect_error("attach_branch on a branch checked out elsewhere",
+                 lambda: g.attach_branch(other, "fix", tip, os.environ), "fix")
+    expect("attach_branch failures leave HEAD detached", current(other), "")
+    git("branch", "fresh", "tip")
+    g.attach_branch(other, "fresh", tip, os.environ)
+    expect("attach_branch reuses a branch at the PR head", current(other), "fresh")
+    git("worktree", "remove", "--force", other)
     with open(os.path.join(wt, "sub", "CLAUDE.md"), "w"):
         pass
     expect("agent_file_left sub/CLAUDE.md", g.agent_file_left(wt), "sub/CLAUDE.md")
@@ -195,6 +299,73 @@ for case, error, want in (("PermissionError", PermissionError(13, "x"), "Permiss
     finally:
         g.os.lstat = real_lstat
     expect(f"agent_file_left when lstat raises {case}", raised, want)
+links = os.path.join(sys.argv[2], "links")
+os.makedirs(links)
+git("init", "-q", cwd=links)
+blob = subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=links, input=b"x",
+                      capture_output=True, check=True).stdout.strip()
+index_info = b"".join(b"120000 %s\t%s\0" % (blob, p) for p in (b"a", b"l\xe9"))
+subprocess.run(["git", "update-index", "-z", "--index-info"], cwd=links, input=index_info,
+               capture_output=True, check=True)
+try:
+    g.skip_worktree_links(links, os.environ)
+except g.Error as e:
+    report("skip_worktree_links on a path that is not UTF-8", "no error", e)
+expect("skip_worktree_links marks a path that is not UTF-8",
+       subprocess.run(["git", "ls-files", "-v", "-z"], cwd=links, capture_output=True).stdout,
+       b"S a\0S l\xe9\0")
+# Windows decodes a path as strict UTF-8; subprocess passes str arguments through fsdecode.
+real_fsdecode = g.os.fsdecode
+g.os.fsdecode = lambda name: name if isinstance(name, str) else name.decode("utf-8")
+try:
+    expect("changed_links sets apart a path that does not decode",
+           g.changed_links(links, os.environ), (["a"], [b"l\xe9"]))
+
+    def lstat(path, *args, **kwargs):
+        if path == os.path.join(links, "a"):
+            raise too_long
+        return real_lstat(path, *args, **kwargs)
+    g.os.lstat = lstat
+    expect("changed_links sets apart a path lstat fails on with winerror 206",
+           g.changed_links(links, os.environ), ([], ["a", b"l\xe9"]))
+    g.os.lstat = real_lstat
+    os.makedirs(os.path.join(links, ".git", "info"), exist_ok=True)
+    with open(os.path.join(links, ".git", "info", "sparse-checkout"), "w") as f:
+        f.write("/*\n")
+    for args, data in ((["--index-info"], b"120000 %s\t.CLAUDE/m\xe9\0" % blob),
+                       (["--skip-worktree", "--stdin"], b".CLAUDE/m\xe9\0")):
+        subprocess.run(["git", "update-index", "-z", *args], cwd=links, input=data,
+                       capture_output=True, check=True)
+    expect("changed_links passes over an agent path a sparse checkout leaves out",
+           g.changed_links(links, os.environ), (["a"], [b"l\xe9"]))
+finally:
+    g.os.fsdecode, g.os.lstat = real_fsdecode, real_lstat
+expect("quoted escapes the names and shows the first 3",
+       g.quoted(["a\nb", "c", "d", b"l\xe9"]), "'a\\nb', 'c', 'd' and 1 more")
+expect("quoted one name", g.quoted(["x"]), "'x'")
+expect("quoted a name that does not decode", g.quoted([b"l\xe9"]), "b'l\\xe9'")
+# cmd_remove runs changed_links under hook_free_env, which needs GIT_CONFIG_COUNT.
+if not config_count:
+    print("SKIP: gh-pr.py remove when changed_links fails (git does not apply GIT_CONFIG_COUNT)")
+else:
+    os.makedirs(os.path.join(links, ".claude", "worktrees", "creview-pr-7-20260101-000000"))
+    real_changed_links, cwd = g.changed_links, os.getcwd()
+    os.chdir(links)
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
+                             text=True, check=True).stdout.strip()
+        kept = f"{top}/.claude/worktrees/creview-pr-7-20260101-000000"
+        for error in (PermissionError(13, "x"), g.Error("x")):
+            def fail_examining(path, env, error=error):
+                raise error
+            g.changed_links = fail_examining
+            case = f"remove when changed_links raises {type(error).__name__}"
+            expect_error(case, lambda: g.cmd_remove(kept), "is kept", "do not run git in it",
+                         "git worktree remove --force")
+            expect(f"{case} keeps the worktree", os.path.isdir(kept), True)
+    finally:
+        g.changed_links = real_changed_links
+        os.chdir(cwd)
 sys.exit(1 if failed else 0)
 PY
 for opt in --trusted -t; do
@@ -203,10 +374,17 @@ for opt in --trusted -t; do
     [[ "${out}" == *"unknown checkout option"* ]] \
         || { note "FAIL: gh-pr.py checkout ${opt} printed '${out}'"; fail=1; }
 done
-out="$(python3 "${GHPR}" checkout a b c 2>&1)"; rc=$?
-check "gh-pr.py checkout with three arguments" 1 "${rc}"
-[[ "${out}" == *"Usage:"* ]] \
-    || { note "FAIL: gh-pr.py checkout with three arguments printed '${out}'"; fail=1; }
+out="$(python3 "${GHPR}" remove "${SANDBOX}/no-worktree" --bogus 2>&1)"; rc=$?
+check "gh-pr.py remove rejects --bogus" 1 "${rc}"
+[[ "${out}" == *"unknown remove option"* ]] \
+    || { note "FAIL: gh-pr.py remove --bogus printed '${out}'"; fail=1; }
+for args in "checkout a b c" "doc-checkout" "doc-checkout a b c" "remove" "remove a b c" \
+    "no-such-command"; do
+    # shellcheck disable=SC2086
+    out="$(python3 "${GHPR}" ${args} 2>&1)"; rc=$?
+    check "gh-pr.py ${args}" 1 "${rc}"
+    [[ "${out}" == *"Usage:"* ]] || { note "FAIL: gh-pr.py ${args} printed '${out}'"; fail=1; }
+done
 mkdir -p "${SANDBOX}/proj/.claude/tmp/sub" "${SANDBOX}/outside"
 : > "${SANDBOX}/proj/.claude/tmp/sub/file.txt"
 : > "${SANDBOX}/outside/victim.txt"
@@ -593,6 +771,448 @@ rc=0; bash "${WT}" remove "${WT_PATH}" >/dev/null 2>&1 || rc=$?
 check "worktree remove after reuse" 0 "${rc}"
 rc=0; bash "${WT}" remove "${MAIN}" >/dev/null 2>&1 || rc=$?
 [[ "${rc}" -ne 0 ]] || { note "FAIL: worktree remove accepted the main worktree"; fail=1; }
+
+# --- gh-pr.py doc-checkout ---------------------------------------------------------
+DOCS="${SANDBOX}/doc-checkout"
+mkdir -p "${DOCS}"
+HEAD_SHA="$(git rev-parse HEAD)"
+CUR="$(git branch --show-current)"
+PR_LINE="- **PR:** https://github.com/o/r/pull/3 (head ${HEAD_SHA}, base ${HEAD_SHA})"
+write_doc() { # <name> <header-bullet>...
+    local name="$1"
+    shift
+    { printf '# Report\n\n'; printf '%s\n' "$@"; printf -- '- **Scope:** x\n\n## Major\n'; } \
+        > "${DOCS}/${name}"
+}
+field() { # <name>: prints a field of the JSON object on stdin, JSON-encoded unless a string
+    python3 -c 'import json, sys
+v = json.load(sys.stdin)[sys.argv[1]]
+sys.stdout.buffer.write((v if isinstance(v, str) else json.dumps(v)).encode() + b"\n")' "$1"
+}
+shlex_join() {
+    python3 -c 'import shlex, sys; sys.stdout.buffer.write(shlex.join(sys.argv[1:]).encode())' "$@"
+}
+doc_checkout() { python3 "${GHPR}" doc-checkout "$@"; }
+write_doc none.md
+write_doc bad.md "- **Trust:** yes"
+write_doc no-branch.md "- **Branch:** no-such"
+MOVED_SHA="$(printf 'a%.0s' {1..40})"
+write_doc moved.md "- **PR:** https://github.com/o/r/pull/3 (head ${MOVED_SHA}, base ${HEAD_SHA})"
+for case in "none.md --trusted|unknown doc-checkout option" \
+    "bad.md|malformed review document header" "no-branch.md|no local branch no-such" \
+    "moved.md|is not a remote of this repository" "missing.md|No such file"; do
+    # shellcheck disable=SC2086
+    set -- ${case%%|*}
+    out="$(doc_checkout "${DOCS}/$1" "${@:2}" 2>&1)"; rc=$?
+    check "gh-pr.py doc-checkout ${case%%|*}" 1 "${rc}"
+    [[ "${out}" == *"${case#*|}"* ]] \
+        || { note "FAIL: gh-pr.py doc-checkout ${case%%|*} printed '${out}'"; fail=1; }
+done
+set --
+write_doc cur.md "- **Branch:** ${CUR}"
+write_doc pr-here.md "${PR_LINE}" "- **Trust:** off"
+cp "${DOCS}/pr-here.md" "${DOCS}/pr-here.orig"
+for name in none.md cur.md pr-here.md; do
+    out="$(doc_checkout "${DOCS}/${name}" 2>/dev/null)"; rc=$?
+    check "gh-pr.py doc-checkout ${name}" 0 "${rc}"
+    [[ "$(printf '%s' "${out}" | field in_place)" == true \
+        && "$(printf '%s' "${out}" | field branch)" == "${CUR}" ]] \
+        || { note "FAIL: gh-pr.py doc-checkout ${name} printed '${out}'"; fail=1; }
+done
+[[ "$(printf '%s' "${out}" | field merge_base)" == "${HEAD_SHA}" ]] \
+    || { note "FAIL: gh-pr.py doc-checkout pr-here.md merge_base in '${out}'"; fail=1; }
+cmp -s "${DOCS}/pr-here.md" "${DOCS}/pr-here.orig" \
+    || { note "FAIL: gh-pr.py doc-checkout without --fix-branch changed the document"; fail=1; }
+for run in 1 2; do
+    rc=0; doc_checkout "${DOCS}/pr-here.md" --fix-branch >/dev/null 2>&1 || rc=$?
+    check "gh-pr.py doc-checkout --fix-branch in place (run ${run})" 0 "${rc}"
+done
+[[ "$(sed -n 4p "${DOCS}/pr-here.md")" == "- **Branch:** ${CUR}" \
+    && "$(grep -c '^- \*\*Branch:\*\*' "${DOCS}/pr-here.md")" == 1 ]] \
+    || { note "FAIL: gh-pr.py doc-checkout --fix-branch wrote $(cat "${DOCS}/pr-here.md")"; fail=1; }
+if git checkout -q --detach 2>/dev/null; then
+    cp "${DOCS}/pr-here.orig" "${DOCS}/pr-detached.md"
+    out="$(doc_checkout "${DOCS}/pr-detached.md" --fix-branch 2>/dev/null)"; rc=$?
+    check "gh-pr.py doc-checkout --fix-branch in place on a detached HEAD" 0 "${rc}"
+    [[ "$(printf '%s' "${out}" | field in_place)" == true \
+        && "$(printf '%s' "${out}" | field branch)" == null ]] \
+        || { note "FAIL: gh-pr.py doc-checkout --fix-branch on a detached HEAD: '${out}'"; fail=1; }
+    cmp -s "${DOCS}/pr-detached.md" "${DOCS}/pr-here.orig" || {
+        note "FAIL: gh-pr.py doc-checkout --fix-branch on a detached HEAD wrote" \
+            "$(cat "${DOCS}/pr-detached.md")"
+        fail=1
+    }
+    git checkout -q "${CUR}" \
+        || { note "FAIL: git checkout ${CUR} after the detached HEAD case"; fail=1; }
+else
+    note "FAIL: git checkout --detach for the detached HEAD case"; fail=1
+fi
+# A branch name a Branch bullet cannot hold is worked on in place but not recorded.
+if git checkout -q -b 'feature/#123' 2>/dev/null; then
+    cp "${DOCS}/pr-here.orig" "${DOCS}/pr-hash.md"
+    out="$(doc_checkout "${DOCS}/pr-hash.md" --fix-branch 2>/dev/null)"; rc=$?
+    check "gh-pr.py doc-checkout --fix-branch in place on feature/#123" 0 "${rc}"
+    [[ "$(printf '%s' "${out}" | field in_place)" == true \
+        && "$(printf '%s' "${out}" | field branch)" == 'feature/#123' ]] \
+        || { note "FAIL: gh-pr.py doc-checkout --fix-branch on feature/#123: '${out}'"; fail=1; }
+    cmp -s "${DOCS}/pr-hash.md" "${DOCS}/pr-here.orig" || {
+        note "FAIL: gh-pr.py doc-checkout --fix-branch on feature/#123 wrote" \
+            "$(cat "${DOCS}/pr-hash.md")"
+        fail=1
+    }
+    git checkout -q "${CUR}" && git branch -q -D 'feature/#123' \
+        || { note "FAIL: git checkout ${CUR} after the feature/#123 case"; fail=1; }
+else
+    note "FAIL: git checkout -b for the feature/#123 case"; fail=1
+fi
+
+PR_SRC="${SANDBOX}/pr-src"
+git worktree add -q -b pr-src "${PR_SRC}" >/dev/null 2>&1 \
+    && mkdir -p "${PR_SRC}/sub" && echo src > "${PR_SRC}/sub/src.txt" \
+    && echo agent > "${PR_SRC}/sub/CLAUDE.md" \
+    && git -C "${PR_SRC}" add -- sub 2>/dev/null \
+    && git -C "${PR_SRC}" update-index --add --cacheinfo \
+        "120000,$(printf src.txt | git -C "${PR_SRC}" hash-object -w --stdin),sub/link" \
+    && git -C "${PR_SRC}" update-index --add --cacheinfo \
+        "120000,$(printf CLAUDE.md | git -C "${PR_SRC}" hash-object -w --stdin),sub/AGENTS.md" \
+    && git -C "${PR_SRC}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
+        commit -qm pr \
+    && git worktree remove --force -- "${PR_SRC}" \
+    || { note "FAIL: gh-pr.py doc-checkout repository setup"; fail=1; }
+drop_worktree() { # <path>: removes a worktree a failed case left behind
+    [[ -d "$1" ]] || return 0
+    python3 "${GHPR}" remove "$1" >/dev/null 2>&1 \
+        || { git worktree remove --force -- "$1" >/dev/null 2>&1; rmdir -- "${1%/*}" 2>/dev/null; }
+}
+kept_link() { # <doc> <worktree> <change>: gh-pr.py remove keeps the worktree, naming sub/link
+    local out rc=0 want
+    want="$(shlex_join git worktree remove --force -- "$2") in $(shlex_join "${MAIN}")"
+    out="$(python3 "${GHPR}" remove "$2" 2>&1)" || rc=$?
+    [[ "${rc}" -eq 1 && -d "$2" && "${out}" == *"symbolic links 'sub/link', which"* \
+        && "${out}" == *"do not run git in it"* && "${out}" == *"${want}"* ]] && return
+    note "FAIL: gh-pr.py remove did not keep the worktree of $1 with sub/link $3: '${out}'"
+    fail=1
+    drop_worktree "$2"
+    return 1
+}
+# check_worktree <doc> <path-prefix> <pr_worktree> <trust> <agent file kept>
+check_worktree() {
+    local out wt err="${SANDBOX}/doc-checkout.err"
+    out="$(doc_checkout "${DOCS}/$1" 2>"${err}")" \
+        || { note "FAIL: gh-pr.py doc-checkout $1: $(cat "${err}")"; fail=1; return; }
+    wt="$(printf '%s' "${out}" | field worktree_path)"
+    [[ "${wt}" == "${MAIN}/.claude/worktrees/$2"* \
+        && "$(printf '%s' "${out}" | field main_root)" == "${MAIN}" \
+        && "$(printf '%s' "${out}" | field in_place)" == false \
+        && "$(printf '%s' "${out}" | field pr_worktree)" == "$3" \
+        && "$(printf '%s' "${out}" | field trust)" == "$4" \
+        && "$(printf '%s' "${out}" | field branch)" == pr-src ]] \
+        || { note "FAIL: gh-pr.py doc-checkout $1 printed '${out}'"; fail=1
+            drop_worktree "${wt}"; return; }
+    [[ "$(git -C "${wt}" branch --show-current)" == pr-src && -f "${wt}/sub/src.txt" ]] \
+        || { note "FAIL: gh-pr.py doc-checkout $1 did not check out pr-src"; fail=1; }
+    if [[ "$5" == yes ]]; then
+        [[ -f "${wt}/sub/CLAUDE.md" ]] \
+            || { note "FAIL: gh-pr.py doc-checkout $1 left out sub/CLAUDE.md"; fail=1; }
+    else
+        [[ ! -e "${wt}/sub/CLAUDE.md" ]] \
+            || { note "FAIL: gh-pr.py doc-checkout $1 kept sub/CLAUDE.md"; fail=1; }
+    fi
+    if [[ "$3" == true ]]; then
+        [[ -z "$(git -C "${wt}" -c core.symlinks=true status --porcelain)" \
+            && "$(git -C "${wt}" ls-files -v -- sub/link)" == S* ]] \
+            || { note "FAIL: gh-pr.py doc-checkout $1 left sub/link a type change"; fail=1; }
+        git -C "${wt}" -c core.symlinks=true add -- . >/dev/null 2>&1 \
+            && git -C "${wt}" diff --cached --quiet \
+            || { note "FAIL: git add in the worktree of $1 staged sub/link"; fail=1; }
+        printf other > "${wt}/sub/link"
+        kept_link "$1" "${wt}" changed || return
+        rm "${wt}/sub/link"
+        kept_link "$1" "${wt}" deleted || return
+        printf src.txt > "${wt}/sub/link"
+    else
+        [[ -z "$(git -C "${wt}" status --porcelain)" ]] \
+            || { note "FAIL: gh-pr.py doc-checkout $1 left the worktree dirty"; fail=1; }
+    fi
+    : > "${wt}/uncommitted.txt"
+    rc=0; out="$(python3 "${GHPR}" remove "${wt}" 2>&1)" || rc=$?
+    if [[ "${rc}" -eq 1 && -f "${wt}/uncommitted.txt" ]]; then
+        if [[ "$3" == true ]]; then
+            [[ "${out}" == *"do not run git in it"* \
+                && "${out}" == *"$(shlex_join git worktree remove --force -- "${wt}")"* ]]
+        else
+            [[ "${out}" != *"do not run git in it"* ]]
+        fi || { note "FAIL: gh-pr.py remove the dirty worktree of $1 printed '${out}'"; fail=1; }
+        rm "${wt}/uncommitted.txt"
+        rc=0; python3 "${GHPR}" remove "${wt}" >/dev/null 2>&1 || rc=$?
+        check "gh-pr.py remove the worktree of $1" 0 "${rc}"
+        [[ "${rc}" -eq 0 ]] || drop_worktree "${wt}"
+    else
+        note "FAIL: gh-pr.py remove did not keep the dirty worktree of $1 (rc=${rc})"; fail=1
+        drop_worktree "${wt}"
+    fi
+}
+write_doc branch.md "- **Branch:** pr-src" "- **Trust:** off"
+check_worktree branch.md creview-branch- false off yes
+# git refuses to remove a worktree whose git directory has a modules directory.
+out="$(doc_checkout "${DOCS}/branch.md" 2>&1)"; rc=$?
+wt=""
+[[ "${rc}" -ne 0 ]] || wt="$(printf '%s' "${out}" | field worktree_path)"
+if [[ -d "${wt}" ]] && modules="$(git -C "${wt}" rev-parse --absolute-git-dir)/modules" \
+    && mkdir "${modules}"; then
+    out="$(python3 "${GHPR}" remove "${wt}" 2>&1)"; rc=$?
+    check "gh-pr.py remove a worktree with initialized submodules" 1 "${rc}"
+    [[ -d "${wt}" && "${out}" == *"$(shlex_join git worktree remove --force -- "${wt}")"* ]] || {
+        note "FAIL: gh-pr.py remove a worktree with initialized submodules printed '${out}'"
+        fail=1
+    }
+    rmdir "${modules}"
+    rc=0; python3 "${GHPR}" remove "${wt}" >/dev/null 2>&1 || rc=$?
+    check "gh-pr.py remove a worktree whose submodules are gone" 0 "${rc}"
+else
+    note "FAIL: gh-pr.py doc-checkout branch.md for the submodule case: '${out}'"; fail=1
+fi
+drop_worktree "${wt}"
+HOOKS="${SANDBOX}/failing-hooks"
+mkdir -p "${HOOKS}" && printf '#!/bin/sh\nexit 1\n' > "${HOOKS}/post-checkout" \
+    && chmod +x "${HOOKS}/post-checkout" && git config core.hooksPath "${HOOKS}" \
+    || { note "FAIL: failing post-checkout hook setup"; fail=1; }
+out="$(doc_checkout "${DOCS}/branch.md" 2>&1)"; rc=$?
+git config --unset core.hooksPath
+check "gh-pr.py doc-checkout branch.md with a failing post-checkout hook" 1 "${rc}"
+[[ "$(git worktree list --porcelain)" != *creview-branch-* && ! -e "${MAIN}/.claude/worktrees" ]] \
+    || { note "FAIL: gh-pr.py doc-checkout kept the worktree of a failed hook: '${out}'"; fail=1
+        git worktree list --porcelain \
+            | sed -n 's/^worktree \(.*\/creview-branch-[^/]*\)$/\1/p' \
+            | while IFS= read -r p; do drop_worktree "${p}"; done; }
+if [[ "$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=t.k GIT_CONFIG_VALUE_0=v \
+    git config --get t.k 2>/dev/null)" == v ]]; then
+    write_doc pr-branch.md "${PR_LINE}" "- **Branch:** pr-src"
+    check_worktree pr-branch.md creview-pr-3- true off no
+    write_doc pr-branch-off.md "${PR_LINE}" "- **Branch:** pr-src" "- **Trust:** off"
+    check_worktree pr-branch-off.md creview-pr-3- true off no
+    write_doc pr-branch-on.md "${PR_LINE}" "- **Branch:** pr-src" "- **Trust:** on"
+    check_worktree pr-branch-on.md creview-pr-3- true on yes
+else
+    note "SKIP: gh-pr.py doc-checkout PR worktree cases (git does not apply GIT_CONFIG_COUNT)"
+fi
+git show-ref --verify --quiet refs/heads/pr-src \
+    || { note "FAIL: gh-pr.py remove dropped the branch pr-src"; fail=1; }
+git worktree add -q "${PR_SRC}" pr-src >/dev/null 2>&1 \
+    || { note "FAIL: git worktree add for the busy-branch case"; fail=1; }
+for name in branch.md pr-branch-on.md; do
+    [[ -e "${DOCS}/${name}" ]] || continue
+    out="$(doc_checkout "${DOCS}/${name}" 2>&1)"; rc=$?
+    check "gh-pr.py doc-checkout ${name} on a branch checked out elsewhere" 1 "${rc}"
+    [[ "${out}" == *"pr-src is checked out in the worktree"*"session started at"* ]] \
+        || { note "FAIL: gh-pr.py doc-checkout ${name} on a busy branch printed '${out}'"; fail=1; }
+done
+out="$( (cd "${PR_SRC}" && doc_checkout "${DOCS}/pr-here.orig") 2>/dev/null)"; rc=$?
+check "gh-pr.py doc-checkout on a child of the PR head" 0 "${rc}"
+[[ "$(printf '%s' "${out}" | field in_place)" == true \
+    && "$(printf '%s' "${out}" | field branch)" == pr-src \
+    && "$(printf '%s' "${out}" | field worktree_path)" == null ]] \
+    || { note "FAIL: gh-pr.py doc-checkout on a child of the PR head printed '${out}'"; fail=1; }
+git worktree remove -- "${PR_SRC}" >/dev/null 2>&1
+# A gh shim stands in for gh: PR #3 is open at GH_HEAD, which pr checkout checks out.
+GHSHIM="${SANDBOX}/ghshim"
+mkdir -p "${GHSHIM}"
+cat > "${GHSHIM}/gh" <<'SH'
+#!/bin/sh
+case "$1 $2" in
+    "pr view") printf '{"number":3,"state":"OPEN","headRefOid":"%s"}\n' "${GH_HEAD}" ;;
+    "pr checkout") exec git checkout --quiet --detach "${GH_HEAD}" ;;
+    *) exit 1 ;;
+esac
+SH
+chmod +x "${GHSHIM}/gh" || { note "FAIL: gh-pr.py doc-checkout gh shim setup"; fail=1; }
+shim_checkout() { # <doc> [option]: doc-checkout with the gh shim first on the PATH
+    PATH="${GHSHIM}:${PATH}" GH_HEAD="${PR_HEAD}" python3 "${GHPR}" doc-checkout \
+        "${DOCS}/$1" "${@:2}"
+}
+# pr_only_case <doc> <branch, empty for none> [option]: doc-checkout adds a PR worktree at
+# PR_HEAD on that branch; its path is left in wt.
+pr_only_case() {
+    local out err="${SANDBOX}/doc-checkout.err"
+    wt=""
+    out="$(shim_checkout "$1" "${@:3}" 2>"${err}")" \
+        || { note "FAIL: gh-pr.py doc-checkout $1${3:+ $3}: $(cat "${err}")"; fail=1; return; }
+    wt="$(printf '%s' "${out}" | field worktree_path)"
+    [[ "${wt}" == "${MAIN}/.claude/worktrees/creview-pr-3-"* \
+        && "$(printf '%s' "${out}" | field in_place)" == false \
+        && "$(printf '%s' "${out}" | field pr_worktree)" == true \
+        && "$(printf '%s' "${out}" | field branch)" == "${2:-null}" \
+        && "$(git -C "${wt}" rev-parse HEAD)" == "${PR_HEAD}" \
+        && "$(git -C "${wt}" branch --show-current)" == "$2" \
+        && -f "${wt}/sub/src.txt" && ! -e "${wt}/sub/CLAUDE.md" ]] \
+        || { note "FAIL: gh-pr.py doc-checkout $1${3:+ $3} printed '${out}'"; fail=1; }
+}
+if [[ "$(python3 -c 'import os; print(os.name)')" == nt ]]; then
+    note "SKIP: gh-pr.py doc-checkout PR-bullet-only cases (gh-pr.py runs gh.exe, not the shim)"
+elif [[ "$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=t.k GIT_CONFIG_VALUE_0=v \
+    git config --get t.k 2>/dev/null)" != v ]]; then
+    note "SKIP: gh-pr.py doc-checkout PR-bullet-only cases (git does not apply GIT_CONFIG_COUNT)"
+else
+    PR_HEAD="$(git rev-parse pr-src)"
+    git remote add origin https://github.com/o/r \
+        || { note "FAIL: git remote add for the PR-bullet-only cases"; fail=1; }
+    out="$(shim_checkout moved.md 2>&1)"; rc=$?
+    check "gh-pr.py doc-checkout moved.md after the PR head moved" 1 "${rc}"
+    [[ "${out}" == *"changed after the review"* ]] \
+        || { note "FAIL: gh-pr.py doc-checkout moved.md via the gh shim printed '${out}'"; fail=1; }
+    [[ "${rc}" -ne 0 ]] || drop_worktree "$(printf '%s' "${out}" | field worktree_path)"
+    write_doc pr-only.md \
+        "- **PR:** https://github.com/o/r/pull/3 (head ${PR_HEAD}, base ${HEAD_SHA})" \
+        "- **Trust:** off"
+    cp "${DOCS}/pr-only.md" "${DOCS}/pr-only.orig"
+    cp "${DOCS}/pr-only.md" "${DOCS}/pr-only-fix.md"
+    pr_only_case pr-only.md ""
+    cmp -s "${DOCS}/pr-only.md" "${DOCS}/pr-only.orig" \
+        || { note "FAIL: gh-pr.py doc-checkout pr-only.md changed the document"; fail=1; }
+    drop_worktree "${wt}"
+    pr_only_case pr-only-fix.md creview-pr-3 --fix-branch
+    [[ "$(sed -n 4p "${DOCS}/pr-only-fix.md")" == "- **Branch:** creview-pr-3" ]] || {
+        note "FAIL: gh-pr.py doc-checkout --fix-branch wrote $(cat "${DOCS}/pr-only-fix.md")"
+        fail=1
+    }
+    out="$(shim_checkout pr-only.md --fix-branch 2>&1)"; rc=$?
+    check "gh-pr.py doc-checkout --fix-branch with creview-pr-3 checked out" 1 "${rc}"
+    [[ "${out}" == *"creview-pr-3 is checked out in the worktree"* ]] \
+        || { note "FAIL: gh-pr.py doc-checkout on a busy creview-pr-3 printed '${out}'"; fail=1; }
+    [[ "${rc}" -ne 0 ]] || drop_worktree "$(printf '%s' "${out}" | field worktree_path)"
+    drop_worktree "${wt}"
+    pr_only_case pr-only-fix.md creview-pr-3 --fix-branch
+    [[ "$(grep -c '^- \*\*Branch:\*\*' "${DOCS}/pr-only-fix.md")" == 1 ]] || {
+        note "FAIL: gh-pr.py doc-checkout --fix-branch rerun wrote $(cat "${DOCS}/pr-only-fix.md")"
+        fail=1
+    }
+    drop_worktree "${wt}"
+    git branch -D creview-pr-3 >/dev/null 2>&1
+    git remote remove origin >/dev/null 2>&1
+fi
+[[ ! -e "${MAIN}/.claude/worktrees" ]] \
+    || { note "FAIL: gh-pr.py doc-checkout left $(ls "${MAIN}/.claude/worktrees")"; fail=1; }
+KEPT="${MAIN}/.claude/worktrees/creview-pr-3-20260101-000000"
+if git worktree add -q "${KEPT}" pr-src >/dev/null 2>&1; then
+    out="$(doc_checkout "${DOCS}/branch.md" 2>&1)"; rc=$?
+    check "gh-pr.py doc-checkout branch.md on a branch a kept PR worktree holds" 1 "${rc}"
+    want="$(shlex_join remove "${KEPT}") in $(shlex_join "${MAIN}") "
+    [[ "${out}" == *"which a creview skill kept"*"/gh-pr.py"*" ${want}"* \
+        && "${out}" == *"do not run git in it"* && "${out}" != *"commit or discard"* \
+        && "${out}" != *\\* ]] \
+        || { note "FAIL: gh-pr.py doc-checkout on a kept PR worktree's branch printed '${out}'"
+             fail=1; }
+    out="$( (cd "${KEPT}" && doc_checkout "${DOCS}/none.md") 2>&1)"; rc=$?
+    check "gh-pr.py doc-checkout in a PR worktree" 1 "${rc}"
+    [[ "${out}" == *"session started at the main working tree"* ]] \
+        || { note "FAIL: gh-pr.py doc-checkout in a PR worktree printed '${out}'"; fail=1; }
+    if [[ "$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=t.k GIT_CONFIG_VALUE_0=v \
+        git config --get t.k 2>/dev/null)" == v ]]; then
+        python3 -I -B - "${GHPR}" "${KEPT}" "${MAIN}" <<'PY' || fail=1
+import contextlib
+import importlib.util
+import io
+import os
+import shlex
+import sys
+
+spec = importlib.util.spec_from_file_location("gh_pr", sys.argv[1])
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+kept, main_root = sys.argv[2], sys.argv[3]
+recovery = (f"{shlex.join(['git', 'worktree', 'remove', '--force', '--', kept])} in "
+            f"{shlex.quote(main_root)}")
+failed = False
+for links, reason in (
+        (([], ["x"]), "is kept: its symbolic links 'x', which it holds as plain files, could not "
+                      "be examined"),
+        ((["a"], [b"l\xe9"]), "is kept: it changes the symbolic links 'a', which it holds as "
+                               "plain files that git status does not show, and its symbolic "
+                               "links b'l\\xe9', which")):
+    g.changed_links = lambda path, env, links=links: links
+    err = io.StringIO()
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+        rc = g.main(["remove", kept])
+    out = err.getvalue()
+    if rc != 1 or not os.path.isdir(kept) or not all(
+            p in out for p in (reason, "do not run git in it", recovery)):
+        print(f"FAIL: gh-pr.py remove a PR worktree whose links are {links} "
+              f"(rc={rc}, printed {out!r:.600})")
+        failed = True
+
+
+def fail_examining(path, env):
+    raise AssertionError("changed_links ran under --discard")
+
+
+g.changed_links = fail_examining
+with open(os.path.join(kept, "untracked.txt"), "w") as f:
+    f.write("x")
+for case, want_rc in (("a PR worktree with changes", 0), ("a removed PR worktree", 1)):
+    err = io.StringIO()
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+        rc = g.main(["remove", kept, "--discard"])
+    out = err.getvalue()
+    if want_rc == 0:
+        ok = rc == 0 and not os.path.exists(kept)
+    else:
+        ok = (rc == 1 and all(p in out for p in ("do not run git in it", recovery))
+              and "copy out" not in out)
+    if not ok:
+        print(f"FAIL: gh-pr.py remove --discard {case} (rc={rc}, printed {out!r:.600})")
+        failed = True
+sys.exit(1 if failed else 0)
+PY
+    else
+        note "SKIP: gh-pr.py remove kept PR worktree cases (git does not apply GIT_CONFIG_COUNT)"
+    fi
+    git worktree remove --force -- "${KEPT}" >/dev/null 2>&1
+    rmdir "${MAIN}/.claude/worktrees" 2>/dev/null
+else
+    note "FAIL: git worktree add for the kept PR worktree case"; fail=1
+fi
+KEPT_BRANCH="${MAIN}/.claude/worktrees/creview-branch-20260101-000000"
+if git worktree add -q "${KEPT_BRANCH}" pr-src >/dev/null 2>&1; then
+    out="$(doc_checkout "${DOCS}/branch.md" 2>&1)"; rc=$?
+    check "gh-pr.py doc-checkout branch.md on a branch a kept branch worktree holds" 1 "${rc}"
+    want="$(shlex_join remove "${KEPT_BRANCH}") in $(shlex_join "${MAIN}") "
+    [[ "${out}" == *"which a creview skill kept"*"/gh-pr.py"*" ${want}"* \
+        && "${out}" == *"review its changes, commit or discard them, and remove it by running"* \
+        && "${out}" != *"do not run git in it"* && "${out}" != *\\* ]] \
+        || { note "FAIL: gh-pr.py doc-checkout on a kept branch worktree's branch printed '${out}'"
+             fail=1; }
+    : > "${KEPT_BRANCH}/untracked.txt"
+    # LC_ALL=C keeps git's refusal in English.
+    rc=0; out="$(LC_ALL=C python3 "${GHPR}" remove "${KEPT_BRANCH}" --discard 2>&1)" || rc=$?
+    [[ "${rc}" -ne 0 && -d "${KEPT_BRANCH}" \
+        && "${out}" == *"contains modified or untracked files"* ]] \
+        || { note "FAIL: gh-pr.py remove --discard a branch worktree with changes printed '${out}'"
+             fail=1; }
+    rm -- "${KEPT_BRANCH}/untracked.txt"
+    rc=0; python3 "${GHPR}" remove "${KEPT_BRANCH}" --discard >/dev/null 2>&1 || rc=$?
+    check "gh-pr.py remove --discard a clean branch worktree" 0 "${rc}"
+    [[ ! -e "${KEPT_BRANCH}" ]] \
+        || { note "FAIL: gh-pr.py remove --discard left a clean branch worktree behind"; fail=1; }
+    git worktree remove --force -- "${KEPT_BRANCH}" >/dev/null 2>&1
+    rmdir "${MAIN}/.claude/worktrees" 2>/dev/null
+else
+    note "FAIL: git worktree add for the kept branch worktree case"; fail=1
+fi
+
+# --- render-review.py keeps each metadata value on one line -----------------------
+RD="${SANDBOX}/render"
+mkdir -p "${RD}"
+printf '# Report\n\n<!-- /METADATA(mi-1) -->\n\n## Minor\n' > "${RD}/doc.md"
+printf '%s\n' '{"id":"mi-1","field":"triage","value":"Will Fix\n- **Branch:** main"}' \
+    '{"id":"mi-1","field":"estimate","value":"Maintain\r- **Branch:** main"}' \
+    '{"id":"mi-9","field":"status","value":"Fixed\r\n- **Branch:** main"}' > "${RD}/events.jsonl"
+printf '# Report\n\n%s\n%s\n<!-- /METADATA(mi-1) -->\n\n## Minor\n\n## Orphan Metadata\n\n%s\n' \
+    '- **Triage:** Will Fix - **Branch:** main' '- **Estimate:** Maintain - **Branch:** main' \
+    $'### mi-9\n\n- **Status:** Fixed - **Branch:** main' > "${RD}/want.md"
+rc=0; python3 "${RR}" "${RD}/doc.md" "${RD}/events.jsonl" "${RD}/out.md" >/dev/null 2>&1 || rc=$?
+check "render-review.py with line breaks in values" 0 "${rc}"
+cmp -s "${RD}/out.md" "${RD}/want.md" \
+    || { note "FAIL: render-review.py wrote '$(cat -v "${RD}/out.md")'"; fail=1; }
 
 # --- check-jsonl.py accepts both shapes and rejects malformed input ---------------
 JD="${SANDBOX}/jsonl"

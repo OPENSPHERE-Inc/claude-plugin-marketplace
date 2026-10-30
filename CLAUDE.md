@@ -56,7 +56,7 @@ claude-plugin-marketplace/
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
 │   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md, pr-description-reviewer.md
-│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md
+│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md
 │   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, lib/scratch-guard.py
 │
 ├── cprompt/                      # Plugin: prompt authoring (active, English)
@@ -118,8 +118,8 @@ When changing a plugin:
 - **Path tokens** (see Important Warnings for the invariant):
   - SKILL.md bodies / `allowed-tools` and bundled agent definitions use
     `${CLAUDE_PLUGIN_ROOT}/...`.
-  - `templates/*.md` and bundled rules (read by sub-agents) use the `{{plugin_root}}/...`
-    launch variable.
+  - `templates/*.md` and bundled rules (opened with Read by a sub-agent, or by a leader for
+    `rules/doc-worktree.md`) use the `{{plugin_root}}/...` launch variable.
 - **Agent-dispatch generalization**: skills do **not** bundle specialist reviewers. The
   single-best-match resolution mechanics (enumerate agents recursively `**/*.md` across
   **destination project** → **user** → **plugin bundle** scopes, higher-priority scope wins
@@ -193,9 +193,10 @@ bash tests/scratch-guard-test.sh
 Then exercise `/creview:start`, `/creview:triage`, `/creview:respond`, `/creview:resolve`
 in a project that has its own `.claude/agents/` (or none, to test the `general-purpose`
 fallback), `/creview:start` with a pull request URL (both with HEAD at the pull request's
-head and elsewhere, which reviews in a worktree; needs an authenticated `gh`),
-`/cprompt:edit`, and `/cdev:coding` (in a runtime with background subagents and
-inter-agent messaging).
+head and elsewhere, which reviews in a worktree; needs an authenticated `gh`), the
+`/creview:triage` / `respond` / `resolve` on that review document with HEAD elsewhere
+(which work in a worktree of the pull request), `/cprompt:edit`, and `/cdev:coding` (in a
+runtime with background subagents and inter-agent messaging).
 
 ---
 
@@ -221,12 +222,22 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     gh-pr.py checkout into a detached worktree (hooks disabled, agent
                     files such as CLAUDE.md and .claude/ left out unless --trust) → code
                     reviewers + pr-description-reviewer → doc header carries a
-                    `- **PR:**` bullet → gh-pr.py remove (hooks disabled)
+                    `- **PR:**` bullet → gh-pr.py remove (hooks disabled); the header
+                    also carries a `- **Branch:**` bullet when the review ran on a branch,
+                    and in PR mode a `- **Trust:** on|off` bullet (whether the reviewed
+                    tree had the agent files)
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist
                     triage / estimate metadata into the doc
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
                     format&build-verify ⇄ build-fix loop → compile → persist status
 /creview:resolve → analyze + verify Subs → compile → persist verification
+                    (triage / respond / resolve invoked directly follow
+                    rules/doc-worktree.md: gh-pr.py doc-checkout reads the doc's PR /
+                    Branch / Trust bullets and, when that code is not checked out here,
+                    adds a worktree — a PR worktree with the agent files only when Trust
+                    is on; respond passes --fix-branch, so a PR doc with no Branch
+                    bullet records the branch its fixes go to: creview-pr-{number}
+                    when HEAD lacks the PR head, else the current branch, if any)
 /creview:rounds  → launches one review-leader Sub per phase per round (each Sub invokes
                     the phase's skill and runs it whole) + divergence gate after triage
                     (Round 2 on: detect → investigate → pause with the report) +
@@ -252,13 +263,15 @@ the launch prompt as the `plugin_root` variable so the template's `{{plugin_root
 references resolve for the sub-agent. See `creview/rules/sub-agent.md`.
 
 The leader also passes `main_root` in every launch prompt: the main working tree's root
-when the run works in a worktree — under `--worktree`, or in a `/creview:start` pull
-request review that checks the pull request out in one — and `(none)` otherwise.
+when the run works in a worktree — under `--worktree`, in a `/creview:start` pull
+request review that checks the pull request out in one, or in a directly invoked
+`/creview:triage` / `respond` / `resolve` whose review document's code is checked out in
+one — and `(none)` otherwise.
 `/creview:rounds` passes it in every launch prompt it issues; `review-leader` forwards the
 value it received, `(none)` included, to every sub-agent it launches; the `/creview:start`
 / `triage` / `respond` / `resolve` leaders pass the value an upper flow gave them, or
-`(none)` when invoked directly, except that a `/creview:start` worktree review passes its
-own; cdev passes it through the spawn contract. The detection rules
+`(none)` when invoked directly, except that a leader working in a worktree of its own
+passes its own; cdev passes it through the spawn contract. The detection rules
 (`agents-detection.md` / `build-format-detection.md`) and `scope-analysis.md` resolve the
 project's `.claude/agents/` / `.claude/rules/` against it when it is other than `(none)`,
 and against `target_dir` otherwise. Launches nested
@@ -266,8 +279,9 @@ inside a template (the challenge / adjudication sub-agents `triage.md` spawns) d
 receive it, so the templates they run must not depend on it.
 
 Every launch prompt — nested launches included — also passes `target_dir`, the work target:
-the worktree when the run works in one (under `--worktree`, or in a `/creview:start`
-worktree review), otherwise the repository root (`git rev-parse --show-toplevel`). Every
+the worktree when the run works in one (under `--worktree`, in a `/creview:start`
+worktree review, or in a `/creview:triage` / `respond` / `resolve` worktree), otherwise the
+repository root (`git rev-parse --show-toplevel`). Every
 creview and cdev entry point rejects a session started in a subdirectory of the repository
 (non-empty `git rev-parse --show-prefix`) with an error, with or without `--worktree`, so
 every sub-agent's current working directory is
@@ -405,6 +419,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `{{target_dir}}` on the same basis: every launch passes `target_dir`.
   `rules/wontfix.md` carries `{{previous_round_doc_paths}}` on the same basis: every
   template that references it receives that launch variable.
+  `rules/doc-worktree.md` is opened with Read by the `/creview:triage` / `respond` /
+  `resolve` leaders, so it uses `{{plugin_root}}` as well, and those SKILLs name its
+  `plugin_root` variable without writing the `{{...}}` token.
 - **`template_id` must match.** The SKILL step's hard-coded UUID and the template's
   frontmatter `template_id` must be identical, or the leader will loop relaunching.
 - **src ↔ active parity is a contract.** Do not edit one side only. A structural

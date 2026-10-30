@@ -13,6 +13,8 @@ Review target: `{{targets_description}}`
 Reviewer list: `{{reviewer_names_csv}}`
 Review mode: `{{review_mode}}`
 Pull request: `{{pr_ref}}`
+Branch: `{{branch_ref}}`
+Trust: `{{trust_ref}}`
 Output language: `{{doc_lang}}`
 
 Consolidation procedure:
@@ -32,6 +34,8 @@ Format rules:
 - For severity sections with no applicable findings (`## Critical` / `## Major` / `## Minor` / `## Info`), do not omit the heading; output the heading and write the `No findings` equivalent in `{{doc_lang}}` in the body.
 - Write the prose (finding descriptions, summary body, metadata heading labels) in `{{doc_lang}}`. Structural anchors (severity headings `## Critical` / `## Major` / `## Minor` / `## Info`, finding-id, `<!-- METADATA(...) -->` markers) are parsing targets for later phases, so they do not change regardless of `{{doc_lang}}`. Use the category labels as extracted in step 1.
 - When `{{review_mode}}` is `adversarial`, add `- **Mode:** adversarial` to the report header bullets, immediately after the Round bullet, or after the Date bullet when the round number is omitted. The label follows `{{doc_lang}}`; keep the value `adversarial` as-is. Otherwise, do not output the bullet.
-- When `{{pr_ref}}` is not `(none)`, add `- **PR:** {{pr_ref}}` to the report header bullets, immediately before the Scope bullet. Output it verbatim, untranslated label included. Otherwise, do not output the bullet.
+- When `{{pr_ref}}` is not `(none)`, add `- **PR:** {{pr_ref}}` to the report header bullets. Output it verbatim, untranslated label included. Otherwise, do not output the bullet.
+- Likewise, add `- **Branch:** {{branch_ref}}` when `{{branch_ref}}` is not `(none)`, and `- **Trust:** {{trust_ref}}` when `{{trust_ref}}` is not `(none)`.
+- Place the PR, Branch, and Trust bullets that are output in that order, immediately before the Scope bullet.
 
 Return value: `{doc_path, findings_total, severity_counts: {critical, major, minor, info}, duplicates_merged, template_id}`. Include `template_id` exactly as Read from this template's frontmatter.

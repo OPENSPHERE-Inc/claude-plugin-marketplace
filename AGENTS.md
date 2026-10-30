@@ -25,11 +25,13 @@ see **[CLAUDE.md](CLAUDE.md)**.
   `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader), and the
   tool-restricted `pr-description-reviewer.md` (`/creview:start`'s PR mode).
 - `creview/rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
-  `adr-format.md`, `agents-detection.md`, `build-format-detection.md` (rules referenced by
-  skills).
+  `adr-format.md`, `agents-detection.md`, `build-format-detection.md`, `doc-worktree.md`
+  (rules referenced by skills; `doc-worktree.md` is read by the `/creview:triage` /
+  `respond` / `resolve` leaders).
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `check-jsonl.py`,
   `worktree.sh`, `gh-pr.py` (pull request resolution and worktree checkout and removal for
-  `/creview:start`'s PR mode), `lib/scratch-guard.py`.
+  `/creview:start`'s PR mode, and `doc-checkout`: the review document header parsing and
+  worktree checkout for `/creview:triage` / `respond` / `resolve`), `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
 - `cprompt/skills/edit/SKILL.md` (+ `templates/`) — The `/cprompt:edit` skill.
 - `cprompt/rules/` — `prompt.md`, `document.md`. `cprompt/scripts/` — `worktree.sh`.
@@ -55,10 +57,13 @@ see **[CLAUDE.md](CLAUDE.md)**.
    `scripts/worktree.sh` across all six (`cprompt/` and its mirror too), and
    `scripts/fetch-diff.sh` (`creview/`, `cdev/`) and `creview/scripts/gh-pr.py` each with its
    own `src/` mirror — the `src/` copies stay English; see CLAUDE.md.
-3. **Token-placement invariant.** `${CLAUDE_PLUGIN_ROOT}` only in files Claude Code loads
-   itself (SKILL.md bodies/`allowed-tools`, bundled `agents/*.md`); `{{plugin_root}}` only
-   in files a sub-agent opens with Read (`templates/*.md` and the bundled `rules/*.md` it is
-   pointed to), passed as a launch variable. Never cross them.
+3. **Token-placement invariant.** The token follows who opens the file.
+   `${CLAUDE_PLUGIN_ROOT}` only in files Claude Code loads itself (SKILL.md
+   bodies/`allowed-tools`, bundled `agents/*.md`); `{{plugin_root}}` only in files opened
+   with Read: `templates/*.md` and the bundled `rules/*.md` a sub-agent is pointed to, with
+   `plugin_root` passed as a launch variable, and `creview/rules/doc-worktree.md`, which the
+   `/creview:triage` / `respond` / `resolve` leaders Read with the `plugin_root` value their
+   SKILL gives. Never cross them.
 4. **`template_id` must match** the per-step UUID hard-coded in the SKILL that launches it.
 5. **No bundled specialist reviewers.** Skills resolve reviewers/fixers from the
    destination project's `.claude/agents/`, falling back to `general-purpose`. Only

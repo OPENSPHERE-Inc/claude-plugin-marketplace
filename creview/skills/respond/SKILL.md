@@ -1,7 +1,7 @@
 ---
 name: respond
 description: Fix the Will-Fix / Maintain / Alternative review findings, verify the build, and reflect the fix status into the review document. Use proactively when a review document carrying triage / estimate metadata exists and the user wants the findings addressed (e.g. "fix the review findings").
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Respond (Fix)
@@ -22,8 +22,15 @@ The user supplies a path to a review document (markdown). When the argument is `
 
 ## Options
 
-- `--commit` (default OFF) — Commit the fixed source code in Step 5.
+- `--commit` (default OFF) — Commit the fixed source code in Step 5. On in a worktree (§ Worktree).
 - `--adr` (default OFF) — Permit the fix sub-agents to create a new ADR file when an implementation-time design decision has no ADR yet (skeleton: `${CLAUDE_PLUGIN_ROOT}/rules/adr-format.md`). ADR files referenced from the `Estimate:` metadata (written by `/creview:triage --adr`, possibly edited by the user) are read before fixing and updated after fixing regardless of this option.
+
+## Worktree
+
+Follow `${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, appending `--fix-branch` to `doc-checkout`. When `pr_worktree` is true, add these PR worktree overrides:
+
+- For the format / build / test verification sub-agent: `Resolve stage 2 of build-format-detection.md from {main_root}/CLAUDE.md, then {main_root}/README.md, not from the files under {target_dir}; run the commands in {target_dir} as usual.`
+- For the select-fix-targets sub-agent, when `trust` is `off`: `Move each fix target whose location or fix_plan names a path in one of the agent files {target_dir} leaves out to not_ready, with the reason that the file is not checked out because the review ran without --trust.`
 
 ## Review document format
 
@@ -91,7 +98,9 @@ Each decision is written to an intermediate file, and `compile-review.py` compil
 {tmp_dir}/events.jsonl         ← output of compile-review.py (input to render-review.py)
 ```
 
-`{main_root}` is the `main_root` your launch prompt gives when an upper flow (e.g. `/creview:rounds`) runs this skill, or `(none)` when the skill is invoked directly. `{target_dir}` is likewise the `target_dir` your launch prompt gives, or the output of `git rev-parse --show-toplevel` when the skill is invoked directly.
+`{main_root}` is the `main_root` your launch prompt gives when an upper flow (e.g. `/creview:rounds`) runs this skill, or `(none)` when the skill is invoked directly. `{target_dir}` is likewise the `target_dir` your launch prompt gives, or the output of `git rev-parse --show-toplevel` when the skill is invoked directly. A worktree replaces both (§ Worktree).
+
+To abort: show the error, run the teardown when it is due (§ Worktree), remove `{tmp_dir}` with `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`, and terminate the skill.
 
 Use the **Write tool** for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g. `Won't`) break the outer quoting.
 
@@ -99,11 +108,11 @@ At the start of Step 1, the leader (you) creates `{tmp_dir}` with `mkdir -p {tmp
 
 ## Step 1 — Select fix targets (delegate to the select-fix-targets sub-agent)
 
-Before creating `{tmp_dir}`, if `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill.
+Before creating `{tmp_dir}`, if `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill. When the skill is invoked directly, locate the document's code after creating `{tmp_dir}` (§ Worktree).
 
 Launch via `Agent(subagent_type="general-purpose", prompt=...)`. The Sub Reads the review document, applies the fix-target selection rule, and Writes `{tmp_dir}/targets.jsonl`.
 
-Template `select-fix-targets.md`, `template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — do not load the body.
+Template `select-fix-targets.md`, `template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}` — do not load the body. Hold `not_ready` for Step 7.
 
 When `fix_count == 0`, skip Steps 2–5 and proceed to Step 6 (compile; nothing to reflect → report "no fix targets").
 
@@ -168,4 +177,6 @@ The leader (you) does not load decision bodies into context. The fix `status` is
 
 ## Step 7 — Summary
 
-The leader prints the `summary_line` received in Step 6 to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.
+The leader prints the `summary_line` received in Step 6 to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. If Step 1's `not_ready` is non-empty, present its ids and reasons together with the `summary_line` as findings left unfixed, including when `fix_count == 0` skipped Steps 2–5. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.
+
+In a worktree, run the teardown (§ Worktree) and report the branch the fixes were committed to.

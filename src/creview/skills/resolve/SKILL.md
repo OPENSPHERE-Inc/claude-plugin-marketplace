@@ -1,7 +1,7 @@
 ---
 name: resolve
 description: レビュー指摘の解決状況を実際のソースコードと照合して検証し、検証メタデータを書き戻す。レビュー修正の完了後（通常 /creview:respond の後）や、指摘が実際に解決されたかの確認を求められたときに能動的に使用する。
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュー検証
@@ -10,11 +10,18 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), B
 
 ## 入力
 
-ユーザーはレビュードキュメント（markdown）へのパスを指定する。引数が `$ARGUMENTS` の場合、レビュードキュメントへのパスとして解釈する。`--base {branch}` でベースブランチを指定できる（指定がなければリモートに存在する `main` または `master` を使用する。両方存在する場合は `main` を優先）。
+ユーザーはレビュードキュメント（markdown）へのパスを指定する。引数が `$ARGUMENTS` の場合、レビュードキュメントへのパスとして解釈する。`--base {branch}` でベースブランチを指定できる（指定がなければ、`doc-checkout` が出力する `merge_base`（§ ワークツリー）が null でない場合はそれ、それ以外ではリモートに存在する `main` または `master` を使用する。両方存在する場合は `main` を優先）。
 
 ## タイムスタンプ（`{timestamp}`）
 
 `{timestamp}` はステップ 1 の開始時に一度だけ決定する現在日時文字列（`YYYYMMDD-HHMMSS` 形式、例: `20240101-120000`）。以降の全ステップで同一値を使う。
+
+## ワークツリー
+
+`${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}` とし、`remove` の末尾に `--discard` を付ける。PR ワークツリー向けに以下のオーバーライドを追加する:
+
+- `{target_dir} 配下のファイルを実行・ビルド・テスト・インストール・source しない。`
+- `{target_dir} では読み取り専用のものを含め git コマンドを実行しない。プルリクエストのファイルによって、git がそこでフックや filter / diff ドライバを実行しうる。差分は diff ファイルにある。`
 
 ## レビュードキュメント形式
 
@@ -97,9 +104,11 @@ Unresolved の指摘には `verification` 値を書き込まない。
 {tmp_dir}/resolve-summary.md        ← compile-review.py の出力（検証レポート）
 ```
 
-`{main_root}` は、上位フロー（例: `/creview:rounds`）がこのスキルを実行する場合は起動プロンプトが渡した `main_root`、スキルを直接起動した場合は `(該当なし)` とする。`{target_dir}` も同様に起動プロンプトが渡した `target_dir` とし、スキルを直接起動した場合は `git rev-parse --show-toplevel` の出力とする。
+`{main_root}` は、上位フロー（例: `/creview:rounds`）がこのスキルを実行する場合は起動プロンプトが渡した `main_root`、スキルを直接起動した場合は `(該当なし)` とする。`{target_dir}` も同様に起動プロンプトが渡した `target_dir` とし、スキルを直接起動した場合は `git rev-parse --show-toplevel` の出力とする。ワークツリーでは両者を置き換える（§ ワークツリー）。
 
 作成はステップ 1、削除はリーダーがステップ 4 で `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で行う。
+
+中止する場合: エラーを表示し、実行すべき時点であればティアダウン（§ ワークツリー）を実行し、`${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` で `{tmp_dir}` を削除してスキルを終了する。
 
 ### events.jsonl
 
@@ -118,11 +127,15 @@ events.jsonl は `compile-review.py` が `verifications/*.jsonl` の `memo_value
 
 リーダー（あなた）は差分内容を Read しない。差分なしでは検証が不十分になるため、リーダーが差分をファイルに取得し、検証サブエージェントに渡す。
 
-1. ベースブランチを特定する（入力の `--base` 指定値。指定がなければリモートに存在する `main` または `master`。両方存在する場合は `main` を優先）。
-2. `mkdir -p {tmp_dir}/verifications` で `{tmp_dir}` を作成する。
-3. 差分をスクリプトで `{tmp_dir}/diff.txt` に取得する:
+1. `mkdir -p {tmp_dir}/verifications` で `{tmp_dir}` を作成する。スキルを直接起動した場合は、続けてドキュメントのコードの場所を決める（§ ワークツリー）。
+2. ベースブランチを特定する（§ 入力）。
+3. 差分をスクリプトで `{tmp_dir}/diff.txt` に取得する。非ゼロ終了の場合は、そのエラーで中止する:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
+   ```
+   PR ワークツリーは未コミットの変更を持たないため、代わりにコミット間の差分だけを取得する:
+   ```
+   ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --pr {base} HEAD {tmp_dir}/diff.txt
    ```
 4. 解析サブエージェントを `Agent(subagent_type="creview:review-helper", prompt=...)` で起動する — テンプレート `analyze.md`、`template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、オーバーライド `(該当なし)`。戻り値: `{total, by_assignee, template_id}`。
 
@@ -152,3 +165,4 @@ persona は含めない。テンプレート `verify.md`、`template_id` `8a1f5c
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
+4. ワークツリーでは、ティアダウンを実行する（§ ワークツリー）。

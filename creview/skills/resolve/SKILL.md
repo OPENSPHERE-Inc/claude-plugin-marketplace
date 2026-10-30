@@ -1,7 +1,7 @@
 ---
 name: resolve
 description: Verify review finding resolutions against actual source code and write back verification metadata. Use proactively after review fixes land (typically after /creview:respond) or when the user asks to confirm that review findings are actually resolved.
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Verification
@@ -10,11 +10,18 @@ You are the **review verifier**: re-read the updated review document, verify eac
 
 ## Input
 
-The user specifies a path to the review document (markdown). When the argument is `$ARGUMENTS`, interpret it as the path to the review document. `--base {branch}` specifies the base branch (if not specified, use `main` or `master` that exists on the remote; if both exist, prefer `main`).
+The user specifies a path to the review document (markdown). When the argument is `$ARGUMENTS`, interpret it as the path to the review document. `--base {branch}` specifies the base branch (if not specified, use the `merge_base` that `doc-checkout` prints (§ Worktree) when it is not null, otherwise `main` or `master` that exists on the remote; if both exist, prefer `main`).
 
 ## Timestamp (`{timestamp}`)
 
 `{timestamp}` is a current date-time string (format `YYYYMMDD-HHMMSS`, e.g., `20240101-120000`) determined once at the start of Step 1. The same value is used in all subsequent steps.
+
+## Worktree
+
+Follow `${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, appending `--discard` to `remove`. Add these PR worktree overrides:
+
+- `Do not run, build, test, install, or source any file under {target_dir}.`
+- `Run no git command in {target_dir}, read-only ones included: the pull request's files can make git run hooks and filter / diff drivers there. The diff file holds the change.`
 
 ## Review Document Format
 
@@ -97,9 +104,11 @@ The leader (you) does not place the verification body in context.
 {tmp_dir}/resolve-summary.md        ← Output from compile-review.py (verification report)
 ```
 
-`{main_root}` is the `main_root` your launch prompt gives when an upper flow (e.g. `/creview:rounds`) runs this skill, or `(none)` when the skill is invoked directly. `{target_dir}` is likewise the `target_dir` your launch prompt gives, or the output of `git rev-parse --show-toplevel` when the skill is invoked directly.
+`{main_root}` is the `main_root` your launch prompt gives when an upper flow (e.g. `/creview:rounds`) runs this skill, or `(none)` when the skill is invoked directly. `{target_dir}` is likewise the `target_dir` your launch prompt gives, or the output of `git rev-parse --show-toplevel` when the skill is invoked directly. A worktree replaces both (§ Worktree).
 
 Creation is in Step 1; removal is done by the leader in Step 4 via `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
+
+To abort: show the error, run the teardown when it is due (§ Worktree), remove `{tmp_dir}` with `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`, and terminate the skill.
 
 ### events.jsonl
 
@@ -118,11 +127,15 @@ Before creating `{tmp_dir}`, if `git rev-parse --show-prefix` prints a non-empty
 
 The leader (you) does not Read the diff content. Verification is insufficient without the diff, so the leader fetches the diff to a file and passes it to the verification sub-agent.
 
-1. Determine the base branch (the input's `--base` value; if not specified, `main` or `master` that exists on the remote; if both exist, prefer `main`).
-2. Create `{tmp_dir}` with `mkdir -p {tmp_dir}/verifications`.
-3. Fetch the diff to `{tmp_dir}/diff.txt` with the script:
+1. Create `{tmp_dir}` with `mkdir -p {tmp_dir}/verifications`. When the skill is invoked directly, then locate the document's code (§ Worktree).
+2. Determine the base branch (§ Input).
+3. Fetch the diff to `{tmp_dir}/diff.txt` with the script; on a non-zero exit, abort with its error:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
+   ```
+   In a PR worktree, which holds no uncommitted change, take the diff between commits only instead:
+   ```
+   ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --pr {base} HEAD {tmp_dir}/diff.txt
    ```
 4. Launch the analysis sub-agent via `Agent(subagent_type="creview:review-helper", prompt=...)` — template `analyze.md`, `template_id` `5d9e2c8a-1f74-4b63-a9d8-3c5f7e1b9a42`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `document_path = {document_path}`, overrides `(none)`. Return value: `{total, by_assignee, template_id}`.
 
@@ -152,3 +165,4 @@ The leader (you) does not place the verification body in context. `compile-revie
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
+4. In a worktree, run the teardown (§ Worktree).
