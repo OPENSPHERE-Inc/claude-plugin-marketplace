@@ -893,8 +893,14 @@ def cmd_remove(path):
     elif PR_WORKTREE_RE.fullmatch(name):
         with tempfile.TemporaryDirectory() as no_hooks:
             env = hook_free_env(no_hooks)
-            note = pr_worktree_note(path, main_root) if os.path.isdir(path) else ""
-            changed, unexamined = changed_links(path, env) if os.path.isdir(path) else ([], [])
+            note, changed, unexamined = "", [], []
+            if os.path.isdir(path):
+                note = pr_worktree_note(path, main_root)
+                try:
+                    changed, unexamined = changed_links(path, env)
+                except (Error, OSError) as e:
+                    raise Error(f"the worktree {path} is kept: its symbolic links could not be "
+                                f"examined for changes ({e}){note}") from None
             reasons = []
             if changed:
                 reasons.append(f"it changes the symbolic links {quoted(changed)}, which it holds "
