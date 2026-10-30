@@ -63,15 +63,21 @@ remove: removes a worktree that checkout or doc-checkout added
 (<main_root>/.claude/worktrees/creview-pr-<number>-<timestamp> or
 creview-branch-<timestamp>; any other path is an error), a PR worktree with git
 hooks and the configured filter drivers disabled, and its parent directory when
-left empty. A worktree with uncommitted changes is kept, and the exit status
-is 1.
+left empty. A worktree with uncommitted changes, including changes to the
+symbolic links a PR worktree holds as plain files, is kept, and the exit status
+is 1. So is a worktree with initialized submodules, which git refuses to
+remove; its error then says to check the worktree and remove it with
+git worktree remove --force.
 
 Exits 1 with an error message on stderr on any failure.
 """
 
+import hashlib
 import json
 import os
 import re
+import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -135,16 +141,17 @@ def executable(name):
     return None
 
 
-def run(cmd, cwd=None, env=None, ok=(0,), input=None):
+def run(cmd, cwd=None, env=None, ok=(0,), input=None, text=True):
     program = executable(cmd[0])
     if program is None:
         raise Error(f"{cmd[0]} not found on PATH")
+    decoding = {"text": True, "encoding": "utf-8", "errors": "replace"} if text else {}
     proc = subprocess.run(
-        [program, *cmd[1:]], cwd=cwd, env=env, input=input, capture_output=True,
-        text=True, encoding="utf-8", errors="replace",
+        [program, *cmd[1:]], cwd=cwd, env=env, input=input, capture_output=True, **decoding,
     )
     if proc.returncode not in ok:
-        raise Error(proc.stderr.strip() or f"{' '.join(cmd[:2])} exited with {proc.returncode}")
+        stderr = proc.stderr if text else proc.stderr.decode("utf-8", "replace")
+        raise Error(stderr.strip() or f"{' '.join(cmd[:2])} exited with {proc.returncode}")
     return proc.stdout
 
 
@@ -476,12 +483,48 @@ def skip_worktree_links(path, env):
     # Under core.symlinks=true, the default outside Windows, git status, diff, add, and commit
     # take a symbolic link checked out as a plain file for a type change; the skip-worktree
     # bit keeps them from seeing one. Set it without core.sparseCheckout, under which git
-    # clears the bit from the files present in the worktree.
-    entries = run(["git", "ls-files", "--stage", "-z"], cwd=path, env=env).split("\0")
-    links = [entry.partition("\t")[2] for entry in entries if entry.startswith("120000 ")]
+    # clears the bit from the files present in the worktree. Paths stay bytes, so that one
+    # that is not UTF-8 still matches its index entry.
+    entries = run(["git", "ls-files", "--stage", "-z"], cwd=path, env=env, text=False)
+    links = [entry.partition(b"\t")[2] for entry in entries.split(b"\0")
+             if entry.startswith(b"120000 ")]
     if links:
         run(["git", "update-index", "--skip-worktree", "-z", "--stdin"], cwd=path, env=env,
-            input="".join(f"{link}\0" for link in links))
+            input=b"".join(link + b"\0" for link in links), text=False)
+
+
+def changed_links(path, env):
+    git_dir = run(["git", "rev-parse", "--absolute-git-dir"], cwd=path, env=env).strip()
+    sparse = os.path.isfile(os.path.join(git_dir, "info", "sparse-checkout"))
+    agent_names = {name.lower() for name in AGENT_FILES}
+    changed = []
+    entries = run(["git", "ls-files", "-v", "--stage", "-z"], cwd=path, env=env, text=False)
+    for entry in entries.split(b"\0"):
+        info, _, name = entry.partition(b"\t")
+        fields = info.split(b" ")
+        if len(fields) != 4 or fields[0] not in (b"S", b"s") or fields[1] != b"120000":
+            continue
+        link = os.fsdecode(name)
+        file = os.path.join(path, link)
+        try:
+            mode = os.lstat(file).st_mode
+        except (FileNotFoundError, NotADirectoryError):
+            # The sparse checkout of a worktree without the agent files leaves those out.
+            if not (sparse and any(part.lower() in agent_names for part in link.split("/"))):
+                changed.append(link)
+            continue
+        if not stat.S_ISREG(mode):
+            changed.append(link)
+            continue
+        with open(file, "rb") as f:
+            data = f.read()
+        # The blob ID git hash-object --no-filters computes; a 40-digit ID is SHA-1.
+        oid = fields[2].decode("ascii")
+        blob = hashlib.new("sha1" if len(oid) == 40 else "sha256",
+                           b"blob %d\0" % len(data) + data, usedforsecurity=False)
+        if blob.hexdigest() != oid:
+            changed.append(link)
+    return changed
 
 
 def reraise(e):
@@ -710,10 +753,14 @@ def added_worktree(path, *names):
 def check_free(branch):
     busy = checked_out_at(branch)
     if busy and added_worktree(busy, PR_WORKTREE_RE, BRANCH_WORKTREE_RE):
+        script = os.path.abspath(__file__).replace(os.sep, "/")
+        command = shlex.join(["python3", script, "remove", busy])
         raise Error(
             f"branch {branch} is checked out in the worktree {busy}, which a creview skill kept "
-            "for its uncommitted changes; review them, commit or discard them, and remove it with "
-            f"python3 {os.path.abspath(__file__)} remove {busy} before running the skill again"
+            "for uncommitted changes or initialized submodules; review its changes, commit or "
+            f"discard them, and remove it by running {command} in "
+            f"{shlex.quote(busy.rsplit('/', 3)[0])} "
+            "(follow its error when it refuses) before running the skill again"
         )
     if busy:
         raise Error(
@@ -779,20 +826,50 @@ def cmd_doc_checkout(document, *options):
     return result
 
 
+def submodules_note(path, env=None):
+    # git refuses to remove a worktree whose git directory has a modules directory, which git
+    # submodule deinit leaves in place; only --force skips that check.
+    try:
+        top, git_dir = run(["git", "rev-parse", "--show-toplevel", "--absolute-git-dir"],
+                           cwd=path, env=env).splitlines()
+    except (Error, OSError, ValueError):
+        return ""
+    if top != path or not os.path.isdir(os.path.join(git_dir, "modules")):
+        return ""
+    command = shlex.join(["git", "worktree", "remove", "--force", "--", path])
+    return (f"; the worktree {path} has initialized submodules, which git worktree remove "
+            "refuses: check that neither it nor its submodules hold changes or commits to keep, "
+            f"then remove it with {command}")
+
+
+def worktree_remove(path, *config, env=None):
+    try:
+        run(["git", *config, "worktree", "remove", "--", path], env=env)
+    except Error as e:
+        raise Error(f"{e}{submodules_note(path, env)}") from None
+
+
 def cmd_remove(path):
     main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
     parent, _, name = path.rpartition("/")
     if parent != f"{main_root}/.claude/worktrees":
         name = ""
     if BRANCH_WORKTREE_RE.fullmatch(name):
-        run(["git", "worktree", "remove", "--", path])
+        worktree_remove(path)
     elif PR_WORKTREE_RE.fullmatch(name):
         with tempfile.TemporaryDirectory() as no_hooks:
             env = hook_free_env(no_hooks)
+            changed = changed_links(path, env) if os.path.isdir(path) else []
+            if changed:
+                raise Error(
+                    f"the worktree {path} is kept: it changes the symbolic links "
+                    f"{', '.join(changed)}, which it holds as plain files that git status does "
+                    "not show; commit them with git -c core.symlinks=false after git "
+                    "update-index --no-skip-worktree, or restore them, and remove it again"
+                )
             # git checks that the worktree is clean with a git status that inherits the
-            # overrides.
-            run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "remove", "--", path],
-                env=env)
+            # overrides and skips the skip-worktree links, which changed_links compares.
+            worktree_remove(path, "-c", f"core.hooksPath={no_hooks}", env=env)
     else:
         raise Error(f"not a worktree that checkout or doc-checkout adds: {path}")
     remove_empty_parent(path)

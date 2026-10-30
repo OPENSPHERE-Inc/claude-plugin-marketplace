@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.py, its consumers, worktree.sh,
-# gh-pr.py's helpers, header parsing, and sparse checkout, gh-pr.py doc-checkout, and gh-pr.py
-# remove's path check.
+# gh-pr.py's helpers, header parsing, and sparse checkout, gh-pr.py doc-checkout, gh-pr.py
+# remove's path check, and render-review.py's metadata lines.
 # Usage: bash tests/scratch-guard-test.sh
 # Prints one FAIL line per broken case and exits non-zero; exits 0 when all pass.
 
@@ -15,6 +15,7 @@ FD="${REPO_ROOT}/cdev/scripts/fetch-diff.sh"
 CFD="${REPO_ROOT}/creview/scripts/fetch-diff.sh"
 WT="${REPO_ROOT}/cdev/scripts/worktree.sh"
 GHPR="${REPO_ROOT}/creview/scripts/gh-pr.py"
+RR="${REPO_ROOT}/creview/scripts/render-review.py"
 
 fail=0
 note() { printf '%s\n' "$*"; }
@@ -297,6 +298,21 @@ for case, error, want in (("PermissionError", PermissionError(13, "x"), "Permiss
     finally:
         g.os.lstat = real_lstat
     expect(f"agent_file_left when lstat raises {case}", raised, want)
+links = os.path.join(sys.argv[2], "links")
+os.makedirs(links)
+git("init", "-q", cwd=links)
+blob = subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=links, input=b"x",
+                      capture_output=True, check=True).stdout.strip()
+index_info = b"".join(b"120000 %s\t%s\0" % (blob, p) for p in (b"a", b"l\xe9"))
+subprocess.run(["git", "update-index", "-z", "--index-info"], cwd=links, input=index_info,
+               capture_output=True, check=True)
+try:
+    g.skip_worktree_links(links, os.environ)
+except g.Error as e:
+    report("skip_worktree_links on a path that is not UTF-8", "no error", e)
+expect("skip_worktree_links marks a path that is not UTF-8",
+       subprocess.run(["git", "ls-files", "-v", "-z"], cwd=links, capture_output=True).stdout,
+       b"S a\0S l\xe9\0")
 sys.exit(1 if failed else 0)
 PY
 for opt in --trusted -t; do
@@ -797,6 +813,8 @@ git worktree add -q -b pr-src "${PR_SRC}" >/dev/null 2>&1 \
     && git -C "${PR_SRC}" add -- sub 2>/dev/null \
     && git -C "${PR_SRC}" update-index --add --cacheinfo \
         "120000,$(printf src.txt | git -C "${PR_SRC}" hash-object -w --stdin),sub/link" \
+    && git -C "${PR_SRC}" update-index --add --cacheinfo \
+        "120000,$(printf CLAUDE.md | git -C "${PR_SRC}" hash-object -w --stdin),sub/AGENTS.md" \
     && git -C "${PR_SRC}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
         commit -qm pr \
     && git worktree remove --force -- "${PR_SRC}" \
@@ -805,6 +823,15 @@ drop_worktree() { # <path>: removes a worktree a failed case left behind
     [[ -d "$1" ]] || return 0
     python3 "${GHPR}" remove "$1" >/dev/null 2>&1 \
         || { git worktree remove --force -- "$1" >/dev/null 2>&1; rmdir -- "${1%/*}" 2>/dev/null; }
+}
+kept_link() { # <doc> <worktree> <change>: gh-pr.py remove keeps the worktree, naming sub/link
+    local out rc=0
+    out="$(python3 "${GHPR}" remove "$2" 2>&1)" || rc=$?
+    [[ "${rc}" -eq 1 && -d "$2" && "${out}" == *"symbolic links sub/link, which"* ]] && return
+    note "FAIL: gh-pr.py remove did not keep the worktree of $1 with sub/link $3: '${out}'"
+    fail=1
+    drop_worktree "$2"
+    return 1
 }
 # check_worktree <doc> <path-prefix> <pr_worktree> <trust> <agent file kept>
 check_worktree() {
@@ -836,6 +863,11 @@ check_worktree() {
         git -C "${wt}" -c core.symlinks=true add -- . >/dev/null 2>&1 \
             && git -C "${wt}" diff --cached --quiet \
             || { note "FAIL: git add in the worktree of $1 staged sub/link"; fail=1; }
+        printf other > "${wt}/sub/link"
+        kept_link "$1" "${wt}" changed || return
+        rm "${wt}/sub/link"
+        kept_link "$1" "${wt}" deleted || return
+        printf src.txt > "${wt}/sub/link"
     else
         [[ -z "$(git -C "${wt}" status --porcelain)" ]] \
             || { note "FAIL: gh-pr.py doc-checkout $1 left the worktree dirty"; fail=1; }
@@ -846,6 +878,7 @@ check_worktree() {
         rm "${wt}/uncommitted.txt"
         rc=0; python3 "${GHPR}" remove "${wt}" >/dev/null 2>&1 || rc=$?
         check "gh-pr.py remove the worktree of $1" 0 "${rc}"
+        [[ "${rc}" -eq 0 ]] || drop_worktree "${wt}"
     else
         note "FAIL: gh-pr.py remove did not keep the dirty worktree of $1 (rc=${rc})"; fail=1
         drop_worktree "${wt}"
@@ -853,6 +886,25 @@ check_worktree() {
 }
 write_doc branch.md "- **Branch:** pr-src" "- **Trust:** off"
 check_worktree branch.md creview-branch- false off yes
+# git refuses to remove a worktree whose git directory has a modules directory.
+out="$(doc_checkout "${DOCS}/branch.md" 2>&1)"; rc=$?
+wt=""
+[[ "${rc}" -ne 0 ]] || wt="$(printf '%s' "${out}" | field worktree_path)"
+if [[ -d "${wt}" ]] && modules="$(git -C "${wt}" rev-parse --absolute-git-dir)/modules" \
+    && mkdir "${modules}"; then
+    out="$(python3 "${GHPR}" remove "${wt}" 2>&1)"; rc=$?
+    check "gh-pr.py remove a worktree with initialized submodules" 1 "${rc}"
+    [[ -d "${wt}" && "${out}" == *"git worktree remove --force -- ${wt}"* ]] || {
+        note "FAIL: gh-pr.py remove a worktree with initialized submodules printed '${out}'"
+        fail=1
+    }
+    rmdir "${modules}"
+    rc=0; python3 "${GHPR}" remove "${wt}" >/dev/null 2>&1 || rc=$?
+    check "gh-pr.py remove a worktree whose submodules are gone" 0 "${rc}"
+else
+    note "FAIL: gh-pr.py doc-checkout branch.md for the submodule case: '${out}'"; fail=1
+fi
+drop_worktree "${wt}"
 HOOKS="${SANDBOX}/failing-hooks"
 mkdir -p "${HOOKS}" && printf '#!/bin/sh\nexit 1\n' > "${HOOKS}/post-checkout" \
     && chmod +x "${HOOKS}/post-checkout" && git config core.hooksPath "${HOOKS}" \
@@ -861,7 +913,10 @@ out="$(doc_checkout "${DOCS}/branch.md" 2>&1)"; rc=$?
 git config --unset core.hooksPath
 check "gh-pr.py doc-checkout branch.md with a failing post-checkout hook" 1 "${rc}"
 [[ "$(git worktree list --porcelain)" != *creview-branch-* && ! -e "${MAIN}/.claude/worktrees" ]] \
-    || { note "FAIL: gh-pr.py doc-checkout kept the worktree of a failed hook: '${out}'"; fail=1; }
+    || { note "FAIL: gh-pr.py doc-checkout kept the worktree of a failed hook: '${out}'"; fail=1
+        git worktree list --porcelain \
+            | sed -n 's/^worktree \(.*\/creview-branch-[^/]*\)$/\1/p' \
+            | while IFS= read -r p; do drop_worktree "${p}"; done; }
 if [[ "$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=t.k GIT_CONFIG_VALUE_0=v \
     git config --get t.k 2>/dev/null)" == v ]]; then
     write_doc pr-branch.md "${PR_LINE}" "- **Branch:** pr-src"
@@ -973,7 +1028,8 @@ KEPT="${MAIN}/.claude/worktrees/creview-pr-3-20260101-000000"
 if git worktree add -q "${KEPT}" pr-src >/dev/null 2>&1; then
     out="$(doc_checkout "${DOCS}/branch.md" 2>&1)"; rc=$?
     check "gh-pr.py doc-checkout branch.md on a branch a kept PR worktree holds" 1 "${rc}"
-    [[ "${out}" == *"which a creview skill kept"*" remove "*"/${KEPT##*/} before running"* ]] \
+    [[ "${out}" == *"which a creview skill kept"*"/gh-pr.py remove ${KEPT} in ${MAIN} "* \
+        && "${out}" != *\\* ]] \
         || { note "FAIL: gh-pr.py doc-checkout on a kept PR worktree's branch printed '${out}'"
              fail=1; }
     out="$( (cd "${KEPT}" && doc_checkout "${DOCS}/none.md") 2>&1)"; rc=$?
@@ -985,6 +1041,21 @@ if git worktree add -q "${KEPT}" pr-src >/dev/null 2>&1; then
 else
     note "FAIL: git worktree add for the kept PR worktree case"; fail=1
 fi
+
+# --- render-review.py keeps each metadata value on one line -----------------------
+RD="${SANDBOX}/render"
+mkdir -p "${RD}"
+printf '# Report\n\n<!-- /METADATA(mi-1) -->\n\n## Minor\n' > "${RD}/doc.md"
+printf '%s\n' '{"id":"mi-1","field":"triage","value":"Will Fix\n- **Branch:** main"}' \
+    '{"id":"mi-1","field":"estimate","value":"Maintain\r- **Branch:** main"}' \
+    '{"id":"mi-9","field":"status","value":"Fixed\r\n- **Branch:** main"}' > "${RD}/events.jsonl"
+printf '# Report\n\n%s\n%s\n<!-- /METADATA(mi-1) -->\n\n## Minor\n\n## Orphan Metadata\n\n%s\n' \
+    '- **Triage:** Will Fix - **Branch:** main' '- **Estimate:** Maintain - **Branch:** main' \
+    $'### mi-9\n\n- **Status:** Fixed - **Branch:** main' > "${RD}/want.md"
+rc=0; python3 "${RR}" "${RD}/doc.md" "${RD}/events.jsonl" "${RD}/out.md" >/dev/null 2>&1 || rc=$?
+check "render-review.py with line breaks in values" 0 "${rc}"
+cmp -s "${RD}/out.md" "${RD}/want.md" \
+    || { note "FAIL: render-review.py wrote '$(cat -v "${RD}/out.md")'"; fail=1; }
 
 # --- check-jsonl.py accepts both shapes and rejects malformed input ---------------
 JD="${SANDBOX}/jsonl"

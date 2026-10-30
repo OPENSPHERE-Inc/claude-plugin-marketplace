@@ -28,8 +28,11 @@ The review document records the branch the review ran on in a
 `- **Branch:** {branch}` header bullet, for a review of local changes as well.
 Run on their own while that branch is not checked out, `/creview:triage`,
 `/creview:respond`, and `/creview:resolve` work in a temporary worktree on it,
-where `/creview:respond` commits its fixes to that branch. The header bullets
-are described in full after the pull request review below.
+where `/creview:respond` commits its fixes to that branch. The worktree has
+only the branch's commits, so for a review that covered uncommitted changes,
+commit them first, or run the skills with that branch checked out and the
+changes still in the working tree. The header bullets are described in full
+after the pull request review below.
 
 `/creview:start` takes an `--adversarial` option (default OFF) that runs the
 reviewers in adversarial mode, where every Critical / Major finding must state
@@ -154,8 +157,9 @@ directory out.
 The review document records the pull request in a header bullet of the form
 `- **PR:** {url} (head {head_sha}, base {merge_base})`, and the branch the
 review ran on in a `- **Branch:** {branch}` bullet. A worktree review runs on a
-detached HEAD and records no branch. Nor does a review of a commit range that
-ends at a commit other than HEAD. A branch whose name has a character other
+detached HEAD and records no branch. Nor does a review of a commit range, or
+of a branch named as the review target, that ends at a commit other than HEAD.
+A branch whose name has a character other
 than a letter, a digit, `_`, `.`, `/`, `+`, `@`, or `-` is never recorded.
 A `- **Trust:** on` or `off` bullet
 records whether the reviewed tree had the agent files: `on` for an in-place
@@ -174,8 +178,9 @@ it. Run on their own, `/creview:triage`, `/creview:respond`, and
   commit, and otherwise in a temporary worktree at the head commit.
   - For that worktree, the pull request must still be open with that head
     commit, which they check with `gh`; review an updated pull request again.
-- With neither, as for a review on a detached HEAD, they work on the current
-  working tree.
+- With neither, as for a review on a detached HEAD or of a commit range or
+  branch that ends at a commit other than HEAD, they work on the current
+  working tree: check out the reviewed code before running them.
 
 A worktree for a document with a PR bullet holds the pull request's code and
 is checked out like a worktree review: git hooks and filter drivers disabled,
@@ -210,14 +215,18 @@ checkout without gitignored dependencies, virtual environments, build
 directories, `.env`, or the contents of submodules, so `/creview:respond`'s
 build and tests must pass without them. Git also refuses to remove a
 worktree in which submodules were initialized, so such a worktree is kept and
-reported as well. The review document, the
+reported as well; as its error says, check that neither the worktree nor its
+submodules hold changes or commits to keep, then remove it with
+`git worktree remove --force -- <path>`. The review document, the
 working directory, and the project's `.claude/agents/` and `.claude/rules/`
 stay in the main working tree. A branch checked out in another worktree, such
 as one that `/creview:rounds --worktree` kept, cannot be checked out again:
 start a session at that worktree's root and run the skill there. A worktree
 under `.claude/worktrees/` that one of the three skills kept for its
-uncommitted changes is the exception: commit or discard its changes, remove it
-with the `gh-pr.py remove` command the error names, and run the skill again.
+uncommitted changes or initialized submodules is the exception: commit or
+discard its changes, remove it with the `gh-pr.py remove` command the error
+names (for one with initialized submodules, as that command's error directs),
+and run the skill again.
 The three skills refuse to run in a session started in a pull request worktree
 that creview added. Run by `/creview:rounds`, the three skills create no worktree and
 work where the round works.
