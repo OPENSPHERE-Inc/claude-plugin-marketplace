@@ -301,8 +301,13 @@ bullet, so that a worktree the skill makes has the agent files.
   the code, with no triage or fix before it: `✅ Verified` when the code does
   not have the problem, `💬 Feedback` when it still does. Run `/creview:triage`
   on the document to take the `💬 Feedback` findings on.
-- At most the latest 50 comments of each kind are compiled, and the run reports
-  when older ones were left out.
+- Every comment is compiled, up to 10,000 of each kind, and the run reports when
+  more exist.
+  - The comments are split into batches of about 40,000 characters that keep each
+    review thread whole. One compiler reads each batch and another merges the
+    results, so a pull request with many comments launches more sub-agents.
+  - A comment is read up to its first 20,000 characters, and a finding from a
+    longer one says it was cut.
 - The document is written to `.claude/tmp/creview-triage-{timestamp}.md` or
   `.claude/tmp/creview-resolve-{timestamp}.md`, with the header bullets of a
   pull request review and a `- **Source:** pr-comments` bullet. When the comments

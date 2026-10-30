@@ -233,8 +233,9 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist
                     triage / estimate metadata into the doc
                     PR mode (a pull request URL, triage and resolve): rules/pr-comment-doc.md:
-                    gh-pr.py fetch → pr-comment-compiler Sub writes the doc from the PR's
-                    comments, with PR / Branch / Trust bullets and `- **Source:** pr-comments`
+                    gh-pr.py fetch (every comment, in batches) → one pr-comment-compiler Sub
+                    per batch extracts findings → another merges them into the doc, with
+                    PR / Branch / Trust bullets and `- **Source:** pr-comments`
                     → the skill runs on that doc; triage leaves out threads resolved on
                     GitHub; resolve keeps them and verifies each finding with no metadata
                     against the code

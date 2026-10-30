@@ -10,7 +10,7 @@ Usage:
 
 fetch: resolves <pr_url> (https://<host>/<owner>/<repo>/pull/<number>) with gh,
 requires <owner>/<repo> on <host> to be a remote of the current repository and
-the PR to be open, and writes two files to <out_dir>:
+the PR to be open, and writes to <out_dir>:
   pr.json          url, head and base commits, merge base
   pr-context.json  title and body, CI check results (the latest attempt of each
                    check in each workflow run; the first MAX_JOB_LOGS failed
@@ -18,10 +18,16 @@ the PR to be open, and writes two files to <out_dir>:
                    it could not be fetched), and the conversation: issue
                    comments, submitted review bodies, and review comments, at
                    most MAX_COMMENTS of each kind, with omitted set when any
-                   were left out; a review comment says whether its line is
+                   were left out
+  pr-comments/batch-<n>.json
+                   every issue comment, submitted review body, and review
+                   comment, up to MAX_PAGES pages of each kind, split into
+                   batches of about BATCH_CHARS characters with each review
+                   thread whole; a review comment says whether its line is
                    outdated and, when known, whether its thread is resolved
 It prints a JSON object whose in_place is true when HEAD of the current working
-tree is the PR head.
+tree is the PR head, whose comment_batches is the number of batches, and whose
+comments_omitted is true when more comments exist than MAX_PAGES pages hold.
 An in-place working tree with uncommitted changes to tracked files (outside
 .claude/tmp and .claude/worktrees) is an error.
 
@@ -128,8 +134,10 @@ LOG_LINE_CHARS = 500
 BODY_CHARS = 20000
 COMMENT_CHARS = 4000
 PAGE_SIZE = 100
-MAX_PAGES = 10
+MAX_PAGES = 100
 MAX_COMMENTS = 50
+BATCH_CHARS = 40000
+COMMENT_KINDS = ("issue_comments", "reviews", "review_comments")
 REVIEW_THREADS_QUERY = """
 query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
@@ -290,21 +298,21 @@ def resolved_threads(host, repo, number):
     return states
 
 
-def conversation(host, repo, number):
+def all_comments(host, repo, number):
     states = resolved_threads(host, repo, number)
     reviews, complete = api_pages(f"repos/{repo}/pulls/{number}/reviews", host)
     pending = {r.get("id") for r in reviews if r.get("state") == "PENDING"}
     issue_comments, issue_complete = api_pages(f"repos/{repo}/issues/{number}/comments", host)
     review_comments, comments_complete = api_pages(f"repos/{repo}/pulls/{number}/comments", host)
-    lists = {
+    return {
         "issue_comments": [
             {"author": login(c.get("user")), "created_at": c.get("created_at"),
-             "body": clip(c.get("body"), COMMENT_CHARS)}
+             "body": clip(c.get("body"), BODY_CHARS)}
             for c in issue_comments
         ],
         "reviews": [
             {"author": login(r.get("user")), "state": r.get("state"),
-             "submitted_at": r.get("submitted_at"), "body": clip(r.get("body"), COMMENT_CHARS)}
+             "submitted_at": r.get("submitted_at"), "body": clip(r.get("body"), BODY_CHARS)}
             for r in reviews if r.get("body") and r.get("state") != "PENDING"
         ],
         "review_comments": [
@@ -313,17 +321,51 @@ def conversation(host, repo, number):
              "path": c.get("path"), "line": c.get("line") or c.get("original_line"),
              "outdated": c.get("line") is None and c.get("original_line") is not None,
              "thread_resolved": states.get(c.get("in_reply_to_id") or c.get("id")),
-             "body": clip(c.get("body"), COMMENT_CHARS)}
+             "body": clip(c.get("body"), BODY_CHARS)}
             for c in review_comments
             if c.get("pull_request_review_id") not in pending
         ],
+        "omitted": not (complete and issue_complete and comments_complete),
     }
-    omitted = not (complete and issue_complete and comments_complete) or any(
-        len(entries) > MAX_COMMENTS for entries in lists.values()
+
+
+def capped_conversation(comments):
+    result = {
+        kind: [{**c, "body": clip(c["body"], COMMENT_CHARS)}
+               for c in comments[kind][-MAX_COMMENTS:]]
+        for kind in COMMENT_KINDS
+    }
+    result["omitted"] = comments["omitted"] or any(
+        len(comments[kind]) > MAX_COMMENTS for kind in COMMENT_KINDS
     )
-    result = {kind: entries[-MAX_COMMENTS:] for kind, entries in lists.items()}
-    result["omitted"] = omitted
     return result
+
+
+def comment_batches(comments, limit=BATCH_CHARS):
+    # One thread alone can pass the limit: a thread reads as one finding, so it stays whole.
+    threads = {}
+    for c in comments["review_comments"]:
+        threads.setdefault(c["in_reply_to"] or c["id"], []).append(c)
+    units = [("review_comments", thread) for thread in threads.values()]
+    units += [(kind, [c]) for kind in ("reviews", "issue_comments") for c in comments[kind]]
+    batches, size = [], 0
+    for kind, entries in units:
+        chars = sum(len(json.dumps(c, ensure_ascii=False)) for c in entries)
+        if not batches or size + chars > limit:
+            batches.append({k: [] for k in COMMENT_KINDS})
+            size = 0
+        batches[-1][kind].extend(entries)
+        size += chars
+    return batches
+
+
+def write_comment_batches(out_dir, comments):
+    batches = comment_batches(comments)
+    directory = os.path.join(out_dir, "pr-comments")
+    os.makedirs(directory, exist_ok=True)
+    for n, batch in enumerate(batches, 1):
+        write_json(os.path.join(directory, f"batch-{n}.json"), batch)
+    return len(batches)
 
 
 def normalize_host(host):
@@ -423,6 +465,7 @@ def cmd_fetch(pr_url, out_dir):
             "commit or stash them first"
         )
 
+    comments = all_comments(host, repo, number)
     write_json(os.path.join(out_dir, "pr.json"), {
         "url": url,
         "repo": repo,
@@ -435,14 +478,17 @@ def cmd_fetch(pr_url, out_dir):
         "title": pr["title"],
         "body": clip(pr["body"], BODY_CHARS),
         "checks": ci_checks(pr["statusCheckRollup"], host, job_repos),
-        "conversation": conversation(host, repo, number),
+        "conversation": capped_conversation(comments),
     })
+    batches = write_comment_batches(out_dir, comments)
     return {
         "url": url,
         "number": number,
         "head_sha": head_sha,
         "merge_base": merge_base,
         "in_place": in_place,
+        "comment_batches": batches,
+        "comments_omitted": comments["omitted"],
     }
 
 

@@ -161,12 +161,66 @@ g.api_pages = lambda endpoint, host: ([
     {"id": 11, "in_reply_to_id": 10, "line": None, "original_line": 4, "path": "a", "body": "r"},
     {"id": 12, "line": None, "original_line": None, "path": "b", "body": "whole file"},
     {"id": 13, "line": None, "original_line": 9, "path": "c", "body": "thread not known"},
+    {"id": 14, "line": 1, "path": "d", "body": "y" * (g.BODY_CHARS + 1)},
 ] if endpoint.endswith("/pulls/7/comments") else [], True)
-got = g.conversation("h", "o/r", 7)["review_comments"]
-expect("conversation thread_resolved", [c["thread_resolved"] for c in got],
-       [True, True, None, None])
-expect("conversation outdated", [c["outdated"] for c in got], [False, True, False, True])
+comments = g.all_comments("h", "o/r", 7)
+got = comments["review_comments"]
+expect("all_comments thread_resolved", [c["thread_resolved"] for c in got],
+       [True, True, None, None, None])
+expect("all_comments outdated", [c["outdated"] for c in got],
+       [False, True, False, True, False])
+expect("all_comments clips a body at BODY_CHARS", got[4]["body"],
+       "y" * g.BODY_CHARS + "\n[truncated]")
+expect("all_comments omitted", comments["omitted"], False)
+g.api_pages = lambda endpoint, host: ([], False)
+g.run, _ = stub_run(threads_page([]))
+expect("all_comments omitted past the page limit",
+       g.all_comments("h", "o/r", 7)["omitted"], True)
 g.run, g.api_pages = real_run, real_pages
+
+many = {"review_comments": [{"id": i, "body": "x" * 5000} for i in range(g.MAX_COMMENTS + 5)],
+        "reviews": [], "issue_comments": [], "omitted": False}
+capped = g.capped_conversation(many)
+expect("capped_conversation keeps the latest", [c["id"] for c in capped["review_comments"]],
+       list(range(5, g.MAX_COMMENTS + 5)))
+expect("capped_conversation clips a body", capped["review_comments"][0]["body"],
+       "x" * g.COMMENT_CHARS + "\n[truncated]")
+expect("capped_conversation omitted", capped["omitted"], True)
+expect("capped_conversation leaves the full list as it is", many["review_comments"][0]["body"],
+       "x" * 5000)
+expect("capped_conversation under the limit omits nothing",
+       g.capped_conversation({"review_comments": [], "reviews": [], "issue_comments": [],
+                              "omitted": False})["omitted"], False)
+
+
+def inline(i, reply=None, size=10):
+    return {"id": i, "in_reply_to": reply, "body": "x" * size}
+
+
+def batch_ids(batches):
+    return [([c["id"] for c in b["review_comments"]], [r["id"] for r in b["reviews"]],
+             [c["id"] for c in b["issue_comments"]]) for b in batches]
+
+
+expect("comment_batches of no comments",
+       g.comment_batches({"review_comments": [], "reviews": [], "issue_comments": [],
+                          "omitted": False}), [])
+split = {
+    "review_comments": [inline(1), inline(2, size=500), inline(3, reply=1), inline(4)],
+    "reviews": [inline(5)], "issue_comments": [inline(6)], "omitted": False,
+}
+one_unit = len(g.json.dumps(inline(1), ensure_ascii=False))
+expect("comment_batches keeps a thread whole and packs up to the limit",
+       batch_ids(g.comment_batches(split, limit=one_unit * 3)),
+       [([1, 3], [], []), ([2], [], []), ([4], [5], [6])])
+expect("comment_batches keeps everything in one batch under the limit",
+       batch_ids(g.comment_batches(split, limit=10 ** 6)), [([1, 3, 2, 4], [5], [6])])
+
+comment_dir = os.path.join(sys.argv[2], "fetched")
+os.makedirs(comment_dir)
+expect("write_comment_batches count", g.write_comment_batches(comment_dir, split), 1)
+with open(os.path.join(comment_dir, "pr-comments", "batch-1.json"), encoding="utf-8") as f:
+    expect("write_comment_batches content", batch_ids([json.load(f)]), [([1, 3, 2, 4], [5], [6])])
 
 docs = os.path.join(sys.argv[2], "docs")
 os.makedirs(docs)

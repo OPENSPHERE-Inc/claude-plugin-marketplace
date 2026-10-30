@@ -106,7 +106,9 @@ Unresolved の指摘には `verification` 値を書き込まない。
 ```
 {tmp_dir} = .claude/tmp/creview-resolve-{timestamp}/
 {tmp_dir}/pr.json                  ← PR モード: ステップ 1 で解決したプルリクエスト
-{tmp_dir}/pr-context.json          ← PR モード: その会話（編纂者の入力）
+{tmp_dir}/pr-context.json          ← PR モード: そのコンテキスト（本スキルでは使わない）
+{tmp_dir}/pr-comments/batch-{n}.json ← PR モード: そのコメント（編纂者の入力）
+{tmp_dir}/pr-comments/extract-{n}.md ← PR モード: そのバッチから抽出した指摘
 {tmp_dir}/diff.txt                  ← リーダーがステップ 1 で取得する差分（検証サブエージェント入力）
 {tmp_dir}/verifications/{id}.jsonl  ← 検証サブエージェントの出力（指摘 1 件 1 ファイル）
 {tmp_dir}/events.jsonl              ← compile-review.py の出力（render-review.py 入力）

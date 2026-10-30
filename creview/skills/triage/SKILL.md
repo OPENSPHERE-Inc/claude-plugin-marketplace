@@ -110,7 +110,9 @@ Each decision is written to an intermediate file, and `compile-review.py` compil
 ```
 {tmp_dir} = .claude/tmp/creview-triage-{timestamp}/
 {tmp_dir}/pr.json                ← PR mode: the pull request resolved in Step 1
-{tmp_dir}/pr-context.json        ← PR mode: its conversation (input to the compiler)
+{tmp_dir}/pr-context.json        ← PR mode: its context (not used by this skill)
+{tmp_dir}/pr-comments/batch-{n}.json ← PR mode: its comments (input to the compilers)
+{tmp_dir}/pr-comments/extract-{n}.md ← PR mode: findings extracted from that batch
 {tmp_dir}/triage-draft.jsonl      ← primary decisions (triage sub-agent)
 {tmp_dir}/challenge-{b}-{n}.jsonl ← outputs of the challenge sub-agents (three per finding batch, spawned by the triage Sub)
 {tmp_dir}/adjudication.jsonl      ← output of the adjudication sub-agent (spawned by the triage Sub)

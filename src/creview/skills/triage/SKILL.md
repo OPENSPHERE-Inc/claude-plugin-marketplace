@@ -110,7 +110,9 @@ PR モードでは `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md` に従う。�
 ```
 {tmp_dir} = .claude/tmp/creview-triage-{timestamp}/
 {tmp_dir}/pr.json                ← PR モード: ステップ 1 で解決したプルリクエスト
-{tmp_dir}/pr-context.json        ← PR モード: その会話（編纂者の入力）
+{tmp_dir}/pr-context.json        ← PR モード: そのコンテキスト（本スキルでは使わない）
+{tmp_dir}/pr-comments/batch-{n}.json ← PR モード: そのコメント（編纂者の入力）
+{tmp_dir}/pr-comments/extract-{n}.md ← PR モード: そのバッチから抽出した指摘
 {tmp_dir}/triage-draft.jsonl      ← 一次判定（トリアージサブエージェント）
 {tmp_dir}/challenge-{b}-{n}.jsonl ← 反証サブエージェント（指摘バッチごとに 3 体、トリアージ Sub がネスト起動）の出力
 {tmp_dir}/adjudication.jsonl      ← 裁定サブエージェント（トリアージ Sub がネスト起動）の出力

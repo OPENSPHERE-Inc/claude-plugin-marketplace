@@ -106,7 +106,9 @@ The leader (you) does not place the verification body in context.
 ```
 {tmp_dir} = .claude/tmp/creview-resolve-{timestamp}/
 {tmp_dir}/pr.json                  ← PR mode: the pull request resolved in Step 1
-{tmp_dir}/pr-context.json          ← PR mode: its conversation (input to the compiler)
+{tmp_dir}/pr-context.json          ← PR mode: its context (not used by this skill)
+{tmp_dir}/pr-comments/batch-{n}.json ← PR mode: its comments (input to the compilers)
+{tmp_dir}/pr-comments/extract-{n}.md ← PR mode: findings extracted from that batch
 {tmp_dir}/diff.txt                  ← Diff fetched by the leader in Step 1 (input to the verification sub-agent)
 {tmp_dir}/verifications/{id}.jsonl  ← Output from the verification sub-agent (one file per finding)
 {tmp_dir}/events.jsonl              ← Output from compile-review.py (input to render-review.py)
