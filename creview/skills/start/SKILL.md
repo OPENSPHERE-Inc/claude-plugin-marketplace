@@ -45,7 +45,7 @@ If the argument is `$ARGUMENTS`, interpret it as the review target specification
 
 ### Default Review Target
 
-`--range {from}..{to}` fixes the review target as that commit range. Otherwise, if the user does not explicitly specify a review target, use the following as the default:
+`--range {from}..{to}` fixes the review target as that commit range. A range `{from}..{to}` given as the review target counts as `--range {from}..{to}`, and a branch name `{branch}` given as the review target as `--range {base}..{branch}`. Otherwise, if the user does not explicitly specify a review target, use the following as the default:
 
 1. Commits unique to the current branch — all commits since the divergence from the base branch (equivalent to `git log {base}..HEAD`).
 2. Working tree changes — staged (`git diff --cached`) and unstaged (`git diff`) changes.
@@ -159,7 +159,7 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
      ```
-   - Run with `--range {from}..{to}`:
+   - Run with `--range {from}..{to}`, including a range or branch name given as the review target (§ Default Review Target):
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --range {from} {to} {tmp_dir}/diff.txt
      ```

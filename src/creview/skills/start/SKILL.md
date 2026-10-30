@@ -45,7 +45,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/
 
 ### デフォルトのレビュー対象
 
-`--range {from}..{to}` はレビュー対象をその範囲のコミットに確定する。指定がなく、かつユーザーがレビュー対象を明示的に指定しなかった場合、以下をデフォルトのレビュー対象とする:
+`--range {from}..{to}` はレビュー対象をその範囲のコミットに確定する。レビュー対象として指定された範囲 `{from}..{to}` は `--range {from}..{to}`、ブランチ名 `{branch}` は `--range {base}..{branch}` と同じに扱う。指定がなく、かつユーザーがレビュー対象を明示的に指定しなかった場合、以下をデフォルトのレビュー対象とする:
 
 1. 現在のブランチ固有のコミット — ベースブランチとの分岐点以降のすべてのコミット（`git log {base}..HEAD` に相当）。
 2. ワーキングツリーの変更 — ステージ済み（`git diff --cached`）および未ステージ（`git diff`）の変更。
@@ -159,7 +159,7 @@ PR モードでは、全サブエージェントの起動プロンプトに `(no
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh {base} {tmp_dir}/diff.txt
      ```
-   - `--range {from}..{to}` ありの場合は以下を実行:
+   - `--range {from}..{to}` ありの場合（レビュー対象として指定された範囲やブランチ名を含む。§ デフォルトのレビュー対象）は以下を実行:
      ```
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --range {from} {to} {tmp_dir}/diff.txt
      ```
