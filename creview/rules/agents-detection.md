@@ -8,7 +8,7 @@ Enumerate agent `**/*.md` from the following scopes in priority order and Read e
 
 1. Project scope: `.claude/agents/**/*.md` (relative to `main_root` when your launch prompt gives one other than `(none)`, otherwise to `{{target_dir}}`)
 2. User scope: `~/.claude/agents/**/*.md`
-3. Plugin-bundled: `{{plugin_root}}/agents/**/*.md`, except `review-helper`, `review-leader`, and `pr-description-reviewer`, fixed-role agents the skills launch by name
+3. Plugin-bundled: `{{plugin_root}}/agents/**/*.md`, except `review-helper`, `review-leader`, `pr-description-reviewer`, and `pr-comment-compiler`, fixed-role agents the skills launch by name
 
 ## Selection
 

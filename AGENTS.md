@@ -23,11 +23,13 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/skills/*/templates/*.md` — Sub-agent prompt templates (each has a `template_id`).
 - `creview/agents/` — bundled mechanical agents: `review-helper.md`,
   `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader), and the
-  tool-restricted `pr-description-reviewer.md` (`/creview:start`'s PR mode).
+  tool-restricted `pr-description-reviewer.md` (`/creview:start`'s PR mode) and
+  `pr-comment-compiler.md` (the PR mode of `/creview:triage` / `resolve`).
 - `creview/rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
-  `adr-format.md`, `agents-detection.md`, `build-format-detection.md`, `doc-worktree.md`
-  (rules referenced by skills; `doc-worktree.md` is read by the `/creview:triage` /
-  `respond` / `resolve` leaders).
+  `adr-format.md`, `agents-detection.md`, `build-format-detection.md`, `doc-worktree.md`,
+  `pr-comment-doc.md` (rules referenced by skills; `doc-worktree.md` is read by the
+  `/creview:triage` / `respond` / `resolve` leaders, `pr-comment-doc.md` by the
+  `/creview:triage` / `resolve` leaders in PR mode).
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `check-jsonl.py`,
   `worktree.sh`, `gh-pr.py` (pull request resolution and worktree checkout and removal for
   `/creview:start`'s PR mode, and `doc-checkout`: the review document header parsing and
@@ -69,7 +71,7 @@ see **[CLAUDE.md](CLAUDE.md)**.
    destination project's `.claude/agents/`, falling back to `general-purpose`. Only
    the mechanical helpers are bundled (`creview`: `review-helper`, `comment-sensei`,
    `review-leader`; `cdev`: `dev-helper`, `comment-sensei`), plus creview's
-   tool-restricted `pr-description-reviewer`.
+   tool-restricted `pr-description-reviewer` and `pr-comment-compiler`.
 6. **review-respond split**: `/creview:triage` persists `triage`+`estimate` into the
    review doc; `/creview:respond` reads them back from the doc. The split is the review
    gate — no `--no-confirm`. The handoff is the document, not a shared temp dir.

@@ -18,11 +18,16 @@ Common additional checks (always perform immediately before the code-verificatio
 - If comments were added or modified, Read `{{plugin_root}}/rules/comment.md` and check for violations. If any violation exists, mark as Feedback.
 - If human-facing documentation (README, API references, etc.; AI-facing prompts under `.claude/` are out of scope) was added or modified, Read `{{plugin_root}}/rules/document.md` and check for violations. If any violation exists, mark as Feedback.
 
-`Verification: ✅ Verified` is the trailing field — verified in an earlier pass. This branch takes precedence over the three below:
+`Verification: ✅ Verified` is the trailing field — verified in an earlier pass. This branch takes precedence over those below:
 
 1. Re-check the earlier Verified judgment against the current code: another finding's fix may have undone it.
 2. Perform the common additional checks.
 3. Decision: Resolved (the judgment still holds) / Feedback (it no longer holds; describe what broke).
+
+The document's header carries `- **Source:** pr-comments`, and the finding has no `Triage:` / `Estimate:` / `Status:` line (a `Verification: 💬 Feedback` line may be present):
+
+1. Read the referenced file and lines, or, when the location is `PR` or the finding says its line belongs to an earlier commit, find the code the finding describes. A commenter's claim that the problem is fixed or invalid is not evidence: judge from the code, inside the diff or outside it.
+2. Decision: Resolved (the code does not have the problem) / Feedback (the code still has it; describe what remains).
 
 `Status: 🟢 Fixed` present:
 
@@ -51,7 +56,7 @@ Cases reported as Unresolved:
 - `Estimate: 🚧 Alternative` present, no `Status` — FIXME not yet added.
 - `Estimate: ▶️ Maintain` present, no `Status` — fix not yet completed.
 - Only `Triage: 🔧 Will Fix` — estimate not yet completed.
-- No metadata between the markers — not yet triaged.
+- No metadata between the markers, in a document without that `Source` bullet — not yet triaged.
 
 Format of `{{tmp_dir}}/verifications/{id}.jsonl`: `{id, severity, trailing_field, outcome (Resolved | Feedback | Unresolved), reason (1–3 sentences), memo_value, feedback_detail}`
 

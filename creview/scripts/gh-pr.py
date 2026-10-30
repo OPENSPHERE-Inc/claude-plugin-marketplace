@@ -18,7 +18,8 @@ the PR to be open, and writes two files to <out_dir>:
                    it could not be fetched), and the conversation: issue
                    comments, submitted review bodies, and review comments, at
                    most MAX_COMMENTS of each kind, with omitted set when any
-                   were left out
+                   were left out; a review comment says whether its line is
+                   outdated and, when known, whether its thread is resolved
 It prints a JSON object whose in_place is true when HEAD of the current working
 tree is the PR head.
 An in-place working tree with uncommitted changes to tracked files (outside
@@ -129,6 +130,18 @@ COMMENT_CHARS = 4000
 PAGE_SIZE = 100
 MAX_PAGES = 10
 MAX_COMMENTS = 50
+REVIEW_THREADS_QUERY = """
+query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $cursor) {
+        nodes { isResolved comments(first: 1) { nodes { databaseId } } }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+"""
 
 
 class Error(Exception):
@@ -255,7 +268,30 @@ def ci_checks(rollup, host, repos):
     return checks
 
 
+def resolved_threads(host, repo, number):
+    # Only GraphQL reports a thread's state, keyed here by the ID of its first comment. A thread
+    # this cannot read stays out of the result: its state is not known.
+    owner, name = repo.split("/")
+    states, cursor = {}, None
+    for _ in range(MAX_PAGES):
+        cmd = ["gh", "api", "graphql", "--hostname", host, "-f", f"query={REVIEW_THREADS_QUERY}",
+               "-f", f"owner={owner}", "-f", f"name={name}", "-F", f"number={number}"]
+        if cursor:
+            cmd += ["-f", f"cursor={cursor}"]
+        try:
+            threads = json.loads(run(cmd))["data"]["repository"]["pullRequest"]["reviewThreads"]
+            for thread in threads["nodes"]:
+                states[thread["comments"]["nodes"][0]["databaseId"]] = thread["isResolved"]
+            cursor = threads["pageInfo"]["endCursor"]
+            if not threads["pageInfo"]["hasNextPage"]:
+                break
+        except (Error, ValueError, KeyError, IndexError, TypeError):
+            break
+    return states
+
+
 def conversation(host, repo, number):
+    states = resolved_threads(host, repo, number)
     reviews, complete = api_pages(f"repos/{repo}/pulls/{number}/reviews", host)
     pending = {r.get("id") for r in reviews if r.get("state") == "PENDING"}
     issue_comments, issue_complete = api_pages(f"repos/{repo}/issues/{number}/comments", host)
@@ -275,6 +311,8 @@ def conversation(host, repo, number):
             {"id": c.get("id"), "in_reply_to": c.get("in_reply_to_id"),
              "author": login(c.get("user")), "created_at": c.get("created_at"),
              "path": c.get("path"), "line": c.get("line") or c.get("original_line"),
+             "outdated": c.get("line") is None and c.get("original_line") is not None,
+             "thread_resolved": states.get(c.get("in_reply_to_id") or c.get("id")),
              "body": clip(c.get("body"), COMMENT_CHARS)}
             for c in review_comments
             if c.get("pull_request_review_id") not in pending

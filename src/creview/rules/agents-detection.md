@@ -8,7 +8,7 @@ creview スキル群のサブエージェントが、指摘や検証エラーに
 
 1. プロジェクトスコープ: `.claude/agents/**/*.md`（起動プロンプトが `(該当なし)` 以外の `main_root` を渡した場合はそれを基準、それ以外は `{{target_dir}}` 基準）
 2. ユーザースコープ: `~/.claude/agents/**/*.md`
-3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`。ただし、スキルが名前を指定して起動する固定役割のエージェント `review-helper`・`review-leader`・`pr-description-reviewer` は除く
+3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`。ただし、スキルが名前を指定して起動する固定役割のエージェント `review-helper`・`review-leader`・`pr-description-reviewer`・`pr-comment-compiler` は除く
 
 ## 選定
 

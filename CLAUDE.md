@@ -55,8 +55,8 @@ claude-plugin-marketplace/
 │   │   ├── resolve/              # /creview:resolve (from review-resolve)
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
-│   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md, pr-description-reviewer.md
-│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md
+│   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md, pr-description-reviewer.md, pr-comment-compiler.md
+│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md, pr-comment-doc.md
 │   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, lib/scratch-guard.py
 │
 ├── cprompt/                      # Plugin: prompt authoring (active, English)
@@ -119,7 +119,8 @@ When changing a plugin:
   - SKILL.md bodies / `allowed-tools` and bundled agent definitions use
     `${CLAUDE_PLUGIN_ROOT}/...`.
   - `templates/*.md` and bundled rules (opened with Read by a sub-agent, or by a leader for
-    `rules/doc-worktree.md`) use the `{{plugin_root}}/...` launch variable.
+    `rules/doc-worktree.md` / `rules/pr-comment-doc.md`) use the `{{plugin_root}}/...` launch
+    variable.
 - **Agent-dispatch generalization**: skills do **not** bundle specialist reviewers. The
   single-best-match resolution mechanics (enumerate agents recursively `**/*.md` across
   **destination project** → **user** → **plugin bundle** scopes, higher-priority scope wins
@@ -129,13 +130,16 @@ When changing a plugin:
   multi-select variant (it picks *all* relevant reviewers, not one). Only the mechanical
   helpers (`review-helper`, `comment-sensei`, `review-leader`) are bundled, plus
   `pr-description-reviewer`, the fixed-role reviewer of a pull request's description and CI
-  results in `/creview:start`'s PR mode, bundled so that its `tools:` keep the untrusted
-  pull request text away from a shell and the network. Launch a bundled agent by its
+  results in `/creview:start`'s PR mode, and `pr-comment-compiler`, the fixed-role compiler of
+  a review document from a pull request's comments in the PR mode of `/creview:triage` /
+  `resolve`, bundled so that their `tools:` keep the untrusted pull request text away from a
+  shell and the network. Launch a bundled agent by its
   namespaced name (`creview:review-helper`, `cdev:dev-helper`); a bare name resolves only
   to a project or user agent of that name. The detection rules and `scope-analysis.md`
   likewise return the namespaced name for an agent they pick from the plugin bundle.
   In creview, the detection rule and `scope-analysis.md` leave the fixed-role bundled
-  agents (`review-helper`, `review-leader`, `pr-description-reviewer`) out of the
+  agents (`review-helper`, `review-leader`, `pr-description-reviewer`, `pr-comment-compiler`)
+  out of the
   candidates, so `comment-sensei` is the only bundled candidate.
 
 ---
@@ -228,6 +232,12 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     tree had the agent files)
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist
                     triage / estimate metadata into the doc
+                    PR mode (a pull request URL, triage and resolve): rules/pr-comment-doc.md:
+                    gh-pr.py fetch → pr-comment-compiler Sub writes the doc from the PR's
+                    comments, with PR / Branch / Trust bullets and `- **Source:** pr-comments`
+                    → the skill runs on that doc; triage leaves out threads resolved on
+                    GitHub; resolve keeps them and verifies each finding with no metadata
+                    against the code
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
                     format&build-verify ⇄ build-fix loop → compile → persist status
 /creview:resolve → analyze + verify Subs → compile → persist verification
@@ -413,12 +423,14 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   sub-agent's scope (the leader resolves it and passes it in the launch prompt; in cdev, the
   spawn contract). Never put `${CLAUDE_PLUGIN_ROOT}` in a template or a bundled rule; never
   put `{{plugin_root}}` in a SKILL. (`agents/review-helper.md` / `agents/review-leader.md` /
-  `agents/pr-description-reviewer.md` mention `{{plugin_root}}` only to name that template
-  variable.)
+  `agents/pr-description-reviewer.md` / `agents/pr-comment-compiler.md` mention
+  `{{plugin_root}}` only to name that template variable.)
   `rules/sub-agent.md`, `rules/teammate.md`, and the detection rules carry
   `{{target_dir}}` on the same basis: every launch passes `target_dir`.
   `rules/wontfix.md` carries `{{previous_round_doc_paths}}` on the same basis: every
   template that references it receives that launch variable.
+  `rules/pr-comment-doc.md` is opened with Read by the `/creview:triage` / `resolve` leaders in
+  PR mode, on the same basis as the next rule.
   `rules/doc-worktree.md` is opened with Read by the `/creview:triage` / `respond` /
   `resolve` leaders, so it uses `{{plugin_root}}` as well, and those SKILLs name its
   `plugin_root` variable without writing the `{{...}}` token.

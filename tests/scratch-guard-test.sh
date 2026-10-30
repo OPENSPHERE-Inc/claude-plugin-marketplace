@@ -79,6 +79,7 @@ PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GHPR}" \
     || { note "FAIL: python3 -m py_compile gh-pr.py"; fail=1; }
 python3 -I -B - "${GHPR}" "${SANDBOX}" <<'PY' || fail=1
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -120,6 +121,52 @@ for name in ("-x", "a..b", "", "bad name"):
     expect_error(f"valid_branch {name!r}", lambda name=name: g.valid_branch(name),
                  "invalid branch name")
 expect("valid_branch creview-pr-12", g.valid_branch("creview-pr-12"), "creview-pr-12")
+
+
+def threads_page(nodes, cursor=None):
+    return json.dumps({"data": {"repository": {"pullRequest": {"reviewThreads": {
+        "nodes": [{"isResolved": r, "comments": {"nodes": [{"databaseId": i}]}} for i, r in nodes],
+        "pageInfo": {"hasNextPage": cursor is not None, "endCursor": cursor},
+    }}}}})
+
+
+def stub_run(*pages):
+    # A page that is an Error fails that call.
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        page = pages[len(calls) - 1]
+        if isinstance(page, g.Error):
+            raise page
+        return page
+
+    return run, calls
+
+
+real_run, real_pages = g.run, g.api_pages
+g.run, calls = stub_run(threads_page([(1, True), (2, False)], "c1"), threads_page([(3, True)]))
+expect("resolved_threads over two pages", g.resolved_threads("h", "o/r", 7),
+       {1: True, 2: False, 3: True})
+expect("resolved_threads pages with the cursor", "cursor=c1" in calls[1], True)
+g.run, _ = stub_run(threads_page([(1, True)], "c1"), g.Error("boom"))
+expect("resolved_threads keeps what it read before a failure",
+       g.resolved_threads("h", "o/r", 7), {1: True})
+g.run, _ = stub_run("not json")
+expect("resolved_threads on malformed output", g.resolved_threads("h", "o/r", 7), {})
+
+g.run, _ = stub_run(threads_page([(10, True)]))
+g.api_pages = lambda endpoint, host: ([
+    {"id": 10, "line": 5, "path": "a", "user": {"login": "x"}, "body": "open line"},
+    {"id": 11, "in_reply_to_id": 10, "line": None, "original_line": 4, "path": "a", "body": "r"},
+    {"id": 12, "line": None, "original_line": None, "path": "b", "body": "whole file"},
+    {"id": 13, "line": None, "original_line": 9, "path": "c", "body": "thread not known"},
+] if endpoint.endswith("/pulls/7/comments") else [], True)
+got = g.conversation("h", "o/r", 7)["review_comments"]
+expect("conversation thread_resolved", [c["thread_resolved"] for c in got],
+       [True, True, None, None])
+expect("conversation outdated", [c["outdated"] for c in got], [False, True, False, True])
+g.run, g.api_pages = real_run, real_pages
 
 docs = os.path.join(sys.argv[2], "docs")
 os.makedirs(docs)

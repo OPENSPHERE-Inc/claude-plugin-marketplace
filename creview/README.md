@@ -9,9 +9,9 @@ A multi-agent parallel code review workflow for Claude Code.
 | Command | Maps from | Purpose |
 |---------|-----------|---------|
 | `/creview:start` | `parallel-review` | Run a parallel code review of local changes or a GitHub pull request; produce a review document with metadata markers. |
-| `/creview:triage` | `review-respond` (triage + estimate) | Triage and estimate findings; persist `triage` / `estimate` into the document. |
+| `/creview:triage` | `review-respond` (triage + estimate) | Triage and estimate the findings of a review document or of a GitHub pull request's comments; persist `triage` / `estimate` into the document. |
 | `/creview:respond` | `review-respond` (fix) | Fix Will-Fix / Maintain / Alternative findings; verify the build; persist `status`. |
-| `/creview:resolve` | `review-resolve` | Verify fix resolutions against the source; persist `verification`. |
+| `/creview:resolve` | `review-resolve` | Verify the resolutions of a review document's findings or of a GitHub pull request's comments against the source; persist `verification`. |
 | `/creview:rounds` | `review-rounds` | Automatically iterate start → triage → respond → resolve across rounds. |
 
 Every command requires a session started at the repository root, with or
@@ -185,8 +185,8 @@ it. Run on their own, `/creview:triage`, `/creview:respond`, and
 A worktree for a document with a PR bullet holds the pull request's code and
 is checked out like a worktree review: git hooks and filter drivers disabled,
 Git LFS smudging skipped, symbolic links as plain files, and the agent files
-left out unless the Trust bullet is `on`. The three skills take no `--trust`:
-following the Trust bullet, they work with the files the review had, and a
+left out unless the Trust bullet is `on`. Run on a document, the three skills
+take no `--trust`: following the Trust bullet, they work with the files the review had, and a
 document without one counts as `off`. To work with the agent files, review the
 pull request again with `--trust`. Their sub-agents are told what a worktree
 review's sub-agents are told, except that `/creview:respond`, which fixes,
@@ -275,6 +275,41 @@ a repository or pull request fetched from the network is safe. Keep the agent
 safe through your environment, such as a sandbox and permission rules, and
 check out a pull request you do not trust, and run `/creview:respond` on it,
 only in a sandbox.
+
+`/creview:triage` and `/creview:resolve` also take a GitHub pull request URL
+in place of a review document. They first compile a review document from the
+pull request's comments, then run on that document as usual. The requirements
+are those of `/creview:start`'s pull request review: an open pull request whose
+repository is a remote of the current clone, an authenticated `gh`, and no
+uncommitted changes to tracked files when HEAD is its head commit. `--base`
+cannot be combined with the URL. `--trust` records `on` in the document's Trust
+bullet, so that a worktree the skill makes has the agent files.
+
+- The bundled `pr-comment-compiler` turns inline review comments, review bodies,
+  and conversation comments that point out a problem in the code or ask for a
+  change into findings.
+  - It leaves out approvals, questions that state no problem, and CI and bot
+    status reports.
+  - It restates each finding in your chat language, with a severity from the
+    consequence the comment describes.
+  - A reply claiming that a problem is fixed stays in the finding as an
+    unverified claim.
+  - It runs with Read and Write only, without shell or network access.
+- `/creview:triage` leaves out threads marked resolved on GitHub and reports how
+  many.
+- `/creview:resolve` includes those threads and verifies every finding against
+  the code, with no triage or fix before it: `✅ Verified` when the code does
+  not have the problem, `💬 Feedback` when it still does. Run `/creview:triage`
+  on the document to take the `💬 Feedback` findings on.
+- At most the latest 50 comments of each kind are compiled, and the run reports
+  when older ones were left out.
+- The document is written to `.claude/tmp/creview-triage-{timestamp}.md` or
+  `.claude/tmp/creview-resolve-{timestamp}.md`, with the header bullets of a
+  pull request review and a `- **Source:** pr-comments` bullet. When the comments
+  hold no findings, the run ends without a document.
+- Anyone who can comment on the pull request can put text into these findings.
+  Check the persisted decisions before running `/creview:respond`, above all for
+  a pull request you do not trust.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review
@@ -382,15 +417,17 @@ concern than the code's behavior, such as comments alone). With no match, they
 fall back to `general-purpose`. The
 bundled agents are `review-helper` (mechanical aggregation / verification),
 `comment-sensei` (comment-discipline review), `review-leader` (the
-`/creview:rounds` phase leader), and `pr-description-reviewer` (the pull
-request description and CI reviewer of `/creview:start`'s PR mode, bundled so
-that its tools stay restricted). Only `comment-sensei` is a selection
-candidate; the skills launch the other three by name.
+`/creview:rounds` phase leader), `pr-description-reviewer` (the pull
+request description and CI reviewer of `/creview:start`'s PR mode), and
+`pr-comment-compiler` (the review document compiler of `/creview:triage`'s and
+`/creview:resolve`'s PR mode), the last two bundled so that their tools stay
+restricted. Only `comment-sensei` is a selection candidate; the skills launch
+the other four by name.
 
 ## Bundled support files
 
 - `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
-  `adr-format.md`, `doc-worktree.md` (only the rules the skills reference).
+  `adr-format.md`, `doc-worktree.md`, `pr-comment-doc.md` (only the rules the skills reference).
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`,
   `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it),
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by

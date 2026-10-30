@@ -9,9 +9,9 @@ Claude Code 向けのマルチエージェント並列コードレビューワ�
 | コマンド | 由来 | 目的 |
 |---------|-----------|---------|
 | `/creview:start` | `parallel-review` | ローカルの変更または GitHub プルリクエストの並列コードレビューを実行し、メタデータマーカー付きのレビュードキュメントを生成する。 |
-| `/creview:triage` | `review-respond`（トリアージ + 見積） | 指摘をトリアージ・見積し、`triage` / `estimate` をドキュメントへ永続化する。 |
+| `/creview:triage` | `review-respond`（トリアージ + 見積） | レビュードキュメントまたは GitHub プルリクエストのコメントの指摘をトリアージ・見積し、`triage` / `estimate` をドキュメントへ永続化する。 |
 | `/creview:respond` | `review-respond`（修正） | Will-Fix / Maintain / Alternative の指摘を修正し、ビルドを検証し、`status` を永続化する。 |
-| `/creview:resolve` | `review-resolve` | 修正の解決状況をソースに照らして検証し、`verification` を永続化する。 |
+| `/creview:resolve` | `review-resolve` | レビュードキュメントまたは GitHub プルリクエストのコメントの指摘の解決状況をソースに照らして検証し、`verification` を永続化する。 |
 | `/creview:rounds` | `review-rounds` | start → triage → respond → resolve を複数ラウンドにわたって自動反復する。 |
 
 どのコマンドも、`--worktree` の有無にかかわらずリポジトリルートで起動した
@@ -176,7 +176,8 @@ PR の箇条書きを持つドキュメントのワークツリーはプルリ�
 ワークツリーでのレビューと同じくチェックアウトします。git フックとフィルター
 ドライバーを無効にし、Git LFS の smudge をスキップし、シンボリックリンクを
 通常ファイルとして扱い、Trust の箇条書きが `on` でない限りエージェント
-ファイルを除外します。3 つのスキルは `--trust` を受け付けません。Trust の
+ファイルを除外します。ドキュメントに対して実行する場合、3 つのスキルは
+`--trust` を受け付けません。Trust の
 箇条書きに従い、レビュー時と同じファイルで作業します。Trust の箇条書きが
 ないドキュメントは `off` として扱います。エージェントファイルを含めて作業
 するには、`--trust` を指定してレビューし直してください。サブエージェントには
@@ -265,6 +266,41 @@ creview は、実行する前に利用者がリポジトリとプルリクエス
 保証することもできません。エージェントの安全はサンドボックスや権限ルールなど
 利用者の環境で担保し、信頼できないプルリクエストのチェックアウトと
 `/creview:respond` の実行はサンドボックス内でのみ行ってください。
+
+`/creview:triage` と `/creview:resolve` は、レビュードキュメントの代わりに
+GitHub プルリクエストの URL も受け付けます。まずプルリクエストのコメントから
+レビュードキュメントを編纂し、そのドキュメントに対して通常どおり動作します。
+要件は `/creview:start` のプルリクエストのレビューと同じです。プルリクエストが
+open で、そのリポジトリが現在のクローンのリモートであり、`gh` が認証済みで、
+HEAD が head コミットの場合は追跡ファイルに未コミットの変更がないことが
+必要です。`--base` は URL と併用できません。`--trust` はドキュメントの Trust の
+箇条書きに `on` を記録し、スキルが作るワークツリーにエージェントファイルを
+含めます。
+
+- 同梱の `pr-comment-compiler` が、インラインレビューコメント、レビュー本文、
+  会話のコメントのうち、コードの問題を指摘するものや変更を求めるものを
+  指摘にします。
+  - 承認、問題を述べない質問、CI やボットの状況報告は除外します。
+  - 各指摘をチャットの言語で書き直し、コメントが述べる影響から重大度を
+    決めます。
+  - 問題は修正済みだと述べる返信は、検証されていない主張として指摘内に
+    残します。
+  - Read と Write のみで動き、シェルとネットワークへのアクセスを持ちません。
+- `/creview:triage` は GitHub で解決済みとされたスレッドを除外し、その件数を
+  報告します。
+- `/creview:resolve` はそれらのスレッドも含め、トリアージや修正を経ていなくても
+  すべての指摘をコードと照合します。コードにその問題がなければ `✅ Verified`、
+  まだあれば `💬 Feedback` とします。`💬 Feedback` の指摘に対応するには、その
+  ドキュメントに対して `/creview:triage` を実行してください。
+- 編纂するコメントは種類ごとに最新の最大 50 件で、古いコメントを除外した場合は
+  実行結果で報告します。
+- ドキュメントは `.claude/tmp/creview-triage-{timestamp}.md` または
+  `.claude/tmp/creview-resolve-{timestamp}.md` に書き出され、プルリクエストの
+  レビューのヘッダー箇条書きと `- **Source:** pr-comments` の箇条書きを持ちます。
+  コメントに指摘がない場合は、ドキュメントを作らずに終了します。
+- プルリクエストにコメントできる人は誰でも、これらの指摘にテキストを入れられます。
+  `/creview:respond` を実行する前に、永続化された判定を確認してください。信頼
+  できないプルリクエストではとりわけ重要です。
 
 `/creview:triage` と `/creview:respond` には `--adr` オプション
 （デフォルト OFF）があり、設計判断を記録する ADR ファイルをレビュードキュメントの
@@ -372,14 +408,16 @@ frontmatter の `name` / `description` を読み、指摘ごとに最適なも�
 フォールバックします。同梱エージェントは `review-helper`（機械的な集約 / 検証）、
 `comment-sensei`（コメント規律レビュー）、`review-leader`（`/creview:rounds` の
 フェーズリーダー）、`pr-description-reviewer`（`/creview:start` の PR モードで
-プルリクエスト本文と CI 結果をレビューする。使えるツールを制限したまま
-動かすために同梱）の 4 つです。このうち選定候補になるのは `comment-sensei`
-だけで、他の 3 つはスキルが名前を指定して起動します。
+プルリクエスト本文と CI 結果をレビューする）、`pr-comment-compiler`
+（`/creview:triage` と `/creview:resolve` の PR モードでレビュードキュメントを
+編纂する）の 5 つで、最後の 2 つは使えるツールを制限したまま動かすために
+同梱しています。このうち選定候補になるのは `comment-sensei` だけで、他の 4 つは
+スキルが名前を指定して起動します。
 
 ## 同梱サポートファイル
 
 - `rules/` — `comment.md`、`document.md`、`review.md`、`wontfix.md`、`sub-agent.md`、
-  `adr-format.md`、`doc-worktree.md`（スキルが参照するルールのみ）。
+  `adr-format.md`、`doc-worktree.md`、`pr-comment-doc.md`（スキルが参照するルールのみ）。
 - `scripts/` — `fetch-diff.sh`、`render-review.py`、`del-tmp.sh`、
   `check-jsonl.py`（サブエージェントが書き出した `.jsonl` の検証に使用）、
   `lib/scratch-guard.py`（`fetch-diff.sh` / `del-tmp.sh` が共有する

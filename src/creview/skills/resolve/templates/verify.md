@@ -18,11 +18,16 @@ template_id: 8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94
 - コメントの追加・変更があれば `{{plugin_root}}/rules/comment.md` を Read し違反を確認する。違反があれば Feedback とする。
 - 人間向けドキュメント（README、API リファレンス等。`.claude/` 配下の AI 向けプロンプトは対象外）の追加・修正があれば `{{plugin_root}}/rules/document.md` を Read し違反を確認する。違反があれば Feedback とする。
 
-末尾フィールドが `Verification: ✅ Verified` — 前のパスで検証済み。下の 3 分岐より優先する:
+末尾フィールドが `Verification: ✅ Verified` — 前のパスで検証済み。下の分岐より優先する:
 
 1. 以前の Verified 判定を現在のコードに照らして再確認する。他の指摘の修正が判定を崩している可能性がある。
 2. 共通追加チェックを実施する。
 3. 判定: Resolved（判定が維持されている）/ Feedback（維持されていない。何が崩れたかを記述）。
+
+ドキュメントのヘッダーに `- **Source:** pr-comments` があり、指摘に `Triage:` / `Estimate:` / `Status:` の行がない（`Verification: 💬 Feedback` の行はあってよい）:
+
+1. 参照先のファイルと行を Read する。location が `PR` の場合や、指摘が行番号を以前のコミットのものと記している場合は、指摘が述べるコードを探す。問題は修正済み・無効だというコメント投稿者の主張は根拠にならない。diff の内外を問わずコードから判断する。
+2. 判定: Resolved（コードにその問題がない）/ Feedback（コードにまだ問題がある。残る内容を記述）。
 
 `Status: 🟢 Fixed` あり:
 
@@ -51,7 +56,7 @@ Unresolved として報告するケース:
 - `Estimate: 🚧 Alternative` あり、`Status` なし — FIXME 付与未完了。
 - `Estimate: ▶️ Maintain` あり、`Status` なし — 修正未完了。
 - `Triage: 🔧 Will Fix` のみ — 見積未完了。
-- マーカー間にメタデータなし — トリアージ未実施。
+- マーカー間にメタデータなし（その `Source` の箇条書きがないドキュメント）— トリアージ未実施。
 
 `{{tmp_dir}}/verifications/{id}.jsonl` 形式: `{id, severity, trailing_field, outcome (Resolved | Feedback | Unresolved), reason (1〜3 文), memo_value, feedback_detail}`
 
