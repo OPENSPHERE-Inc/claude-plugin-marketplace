@@ -1,13 +1,13 @@
-<!-- 骨組み例。散文とラベル（日付 / 範囲 / レビュアー / サマリー / 件 等）は doc_lang で記述する。重要度見出し・finding-id・METADATA マーカーは変更しない。カテゴリラベルは doc_lang で記述する。Mode の箇条書きは adversarial 実行時のみ出力する。値 `adversarial` は訳さない。PR と Trust の箇条書きはプルリクエストのレビュー時のみ、Branch の箇条書きはブランチ上のレビュー時のみ出力し、いずれもラベルも含めてそのまま出力する。 -->
+<!-- 骨組み例。散文とラベル（日付 / 範囲 / レビュアー / サマリー / 件 等）は doc_lang で記述する。重要度見出し・finding-id・METADATA マーカーは変更しない。カテゴリラベルは doc_lang で記述する。Mode の箇条書きは adversarial 実行時のみ出力する。値 `adversarial` は訳さない。PR と Trust の箇条書きはプルリクエストのレビュー時のみ、Branch の箇条書きはブランチ上のレビュー時のみ出力し、いずれもラベルも含めてそのまま出力する。Trust の値は `on` または `off`。これら 3 つの箇条書きは値で終え、値の後に何も続けない。 -->
 
 # 並列コードレビューレポート — Round {N}
 
 - **日付:** YYYY-MM-DD
 - **ラウンド:** {N}
 - **モード:** adversarial  <!-- adversarial 実行時のみ出力 -->
-- **PR:** {url} (head {head_sha}, base {merge_base})  <!-- プルリクエストのレビュー時のみ出力 -->
-- **Branch:** {branch}  <!-- ブランチ上のレビュー時のみ出力 -->
-- **Trust:** {trust}  <!-- プルリクエストのレビュー時のみ出力。値は on または off -->
+- **PR:** {url} (head {head_sha}, base {merge_base})
+- **Branch:** {branch}
+- **Trust:** {trust}
 - **範囲:** {レビュー対象の説明}
 - **レビュアー:** {使用した全レビュアーのカンマ区切りリスト}
 

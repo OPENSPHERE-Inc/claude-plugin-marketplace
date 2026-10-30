@@ -27,4 +27,4 @@ template_id: 7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95
 
 `{{tmp_dir}}/targets.jsonl` 形式: `{items: [{id, assignee, estimate (Maintain|Alternative), adr (ファイル名または null), fix_plan (文字列配列、無ければ [])}], fix_count, not_ready: [{id, reason}]}`
 
-戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}`（`by_assignee` は修正対象を assignee 単位でグルーピングする。指摘本文は含めない）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
+戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}`（`by_assignee` は修正対象を assignee 単位でグルーピングする。`not_ready` は targets.jsonl と同じ内容で、各 `reason` は短い定型文とする。指摘本文は含めない）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

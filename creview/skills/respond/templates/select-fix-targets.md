@@ -27,4 +27,4 @@ When the `Estimate:` line carries an ` — ADR: {filename}` segment immediately 
 
 `{{tmp_dir}}/targets.jsonl` format: `{items: [{id, assignee, estimate (Maintain|Alternative), adr (filename or null), fix_plan (string array, [] when absent)}], fix_count, not_ready: [{id, reason}]}`
 
-Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` (`by_assignee` groups the fix targets by assignee; do not include finding bodies). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.
+Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}` (`by_assignee` groups the fix targets by assignee; `not_ready` is the same as in targets.jsonl, each `reason` a short fixed phrase; do not include finding bodies). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.

@@ -39,7 +39,7 @@ Procedure:
 
 1. Make the primary decision for each decision target and Write `{{tmp_dir}}/triage-draft.jsonl`. Do not resolve the assignee at this stage.
 2. When the draft `items` is empty, skip steps 3 and 4, Write `{{tmp_dir}}/triage.jsonl` with `items: []`, `will_fix_count: 0`, `wontfix_count: 0`, and the draft's `by_stage`, and return with `flipped_count: 0` and `adjudication_skipped: true`.
-3. Split the draft `items` into batches of at most 8 ids in draft order, numbering the batches from 1. Launch three challenge sub-agents per batch with `Agent(subagent_type="general-purpose", prompt=...)`, giving them `challenge_index` 1, 2 and 3, and launch every batch's sub-agents together, at most 20 in one message (`{{plugin_root}}/rules/sub-agent.md` § Launch mode). Do not specify the model. Fill the values you received into the launch prompt (`{b}` is that instance's batch number, `{n}` its `challenge_index`, `{batch_ids}` the ids of batch `{b}` as a comma-separated list):
+3. Split the draft `items` into batches of at most 8 ids in draft order, numbering the batches from 1. Launch three challenge sub-agents per batch with `Agent(subagent_type="general-purpose", prompt=...)`, giving them `challenge_index` 1, 2 and 3, and launch every batch's sub-agents together, at most 20 in one message (`{{plugin_root}}/rules/sub-agent.md` § Launch mode). Do not specify the model. Fill the values you received into the launch prompt (`{b}` is that instance's batch number, `{n}` its `challenge_index`, `{batch_ids}` the ids of batch `{b}` as a comma-separated list, `{overrides}` the items of the Round-specific overrides your own launch prompt gives, copied verbatim one per `- ` line, or `(none)` when it gives none):
 
 ```
 As your first action, you MUST Read `{{plugin_root}}/skills/triage/templates/triage-challenge.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
@@ -55,7 +55,7 @@ Variables (substitute into the template's {{...}} placeholders):
 - ids: {batch_ids}
 
 Round-specific overrides (apply after following the template's instructions):
-- (none)
+- {overrides}
 
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
@@ -64,7 +64,7 @@ Verify that every returned `template_id` matches `b8701509-403b-488b-8b13-c867f9
 
 Overturning a draft decision takes two flip votes from the id's own batch, so when no batch produced two or more challenge outputs, skip step 4, adopt the draft `verdict` / `reason` as the final verdicts, Write `{{tmp_dir}}/triage.jsonl` following step 5, and return with `flipped_count: 0` and `adjudication_skipped: true`.
 
-4. Launch the adjudication sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`. Launch it only after every step 3 sub-agent has returned. Do not launch it in the same message as step 3. Do not specify the model. Fill the values you received into the launch prompt:
+4. Launch the adjudication sub-agent with `Agent(subagent_type="general-purpose", prompt=...)`. Launch it only after every step 3 sub-agent has returned. Do not launch it in the same message as step 3. Do not specify the model. Fill the values you received into the launch prompt (`{overrides}` as in step 3):
 
 ```
 As your first action, you MUST Read `{{plugin_root}}/skills/triage/templates/triage-adjudicate.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
@@ -78,7 +78,7 @@ Variables (substitute into the template's {{...}} placeholders):
 - challenge_paths: {comma-separated {{tmp_dir}}/challenge-{b}-{n}.jsonl paths that were produced}
 
 Round-specific overrides (apply after following the template's instructions):
-- (none)
+- {overrides}
 
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```

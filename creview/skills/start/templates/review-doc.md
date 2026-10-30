@@ -1,13 +1,13 @@
-<!-- Skeleton example. Write the prose and labels (Date / Scope / Reviewers / Summary / counts, etc.) in doc_lang. Do not change the severity headings, finding-id, or METADATA markers. Write the category labels in doc_lang. The Mode bullet is output only for an adversarial run; keep its value `adversarial` untranslated. The PR and Trust bullets are output only for a pull request review, and the Branch bullet only for a review on a branch; keep them verbatim, labels included. -->
+<!-- Skeleton example. Write the prose and labels (Date / Scope / Reviewers / Summary / counts, etc.) in doc_lang. Do not change the severity headings, finding-id, or METADATA markers. Write the category labels in doc_lang. The Mode bullet is output only for an adversarial run; keep its value `adversarial` untranslated. The PR and Trust bullets are output only for a pull request review, and the Branch bullet only for a review on a branch; keep them verbatim, labels included. The Trust value is `on` or `off`. End each of these three bullets at its value, with nothing after it. -->
 
 # Parallel Code Review Report — Round {N}
 
 - **Date:** YYYY-MM-DD
 - **Round:** {N}
 - **Mode:** adversarial  <!-- output only for an adversarial run -->
-- **PR:** {url} (head {head_sha}, base {merge_base})  <!-- output only for a pull request review -->
-- **Branch:** {branch}  <!-- output only for a review on a branch -->
-- **Trust:** {trust}  <!-- output only for a pull request review: on or off -->
+- **PR:** {url} (head {head_sha}, base {merge_base})
+- **Branch:** {branch}
+- **Trust:** {trust}
 - **Scope:** {description of the review target}
 - **Reviewers:** {comma-separated list of all reviewers used}
 

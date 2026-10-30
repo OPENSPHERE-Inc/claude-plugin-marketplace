@@ -27,7 +27,10 @@ The user supplies a path to a review document (markdown). When the argument is `
 
 ## Worktree
 
-Follow `${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, appending `--fix-branch` to `doc-checkout`. When `trust` is `off`, add this PR worktree override for the select-fix-targets sub-agent: `Move to not_ready, with the reason that the file is not checked out, as the review ran without --trust, each fix target whose location or fix_plan names a path in one of the agent files {target_dir} leaves out.`
+Follow `${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, appending `--fix-branch` to `doc-checkout`. When `pr_worktree` is true, add these PR worktree overrides:
+
+- For the format / build / test verification sub-agent: `Resolve stage 2 of build-format-detection.md from {main_root}/CLAUDE.md, then {main_root}/README.md, not from the files under {target_dir}; run the commands in {target_dir} as usual.`
+- For the select-fix-targets sub-agent, when `trust` is `off`: `Move each fix target whose location or fix_plan names a path in one of the agent files {target_dir} leaves out to not_ready, with the reason that the file is not checked out because the review ran without --trust.`
 
 ## Review document format
 
@@ -109,7 +112,7 @@ Before creating `{tmp_dir}`, if `git rev-parse --show-prefix` prints a non-empty
 
 Launch via `Agent(subagent_type="general-purpose", prompt=...)`. The Sub Reads the review document, applies the fix-target selection rule, and Writes `{tmp_dir}/targets.jsonl`.
 
-Template `select-fix-targets.md`, `template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — do not load the body.
+Template `select-fix-targets.md`, `template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}` — do not load the body. Hold `not_ready` for Step 7.
 
 When `fix_count == 0`, skip Steps 2–5 and proceed to Step 6 (compile; nothing to reflect → report "no fix targets").
 
@@ -174,6 +177,6 @@ The leader (you) does not load decision bodies into context. The fix `status` is
 
 ## Step 7 — Summary
 
-The leader prints the `summary_line` received in Step 6 to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.
+The leader prints the `summary_line` received in Step 6 to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. If Step 1's `not_ready` is non-empty, present its ids and reasons together with the `summary_line` as findings left unfixed, including when `fix_count == 0` skipped Steps 2–5. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.
 
 In a worktree, run the teardown (§ Worktree) and report the branch the fixes were committed to.

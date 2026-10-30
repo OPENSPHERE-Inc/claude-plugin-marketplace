@@ -27,7 +27,10 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 ## ワークツリー
 
-`${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}` とし、`doc-checkout` の末尾に `--fix-branch` を付ける。`trust` が `off` の場合は、PR ワークツリー向けに select-fix-targets サブエージェントへ次のオーバーライドを追加する: `location または fix_plan が、{target_dir} に置いていないエージェントファイルのいずれかのパスを指す修正対象は、--trust なしでレビューしたためそのファイルをチェックアウトしていない旨を理由として not_ready へ移す。`
+`${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}` とし、`doc-checkout` の末尾に `--fix-branch` を付ける。`pr_worktree` が true の場合は、次の PR ワークツリー向けオーバーライドを追加する:
+
+- フォーマット・ビルド・テスト検証サブエージェントへ: `build-format-detection.md の段階 2 は、{target_dir} 配下のファイルからではなく、{main_root}/CLAUDE.md、次に {main_root}/README.md から解決する。コマンドは通常どおり {target_dir} で実行する。`
+- `trust` が `off` のとき、select-fix-targets サブエージェントへ: `location または fix_plan が、{target_dir} に置いていないエージェントファイルのいずれかのパスを指す修正対象は、--trust なしでレビューしたためそのファイルをチェックアウトしていないという理由で not_ready へ移す。`
 
 ## レビュードキュメント形式
 
@@ -109,7 +112,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 `Agent(subagent_type="general-purpose", prompt=...)` で起動する。Sub はレビュードキュメントを Read し、修正対象選別ルールを適用し、`{tmp_dir}/targets.jsonl` を Write する。
 
-テンプレート `select-fix-targets.md`、`template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], template_id}` — 本文は読み込まない。
+テンプレート `select-fix-targets.md`、`template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}` — 本文は読み込まない。`not_ready` はステップ 7 のために保持する。
 
 `fix_count == 0` の場合、ステップ 2〜5 をスキップしてステップ 6（編纂。反映するものなし → 「修正対象なし」を報告）へ進む。
 
@@ -174,6 +177,6 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 ## ステップ 7 — サマリー
 
-リーダーはステップ 6 で受け取った `summary_line` をコンソールに表示する。ステップ 4 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。
+リーダーはステップ 6 で受け取った `summary_line` をコンソールに表示する。ステップ 4 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。ステップ 1 の `not_ready` が空でなければ、その id と理由を未修正のまま残った指摘として `summary_line` と併せて表示する（`fix_count == 0` でステップ 2〜5 をスキップした場合も同じ）。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。
 
 ワークツリーでは、ティアダウンを実行し（§ ワークツリー）、修正をコミットしたブランチを報告する。
