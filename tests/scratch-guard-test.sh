@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.py, its consumers, worktree.sh,
-# gh-pr.py's helpers and sparse checkout, gh-pr.py checkout-branch, and gh-pr.py remove's path
-# check.
+# gh-pr.py's helpers, header parsing, and sparse checkout, gh-pr.py doc-checkout, and gh-pr.py
+# remove's path check.
 # Usage: bash tests/scratch-guard-test.sh
 # Prints one FAIL line per broken case and exits non-zero; exits 0 when all pass.
 
@@ -119,13 +119,51 @@ for name in ("-x", "a..b", "", "bad name"):
     expect_error(f"valid_branch {name!r}", lambda name=name: g.valid_branch(name),
                  "invalid branch name")
 expect("valid_branch creview-pr-12", g.valid_branch("creview-pr-12"), "creview-pr-12")
-for opts, want in (((), (False, None)), (("--trust",), (True, None)),
-                   (("--branch", "b", "--trust"), (True, "b")),
-                   (("--trust", "--branch", "b"), (True, "b"))):
-    expect(f"checkout_options {opts}", g.checkout_options(opts), want)
-for opts in (("--branch",), ("--trust", "--trust"), ("--branch", "a", "--branch", "b"), ("-t",)):
-    expect_error(f"checkout_options {opts}", lambda opts=opts: g.checkout_options(opts),
-                 "unknown checkout option")
+
+docs = os.path.join(sys.argv[2], "docs")
+os.makedirs(docs)
+
+
+def doc(name, *bullets, eol="\n"):
+    # A bullet under a severity heading is a finding's text, not a header bullet.
+    path = os.path.join(docs, name)
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(eol.join(["# Report", "", "- **Date:** 2026-01-01", *bullets, "- **Scope:** x", "",
+                          "## Major", "", "- **Trust:** on", "- **Branch:** x", ""]))
+    return path
+
+
+A, B = "a" * 40, "b" * 64
+PR_LINE = f"- **PR:** https://github.com/o/r/pull/3 (head {A}, base {B})"
+expect("parse_header with no header bullets", g.parse_header(doc("none.md")),
+       {"pr": None, "branch": None, "trust": "off"})
+expect("parse_header PR, Branch, and Trust",
+       g.parse_header(doc("full.md", PR_LINE, "- **Branch:** feat/x", "- **Trust:** on",
+                          eol="\r\n")),
+       {"pr": {"url": "https://github.com/o/r/pull/3", "number": 3, "head_sha": A,
+               "merge_base": B, "line": 3},
+        "branch": "feat/x", "trust": "on"})
+expect("parse_header a non-ASCII branch",
+       g.parse_header(doc("ja.md", "- **Branch:** feature/日本語"))["branch"], "feature/日本語")
+for bullet in (f"- **PR:** https://github.com/o/r/pull/3/files (head {A}, base {B})",
+               f"- **PR:** https://example.com/x (head {A}, base {B})",
+               f"- **PR:** https://github.com/o/r/pull/3 (head {A[:39]}, base {B})",
+               f"- **PR:** https://github.com/o/r/pull/3 (head {A.upper()}, base {B})",
+               "- **PR:** https://github.com/o/r/pull/3",
+               "- **Branch:** a$(touch x)", "- **Branch:** it's", "- **Branch:** a b",
+               "- **Branch:** -x", "- **Branch:** a..b", "- **Trust:** yes", "- **Trust:** ON"):
+    expect_error(f"parse_header {bullet!r}", lambda b=bullet: g.parse_header(doc("bad.md", b)),
+                 "malformed review document header")
+expect_error("parse_header two Trust bullets",
+             lambda: g.parse_header(doc("dup.md", "- **Trust:** off", "- **Trust:** on")),
+             "more than one Trust bullet")
+record = doc("record.md", PR_LINE, "- **Trust:** off", eol="\r\n")
+g.record_branch(record, 3, "creview-pr-3")
+with open(record, encoding="utf-8", newline="") as f:
+    expect("record_branch inserts the Branch bullet after the PR bullet", f.readlines()[3:6],
+           [PR_LINE + "\r\n", "- **Branch:** creview-pr-3\r\n", "- **Trust:** off\r\n"])
+expect("record_branch writes a bullet parse_header reads", g.parse_header(record)["branch"],
+       "creview-pr-3")
 
 # The sparse checkout cmd_checkout runs through gh, run here with git checkout.
 repo, wt = os.path.join(sys.argv[2], "sparse"), os.path.join(sys.argv[2], "sparse-wt")
@@ -240,16 +278,11 @@ for opt in --trusted -t; do
     [[ "${out}" == *"unknown checkout option"* ]] \
         || { note "FAIL: gh-pr.py checkout ${opt} printed '${out}'"; fail=1; }
 done
-out="$(python3 "${GHPR}" checkout a b c d e 2>&1)"; rc=$?
-check "gh-pr.py checkout with five arguments" 1 "${rc}"
-[[ "${out}" == *"Usage:"* ]] \
-    || { note "FAIL: gh-pr.py checkout with five arguments printed '${out}'"; fail=1; }
-for args in "a" "a b c d"; do
+for args in "checkout a b c" "doc-checkout" "doc-checkout a b c" "checkout-branch a b"; do
     # shellcheck disable=SC2086
-    out="$(python3 "${GHPR}" checkout-branch ${args} 2>&1)"; rc=$?
-    check "gh-pr.py checkout-branch with arguments '${args}'" 1 "${rc}"
-    [[ "${out}" == *"Usage:"* ]] \
-        || { note "FAIL: gh-pr.py checkout-branch ${args} printed '${out}'"; fail=1; }
+    out="$(python3 "${GHPR}" ${args} 2>&1)"; rc=$?
+    check "gh-pr.py ${args}" 1 "${rc}"
+    [[ "${out}" == *"Usage:"* ]] || { note "FAIL: gh-pr.py ${args} printed '${out}'"; fail=1; }
 done
 mkdir -p "${SANDBOX}/proj/.claude/tmp/sub" "${SANDBOX}/outside"
 : > "${SANDBOX}/proj/.claude/tmp/sub/file.txt"
@@ -638,17 +671,62 @@ check "worktree remove after reuse" 0 "${rc}"
 rc=0; bash "${WT}" remove "${MAIN}" >/dev/null 2>&1 || rc=$?
 [[ "${rc}" -ne 0 ]] || { note "FAIL: worktree remove accepted the main worktree"; fail=1; }
 
-# --- gh-pr.py checkout-branch ------------------------------------------------------
-PR_URL="https://github.com/o/r/pull/3"
-for case in "https://example.com/x feat/wt|not a pull request URL" \
-    "${PR_URL} a..b|invalid branch name" "${PR_URL} no-such|no local branch" \
-    "${PR_URL} feat/wt --trusted|unknown checkout-branch option"; do
+# --- gh-pr.py doc-checkout ---------------------------------------------------------
+DOCS="${SANDBOX}/doc-checkout"
+mkdir -p "${DOCS}"
+HEAD_SHA="$(git rev-parse HEAD)"
+CUR="$(git branch --show-current)"
+PR_LINE="- **PR:** https://github.com/o/r/pull/3 (head ${HEAD_SHA}, base ${HEAD_SHA})"
+write_doc() { # <name> <header-bullet>...
+    local name="$1"
+    shift
+    { printf '# Report\n\n'; printf '%s\n' "$@"; printf -- '- **Scope:** x\n\n## Major\n'; } \
+        > "${DOCS}/${name}"
+}
+field() { # <name>: prints a field of the JSON object on stdin, JSON-encoded unless a string
+    python3 -c 'import json, sys
+v = json.load(sys.stdin)[sys.argv[1]]
+print(v if isinstance(v, str) else json.dumps(v))' "$1"
+}
+doc_checkout() { python3 "${GHPR}" doc-checkout "$@"; }
+write_doc none.md
+write_doc bad.md "- **Trust:** yes"
+write_doc no-branch.md "- **Branch:** no-such"
+MOVED_SHA="$(printf 'a%.0s' {1..40})"
+write_doc moved.md "- **PR:** https://github.com/o/r/pull/3 (head ${MOVED_SHA}, base ${HEAD_SHA})"
+for case in "none.md --trusted|unknown doc-checkout option" \
+    "bad.md|malformed review document header" "no-branch.md|no local branch no-such" \
+    "moved.md|is not a remote of this repository" "missing.md|No such file"; do
     # shellcheck disable=SC2086
-    out="$(python3 "${GHPR}" checkout-branch ${case%%|*} 2>&1)"; rc=$?
-    check "gh-pr.py checkout-branch ${case%%|*}" 1 "${rc}"
+    set -- ${case%%|*}
+    out="$(doc_checkout "${DOCS}/$1" "${@:2}" 2>&1)"; rc=$?
+    check "gh-pr.py doc-checkout ${case%%|*}" 1 "${rc}"
     [[ "${out}" == *"${case#*|}"* ]] \
-        || { note "FAIL: gh-pr.py checkout-branch ${case%%|*} printed '${out}'"; fail=1; }
+        || { note "FAIL: gh-pr.py doc-checkout ${case%%|*} printed '${out}'"; fail=1; }
 done
+set --
+write_doc cur.md "- **Branch:** ${CUR}"
+write_doc pr-here.md "${PR_LINE}" "- **Trust:** off"
+cp "${DOCS}/pr-here.md" "${DOCS}/pr-here.orig"
+for name in none.md cur.md pr-here.md; do
+    out="$(doc_checkout "${DOCS}/${name}" 2>/dev/null)"; rc=$?
+    check "gh-pr.py doc-checkout ${name}" 0 "${rc}"
+    [[ "$(printf '%s' "${out}" | field in_place)" == true \
+        && "$(printf '%s' "${out}" | field branch)" == "${CUR}" ]] \
+        || { note "FAIL: gh-pr.py doc-checkout ${name} printed '${out}'"; fail=1; }
+done
+[[ "$(printf '%s' "${out}" | field merge_base)" == "${HEAD_SHA}" ]] \
+    || { note "FAIL: gh-pr.py doc-checkout pr-here.md merge_base in '${out}'"; fail=1; }
+cmp -s "${DOCS}/pr-here.md" "${DOCS}/pr-here.orig" \
+    || { note "FAIL: gh-pr.py doc-checkout without --fix-branch changed the document"; fail=1; }
+for run in 1 2; do
+    rc=0; doc_checkout "${DOCS}/pr-here.md" --fix-branch >/dev/null 2>&1 || rc=$?
+    check "gh-pr.py doc-checkout --fix-branch in place (run ${run})" 0 "${rc}"
+done
+[[ "$(sed -n 4p "${DOCS}/pr-here.md")" == "- **Branch:** ${CUR}" \
+    && "$(grep -c '^- \*\*Branch:\*\*' "${DOCS}/pr-here.md")" == 1 ]] \
+    || { note "FAIL: gh-pr.py doc-checkout --fix-branch wrote $(cat "${DOCS}/pr-here.md")"; fail=1; }
+
 PR_SRC="${SANDBOX}/pr-src"
 git worktree add -q -b pr-src "${PR_SRC}" >/dev/null 2>&1 \
     && mkdir -p "${PR_SRC}/sub" && echo src > "${PR_SRC}/sub/src.txt" \
@@ -657,41 +735,61 @@ git worktree add -q -b pr-src "${PR_SRC}" >/dev/null 2>&1 \
     && git -C "${PR_SRC}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
         commit -qm pr \
     && git worktree remove -- "${PR_SRC}" \
-    || { note "FAIL: gh-pr.py checkout-branch repository setup"; fail=1; }
-worktree_of() { python3 -c 'import json, sys; print(json.load(sys.stdin)["worktree_path"])'; }
+    || { note "FAIL: gh-pr.py doc-checkout repository setup"; fail=1; }
+# check_worktree <doc> <path-prefix> <pr_worktree> <trust> <agent file kept>
+check_worktree() {
+    local out wt
+    out="$(doc_checkout "${DOCS}/$1" 2>/dev/null)" \
+        || { note "FAIL: gh-pr.py doc-checkout $1"; fail=1; return; }
+    wt="$(printf '%s' "${out}" | field worktree_path)"
+    [[ "${wt}" == "${MAIN}/.claude/worktrees/$2"* \
+        && "$(printf '%s' "${out}" | field main_root)" == "${MAIN}" \
+        && "$(printf '%s' "${out}" | field in_place)" == false \
+        && "$(printf '%s' "${out}" | field pr_worktree)" == "$3" \
+        && "$(printf '%s' "${out}" | field trust)" == "$4" \
+        && "$(printf '%s' "${out}" | field branch)" == pr-src ]] \
+        || { note "FAIL: gh-pr.py doc-checkout $1 printed '${out}'"; fail=1; return; }
+    [[ "$(git -C "${wt}" branch --show-current)" == pr-src && -f "${wt}/sub/src.txt" ]] \
+        || { note "FAIL: gh-pr.py doc-checkout $1 did not check out pr-src"; fail=1; }
+    if [[ "$5" == yes ]]; then
+        [[ -f "${wt}/sub/CLAUDE.md" ]] \
+            || { note "FAIL: gh-pr.py doc-checkout $1 left out sub/CLAUDE.md"; fail=1; }
+    else
+        [[ ! -e "${wt}/sub/CLAUDE.md" ]] \
+            || { note "FAIL: gh-pr.py doc-checkout $1 kept sub/CLAUDE.md"; fail=1; }
+    fi
+    [[ -z "$(git -C "${wt}" status --porcelain)" ]] \
+        || { note "FAIL: gh-pr.py doc-checkout $1 left the worktree dirty"; fail=1; }
+    rc=0; python3 "${GHPR}" remove "${wt}" >/dev/null 2>&1 || rc=$?
+    check "gh-pr.py remove the worktree of $1" 0 "${rc}"
+}
+write_doc branch.md "- **Branch:** pr-src" "- **Trust:** off"
+check_worktree branch.md creview-branch- false off yes
 if [[ "$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=t.k GIT_CONFIG_VALUE_0=v \
     git config --get t.k 2>/dev/null)" == v ]]; then
-    for trust in "" --trust; do
-        out="$(python3 "${GHPR}" checkout-branch "${PR_URL}" pr-src ${trust} 2>/dev/null)"; rc=$?
-        check "gh-pr.py checkout-branch ${trust:-without --trust}" 0 "${rc}"
-        BR_WT="$(printf '%s' "${out}" | worktree_of 2>/dev/null)"
-        [[ "${BR_WT}" == "${MAIN}/.claude/worktrees/creview-pr-3-"* ]] \
-            || { note "FAIL: gh-pr.py checkout-branch printed '${out}'"; fail=1; continue; }
-        [[ "$(git -C "${BR_WT}" branch --show-current)" == pr-src \
-            && -f "${BR_WT}/sub/src.txt" ]] \
-            || { note "FAIL: gh-pr.py checkout-branch did not check out pr-src"; fail=1; }
-        if [[ -z "${trust}" ]]; then
-            [[ ! -e "${BR_WT}/sub/CLAUDE.md" ]] \
-                || { note "FAIL: gh-pr.py checkout-branch kept sub/CLAUDE.md"; fail=1; }
-        else
-            [[ -f "${BR_WT}/sub/CLAUDE.md" ]] \
-                || { note "FAIL: gh-pr.py checkout-branch --trust left out sub/CLAUDE.md"; fail=1; }
-        fi
-        [[ -z "$(git -C "${BR_WT}" status --porcelain)" ]] \
-            || { note "FAIL: gh-pr.py checkout-branch left the worktree dirty"; fail=1; }
-        rc=0; python3 "${GHPR}" remove "${BR_WT}" >/dev/null 2>&1 || rc=$?
-        check "gh-pr.py remove a checkout-branch worktree" 0 "${rc}"
-    done
-    git worktree add -q "${PR_SRC}" pr-src >/dev/null 2>&1 \
-        || { note "FAIL: git worktree add for the busy-branch case"; fail=1; }
-    rc=0; python3 "${GHPR}" checkout-branch "${PR_URL}" pr-src >/dev/null 2>&1 || rc=$?
-    check "gh-pr.py checkout-branch on a branch checked out elsewhere" 1 "${rc}"
-    git worktree remove -- "${PR_SRC}" >/dev/null 2>&1
-    [[ ! -e "${MAIN}/.claude/worktrees" ]] \
-        || { note "FAIL: gh-pr.py checkout-branch left $(ls "${MAIN}/.claude/worktrees")"; fail=1; }
+    write_doc pr-branch.md "${PR_LINE}" "- **Branch:** pr-src"
+    check_worktree pr-branch.md creview-pr-3- true off no
+    write_doc pr-branch-off.md "${PR_LINE}" "- **Branch:** pr-src" "- **Trust:** off"
+    check_worktree pr-branch-off.md creview-pr-3- true off no
+    write_doc pr-branch-on.md "${PR_LINE}" "- **Branch:** pr-src" "- **Trust:** on"
+    check_worktree pr-branch-on.md creview-pr-3- true on yes
 else
-    note "SKIP: gh-pr.py checkout-branch cases (git does not apply GIT_CONFIG_COUNT)"
+    note "SKIP: gh-pr.py doc-checkout PR worktree cases (git does not apply GIT_CONFIG_COUNT)"
 fi
+git show-ref --verify --quiet refs/heads/pr-src \
+    || { note "FAIL: gh-pr.py remove dropped the branch pr-src"; fail=1; }
+git worktree add -q "${PR_SRC}" pr-src >/dev/null 2>&1 \
+    || { note "FAIL: git worktree add for the busy-branch case"; fail=1; }
+for name in branch.md pr-branch-on.md; do
+    [[ -e "${DOCS}/${name}" ]] || continue
+    out="$(doc_checkout "${DOCS}/${name}" 2>&1)"; rc=$?
+    check "gh-pr.py doc-checkout ${name} on a branch checked out elsewhere" 1 "${rc}"
+    [[ "${out}" == *"pr-src is checked out in the worktree"*"session started at"* ]] \
+        || { note "FAIL: gh-pr.py doc-checkout ${name} on a busy branch printed '${out}'"; fail=1; }
+done
+git worktree remove -- "${PR_SRC}" >/dev/null 2>&1
+[[ ! -e "${MAIN}/.claude/worktrees" ]] \
+    || { note "FAIL: gh-pr.py doc-checkout left $(ls "${MAIN}/.claude/worktrees")"; fail=1; }
 
 # --- check-jsonl.py accepts both shapes and rejects malformed input ---------------
 JD="${SANDBOX}/jsonl"

@@ -340,16 +340,17 @@ candidate; the skills launch the other three by name.
 ## Bundled support files
 
 - `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
-  `adr-format.md` (only the rules the skills reference).
+  `adr-format.md`, `doc-worktree.md` (only the rules the skills reference).
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`,
   `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it),
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
   `fetch-diff.sh` / `del-tmp.sh`; from a linked worktree it also accepts the
   `.claude/tmp/` of another working tree of the same repository),
-  `worktree.sh` (creates and removes the `--worktree` worktree and the
-  worktree on a review document's branch), and `gh-pr.py` (resolves a pull
-  request, checks its head commit or a local branch holding its code out in a
-  worktree, and removes that worktree). The scripts require
+  `worktree.sh` (creates and removes the `--worktree` worktree), and `gh-pr.py`
+  (resolves a pull request and checks its head commit out in a worktree, finds
+  from a review document's header where its code is and checks it out in a
+  worktree when it is not checked out, and removes those worktrees). The
+  scripts require
   `python3` (3.9 or later) on the `PATH`; `gh-pr.py` also requires an
   authenticated GitHub CLI (`gh`), and `fetch-diff.sh --pr` requires Git 2.41
   or later. Skills invoke them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`;

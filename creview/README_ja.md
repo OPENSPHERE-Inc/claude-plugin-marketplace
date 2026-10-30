@@ -331,16 +331,17 @@ frontmatter の `name` / `description` を読み、指摘ごとに最適なも�
 ## 同梱サポートファイル
 
 - `rules/` — `comment.md`、`document.md`、`review.md`、`wontfix.md`、`sub-agent.md`、
-  `adr-format.md`（スキルが参照するルールのみ）。
+  `adr-format.md`、`doc-worktree.md`（スキルが参照するルールのみ）。
 - `scripts/` — `fetch-diff.sh`、`render-review.py`、`del-tmp.sh`、
   `check-jsonl.py`（サブエージェントが書き出した `.jsonl` の検証に使用）、
   `lib/scratch-guard.py`（`fetch-diff.sh` / `del-tmp.sh` が共有する
   `.claude/tmp/` 封じ込めチェック。リンクされたワークツリーからは、同じ
   リポジトリの別の作業ツリーの `.claude/tmp/` も受け付ける）、`worktree.sh`
-  （`--worktree` のワークツリーと、レビュードキュメントのブランチの
-  ワークツリーを作成・削除）、`gh-pr.py`（プルリクエストを解決し、その head
-  コミットまたはそのコードを持つローカルブランチをワークツリーにチェックアウトし、
-  そのワークツリーを削除）。これらのスクリプトは `PATH` 上の `python3`
+  （`--worktree` のワークツリーを作成・削除）、`gh-pr.py`（プルリクエストを解決して
+  その head コミットをワークツリーにチェックアウトし、レビュードキュメントの
+  ヘッダーからそのコードの場所を判断してチェックアウトされていなければ
+  ワークツリーにチェックアウトし、それらのワークツリーを削除）。これらの
+  スクリプトは `PATH` 上の `python3`
   （3.9 以降）を必要とします。`gh-pr.py` はさらに認証済みの GitHub CLI（`gh`）を、
   `fetch-diff.sh --pr` は Git 2.41 以降を必要とします。スキルは
   `${CLAUDE_PLUGIN_ROOT}/scripts/...` 経由で呼び出し、サブエージェント

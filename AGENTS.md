@@ -25,12 +25,13 @@ see **[CLAUDE.md](CLAUDE.md)**.
   `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader), and the
   tool-restricted `pr-description-reviewer.md` (`/creview:start`'s PR mode).
 - `creview/rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
-  `adr-format.md`, `agents-detection.md`, `build-format-detection.md` (rules referenced by
-  skills).
+  `adr-format.md`, `agents-detection.md`, `build-format-detection.md`, `doc-worktree.md`
+  (rules referenced by skills; `doc-worktree.md` is read by the `/creview:triage` /
+  `respond` / `resolve` leaders).
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `check-jsonl.py`,
   `worktree.sh`, `gh-pr.py` (pull request resolution and worktree checkout and removal for
-  `/creview:start`'s PR mode and for `/creview:triage` / `respond` / `resolve` on a pull
-  request's review document), `lib/scratch-guard.py`.
+  `/creview:start`'s PR mode, and `doc-checkout`: the review document header parsing and
+  worktree checkout for `/creview:triage` / `respond` / `resolve`), `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
 - `cprompt/skills/edit/SKILL.md` (+ `templates/`) — The `/cprompt:edit` skill.
 - `cprompt/rules/` — `prompt.md`, `document.md`. `cprompt/scripts/` — `worktree.sh`.

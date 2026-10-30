@@ -56,7 +56,7 @@ claude-plugin-marketplace/
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
 │   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md, pr-description-reviewer.md
-│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md
+│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md
 │   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, lib/scratch-guard.py
 │
 ├── cprompt/                      # Plugin: prompt authoring (active, English)
@@ -231,12 +231,12 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
                     format&build-verify ⇄ build-fix loop → compile → persist status
 /creview:resolve → analyze + verify Subs → compile → persist verification
-                    (triage / respond / resolve invoked directly: a doc whose Branch /
-                    PR bullet the working tree does not have checked out is worked on
-                    in a worktree — worktree.sh create on the branch, or gh-pr.py
-                    checkout-branch / checkout for a PR doc, with --trust exactly when
-                    the doc's Trust bullet is on; respond commits a PR doc's fixes to
-                    creview-pr-{number} and records it as the Branch bullet)
+                    (triage / respond / resolve invoked directly follow
+                    rules/doc-worktree.md: gh-pr.py doc-checkout reads the doc's PR /
+                    Branch / Trust bullets and, when that code is not checked out here,
+                    adds a worktree — a PR worktree with the agent files only when Trust
+                    is on; respond passes --fix-branch, committing a PR doc's fixes to
+                    creview-pr-{number} and recording it as the Branch bullet)
 /creview:rounds  → launches one review-leader Sub per phase per round (each Sub invokes
                     the phase's skill and runs it whole) + divergence gate after triage
                     (Round 2 on: detect → investigate → pause with the report) +
@@ -418,6 +418,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `{{target_dir}}` on the same basis: every launch passes `target_dir`.
   `rules/wontfix.md` carries `{{previous_round_doc_paths}}` on the same basis: every
   template that references it receives that launch variable.
+  `rules/doc-worktree.md` is opened with Read by the `/creview:triage` / `respond` /
+  `resolve` leaders, so it uses `{{plugin_root}}` as well, and those SKILLs name its
+  `plugin_root` variable without writing the `{{...}}` token.
 - **`template_id` must match.** The SKILL step's hard-coded UUID and the template's
   frontmatter `template_id` must be identical, or the leader will loop relaunching.
 - **src ↔ active parity is a contract.** Do not edit one side only. A structural

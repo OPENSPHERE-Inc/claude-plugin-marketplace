@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""gh-pr.py — resolve a GitHub pull request for a creview PR review and check it out.
+"""gh-pr.py — resolve a GitHub pull request for a creview PR review and check it out,
+and check out the code a creview review document names.
 
 Usage:
     python3 gh-pr.py fetch <pr_url> <out_dir>
-    python3 gh-pr.py checkout <pr_json> [--trust] [--branch <name>]
-    python3 gh-pr.py checkout-branch <pr_url> <branch> [--trust]
+    python3 gh-pr.py checkout <pr_json> [--trust]
+    python3 gh-pr.py doc-checkout <document> [--fix-branch]
     python3 gh-pr.py remove <worktree_path>
 
 fetch: resolves <pr_url> (https://<host>/<owner>/<repo>/pull/<number>) with gh,
@@ -31,20 +32,34 @@ JSON object with main_root and worktree_path. Without --trust, the checkout
 leaves out every file and directory named like one of AGENT_FILES, in any
 letter case and at any depth, and fails when the file system still resolves one
 of those names in a directory of the worktree.
-With --branch, the worktree is on local branch <name> at the PR head instead of
-a detached HEAD: a missing branch is created there, and an existing one is used
-only when it points at the PR head.
 A failed checkout removes the worktree it added.
 
-checkout-branch: like checkout, but checks out an existing local <branch>
-holding the PR's code, without gh; the worktree path takes the number in
-<pr_url>.
+doc-checkout: reads the header bullets of a review document (the lines before
+its first "## " heading): "- **PR:** <url> (head <sha>, base <sha>)",
+"- **Branch:** <branch>", and "- **Trust:** on|off" (off when absent). A
+malformed value is an error. It decides where the document's code is:
+  Branch bullet  in place when <branch> is checked out here, otherwise a
+                 worktree on that local branch: with a PR bullet, a PR worktree
+                 checked out like checkout, with the agent files only when Trust
+                 is on; without one, a plain worktree (creview-branch-<timestamp>)
+  PR bullet only in place when HEAD contains the head commit, otherwise a PR
+                 worktree at the head commit, which the open PR must still have;
+                 with --fix-branch, on local branch creview-pr-<number> (created
+                 there, or used when it points there)
+  neither        in place
+A branch checked out in another worktree is an error naming that worktree.
+With --fix-branch, a document with a PR bullet and no Branch bullet gets
+"- **Branch:** <branch>" after its PR bullet when the work is on a branch.
+It prints a JSON object: in_place, pr_worktree, trust, main_root and
+worktree_path (null in place), branch (the branch worked on, null on a detached
+HEAD), and merge_base (the PR bullet's, or null).
 
-remove: removes a worktree that checkout or checkout-branch added
-(<main_root>/.claude/worktrees/creview-pr-<number>-<timestamp>; any other path
-is an error), with git hooks and the configured filter drivers disabled, and its
-parent directory when left empty. A worktree with uncommitted changes is kept,
-and the exit status is 1.
+remove: removes a worktree that checkout or doc-checkout added
+(<main_root>/.claude/worktrees/creview-pr-<number>-<timestamp> or
+creview-branch-<timestamp>; any other path is an error), a PR worktree with git
+hooks and the configured filter drivers disabled, and its parent directory when
+left empty. A worktree with uncommitted changes is kept, and the exit status
+is 1.
 
 Exits 1 with an error message on stderr on any failure.
 """
@@ -73,8 +88,13 @@ SSH_SCHEMES = {"ssh", "git+ssh", "ssh+git"}
 SHA_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 # Scratch and worktree directories of the creview skills, not part of the review.
 SCRATCH_EXCLUDES = [":(top,exclude).claude/tmp", ":(top,exclude).claude/worktrees"]
-# The name of a worktree add_checkout adds under .claude/worktrees.
-WORKTREE_NAME_RE = re.compile(r"creview-pr-[0-9]+-[0-9]{8}-[0-9]{6}")
+# The names of the worktrees add_checkout and branch_worktree add under .claude/worktrees.
+PR_WORKTREE_RE = re.compile(r"creview-pr-[0-9]+-[0-9]{8}-[0-9]{6}")
+BRANCH_WORKTREE_RE = re.compile(r"creview-branch-[0-9]{8}-[0-9]{6}")
+HEADER_BULLET_RE = re.compile(r"- \*\*(PR|Branch|Trust):\*\* (.*)")
+PR_BULLET_RE = re.compile(r"(\S+) \(head (\S+), base (\S+)\)")
+# Characters a branch name in a review document header may hold, none special to a shell.
+BRANCH_NAME_RE = re.compile(r"[\w./+@-]+")
 # Names of the files and directories Claude Code, or another agent for AGENTS.md, loads
 # from a project on its own.
 AGENT_FILES = ("CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", ".mcp.json", ".claude")
@@ -302,7 +322,7 @@ def is_remote(host, owner, name):
     return False
 
 
-def cmd_fetch(pr_url, out_dir):
+def view_pr(pr_url, fields=""):
     m = PR_URL_RE.fullmatch(pr_url)
     if not m:
         raise Error(f"not a pull request URL: {pr_url}")
@@ -312,16 +332,18 @@ def cmd_fetch(pr_url, out_dir):
         raise Error(f"{repo} on {host} is not a remote of this repository")
     url = f"https://{host}/{repo}/pull/{number}"
 
-    pr = json.loads(run([
-        "gh", "pr", "view", url,
-        "--json", "number,state,headRefOid,baseRefOid,headRepository,headRepositoryOwner,"
-        "title,body,statusCheckRollup",
-    ]))
+    pr = json.loads(run(["gh", "pr", "view", url, "--json", "number,state,headRefOid" + fields]))
     got = pr.get("number")
     if not isinstance(got, int) or isinstance(got, bool) or got != number:
         raise Error(f"gh did not return PR #{number}")
     if pr.get("state") != "OPEN":
         raise Error(f"PR #{number} is not open")
+    return host, repo, number, url, pr
+
+
+def cmd_fetch(pr_url, out_dir):
+    host, repo, number, url, pr = view_pr(
+        pr_url, ",baseRefOid,headRepository,headRepositoryOwner,title,body,statusCheckRollup")
     head_sha = sha(pr["headRefOid"], "head commit")
     base_sha = sha(pr["baseRefOid"], "base commit")
     # A check's detailsUrl can name any repository; job logs are read only from the PR's own.
@@ -498,19 +520,6 @@ def branch_tip(branch, cwd=None):
                cwd=cwd, ok=(0, 1)).strip()
 
 
-def checkout_options(options):
-    trust, branch, rest = False, None, list(options)
-    while rest:
-        option = rest.pop(0)
-        if option == "--trust" and not trust:
-            trust = True
-        elif option == "--branch" and branch is None and rest:
-            branch = rest.pop(0)
-        else:
-            raise Error(f"unknown checkout option: {' '.join(options)}")
-    return trust, branch
-
-
 def attach_branch(path, branch, head_sha, env):
     # The worktree is at head_sha, so checking out a branch there changes no file, and git
     # refuses a branch checked out in another worktree.
@@ -552,19 +561,9 @@ def add_checkout(number, trust, populate, branch=None):
     return {"main_root": main_root, "worktree_path": path}
 
 
-def cmd_checkout(pr_json, *options):
-    trust, branch = checkout_options(options)
-    with open(pr_json, encoding="utf-8") as f:
-        pr = json.load(f)
-    head_sha = sha(pr["head_sha"], "head commit")
-    number = pr["number"]
-    if not isinstance(number, int) or not PR_URL_RE.fullmatch(pr["url"]):
-        raise Error(f"malformed {pr_json}")
-    if branch is not None:
-        branch = valid_branch(branch)
-
+def checkout_pr(url, number, head_sha, trust, branch=None):
     def populate(path, env):
-        run(["gh", "pr", "checkout", pr["url"], "--detach"], cwd=path, env=env)
+        run(["gh", "pr", "checkout", url, "--detach"], cwd=path, env=env)
         head = run(["git", "rev-parse", "HEAD"], cwd=path).strip()
         if head != head_sha:
             raise Error(
@@ -577,41 +576,183 @@ def cmd_checkout(pr_json, *options):
     return add_checkout(number, trust, populate)
 
 
-def cmd_checkout_branch(pr_url, branch, *options):
-    if options not in ((), ("--trust",)):
-        raise Error(f"unknown checkout-branch option: {' '.join(options)}")
-    m = PR_URL_RE.fullmatch(pr_url)
-    if not m:
-        raise Error(f"not a pull request URL: {pr_url}")
-    branch = valid_branch(branch)
-    if not branch_tip(branch):
-        raise Error(f"no local branch {branch}")
-
+def checkout_branch(number, branch, trust):
     def populate(path, env):
         # read-tree fills the empty index and the files the sparse patterns keep, and runs
         # no hook.
         run(["git", "read-tree", "-mu", "HEAD"], cwd=path, env=env)
 
-    return add_checkout(int(m.group(4)), bool(options), populate, branch=branch)
+    return add_checkout(number, trust, populate, branch=branch)
+
+
+def branch_worktree(branch):
+    main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
+    path = f"{main_root}/.claude/worktrees/creview-branch-{time.strftime('%Y%m%d-%H%M%S')}"
+    if os.path.lexists(path):
+        raise Error(f"worktree path already exists: {path}")
+    try:
+        run(["git", "worktree", "add", "--quiet", "--", path, branch])
+    except Error:
+        remove_empty_parent(path)
+        raise
+    return {"main_root": main_root, "worktree_path": path}
+
+
+def cmd_checkout(pr_json, *options):
+    if options not in ((), ("--trust",)):
+        raise Error(f"unknown checkout option: {' '.join(options)}")
+    with open(pr_json, encoding="utf-8") as f:
+        pr = json.load(f)
+    head_sha = sha(pr["head_sha"], "head commit")
+    number = pr["number"]
+    if not isinstance(number, int) or not PR_URL_RE.fullmatch(pr["url"]):
+        raise Error(f"malformed {pr_json}")
+    return checkout_pr(pr["url"], number, head_sha, bool(options))
+
+
+def malformed(label, value):
+    return Error(f"malformed review document header: {label} bullet {value!r}")
+
+
+def parse_header(document):
+    with open(document, encoding="utf-8", newline="") as f:
+        lines = f.readlines()
+    found = {}
+    for i, line in enumerate(lines):
+        if line.startswith("## "):
+            break
+        m = HEADER_BULLET_RE.fullmatch(line.rstrip())
+        if m:
+            if m.group(1) in found:
+                raise Error(f"malformed review document header: more than one {m.group(1)} bullet")
+            found[m.group(1)] = (i, m.group(2))
+    header = {"pr": None, "branch": None, "trust": "off"}
+    if "PR" in found:
+        i, value = found["PR"]
+        m = PR_BULLET_RE.fullmatch(value)
+        url = m and PR_URL_RE.fullmatch(m.group(1))
+        if not url or url.end(4) != len(m.group(1)) \
+                or not all(SHA_RE.fullmatch(s) for s in m.group(2, 3)):
+            raise malformed("PR", value)
+        header["pr"] = {"url": m.group(1), "number": int(url.group(4)), "head_sha": m.group(2),
+                        "merge_base": m.group(3), "line": i}
+    if "Branch" in found:
+        value = found["Branch"][1]
+        try:
+            ok = BRANCH_NAME_RE.fullmatch(value) and valid_branch(value) == value
+        except Error:
+            ok = False
+        if not ok:
+            raise malformed("Branch", value)
+        header["branch"] = value
+    if "Trust" in found:
+        value = found["Trust"][1]
+        if value not in ("on", "off"):
+            raise malformed("Trust", value)
+        header["trust"] = value
+    return header
+
+
+def record_branch(document, line, branch):
+    with open(document, encoding="utf-8", newline="") as f:
+        lines = f.readlines()
+    eol = lines[line][len(lines[line].rstrip("\r\n")):]
+    if not eol:
+        eol = "\n"
+        lines[line] += eol
+    lines.insert(line + 1, f"- **Branch:** {branch}{eol}")
+    with open(document, "w", encoding="utf-8", newline="") as f:
+        f.writelines(lines)
+
+
+def checked_out_at(branch):
+    path = None
+    for line in run(["git", "worktree", "list", "--porcelain"]).splitlines():
+        if line.startswith("worktree "):
+            path = line[len("worktree "):]
+        elif line == f"branch refs/heads/{branch}":
+            return path
+    return None
+
+
+def check_free(branch):
+    busy = checked_out_at(branch)
+    if busy:
+        raise Error(
+            f"branch {branch} is checked out in the worktree {busy}; run the skill in a session "
+            "started at that worktree's root"
+        )
+
+
+def contains(commit):
+    try:
+        run(["git", "merge-base", "--is-ancestor", commit, "HEAD"])
+    except Error:
+        return False
+    return True
+
+
+def cmd_doc_checkout(document, *options):
+    if options not in ((), ("--fix-branch",)):
+        raise Error(f"unknown doc-checkout option: {' '.join(options)}")
+    header = parse_header(document)
+    pr, branch = header["pr"], header["branch"]
+    trust = header["trust"] == "on"
+    current = run(["git", "branch", "--show-current"]).strip() or None
+    result = {
+        "in_place": True, "pr_worktree": False, "trust": header["trust"], "main_root": None,
+        "worktree_path": None, "branch": current, "merge_base": pr and pr["merge_base"],
+    }
+    if branch is not None:
+        if branch != current:
+            if not branch_tip(branch):
+                raise Error(f"no local branch {branch}")
+            check_free(branch)
+            added = checkout_branch(pr["number"], branch, trust) if pr else branch_worktree(branch)
+            result.update(added, in_place=False, pr_worktree=pr is not None, branch=branch)
+    elif pr is not None:
+        if not contains(pr["head_sha"]):
+            _, _, number, url, view = view_pr(pr["url"])
+            head = sha(view["headRefOid"], "head commit")
+            if head != pr["head_sha"]:
+                raise Error(
+                    f"PR #{number} changed after the review (reviewed at {pr['head_sha']}, now "
+                    f"at {head}); review it again with /creview:start"
+                )
+            name = f"creview-pr-{number}" if options else None
+            if name:
+                check_free(name)
+            added = checkout_pr(url, number, head, trust, name)
+            result.update(added, in_place=False, pr_worktree=True, branch=name)
+        if options and result["branch"]:
+            record_branch(document, pr["line"], result["branch"])
+    return result
 
 
 def cmd_remove(path):
     main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
     parent, _, name = path.rpartition("/")
-    if parent != f"{main_root}/.claude/worktrees" or not WORKTREE_NAME_RE.fullmatch(name):
-        raise Error(f"not a worktree that checkout adds: {path}")
-    with tempfile.TemporaryDirectory() as no_hooks:
-        env = hook_free_env(no_hooks)
-        # git checks that the worktree is clean with a git status that inherits the overrides.
-        run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "remove", "--", path], env=env)
+    if parent != f"{main_root}/.claude/worktrees":
+        name = ""
+    if BRANCH_WORKTREE_RE.fullmatch(name):
+        run(["git", "worktree", "remove", "--", path])
+    elif PR_WORKTREE_RE.fullmatch(name):
+        with tempfile.TemporaryDirectory() as no_hooks:
+            env = hook_free_env(no_hooks)
+            # git checks that the worktree is clean with a git status that inherits the
+            # overrides.
+            run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "remove", "--", path],
+                env=env)
+    else:
+        raise Error(f"not a worktree that checkout or doc-checkout adds: {path}")
     remove_empty_parent(path)
     return {"worktree_path": path}
 
 
 # Each command with the least and the most arguments it takes.
 COMMANDS = {
-    "fetch": (cmd_fetch, 2, 2), "checkout": (cmd_checkout, 1, 4),
-    "checkout-branch": (cmd_checkout_branch, 2, 3), "remove": (cmd_remove, 1, 1),
+    "fetch": (cmd_fetch, 2, 2), "checkout": (cmd_checkout, 1, 2),
+    "doc-checkout": (cmd_doc_checkout, 1, 2), "remove": (cmd_remove, 1, 1),
 }
 
 
