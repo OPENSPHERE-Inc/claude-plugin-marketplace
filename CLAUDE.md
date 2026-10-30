@@ -118,8 +118,8 @@ When changing a plugin:
 - **Path tokens** (see Important Warnings for the invariant):
   - SKILL.md bodies / `allowed-tools` and bundled agent definitions use
     `${CLAUDE_PLUGIN_ROOT}/...`.
-  - `templates/*.md` and bundled rules (read by sub-agents) use the `{{plugin_root}}/...`
-    launch variable.
+  - `templates/*.md` and bundled rules (opened with Read by a sub-agent, or by a leader for
+    `rules/doc-worktree.md`) use the `{{plugin_root}}/...` launch variable.
 - **Agent-dispatch generalization**: skills do **not** bundle specialist reviewers. The
   single-best-match resolution mechanics (enumerate agents recursively `**/*.md` across
   **destination project** → **user** → **plugin bundle** scopes, higher-priority scope wins
@@ -235,8 +235,9 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     rules/doc-worktree.md: gh-pr.py doc-checkout reads the doc's PR /
                     Branch / Trust bullets and, when that code is not checked out here,
                     adds a worktree — a PR worktree with the agent files only when Trust
-                    is on; respond passes --fix-branch, committing a PR doc's fixes to
-                    creview-pr-{number} and recording it as the Branch bullet)
+                    is on; respond passes --fix-branch, so a PR doc with no Branch
+                    bullet records the branch its fixes go to: creview-pr-{number}
+                    when HEAD lacks the PR head, else the current branch, if any)
 /creview:rounds  → launches one review-leader Sub per phase per round (each Sub invokes
                     the phase's skill and runs it whole) + divergence gate after triage
                     (Round 2 on: detect → investigate → pause with the report) +

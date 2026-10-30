@@ -27,11 +27,12 @@ An in-place working tree with uncommitted changes to tracked files (outside
 checkout: adds a detached worktree under .claude/worktrees/ of the current
 working tree, checks the PR head out in it with git hooks and the configured
 filter drivers disabled, Git LFS smudging skipped, and symbolic links checked
-out as plain files, confirms its HEAD is the head fetch recorded, and prints a
-JSON object with main_root and worktree_path. Without --trust, the checkout
-leaves out every file and directory named like one of AGENT_FILES, in any
-letter case and at any depth, and fails when the file system still resolves one
-of those names in a directory of the worktree.
+out as plain files marked skip-worktree (so that git under core.symlinks=true
+sees no type change in them), confirms its HEAD is the head fetch recorded, and
+prints a JSON object with main_root and worktree_path. Without --trust, the
+checkout leaves out every file and directory named like one of AGENT_FILES, in
+any letter case and at any depth, and fails when the file system still resolves
+one of those names in a directory of the worktree.
 A failed checkout removes the worktree it added.
 
 doc-checkout: reads the header bullets of a review document (the lines before
@@ -47,9 +48,13 @@ malformed value is an error. It decides where the document's code is:
                  with --fix-branch, on local branch creview-pr-<number> (created
                  there, or used when it points there)
   neither        in place
-A branch checked out in another worktree is an error naming that worktree.
+A branch checked out in another worktree is an error naming that worktree,
+which for a worktree checkout or doc-checkout added says to remove it first.
+doc-checkout fails when the current working tree is a PR worktree that checkout
+or doc-checkout added.
 With --fix-branch, a document with a PR bullet and no Branch bullet gets
-"- **Branch:** <branch>" after its PR bullet when the work is on a branch.
+"- **Branch:** <branch>" after its PR bullet when the work is on a branch whose
+name a Branch bullet can hold (letters, digits, and _ . / + @ -).
 It prints a JSON object: in_place, pr_worktree, trust, main_root and
 worktree_path (null in place), branch (the branch worked on, null on a detached
 HEAD), and merge_base (the PR bullet's, or null).
@@ -130,12 +135,12 @@ def executable(name):
     return None
 
 
-def run(cmd, cwd=None, env=None, ok=(0,)):
+def run(cmd, cwd=None, env=None, ok=(0,), input=None):
     program = executable(cmd[0])
     if program is None:
         raise Error(f"{cmd[0]} not found on PATH")
     proc = subprocess.run(
-        [program, *cmd[1:]], cwd=cwd, env=env, capture_output=True,
+        [program, *cmd[1:]], cwd=cwd, env=env, input=input, capture_output=True,
         text=True, encoding="utf-8", errors="replace",
     )
     if proc.returncode not in ok:
@@ -467,6 +472,18 @@ def leave_out_agent_files(path, env):
                         env)
 
 
+def skip_worktree_links(path, env):
+    # Under core.symlinks=true, the default outside Windows, git status, diff, add, and commit
+    # take a symbolic link checked out as a plain file for a type change; the skip-worktree
+    # bit keeps them from seeing one. Set it without core.sparseCheckout, under which git
+    # clears the bit from the files present in the worktree.
+    entries = run(["git", "ls-files", "--stage", "-z"], cwd=path, env=env).split("\0")
+    links = [entry.partition("\t")[2] for entry in entries if entry.startswith("120000 ")]
+    if links:
+        run(["git", "update-index", "--skip-worktree", "-z", "--stdin"], cwd=path, env=env,
+            input="".join(f"{link}\0" for link in links))
+
+
 def reraise(e):
     raise e
 
@@ -515,6 +532,13 @@ def valid_branch(name):
     raise Error(f"invalid branch name: {name!r}")
 
 
+def header_branch(name):
+    try:
+        return bool(BRANCH_NAME_RE.fullmatch(name)) and valid_branch(name) == name
+    except Error:
+        return False
+
+
 def branch_tip(branch, cwd=None):
     return run(["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"],
                cwd=cwd, ok=(0, 1)).strip()
@@ -526,8 +550,9 @@ def attach_branch(path, branch, head_sha, env):
     tip = branch_tip(branch, cwd=path)
     if tip and tip != head_sha:
         raise Error(
-            f"branch {branch} already exists at {tip}, not at the PR head {head_sha}; "
-            "delete or rename it"
+            f"branch {branch} already exists at {tip}, not at the PR head {head_sha}, and may "
+            "hold fixes an earlier /creview:respond committed; rename it "
+            f"(git branch -m {branch} <new-name>) to keep them, then run the skill again"
         )
     run(["git", "checkout", "--quiet", *([] if tip else ["-b"]), branch], cwd=path, env=env)
 
@@ -541,7 +566,7 @@ def add_checkout(number, trust, populate, branch=None):
     target = ["--", path, branch] if branch else ["--detach", "--", path, "HEAD"]
 
     with tempfile.TemporaryDirectory() as no_hooks:
-        env = hook_free_env(no_hooks)
+        base = env = hook_free_env(no_hooks)
         try:
             run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "add", "--quiet",
                  "--no-checkout", *target], env=env)
@@ -553,6 +578,7 @@ def add_checkout(number, trust, populate, branch=None):
             if not trust:
                 env = leave_out_agent_files(path, env)
             populate(path, env)
+            skip_worktree_links(path, base)
             if not trust:
                 check_agent_files_left_out(path, number)
         except BaseException as e:
@@ -592,7 +618,10 @@ def branch_worktree(branch):
         raise Error(f"worktree path already exists: {path}")
     try:
         run(["git", "worktree", "add", "--quiet", "--", path, branch])
-    except Error:
+    except Error as e:
+        # git keeps a worktree whose post-checkout hook fails.
+        if os.path.lexists(path):
+            raise Error(str(e) + remove_worktree(path)) from None
         remove_empty_parent(path)
         raise
     return {"main_root": main_root, "worktree_path": path}
@@ -610,8 +639,9 @@ def cmd_checkout(pr_json, *options):
     return checkout_pr(pr["url"], number, head_sha, bool(options))
 
 
-def malformed(label, value):
-    return Error(f"malformed review document header: {label} bullet {value!r}")
+def malformed(label, value, note=None):
+    return Error(f"malformed review document header: {label} bullet {value!r}"
+                 + (f"; {note}" if note else ""))
 
 
 def parse_header(document):
@@ -638,12 +668,9 @@ def parse_header(document):
                         "merge_base": m.group(3), "line": i}
     if "Branch" in found:
         value = found["Branch"][1]
-        try:
-            ok = BRANCH_NAME_RE.fullmatch(value) and valid_branch(value) == value
-        except Error:
-            ok = False
-        if not ok:
-            raise malformed("Branch", value)
+        if not header_branch(value):
+            raise malformed("Branch", value, "a Branch bullet names a branch of letters, digits, "
+                            "and _ . / + @ - only")
         header["branch"] = value
     if "Trust" in found:
         value = found["Trust"][1]
@@ -675,8 +702,19 @@ def checked_out_at(branch):
     return None
 
 
+def added_worktree(path, *names):
+    parent, _, name = path.rpartition("/")
+    return parent.endswith("/.claude/worktrees") and any(n.fullmatch(name) for n in names)
+
+
 def check_free(branch):
     busy = checked_out_at(branch)
+    if busy and added_worktree(busy, PR_WORKTREE_RE, BRANCH_WORKTREE_RE):
+        raise Error(
+            f"branch {branch} is checked out in the worktree {busy}, which a creview skill kept "
+            "for its uncommitted changes; review them, commit or discard them, and remove it with "
+            f"python3 {os.path.abspath(__file__)} remove {busy} before running the skill again"
+        )
     if busy:
         raise Error(
             f"branch {branch} is checked out in the worktree {busy}; run the skill in a session "
@@ -695,6 +733,12 @@ def contains(commit):
 def cmd_doc_checkout(document, *options):
     if options not in ((), ("--fix-branch",)):
         raise Error(f"unknown doc-checkout option: {' '.join(options)}")
+    top = run(["git", "rev-parse", "--show-toplevel"]).strip()
+    if added_worktree(top, PR_WORKTREE_RE):
+        raise Error(
+            f"this session is in {top}, a worktree holding a pull request's code; run the skill "
+            "in a session started at the main working tree"
+        )
     header = parse_header(document)
     pr, branch = header["pr"], header["branch"]
     trust = header["trust"] == "on"
@@ -724,8 +768,14 @@ def cmd_doc_checkout(document, *options):
                 check_free(name)
             added = checkout_pr(url, number, head, trust, name)
             result.update(added, in_place=False, pr_worktree=True, branch=name)
-        if options and result["branch"]:
-            record_branch(document, pr["line"], result["branch"])
+        if options and result["branch"] and header_branch(result["branch"]):
+            try:
+                record_branch(document, pr["line"], result["branch"])
+            except OSError as e:
+                if result["in_place"]:
+                    raise
+                raise Error(f"the review document could not be updated ({e})"
+                            + remove_worktree(result["worktree_path"])) from None
     return result
 
 

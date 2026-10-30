@@ -24,6 +24,13 @@ first; review the persisted decisions in the document; then run
 the split itself is the review gate. `/creview:respond` keeps the `--commit`
 option.
 
+The review document records the branch the review ran on in a
+`- **Branch:** {branch}` header bullet, for a review of local changes as well.
+Run on their own while that branch is not checked out, `/creview:triage`,
+`/creview:respond`, and `/creview:resolve` work in a temporary worktree on it,
+where `/creview:respond` commits its fixes to that branch. The header bullets
+are described in full after the pull request review below.
+
 `/creview:start` takes an `--adversarial` option (default OFF) that runs the
 reviewers in adversarial mode, where every Critical / Major finding must state
 a concrete failure scenario; `/creview:rounds` accepts the same flag and passes
@@ -147,7 +154,10 @@ directory out.
 The review document records the pull request in a header bullet of the form
 `- **PR:** {url} (head {head_sha}, base {merge_base})`, and the branch the
 review ran on in a `- **Branch:** {branch}` bullet. A worktree review runs on a
-detached HEAD and records no branch. A `- **Trust:** on` or `off` bullet
+detached HEAD and records no branch. Nor does a review of a commit range that
+ends at a commit other than HEAD. A branch whose name has a character other
+than a letter, a digit, `_`, `.`, `/`, `+`, `@`, or `-` is never recorded.
+A `- **Trust:** on` or `off` bullet
 records whether the reviewed tree had the agent files: `on` for an in-place
 review or a worktree review with `--trust`, `off` for a worktree review without
 it. Run on their own, `/creview:triage`, `/creview:respond`, and
@@ -156,10 +166,14 @@ it. Run on their own, `/creview:triage`, `/creview:respond`, and
 - With a Branch bullet, they work in place when that branch is checked out,
   and otherwise in a temporary worktree on that local branch under
   `.claude/worktrees/`.
+  - Without a local branch of that name, for example after the branch was
+    deleted or for a review run in another clone, they stop with an error;
+    create the branch again, such as from its remote branch, and rerun the
+    skill.
 - With a PR bullet only, they work in place when HEAD contains the head
   commit, and otherwise in a temporary worktree at the head commit.
-  - The pull request must still be open with that head commit; review an
-    updated pull request again.
+  - For that worktree, the pull request must still be open with that head
+    commit, which they check with `gh`; review an updated pull request again.
 - With neither, as for a review on a detached HEAD, they work on the current
   working tree.
 
@@ -172,9 +186,13 @@ document without one counts as `off`. To work with the agent files, review the
 pull request again with `--trust`. Their sub-agents are told what a worktree
 review's sub-agents are told, except that `/creview:respond`, which fixes,
 builds, and tests the code, is not told to leave the files unrun and git
-unused. It runs the pull request's code as it does in place: its build scripts
-and tests, and, when it commits, the git hooks a relative `core.hooksPath`
-takes from the pull request's tree.
+unused. It runs the pull request's code as it does in place, in the git and
+build ways listed below other than the checkout itself: its own git commands,
+such as `git status` and `git commit`, run the hooks, filter drivers, and
+`core.fsmonitor` listed there, and its build and tests run the pull request's
+build scripts and tests. It takes the format, build, and test commands from the
+main working tree's `build-format.md`, `CLAUDE.md`, or `README.md`, not from
+the pull request's files.
 
 In a worktree, `/creview:respond` turns `--commit` on. For a document with a
 PR bullet only, it commits to a local branch `creview-pr-{number}`, which it
@@ -182,16 +200,27 @@ creates at the head commit or uses when the branch already points there, and
 it records that branch in a Branch bullet, so later runs work on the fixes.
 Pushing the branch to the pull request is left to you. Run in place on a
 branch for such a document, it records that branch the same way. With Trust
-`off`, a finding whose fix needs a left-out agent file stays unfixed.
+`off`, a finding whose fix needs a left-out agent file stays unfixed, and the
+summary lists it with the reason.
 
 At the end the worktree is removed and its branch kept; a worktree with
-uncommitted changes is kept and its path reported. The review document, the
+uncommitted changes is kept and its path reported. Like the
+`/creview:rounds --worktree` worktree described below, the worktree is a fresh
+checkout without gitignored dependencies, virtual environments, build
+directories, `.env`, or the contents of submodules, so `/creview:respond`'s
+build and tests must pass without them. Git also refuses to remove a
+worktree in which submodules were initialized, so such a worktree is kept and
+reported as well. The review document, the
 working directory, and the project's `.claude/agents/` and `.claude/rules/`
 stay in the main working tree. A branch checked out in another worktree, such
 as one that `/creview:rounds --worktree` kept, cannot be checked out again:
-start a session at that worktree's root and run the skill there. Run by
-`/creview:rounds`, the three skills create no worktree and work where the
-round works.
+start a session at that worktree's root and run the skill there. A worktree
+under `.claude/worktrees/` that one of the three skills kept for its
+uncommitted changes is the exception: commit or discard its changes, remove it
+with the `gh-pr.py remove` command the error names, and run the skill again.
+The three skills refuse to run in a session started in a pull request worktree
+that creview added. Run by `/creview:rounds`, the three skills create no worktree and
+work where the round works.
 
 A checkout in your working tree has none of a worktree review's protections,
 and the pull request's code can run, for example in these ways:
