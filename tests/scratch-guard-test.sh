@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # scratch-guard-test.sh — self-test for scripts/lib/scratch-guard.py, its consumers, worktree.sh,
-# gh-pr.py's helpers and sparse checkout, and gh-pr.py remove's path check.
+# gh-pr.py's helpers and sparse checkout, gh-pr.py checkout-branch, and gh-pr.py remove's path
+# check.
 # Usage: bash tests/scratch-guard-test.sh
 # Prints one FAIL line per broken case and exits non-zero; exits 0 when all pass.
 
@@ -114,6 +115,18 @@ for url, run_id in ((job, "123"), ("https://example.com/x", None), (None, None))
 
 expect("any_case .mcp.json", g.any_case(".mcp.json"), ".[mM][cC][pP].[jJ][sS][oO][nN]")
 
+for name in ("-x", "a..b", "", "bad name"):
+    expect_error(f"valid_branch {name!r}", lambda name=name: g.valid_branch(name),
+                 "invalid branch name")
+expect("valid_branch creview-pr-12", g.valid_branch("creview-pr-12"), "creview-pr-12")
+for opts, want in (((), (False, None)), (("--trust",), (True, None)),
+                   (("--branch", "b", "--trust"), (True, "b")),
+                   (("--trust", "--branch", "b"), (True, "b"))):
+    expect(f"checkout_options {opts}", g.checkout_options(opts), want)
+for opts in (("--branch",), ("--trust", "--trust"), ("--branch", "a", "--branch", "b"), ("-t",)):
+    expect_error(f"checkout_options {opts}", lambda opts=opts: g.checkout_options(opts),
+                 "unknown checkout option")
+
 # The sparse checkout cmd_checkout runs through gh, run here with git checkout.
 repo, wt = os.path.join(sys.argv[2], "sparse"), os.path.join(sys.argv[2], "sparse-wt")
 agent_paths = ["CLAUDE.md", "sub/claude.MD", "sub/.Claude/x.md", "AGENTS.md", ".mcp.json",
@@ -144,12 +157,36 @@ else:
     # Under core.ignorecase=false the sparse patterns match case-sensitively, as on Linux.
     checkout = ("-c", "core.ignorecase=false", "checkout", "-q", "--detach", "tip")
     git("worktree", "add", "-q", "--no-checkout", "--detach", wt, base)
-    git(*checkout, cwd=wt, env=g.leave_out_agent_files(wt, os.environ))
+    sparse_env = g.leave_out_agent_files(wt, os.environ)
+    git(*checkout, cwd=wt, env=sparse_env)
     expect("sparse checkout keeps sub/notes.txt",
            os.path.isfile(os.path.join(wt, "sub", "notes.txt")), True)
     expect("sparse checkout leaves out agent files", g.agent_file_left(wt), None)
     for p in agent_paths:
         expect(f"sparse checkout leaves out {p}", os.path.lexists(os.path.join(wt, p)), False)
+
+    def current(path):
+        return subprocess.run(["git", "branch", "--show-current"], cwd=path,
+                              capture_output=True, text=True).stdout.strip()
+
+    tip = subprocess.run(["git", "rev-parse", "tip"], cwd=repo, capture_output=True,
+                         text=True).stdout.strip()
+    g.attach_branch(wt, "fix", tip, sparse_env)
+    expect("attach_branch creates the branch", current(wt), "fix")
+    expect("attach_branch keeps agent files left out", g.agent_file_left(wt), None)
+    other = os.path.join(sys.argv[2], "sparse-other")
+    git("worktree", "add", "-q", "--detach", other, "tip")
+    git("branch", "stale", base)
+    expect_error("attach_branch on a branch at another commit",
+                 lambda: g.attach_branch(other, "stale", tip, os.environ), "stale",
+                 "already exists")
+    expect_error("attach_branch on a branch checked out elsewhere",
+                 lambda: g.attach_branch(other, "fix", tip, os.environ), "fix")
+    expect("attach_branch failures leave HEAD detached", current(other), "")
+    git("branch", "fresh", "tip")
+    g.attach_branch(other, "fresh", tip, os.environ)
+    expect("attach_branch reuses a branch at the PR head", current(other), "fresh")
+    git("worktree", "remove", "--force", other)
     with open(os.path.join(wt, "sub", "CLAUDE.md"), "w"):
         pass
     expect("agent_file_left sub/CLAUDE.md", g.agent_file_left(wt), "sub/CLAUDE.md")
@@ -203,10 +240,17 @@ for opt in --trusted -t; do
     [[ "${out}" == *"unknown checkout option"* ]] \
         || { note "FAIL: gh-pr.py checkout ${opt} printed '${out}'"; fail=1; }
 done
-out="$(python3 "${GHPR}" checkout a b c 2>&1)"; rc=$?
-check "gh-pr.py checkout with three arguments" 1 "${rc}"
+out="$(python3 "${GHPR}" checkout a b c d e 2>&1)"; rc=$?
+check "gh-pr.py checkout with five arguments" 1 "${rc}"
 [[ "${out}" == *"Usage:"* ]] \
-    || { note "FAIL: gh-pr.py checkout with three arguments printed '${out}'"; fail=1; }
+    || { note "FAIL: gh-pr.py checkout with five arguments printed '${out}'"; fail=1; }
+for args in "a" "a b c d"; do
+    # shellcheck disable=SC2086
+    out="$(python3 "${GHPR}" checkout-branch ${args} 2>&1)"; rc=$?
+    check "gh-pr.py checkout-branch with arguments '${args}'" 1 "${rc}"
+    [[ "${out}" == *"Usage:"* ]] \
+        || { note "FAIL: gh-pr.py checkout-branch ${args} printed '${out}'"; fail=1; }
+done
 mkdir -p "${SANDBOX}/proj/.claude/tmp/sub" "${SANDBOX}/outside"
 : > "${SANDBOX}/proj/.claude/tmp/sub/file.txt"
 : > "${SANDBOX}/outside/victim.txt"
@@ -593,6 +637,61 @@ rc=0; bash "${WT}" remove "${WT_PATH}" >/dev/null 2>&1 || rc=$?
 check "worktree remove after reuse" 0 "${rc}"
 rc=0; bash "${WT}" remove "${MAIN}" >/dev/null 2>&1 || rc=$?
 [[ "${rc}" -ne 0 ]] || { note "FAIL: worktree remove accepted the main worktree"; fail=1; }
+
+# --- gh-pr.py checkout-branch ------------------------------------------------------
+PR_URL="https://github.com/o/r/pull/3"
+for case in "https://example.com/x feat/wt|not a pull request URL" \
+    "${PR_URL} a..b|invalid branch name" "${PR_URL} no-such|no local branch" \
+    "${PR_URL} feat/wt --trusted|unknown checkout-branch option"; do
+    # shellcheck disable=SC2086
+    out="$(python3 "${GHPR}" checkout-branch ${case%%|*} 2>&1)"; rc=$?
+    check "gh-pr.py checkout-branch ${case%%|*}" 1 "${rc}"
+    [[ "${out}" == *"${case#*|}"* ]] \
+        || { note "FAIL: gh-pr.py checkout-branch ${case%%|*} printed '${out}'"; fail=1; }
+done
+PR_SRC="${SANDBOX}/pr-src"
+git worktree add -q -b pr-src "${PR_SRC}" >/dev/null 2>&1 \
+    && mkdir -p "${PR_SRC}/sub" && echo src > "${PR_SRC}/sub/src.txt" \
+    && echo agent > "${PR_SRC}/sub/CLAUDE.md" \
+    && git -C "${PR_SRC}" add -- sub 2>/dev/null \
+    && git -C "${PR_SRC}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
+        commit -qm pr \
+    && git worktree remove -- "${PR_SRC}" \
+    || { note "FAIL: gh-pr.py checkout-branch repository setup"; fail=1; }
+worktree_of() { python3 -c 'import json, sys; print(json.load(sys.stdin)["worktree_path"])'; }
+if [[ "$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=t.k GIT_CONFIG_VALUE_0=v \
+    git config --get t.k 2>/dev/null)" == v ]]; then
+    for trust in "" --trust; do
+        out="$(python3 "${GHPR}" checkout-branch "${PR_URL}" pr-src ${trust} 2>/dev/null)"; rc=$?
+        check "gh-pr.py checkout-branch ${trust:-without --trust}" 0 "${rc}"
+        BR_WT="$(printf '%s' "${out}" | worktree_of 2>/dev/null)"
+        [[ "${BR_WT}" == "${MAIN}/.claude/worktrees/creview-pr-3-"* ]] \
+            || { note "FAIL: gh-pr.py checkout-branch printed '${out}'"; fail=1; continue; }
+        [[ "$(git -C "${BR_WT}" branch --show-current)" == pr-src \
+            && -f "${BR_WT}/sub/src.txt" ]] \
+            || { note "FAIL: gh-pr.py checkout-branch did not check out pr-src"; fail=1; }
+        if [[ -z "${trust}" ]]; then
+            [[ ! -e "${BR_WT}/sub/CLAUDE.md" ]] \
+                || { note "FAIL: gh-pr.py checkout-branch kept sub/CLAUDE.md"; fail=1; }
+        else
+            [[ -f "${BR_WT}/sub/CLAUDE.md" ]] \
+                || { note "FAIL: gh-pr.py checkout-branch --trust left out sub/CLAUDE.md"; fail=1; }
+        fi
+        [[ -z "$(git -C "${BR_WT}" status --porcelain)" ]] \
+            || { note "FAIL: gh-pr.py checkout-branch left the worktree dirty"; fail=1; }
+        rc=0; python3 "${GHPR}" remove "${BR_WT}" >/dev/null 2>&1 || rc=$?
+        check "gh-pr.py remove a checkout-branch worktree" 0 "${rc}"
+    done
+    git worktree add -q "${PR_SRC}" pr-src >/dev/null 2>&1 \
+        || { note "FAIL: git worktree add for the busy-branch case"; fail=1; }
+    rc=0; python3 "${GHPR}" checkout-branch "${PR_URL}" pr-src >/dev/null 2>&1 || rc=$?
+    check "gh-pr.py checkout-branch on a branch checked out elsewhere" 1 "${rc}"
+    git worktree remove -- "${PR_SRC}" >/dev/null 2>&1
+    [[ ! -e "${MAIN}/.claude/worktrees" ]] \
+        || { note "FAIL: gh-pr.py checkout-branch left $(ls "${MAIN}/.claude/worktrees")"; fail=1; }
+else
+    note "SKIP: gh-pr.py checkout-branch cases (git does not apply GIT_CONFIG_COUNT)"
+fi
 
 # --- check-jsonl.py accepts both shapes and rejects malformed input ---------------
 JD="${SANDBOX}/jsonl"

@@ -3,7 +3,8 @@
 
 Usage:
     python3 gh-pr.py fetch <pr_url> <out_dir>
-    python3 gh-pr.py checkout <pr_json> [--trust]
+    python3 gh-pr.py checkout <pr_json> [--trust] [--branch <name>]
+    python3 gh-pr.py checkout-branch <pr_url> <branch> [--trust]
     python3 gh-pr.py remove <worktree_path>
 
 fetch: resolves <pr_url> (https://<host>/<owner>/<repo>/pull/<number>) with gh,
@@ -30,9 +31,16 @@ JSON object with main_root and worktree_path. Without --trust, the checkout
 leaves out every file and directory named like one of AGENT_FILES, in any
 letter case and at any depth, and fails when the file system still resolves one
 of those names in a directory of the worktree.
+With --branch, the worktree is on local branch <name> at the PR head instead of
+a detached HEAD: a missing branch is created there, and an existing one is used
+only when it points at the PR head.
 A failed checkout removes the worktree it added.
 
-remove: removes a worktree that checkout added
+checkout-branch: like checkout, but checks out an existing local <branch>
+holding the PR's code, without gh; the worktree path takes the number in
+<pr_url>.
+
+remove: removes a worktree that checkout or checkout-branch added
 (<main_root>/.claude/worktrees/creview-pr-<number>-<timestamp>; any other path
 is an error), with git hooks and the configured filter drivers disabled, and its
 parent directory when left empty. A worktree with uncommitted changes is kept,
@@ -65,7 +73,7 @@ SSH_SCHEMES = {"ssh", "git+ssh", "ssh+git"}
 SHA_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 # Scratch and worktree directories of the creview skills, not part of the review.
 SCRATCH_EXCLUDES = [":(top,exclude).claude/tmp", ":(top,exclude).claude/worktrees"]
-# The name of a worktree cmd_checkout adds under .claude/worktrees.
+# The name of a worktree add_checkout adds under .claude/worktrees.
 WORKTREE_NAME_RE = re.compile(r"creview-pr-[0-9]+-[0-9]{8}-[0-9]{6}")
 # Names of the files and directories Claude Code, or another agent for AGENTS.md, loads
 # from a project on its own.
@@ -475,46 +483,116 @@ def check_agent_files_left_out(root, number):
         )
 
 
+def valid_branch(name):
+    # A leading "-" would be parsed as an option by check-ref-format.
+    if not name.startswith("-"):
+        try:
+            return run(["git", "check-ref-format", "--branch", name]).strip()
+        except Error:
+            pass
+    raise Error(f"invalid branch name: {name!r}")
+
+
+def branch_tip(branch, cwd=None):
+    return run(["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"],
+               cwd=cwd, ok=(0, 1)).strip()
+
+
+def checkout_options(options):
+    trust, branch, rest = False, None, list(options)
+    while rest:
+        option = rest.pop(0)
+        if option == "--trust" and not trust:
+            trust = True
+        elif option == "--branch" and branch is None and rest:
+            branch = rest.pop(0)
+        else:
+            raise Error(f"unknown checkout option: {' '.join(options)}")
+    return trust, branch
+
+
+def attach_branch(path, branch, head_sha, env):
+    # The worktree is at head_sha, so checking out a branch there changes no file, and git
+    # refuses a branch checked out in another worktree.
+    tip = branch_tip(branch, cwd=path)
+    if tip and tip != head_sha:
+        raise Error(
+            f"branch {branch} already exists at {tip}, not at the PR head {head_sha}; "
+            "delete or rename it"
+        )
+    run(["git", "checkout", "--quiet", *([] if tip else ["-b"]), branch], cwd=path, env=env)
+
+
+def add_checkout(number, trust, populate, branch=None):
+    # populate(path, env) fills the worktree git adds with --no-checkout.
+    main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
+    path = f"{main_root}/.claude/worktrees/creview-pr-{number}-{time.strftime('%Y%m%d-%H%M%S')}"
+    if os.path.lexists(path):
+        raise Error(f"worktree path already exists: {path}")
+    target = ["--", path, branch] if branch else ["--detach", "--", path, "HEAD"]
+
+    with tempfile.TemporaryDirectory() as no_hooks:
+        env = hook_free_env(no_hooks)
+        try:
+            run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "add", "--quiet",
+                 "--no-checkout", *target], env=env)
+        except Error:
+            # git removes a worktree it failed to add, but not the parent directory it created.
+            remove_empty_parent(path)
+            raise
+        try:
+            if not trust:
+                env = leave_out_agent_files(path, env)
+            populate(path, env)
+            if not trust:
+                check_agent_files_left_out(path, number)
+        except BaseException as e:
+            message = str(e) if isinstance(e, Error) else f"{type(e).__name__}: {e}"
+            raise Error(message + remove_worktree(path)) from None
+    return {"main_root": main_root, "worktree_path": path}
+
+
 def cmd_checkout(pr_json, *options):
-    if options not in ((), ("--trust",)):
-        raise Error(f"unknown checkout option: {' '.join(options)}")
+    trust, branch = checkout_options(options)
     with open(pr_json, encoding="utf-8") as f:
         pr = json.load(f)
     head_sha = sha(pr["head_sha"], "head commit")
     number = pr["number"]
     if not isinstance(number, int) or not PR_URL_RE.fullmatch(pr["url"]):
         raise Error(f"malformed {pr_json}")
+    if branch is not None:
+        branch = valid_branch(branch)
 
-    main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
-    path = f"{main_root}/.claude/worktrees/creview-pr-{number}-{time.strftime('%Y%m%d-%H%M%S')}"
-    if os.path.lexists(path):
-        raise Error(f"worktree path already exists: {path}")
+    def populate(path, env):
+        run(["gh", "pr", "checkout", pr["url"], "--detach"], cwd=path, env=env)
+        head = run(["git", "rev-parse", "HEAD"], cwd=path).strip()
+        if head != head_sha:
+            raise Error(
+                f"checked out {head}, but PR #{number} was fetched at {head_sha}; "
+                "the PR was updated after fetch"
+            )
+        if branch is not None:
+            attach_branch(path, branch, head_sha, env)
 
-    with tempfile.TemporaryDirectory() as no_hooks:
-        env = hook_free_env(no_hooks)
-        try:
-            run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "add", "--quiet",
-                 "--no-checkout", "--detach", "--", path, "HEAD"], env=env)
-        except Error:
-            # git removes a worktree it failed to add, but not the parent directory it created.
-            remove_empty_parent(path)
-            raise
-        try:
-            if not options:
-                env = leave_out_agent_files(path, env)
-            run(["gh", "pr", "checkout", pr["url"], "--detach"], cwd=path, env=env)
-            head = run(["git", "rev-parse", "HEAD"], cwd=path).strip()
-            if head != head_sha:
-                raise Error(
-                    f"checked out {head}, but PR #{number} was fetched at {head_sha}; "
-                    "the PR was updated after fetch"
-                )
-            if not options:
-                check_agent_files_left_out(path, number)
-        except BaseException as e:
-            message = str(e) if isinstance(e, Error) else f"{type(e).__name__}: {e}"
-            raise Error(message + remove_worktree(path)) from None
-    return {"main_root": main_root, "worktree_path": path}
+    return add_checkout(number, trust, populate)
+
+
+def cmd_checkout_branch(pr_url, branch, *options):
+    if options not in ((), ("--trust",)):
+        raise Error(f"unknown checkout-branch option: {' '.join(options)}")
+    m = PR_URL_RE.fullmatch(pr_url)
+    if not m:
+        raise Error(f"not a pull request URL: {pr_url}")
+    branch = valid_branch(branch)
+    if not branch_tip(branch):
+        raise Error(f"no local branch {branch}")
+
+    def populate(path, env):
+        # read-tree fills the empty index and the files the sparse patterns keep, and runs
+        # no hook.
+        run(["git", "read-tree", "-mu", "HEAD"], cwd=path, env=env)
+
+    return add_checkout(int(m.group(4)), bool(options), populate, branch=branch)
 
 
 def cmd_remove(path):
@@ -532,7 +610,8 @@ def cmd_remove(path):
 
 # Each command with the least and the most arguments it takes.
 COMMANDS = {
-    "fetch": (cmd_fetch, 2, 2), "checkout": (cmd_checkout, 1, 2), "remove": (cmd_remove, 1, 1),
+    "fetch": (cmd_fetch, 2, 2), "checkout": (cmd_checkout, 1, 4),
+    "checkout-branch": (cmd_checkout_branch, 2, 3), "remove": (cmd_remove, 1, 1),
 }
 
 

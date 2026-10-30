@@ -13,6 +13,7 @@ template_id: 7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54
 レビュアー一覧: `{{reviewer_names_csv}}`
 レビューモード: `{{review_mode}}`
 プルリクエスト: `{{pr_ref}}`
+ブランチ: `{{branch_ref}}`
 出力言語: `{{doc_lang}}`
 
 統合手順:
@@ -33,5 +34,6 @@ template_id: 7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54
 - 散文（指摘の説明、サマリ本文、メタデータの見出しラベル）は `{{doc_lang}}` で記述する。構造アンカー（重要度見出し `## Critical` / `## Major` / `## Minor` / `## Info`、finding-id、`<!-- METADATA(...) -->` マーカー）は後工程の解析対象のため `{{doc_lang}}` に関わらず変更しない。カテゴリラベルは手順 1 でそろえた表記を使う。
 - `{{review_mode}}` が `adversarial` の場合、レポートヘッダの箇条書きに `- **モード:** adversarial` をラウンドの箇条書きの直後（ラウンド番号が省略されている場合は日付の箇条書きの直後）に追加する。ラベルは `{{doc_lang}}` に従い、値 `adversarial` はそのまま。それ以外の場合は箇条書きを出力しない。
 - `{{pr_ref}}` が `(none)` でない場合、レポートヘッダの箇条書きに `- **PR:** {{pr_ref}}` を範囲の箇条書きの直前に追加する。ラベルも訳さずそのまま出力する。それ以外の場合は箇条書きを出力しない。
+- `{{branch_ref}}` が `(none)` でない場合、レポートヘッダの箇条書きに `- **Branch:** {{branch_ref}}` を、範囲の箇条書きの直前かつ PR の箇条書きの後に追加する。ラベルも訳さずそのまま出力する。それ以外の場合は箇条書きを出力しない。
 
 戻り値: `{doc_path, findings_total, severity_counts: {critical, major, minor, info}, duplicates_merged, template_id}`。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

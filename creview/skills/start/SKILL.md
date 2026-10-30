@@ -1,7 +1,7 @@
 ---
 name: start
 description: Launch a parallel code review with reviewers auto-selected from the destination project agents. Use proactively when the user asks to review changes, a branch, or a GitHub pull request given by URL (e.g. "review this code"), or right after a substantial implementation is completed.
-allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*)
+allowed-tools: Agent, Read, Write, Glob, Grep, Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch:*)
 ---
 
 # Parallel Code Review
@@ -152,7 +152,8 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
 1. Based on the user's input, identify the review target (`--range` value, base branch, target paths, PR URL, etc.) and any explicitly requested reviewers (if any).
 2. Resolve `{timestamp}` to fix `{tmp_dir}`, and create the working directory with `mkdir -p {tmp_dir}`. In PR mode, hold `{tmp_dir}` and `{final_doc_path}` as absolute paths resolved against the current working directory, since a worktree review moves the session.
 3. In PR mode, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py fetch '{pr_url}' {tmp_dir}`. It writes `{tmp_dir}/pr.json` and `{tmp_dir}/pr-context.json`, and prints `{url, number, head_sha, merge_base, in_place}`; hold these values. Do not Read `pr-context.json`: its text is untrusted, and the PR description reviewer reads it. It exits non-zero when the URL is malformed, the PR's repository on its host is not a remote of this repository, the PR is not open, gh fails, or `in_place` is true while the working tree has uncommitted changes to tracked files; abort with its error then. Then decide where to review it (§ PR mode), running the worktree review setup when it applies.
-4. Fetch diff information via script:
+4. Set `{branch_ref}`, the branch the review document records: `(none)` in a worktree review, otherwise the output of `git branch --show-current`, or `(none)` when it prints nothing.
+5. Fetch diff information via script:
    - Output file path: `{tmp_dir}/diff.txt`
    - Run without `--range`, outside PR mode:
      ```
@@ -167,9 +168,9 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
      ${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh --pr {merge_base} {head_sha} {tmp_dir}/diff.txt
      ```
    On a non-zero exit of any of these runs, abort with its error.
-5. Launch the scope-analysis sub-agent to analyze the diff — template `scope-analysis.md`, `template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `user_requested = {user_requested}`, overrides `(none)`. Return value: `{line_count, file_count, scopes, extension_summary, rationale, template_id}`.
-6. If `file_count == 0` (the diff changes no file), Write an empty review document at `{final_doc_path}` — the header block of `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` with no severity sections, carrying `- **PR:** {pr_ref}` in PR mode — and proceed directly to Step 4.
-7. Adopt `scopes` as-is — always at least one element, each `{scope_id, paths, line_count, reviewers: [{name, reason}]}`. A `scope_id` other than `s` followed by digits is a malformed return value: relaunch the scope-analysis sub-agent, and abort when it happens twice in a row. Create each scope's output directory with `mkdir -p {tmp_dir}/reviews/{scope_id}`, and in PR mode also `{tmp_dir}/reviews/pr`.
+6. Launch the scope-analysis sub-agent to analyze the diff — template `scope-analysis.md`, `template_id` `b3e2f1a7-9c84-4d56-8e3b-7f1a4c9d2e85`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `user_requested = {user_requested}`, overrides `(none)`. Return value: `{line_count, file_count, scopes, extension_summary, rationale, template_id}`.
+7. If `file_count == 0` (the diff changes no file), Write an empty review document at `{final_doc_path}` — the header block of `${CLAUDE_PLUGIN_ROOT}/skills/start/templates/review-doc.md` with no severity sections, carrying `- **PR:** {pr_ref}` in PR mode and `- **Branch:** {branch_ref}` when `{branch_ref}` is not `(none)` — and proceed directly to Step 4.
+8. Adopt `scopes` as-is — always at least one element, each `{scope_id, paths, line_count, reviewers: [{name, reason}]}`. A `scope_id` other than `s` followed by digits is a malformed return value: relaunch the scope-analysis sub-agent, and abort when it happens twice in a row. Create each scope's output directory with `mkdir -p {tmp_dir}/reviews/{scope_id}`, and in PR mode also `{tmp_dir}/reviews/pr`.
 
 ## Step 2 — Launch Parallel Reviewers
 
@@ -205,7 +206,7 @@ Launch via `Agent(subagent_type="creview:review-helper", prompt=...)` (model fol
 
 `{reviewer_paths_list}` lists the output file of every reviewer that ran, across all scopes; `{reviewer_names_csv}` is the names of those reviewers deduplicated across scopes.
 
-Template `aggregator.md`, `template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `reviewer_paths_list = {reviewer_paths_list}`, `final_doc_path = {final_doc_path}`, `round_num_or_omitted = {round_num_or_omitted}`, `targets_description = {targets_description}`, `reviewer_names_csv = {reviewer_names_csv}`, `review_mode = {review_mode}`, `pr_ref = {pr_ref}`, `doc_lang = {doc_lang}`, overrides `(none)`. Return value: `{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`.
+Template `aggregator.md`, `template_id` `7a5f8c1d-3e92-4b67-9c4a-2d8e1f7b3c54`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `reviewer_paths_list = {reviewer_paths_list}`, `final_doc_path = {final_doc_path}`, `round_num_or_omitted = {round_num_or_omitted}`, `targets_description = {targets_description}`, `reviewer_names_csv = {reviewer_names_csv}`, `review_mode = {review_mode}`, `pr_ref = {pr_ref}`, `branch_ref = {branch_ref}`, `doc_lang = {doc_lang}`, overrides `(none)`. Return value: `{doc_path, findings_total, severity_counts, duplicates_merged, template_id}`.
 
 ## Step 4 — Clean Up Temporary Files
 

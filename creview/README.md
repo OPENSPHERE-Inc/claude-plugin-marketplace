@@ -131,7 +131,9 @@ the worktree. These are instructions, not enforcement: for a pull request you
 do not trust, also rely on your environment (a sandbox, hooks, or permission
 rules).
 
-During a worktree review, the session's working directory is the worktree.
+During a worktree review, and while `/creview:triage`, `/creview:respond`, or
+`/creview:resolve` work in a worktree of a pull request (see below), the
+session's working directory is the worktree.
 Claude Code hooks, which fire on the sub-agents' tool calls as well, and the
 status line command run there. A command they run relative to the current
 directory, such as `npm run lint`, `./scripts/check.sh`, or `git status`,
@@ -143,12 +145,48 @@ project, such as a test runner or a formatter run on `.`, must also leave that
 directory out.
 
 The review document records the pull request in a header bullet of the form
-`- **PR:** {url} (head {head_sha}, base {merge_base})`. When run separately on
-such a document, `/creview:triage`, `/creview:respond`, and `/creview:resolve`
-work on the current working tree, not on a worktree of the pull request. Check
-out the pull request's head commit before running them; on another commit,
-such as the base branch, they triage, fix, and verify code other than the pull
-request's.
+`- **PR:** {url} (head {head_sha}, base {merge_base})`, and the branch the
+review ran on in a `- **Branch:** {branch}` bullet. A worktree review runs on a
+detached HEAD and records no branch. Run on their own, `/creview:triage`,
+`/creview:respond`, and `/creview:resolve` locate the document's code from
+these bullets:
+
+- With a Branch bullet, they work in place when that branch is checked out,
+  and otherwise in a temporary worktree on that local branch under
+  `.claude/worktrees/`.
+- With a PR bullet only, they work in place when HEAD contains the head
+  commit, and otherwise in a temporary worktree at the head commit.
+  - The pull request must still be open with that head commit; review an
+    updated pull request again.
+- With neither, as for a review on a detached HEAD, they work on the current
+  working tree.
+
+A worktree for a document with a PR bullet holds the pull request's code and
+is checked out like a worktree review: git hooks and filter drivers disabled,
+Git LFS smudging skipped, symbolic links as plain files, and the agent files
+left out unless `--trust` is given, which the three skills also take. Their
+sub-agents are told what a worktree review's sub-agents are told, except that
+`/creview:respond`, which fixes, builds, and tests the code, is not told to
+leave the files unrun and git unused. It runs the pull request's code as it
+does in place: its build scripts and tests, and, when it commits, the git hooks
+a relative `core.hooksPath` takes from the pull request's tree.
+
+In a worktree, `/creview:respond` turns `--commit` on. For a document with a
+PR bullet only, it commits to a local branch `creview-pr-{number}`, which it
+creates at the head commit or uses when the branch already points there, and
+it records that branch in a Branch bullet, so later runs work on the fixes.
+Pushing the branch to the pull request is left to you. Run in place on a
+branch for such a document, it records that branch the same way. Without
+`--trust`, a finding whose fix needs a left-out agent file stays unfixed.
+
+At the end the worktree is removed and its branch kept; a worktree with
+uncommitted changes is kept and its path reported. The review document, the
+working directory, and the project's `.claude/agents/` and `.claude/rules/`
+stay in the main working tree. A branch checked out in another worktree, such
+as one that `/creview:rounds --worktree` kept, cannot be checked out again:
+start a session at that worktree's root and run the skill there. Run by
+`/creview:rounds`, the three skills create no worktree and work where the
+round works.
 
 A checkout in your working tree has none of a worktree review's protections,
 and the pull request's code can run, for example in these ways:
@@ -246,7 +284,10 @@ command, and not at all when the build is skipped or none is declared — so the
 format command and tests that run without a build cannot rely on it. A build
 or test failure caused by such a missing prerequisite is not fixed in the
 source: respond stops its build-fix loop and records the failure as the
-round's workflow warning, which the final report lists. At the
+round's workflow warning, which the final report lists. Each round's review
+document records the worktree's branch, so `/creview:triage`,
+`/creview:respond`, and `/creview:resolve` run on it later work in a worktree
+on that branch. At the
 end the worktree is removed and the branch is kept; a worktree that still has
 uncommitted changes is kept and its path is reported. Git also refuses to
 remove a worktree in which submodules were initialized (for example by the
@@ -300,9 +341,10 @@ candidate; the skills launch the other three by name.
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
   `fetch-diff.sh` / `del-tmp.sh`; from a linked worktree it also accepts the
   `.claude/tmp/` of another working tree of the same repository),
-  `worktree.sh` (creates and removes the `--worktree` worktree), and
-  `gh-pr.py` (resolves a pull request for `/creview:start`, checks its head
-  commit out in a worktree, and removes that worktree). The scripts require
+  `worktree.sh` (creates and removes the `--worktree` worktree and the
+  worktree on a review document's branch), and `gh-pr.py` (resolves a pull
+  request, checks its head commit or a local branch holding its code out in a
+  worktree, and removes that worktree). The scripts require
   `python3` (3.9 or later) on the `PATH`; `gh-pr.py` also requires an
   authenticated GitHub CLI (`gh`), and `fetch-diff.sh --pr` requires Git 2.41
   or later. Skills invoke them via `${CLAUDE_PLUGIN_ROOT}/scripts/...`;
