@@ -1182,9 +1182,17 @@ if git worktree add -q "${KEPT_BRANCH}" pr-src >/dev/null 2>&1; then
         || { note "FAIL: gh-pr.py doc-checkout on a kept branch worktree's branch printed '${out}'"
              fail=1; }
     : > "${KEPT_BRANCH}/untracked.txt"
+    # LC_ALL=C keeps git's refusal in English.
+    rc=0; out="$(LC_ALL=C python3 "${GHPR}" remove "${KEPT_BRANCH}" --discard 2>&1)" || rc=$?
+    [[ "${rc}" -ne 0 && -d "${KEPT_BRANCH}" \
+        && "${out}" == *"contains modified or untracked files"* ]] \
+        || { note "FAIL: gh-pr.py remove --discard a branch worktree with changes printed '${out}'"
+             fail=1; }
+    rm -- "${KEPT_BRANCH}/untracked.txt"
     rc=0; python3 "${GHPR}" remove "${KEPT_BRANCH}" --discard >/dev/null 2>&1 || rc=$?
-    [[ "${rc}" -ne 0 && -d "${KEPT_BRANCH}" ]] \
-        || { note "FAIL: gh-pr.py remove --discard removed a branch worktree with changes"; fail=1; }
+    check "gh-pr.py remove --discard a clean branch worktree" 0 "${rc}"
+    [[ ! -e "${KEPT_BRANCH}" ]] \
+        || { note "FAIL: gh-pr.py remove --discard left a clean branch worktree behind"; fail=1; }
     git worktree remove --force -- "${KEPT_BRANCH}" >/dev/null 2>&1
     rmdir "${MAIN}/.claude/worktrees" 2>/dev/null
 else
