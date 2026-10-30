@@ -95,8 +95,13 @@ a text file that the diff shows as binary from the checked-out pull request.
   under `.claude/worktrees/`, with git hooks and the filter drivers of your git
   configuration disabled, Git LFS smudging skipped, and symbolic links checked
   out as plain files holding the link target. The worktree is removed, with
-  hooks and filter drivers disabled again, at the end of the run. It belongs to
-  this run only and is unrelated to `/creview:rounds --worktree`.
+  hooks and filter drivers disabled again, at the end of the run. When it
+  cannot be removed (for example, on Windows, when it holds a symbolic link
+  whose path is not UTF-8 or is past MAX_PATH), it is kept and its path and
+  error are reported: run no git in it, since git run there can run the pull
+  request's hooks and filters; copy out what to keep, then remove it by
+  running `git worktree remove --force -- <path>` in the main working tree.
+  It belongs to this run only and is unrelated to `/creview:rounds --worktree`.
   - The review document and the working directory stay in the main working
     tree's `.claude/tmp/`, and the project's `.claude/agents/` are read from
     the main working tree.

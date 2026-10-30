@@ -94,7 +94,7 @@ Add these overrides to every sub-agent launch prompt:
 Teardown — once, on the first exit after setup step 1 succeeded (aborts included), when no sub-agent is running:
 
 1. Return the session with a Bash `cd {main_root}`.
-2. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py remove {worktree_path}`. It removes the worktree with git hooks disabled. It keeps a worktree with uncommitted changes and exits non-zero; report that worktree's path then.
+2. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py remove {worktree_path}`. It removes the worktree with git hooks disabled. On a non-zero exit it has kept the worktree: report that worktree's path and its error, and report as well that what to keep is copied out of it without running git in it (git run there can run the pull request's hooks and filters) and that the worktree is removed as the error directs.
 
 ## Output Language
 
