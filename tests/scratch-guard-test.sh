@@ -216,8 +216,9 @@ for path in ["sub/notes.txt", *agent_paths]:
 git("branch", "tip")
 base = f"HEAD~{len(agent_paths)}"
 probe = dict(os.environ, GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="t.k", GIT_CONFIG_VALUE_0="v")
-if subprocess.run(["git", "config", "--get", "t.k"], env=probe, capture_output=True,
-                  text=True).stdout.strip() != "v":
+config_count = subprocess.run(["git", "config", "--get", "t.k"], env=probe,
+                              capture_output=True, text=True).stdout.strip() == "v"
+if not config_count:
     print("SKIP: gh-pr.py sparse checkout cases (git does not apply GIT_CONFIG_COUNT)")
 else:
     # Under core.ignorecase=false the sparse patterns match case-sensitively, as on Linux.
@@ -343,6 +344,28 @@ expect("quoted escapes the names and shows the first 3",
        g.quoted(["a\nb", "c", "d", b"l\xe9"]), "'a\\nb', 'c', 'd' and 1 more")
 expect("quoted one name", g.quoted(["x"]), "'x'")
 expect("quoted a name that does not decode", g.quoted([b"l\xe9"]), "b'l\\xe9'")
+# cmd_remove runs changed_links under hook_free_env, which needs GIT_CONFIG_COUNT.
+if not config_count:
+    print("SKIP: gh-pr.py remove when changed_links fails (git does not apply GIT_CONFIG_COUNT)")
+else:
+    os.makedirs(os.path.join(links, ".claude", "worktrees", "creview-pr-7-20260101-000000"))
+    real_changed_links, cwd = g.changed_links, os.getcwd()
+    os.chdir(links)
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
+                             text=True, check=True).stdout.strip()
+        kept = f"{top}/.claude/worktrees/creview-pr-7-20260101-000000"
+        for error in (PermissionError(13, "x"), g.Error("x")):
+            def fail_examining(path, env, error=error):
+                raise error
+            g.changed_links = fail_examining
+            case = f"remove when changed_links raises {type(error).__name__}"
+            expect_error(case, lambda: g.cmd_remove(kept), "is kept", "do not run git in it",
+                         "git worktree remove --force")
+            expect(f"{case} keeps the worktree", os.path.isdir(kept), True)
+    finally:
+        g.changed_links = real_changed_links
+        os.chdir(cwd)
 sys.exit(1 if failed else 0)
 PY
 for opt in --trusted -t; do
@@ -1079,10 +1102,63 @@ if git worktree add -q "${KEPT}" pr-src >/dev/null 2>&1; then
     check "gh-pr.py doc-checkout in a PR worktree" 1 "${rc}"
     [[ "${out}" == *"session started at the main working tree"* ]] \
         || { note "FAIL: gh-pr.py doc-checkout in a PR worktree printed '${out}'"; fail=1; }
+    if [[ "$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=t.k GIT_CONFIG_VALUE_0=v \
+        git config --get t.k 2>/dev/null)" == v ]]; then
+        python3 -I -B - "${GHPR}" "${KEPT}" "${MAIN}" <<'PY' || fail=1
+import contextlib
+import importlib.util
+import io
+import os
+import shlex
+import sys
+
+spec = importlib.util.spec_from_file_location("gh_pr", sys.argv[1])
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+kept, main_root = sys.argv[2], sys.argv[3]
+recovery = (f"{shlex.join(['git', 'worktree', 'remove', '--force', '--', kept])} in "
+            f"{shlex.quote(main_root)}")
+failed = False
+for links, reason in (
+        (([], ["x"]), "is kept: its symbolic links 'x', which it holds as plain files, could not "
+                      "be examined"),
+        ((["a"], [b"l\xe9"]), "is kept: it changes the symbolic links 'a', which it holds as "
+                               "plain files that git status does not show, and its symbolic "
+                               "links b'l\\xe9', which")):
+    g.changed_links = lambda path, env, links=links: links
+    err = io.StringIO()
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+        rc = g.main(["remove", kept])
+    out = err.getvalue()
+    if rc != 1 or not os.path.isdir(kept) or not all(
+            p in out for p in (reason, "do not run git in it", recovery)):
+        print(f"FAIL: gh-pr.py remove a PR worktree whose links are {links} "
+              f"(rc={rc}, printed {out!r:.600})")
+        failed = True
+sys.exit(1 if failed else 0)
+PY
+    else
+        note "SKIP: gh-pr.py remove kept PR worktree cases (git does not apply GIT_CONFIG_COUNT)"
+    fi
     git worktree remove --force -- "${KEPT}" >/dev/null 2>&1
     rmdir "${MAIN}/.claude/worktrees" 2>/dev/null
 else
     note "FAIL: git worktree add for the kept PR worktree case"; fail=1
+fi
+KEPT_BRANCH="${MAIN}/.claude/worktrees/creview-branch-20260101-000000"
+if git worktree add -q "${KEPT_BRANCH}" pr-src >/dev/null 2>&1; then
+    out="$(doc_checkout "${DOCS}/branch.md" 2>&1)"; rc=$?
+    check "gh-pr.py doc-checkout branch.md on a branch a kept branch worktree holds" 1 "${rc}"
+    want="$(shlex_join remove "${KEPT_BRANCH}") in $(shlex_join "${MAIN}") "
+    [[ "${out}" == *"which a creview skill kept"*"/gh-pr.py"*" ${want}"* \
+        && "${out}" == *"review its changes, commit or discard them, and remove it by running"* \
+        && "${out}" != *"do not run git in it"* && "${out}" != *\\* ]] \
+        || { note "FAIL: gh-pr.py doc-checkout on a kept branch worktree's branch printed '${out}'"
+             fail=1; }
+    git worktree remove --force -- "${KEPT_BRANCH}" >/dev/null 2>&1
+    rmdir "${MAIN}/.claude/worktrees" 2>/dev/null
+else
+    note "FAIL: git worktree add for the kept branch worktree case"; fail=1
 fi
 
 # --- render-review.py keeps each metadata value on one line -----------------------
