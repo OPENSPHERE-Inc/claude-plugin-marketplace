@@ -6,7 +6,7 @@ Usage:
     python3 gh-pr.py fetch <pr_url> <out_dir>
     python3 gh-pr.py checkout <pr_json> [--trust]
     python3 gh-pr.py doc-checkout <document> [--fix-branch]
-    python3 gh-pr.py remove <worktree_path>
+    python3 gh-pr.py remove <worktree_path> [--discard]
 
 fetch: resolves <pr_url> (https://<host>/<owner>/<repo>/pull/<number>) with gh,
 requires <owner>/<repo> on <host> to be a remote of the current repository and
@@ -63,14 +63,18 @@ remove: removes a worktree that checkout or doc-checkout added
 (<main_root>/.claude/worktrees/creview-pr-<number>-<timestamp> or
 creview-branch-<timestamp>; any other path is an error), a PR worktree with git
 hooks and the configured filter drivers disabled, and its parent directory when
-left empty. A worktree with uncommitted changes, including changes to the
+left empty. With --discard, a PR worktree is removed with --force, keeping
+nothing in it and examining neither its changes nor its symbolic links; when
+that fails, the error says not to run git in it and to remove it with git
+worktree remove --force. --discard does nothing to a creview-branch worktree.
+Otherwise a worktree with uncommitted changes, including changes to the
 symbolic links a PR worktree holds as plain files, is kept, and the exit status
 is 1. So is a PR worktree with such a link it cannot examine (on Windows, a path
 that is not UTF-8 or is past MAX_PATH), and so is a worktree with initialized
 submodules, which git refuses to remove; its error then says to check the
-worktree and remove it with git worktree remove --force. A PR worktree's error
-says instead not to run git in it, to copy out what to keep, and to remove it
-with git worktree remove --force.
+worktree and remove it with git worktree remove --force. A kept PR worktree's
+error says instead not to run git in it, to copy out what to keep, and to
+remove it with git worktree remove --force.
 
 Exits 1 with an error message on stderr on any failure.
 """
@@ -869,11 +873,12 @@ def submodules_note(path, env=None):
             f"then remove it with {command}")
 
 
-def pr_worktree_note(path, main_root):
+def pr_worktree_note(path, main_root, keep=True):
     command = shlex.join(["git", "worktree", "remove", "--force", "--", path])
     return (f"; {path} holds a pull request's code, and git run in it can run the pull "
-            "request's hooks and filters: do not run git in it; copy out what to keep, then "
-            f"remove it by running {command} in {shlex.quote(main_root)}")
+            "request's hooks and filters: do not run git in it; "
+            + ("copy out what to keep, then " if keep else "")
+            + f"remove it by running {command} in {shlex.quote(main_root)}")
 
 
 def worktree_remove(path, *config, env=None, note=None):
@@ -883,13 +888,27 @@ def worktree_remove(path, *config, env=None, note=None):
         raise Error(f"{e}{submodules_note(path, env) if note is None else note}") from None
 
 
-def cmd_remove(path):
+def discard_pr_worktree(path, main_root, no_hooks, env):
+    # --force skips the clean check, which runs git status in the worktree.
+    try:
+        run(["git", "-c", f"core.hooksPath={no_hooks}", "worktree", "remove", "--force", "--",
+             path], cwd=main_root, env=env)
+    except Error as e:
+        raise Error(f"{e}{pr_worktree_note(path, main_root, keep=False)}") from None
+
+
+def cmd_remove(path, *options):
+    if options not in ((), ("--discard",)):
+        raise Error(f"unknown remove option: {' '.join(options)}")
     main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
     parent, _, name = path.rpartition("/")
     if parent != f"{main_root}/.claude/worktrees":
         name = ""
     if BRANCH_WORKTREE_RE.fullmatch(name):
         worktree_remove(path)
+    elif PR_WORKTREE_RE.fullmatch(name) and options:
+        with tempfile.TemporaryDirectory() as no_hooks:
+            discard_pr_worktree(path, main_root, no_hooks, hook_free_env(no_hooks))
     elif PR_WORKTREE_RE.fullmatch(name):
         with tempfile.TemporaryDirectory() as no_hooks:
             env = hook_free_env(no_hooks)
@@ -924,7 +943,7 @@ def cmd_remove(path):
 # Each command with the least and the most arguments it takes.
 COMMANDS = {
     "fetch": (cmd_fetch, 2, 2), "checkout": (cmd_checkout, 1, 2),
-    "doc-checkout": (cmd_doc_checkout, 1, 2), "remove": (cmd_remove, 1, 1),
+    "doc-checkout": (cmd_doc_checkout, 1, 2), "remove": (cmd_remove, 1, 2),
 }
 
 

@@ -26,7 +26,7 @@ The user supplies a path to a review document (markdown). When the argument is `
 
 ## Worktree
 
-Follow `${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`. Add these PR worktree overrides:
+Follow `${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, appending `--discard` to `remove`. Add these PR worktree overrides:
 
 - `Do not run, build, test, install, or source any file under {target_dir}.`
 - `Run no git command in {target_dir}, read-only ones included: the pull request's files can make git run hooks and filter / diff drivers there.`

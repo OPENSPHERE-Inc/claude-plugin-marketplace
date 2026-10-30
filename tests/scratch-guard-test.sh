@@ -374,7 +374,11 @@ for opt in --trusted -t; do
     [[ "${out}" == *"unknown checkout option"* ]] \
         || { note "FAIL: gh-pr.py checkout ${opt} printed '${out}'"; fail=1; }
 done
-for args in "checkout a b c" "doc-checkout" "doc-checkout a b c" "remove" "remove a b" \
+out="$(python3 "${GHPR}" remove "${SANDBOX}/no-worktree" --bogus 2>&1)"; rc=$?
+check "gh-pr.py remove rejects --bogus" 1 "${rc}"
+[[ "${out}" == *"unknown remove option"* ]] \
+    || { note "FAIL: gh-pr.py remove --bogus printed '${out}'"; fail=1; }
+for args in "checkout a b c" "doc-checkout" "doc-checkout a b c" "remove" "remove a b c" \
     "no-such-command"; do
     # shellcheck disable=SC2086
     out="$(python3 "${GHPR}" ${args} 2>&1)"; rc=$?
@@ -1135,6 +1139,28 @@ for links, reason in (
         print(f"FAIL: gh-pr.py remove a PR worktree whose links are {links} "
               f"(rc={rc}, printed {out!r:.600})")
         failed = True
+
+
+def fail_examining(path, env):
+    raise AssertionError("changed_links ran under --discard")
+
+
+g.changed_links = fail_examining
+with open(os.path.join(kept, "untracked.txt"), "w") as f:
+    f.write("x")
+for case, want_rc in (("a PR worktree with changes", 0), ("a removed PR worktree", 1)):
+    err = io.StringIO()
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+        rc = g.main(["remove", kept, "--discard"])
+    out = err.getvalue()
+    if want_rc == 0:
+        ok = rc == 0 and not os.path.exists(kept)
+    else:
+        ok = (rc == 1 and all(p in out for p in ("do not run git in it", recovery))
+              and "copy out" not in out)
+    if not ok:
+        print(f"FAIL: gh-pr.py remove --discard {case} (rc={rc}, printed {out!r:.600})")
+        failed = True
 sys.exit(1 if failed else 0)
 PY
     else
@@ -1155,6 +1181,10 @@ if git worktree add -q "${KEPT_BRANCH}" pr-src >/dev/null 2>&1; then
         && "${out}" != *"do not run git in it"* && "${out}" != *\\* ]] \
         || { note "FAIL: gh-pr.py doc-checkout on a kept branch worktree's branch printed '${out}'"
              fail=1; }
+    : > "${KEPT_BRANCH}/untracked.txt"
+    rc=0; python3 "${GHPR}" remove "${KEPT_BRANCH}" --discard >/dev/null 2>&1 || rc=$?
+    [[ "${rc}" -ne 0 && -d "${KEPT_BRANCH}" ]] \
+        || { note "FAIL: gh-pr.py remove --discard removed a branch worktree with changes"; fail=1; }
     git worktree remove --force -- "${KEPT_BRANCH}" >/dev/null 2>&1
     rmdir "${MAIN}/.claude/worktrees" 2>/dev/null
 else

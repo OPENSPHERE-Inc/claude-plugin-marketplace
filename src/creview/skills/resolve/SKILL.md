@@ -18,7 +18,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 ## ワークツリー
 
-`${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}` とする。PR ワークツリー向けに以下のオーバーライドを追加する:
+`${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}` とし、`remove` の末尾に `--discard` を付ける。PR ワークツリー向けに以下のオーバーライドを追加する:
 
 - `{target_dir} 配下のファイルを実行・ビルド・テスト・インストール・source しない。`
 - `{target_dir} では読み取り専用のものを含め git コマンドを実行しない。プルリクエストのファイルによって、git がそこでフックや filter / diff ドライバを実行しうる。差分は diff ファイルにある。`
