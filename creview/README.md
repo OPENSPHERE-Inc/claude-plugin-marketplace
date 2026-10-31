@@ -144,19 +144,26 @@ rules).
 For a document compiled by the PR mode of `/creview:triage` and
 `/creview:resolve` (see below), the sub-agents are also told not to open a path
 that the document, an ADR file, or another sub-agent's output names, unless it
-lies under the work target (`target_dir`) outside its `.git`, is an ADR file in
-the document's directory, lies under the sub-agent's temporary working directory
-(`tmp_dir`), or is a path its launch prompt gives as a variable. This rule is an
-instruction, not enforcement, and it does not prevent:
+lies under the work target (`target_dir`) outside its `.git`, is an ADR file
+(named `*-adr-*.md`) directly in the document's directory, lies under the
+sub-agent's temporary working directory (`tmp_dir`), or is a path its launch
+prompt gives as a variable. This rule is an instruction, not enforcement, and
+it does not prevent, among others:
 
-- Reading symbolic links and gitignored files inside the work target.
-- Reads by the sub-agents of the build stage.
+- Following a symbolic link inside the work target to a file outside it, when
+  working in place (a worktree of the pull request holds symbolic links as plain
+  files).
+- Reading a gitignored file inside the work target, such as `.env`.
+- Reads by the `/creview:respond` sub-agents that run the format, build, and
+  test commands and that fix their failures.
 - Reads through Bash.
 - Reading code that a sub-agent locates itself from a name a comment gives, such
   as a library name.
 - A sub-agent breaking the rule itself.
 
-Protecting secrets is left to your environment (permission deny rules, a sandbox).
+Protecting secrets is left to your environment. For a pull request you do not
+trust, run in a sandbox that cannot reach them. Permission deny rules add to it
+and do not replace it: a `Read` deny rule does not stop a Bash subprocess.
 
 During a worktree review, and while `/creview:triage`, `/creview:respond`, or
 `/creview:resolve` work in a worktree of a pull request (see below), the
