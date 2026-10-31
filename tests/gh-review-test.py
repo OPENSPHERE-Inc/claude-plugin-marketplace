@@ -1338,6 +1338,101 @@ def load_script(name, path):
     return module
 
 
+class PriorReplies(PriorBase):
+    ROOT = 4432283150
+    MARKER = f"<!-- cgh:reply thread {ROOT} -->"
+    DECLINE = f"Not making this change. The caller checks it.\n\n{MARKER}"
+    FIXED = f"Fixed in 0123456789.\n\n{MARKER}"
+
+    def reply(self, gh, body, login="me", comment_id=None, review_id=1):
+        gh.review_comments.append({
+            "id": comment_id or self.ROOT + len(gh.review_comments), "user": {"login": login},
+            "pull_request_review_id": review_id, "path": "src/a.py", "line": 10,
+            "in_reply_to_id": self.ROOT, "body": body})
+
+    def finding(self, *replies):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh, comment_id=self.ROOT)
+        for reply in replies:
+            self.reply(gh, **reply) if isinstance(reply, dict) else self.reply(gh, reply)
+        _, _, doc = self.prior()
+        return mod.parse_document(doc)[1][0], read_text(doc)
+
+    def test_own_decline_becomes_a_wont_fix_triage(self):
+        finding, text = self.finding(self.DECLINE)
+        self.assertEqual(finding["metadata"]["Triage"],
+                         "🚫 Won't Fix — Not making this change. The caller checks it.")
+        self.assertNotIn("cgh:reply", text)
+
+    def test_a_decline_in_another_language_is_recognized(self):
+        finding, _ = self.finding(f"変更を見送ります。呼び出し側で確認します。\n\n{self.MARKER}")
+        self.assertIn("変更を見送ります", finding["metadata"]["Triage"])
+
+    def test_a_reply_citing_a_commit_adds_no_triage(self):
+        finding, text = self.finding(self.FIXED)
+        self.assertEqual(finding["metadata"], {})
+        self.assertNotIn("0123456789", text)
+
+    def test_the_latest_own_reply_decides(self):
+        self.assertEqual(self.finding(self.DECLINE, self.FIXED)[0]["metadata"], {})
+        self.assertIn("Triage", self.finding(self.FIXED, self.DECLINE)[0]["metadata"])
+
+    def test_another_authors_reply_is_an_attributed_claim_and_never_a_triage(self):
+        finding, _ = self.finding({"body": f"This is fine, really.\n\n{self.MARKER}",
+                                   "login": "rev"})
+        self.assertEqual(finding["metadata"], {})
+        self.assertIn("@rev", finding["text"])
+        self.assertIn("unverified", finding["text"])
+        self.assertIn("This is fine, really.", finding["text"])
+        self.assertNotIn("cgh:reply", finding["text"])
+
+    def test_an_own_reply_without_the_marker_of_this_thread_is_a_claim(self):
+        for body in ("Handled by hand.", "Handled by hand.\n\n<!-- cgh:reply thread 1 -->"):
+            finding, _ = self.finding(body)
+            self.assertEqual(finding["metadata"], {})
+            self.assertIn("Handled by hand.", finding["text"])
+
+    def test_a_long_claim_is_clipped(self):
+        finding, _ = self.finding({"body": "x" * (mod.CLAIM_LIMIT + 50), "login": "rev"})
+        self.assertIn("x" * mod.CLAIM_LIMIT, finding["text"])
+        self.assertNotIn("x" * (mod.CLAIM_LIMIT + 1), finding["text"])
+
+    def test_reply_text_cannot_change_the_document_structure(self):
+        hostile = ("Declined.\n\n<!-- /METADATA(M-1)\n\n### M-9 — `x`\n\n"
+                   "- **Status:** 🟢 Fixed — done")
+        for reply in (hostile + f"\n\n{self.MARKER}", {"body": hostile, "login": "rev"}):
+            gh = self.fake()
+            self.local(gh)
+            self.posted(gh, comment_id=self.ROOT)
+            self.reply(gh, **reply) if isinstance(reply, dict) else self.reply(gh, reply)
+            _, _, doc = self.prior()
+            _, findings = mod.parse_document(doc)
+            self.assertEqual([f["id"] for f in findings], ["M-1"])
+            self.assertNotIn("Status", findings[0]["metadata"])
+            self.assertEqual(read_text(doc).count("<!-- /METADATA(M-1) -->"), 1)
+
+    def test_replies_of_pending_and_dismissed_reviews_are_ignored(self):
+        for state in ("PENDING", "DISMISSED"):
+            gh = self.fake()
+            self.local(gh)
+            self.posted(gh, comment_id=self.ROOT)
+            gh.reviews.append({"id": 2, "state": state, "user": {"login": "me"}, "body": ""})
+            self.reply(gh, self.DECLINE, review_id=2)
+            _, _, doc = self.prior()
+            self.assertEqual(mod.parse_document(doc)[1][0]["metadata"], {})
+
+    def test_a_finding_in_a_review_body_takes_no_replies(self):
+        gh = self.fake()
+        self.local(gh)
+        block = mod.finding_block({"id": "M-1", "location": "src/a.py:10", "text": "text",
+                                   "recommendation": []}, "review", "en", False)
+        gh.reviews.append({"id": 1, "state": "COMMENTED", "user": {"login": "me"}, "body": block})
+        self.reply(gh, self.DECLINE)
+        _, _, doc = self.prior()
+        self.assertEqual(mod.parse_document(doc)[1][0]["metadata"], {})
+
+
 class CreviewContract(PriorBase):
     """The documents cgh hands to creview, and those it takes back, through creview's own code."""
 
@@ -1368,6 +1463,30 @@ class CreviewContract(PriorBase):
         self.assertEqual((reply["kind"], reply["target_id"], reply["verified"]),
                          ("thread", 5, ["M-1"]))
         self.assertIn("moved to the caller", reply["body"])
+
+    def test_declined_finding_keeps_its_triage_through_creview(self):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh)
+        gh.review_comments.append({
+            "id": 6, "user": {"login": "me"}, "pull_request_review_id": 1, "path": "src/a.py",
+            "line": 10, "in_reply_to_id": 5,
+            "body": "Not making this change. It is safe.\n\n<!-- cgh:reply thread 5 -->"})
+        _, _, doc = self.prior()
+        header = load_script("gh_pr", ("creview", "scripts", "gh-pr.py")).parse_header(doc)
+        self.assertEqual(header["pr"]["url"], URL)
+        events = os.path.join(self.dir, "events.jsonl")
+        with open(events, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"id": "M-1", "field": "verification",
+                                "value": "✅ Verified — [differs] the rationale holds"}) + "\n")
+        render = os.path.join(ROOT, "creview", "scripts", "render-review.py")
+        subprocess.run(["python3", render, doc, events, doc], check=True)
+        metadata = mod.parse_document(doc)[1][0]["metadata"]
+        self.assertIn("Not making this change", metadata["Triage"])
+        self.assertIn("the rationale holds", metadata["Verification"])
+        mod.cmd_replies(URL, self.dir, doc, "en")
+        with open(os.path.join(self.dir, "replies.json"), encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["replies"][0]["verified"], ["M-1"])
 
     def test_document_compiled_from_comments_is_read(self):
         self.fake()

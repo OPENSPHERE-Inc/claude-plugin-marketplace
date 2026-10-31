@@ -143,6 +143,8 @@ The state lives on the pull request, so a later run needs nothing from an earlie
   own comments count.
 - `/cgh:gate` and `/cgh:resolve` read back only findings carrying a marker: comments you wrote
   by hand are not checked. Dismissing a review drops its findings.
+- A reply `/cgh:respond` posted without a commit declines the finding, and its reason is checked
+  against the code. Other replies in the thread reach the check as unverified claims.
 - Finding IDs number on from the earlier ones, so an ID stays unique on a pull request. An ID on
   the pull request can therefore differ from the ID in the local review document.
 

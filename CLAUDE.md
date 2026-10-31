@@ -300,7 +300,10 @@ of the pull request's description; the preview stays in the user's language. Eac
 `<!-- cgh:reply {kind} {id} -->`, read back only from the authenticated user's own comments.
 `gh-review.py prior` rebuilds a review document from them, with the IDs kept, for
 `/creview:resolve` to verify, and writes the comment targets to `{tmp_dir}/prior.json`, which
-`gh-review.py replies` reads. Posted findings number on from the earlier ones, so
+`gh-review.py replies` reads. In a finding's thread, the user's latest `cgh:reply` citing no
+commit is a decline and goes in as a `Won't Fix` triage, whose rationale the verification judges;
+a reply by anyone else, or by the user without that marker, goes into the finding's text as an
+unverified claim. Posted findings number on from the earlier ones, so
 an ID stays unique on a pull request.
 
 ### Sub-agent launch contract

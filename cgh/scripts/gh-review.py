@@ -25,7 +25,11 @@ review document creview's verification reads, with a Source: pr-comments bullet 
 Trust bullet: on at the pull request's head or with --trust, otherwise off. Stops when
 there are any and the working tree holds what the pull request does not: commits past
 its head, or uncommitted changes at its head. When findings of --kind are waived, writes
-them to <tmp_dir>/waived.md and prints its path as waived_document.
+them to <tmp_dir>/waived.md and prints its path as waived_document. In a finding's thread,
+the authenticated user's latest reply of this workflow, when it cites no commit, is a
+decline and goes into the document as a Won't Fix triage with its text as the reason. A
+reply by anyone else, or by that user without the thread's marker, goes into the finding's
+text as an unverified claim.
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after
@@ -132,6 +136,8 @@ FINDING_RE = re.compile(
 VERIFIED_RE = re.compile(rf"<!-- cgh:verified ({FINDING_IDS}) -->")
 WAIVED_RE = re.compile(rf"<!-- cgh:waived ({FINDING_IDS}) -->")
 REPLY_RE = re.compile(r"<!-- cgh:reply (thread|review|issue_comment) ([0-9]+) -->")
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+COMMIT_RE = re.compile(r"\b[0-9a-f]{10,40}\b")
 REC_MARKER = "<!-- cgh:rec -->"
 COMMENT_LANG_RE = re.compile(r"[a-z]{2,3}(?:-[A-Za-z0-9]+)*")
 FINDING_WORDING = ("summary", "post_text", "post_summary", "post_note")
@@ -143,6 +149,7 @@ SHORT_SHA = 10
 PAGE_SIZE = 100
 MAX_PAGES = 100
 BODY_LIMIT = 65000
+CLAIM_LIMIT = 500
 MERGEABLE_TRIES = 5
 MERGEABLE_WAIT = 3
 PR_QUERY = """
@@ -568,6 +575,19 @@ def read_block(body):
     return "\n".join(lines).strip(), items
 
 
+def record_reply(finding, comment, viewer):
+    body = comment.get("body") or ""
+    text = HTML_COMMENT_RE.sub("", body).strip()
+    login = (comment.get("user") or {}).get("login") or "ghost"
+    answers = {match.groups() for match in REPLY_RE.finditer(body)}
+    marked = ("thread", str(finding["target"]["id"])) in answers
+    if login == viewer and marked:
+        # Replies of this workflow that fix or verify cite a commit; a decline cites none.
+        finding["declined"] = None if COMMIT_RE.search(text) else text
+    elif text:
+        finding["claims"].append({"author": login, "text": text[:CLAIM_LIMIT]})
+
+
 def posted_findings(pr, viewer):
     """The viewer's findings and verified and waived IDs outside pending and dismissed reviews,
     and every ID the viewer has used, dismissed reviews included.
@@ -591,6 +611,7 @@ def posted_findings(pr, viewer):
             "severity": severity_of(match.group("id")),
             "location": urllib.parse.unquote(match.group("loc")),
             "text": text, "recommendation": items, "target": target,
+            "declined": None, "claims": [],
         }
 
     for review in reviews:
@@ -602,6 +623,11 @@ def posted_findings(pr, viewer):
             if not comment.get("in_reply_to_id"):
                 for match in FINDING_RE.finditer(comment.get("body") or ""):
                     add(match, {"kind": "thread", "id": comment.get("id")})
+    threads = {f["target"]["id"]: f for f in posted.values() if f["target"]["kind"] == "thread"}
+    for comment in comments:
+        finding = threads.get(comment.get("in_reply_to_id"))
+        if finding and comment.get("pull_request_review_id") not in skipped:
+            record_reply(finding, comment, viewer)
     entries = [*((r, r.get("id")) for r in reviews),
                *((c, c.get("pull_request_review_id")) for c in comments),
                *((c, None) for c in issue_comments)]
@@ -664,10 +690,15 @@ def write_prior_document(path, pr, view, merge_base, viewer, findings, state, tr
             if f["recommendation"]:
                 plan = " ".join(f"({n}) {item}" for n, item in enumerate(f["recommendation"], 1))
                 text += " " + document_text(f"Recommended fix: {plan}")
+            for claim in f["claims"]:
+                text += " " + document_text(
+                    f"Reply by @{claim['author']}, an unverified claim: {claim['text']}")
             location = f["location"].replace("`", "")
             lines += [f"### {f['id']} — `{location}`", "", f"- **Reviewers:** {viewer}", "",
-                      "**Finding:**", "", text, "", f"<!-- METADATA({f['id']}) -->",
-                      f"<!-- /METADATA({f['id']}) -->", "", "---", ""]
+                      "**Finding:**", "", text, "", f"<!-- METADATA({f['id']}) -->"]
+            if f["declined"]:
+                lines.append(f"- **Triage:** 🚫 Won't Fix — {document_text(f['declined'])}")
+            lines += [f"<!-- /METADATA({f['id']}) -->", "", "---", ""]
     with open(path, "w", encoding="utf-8", newline="\n") as out:
         out.write("\n".join(lines))
 
