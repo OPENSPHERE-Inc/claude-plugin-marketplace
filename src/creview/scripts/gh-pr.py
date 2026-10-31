@@ -25,9 +25,10 @@ the PR to be open, and writes to <out_dir>:
                    batches of about BATCH_CHARS characters with each review
                    thread whole; a review comment says whether its line is
                    outdated, which side of the diff its line is on (LEFT: a line
-                   of the base that the PR removes), and, when known, whether
-                   its thread is resolved; with --skip-resolved, the batches
-                   leave out the threads known to be resolved
+                   of the base that the PR removes), whether its review was
+                   dismissed, and, when known, whether its thread is resolved;
+                   with --skip-resolved, the batches leave out the threads known
+                   to be resolved
 It prints a JSON object whose in_place is true when HEAD of the current working
 tree is the PR head, whose comment_batches is the number of batches, whose
 comments_omitted is true when more comments exist than MAX_PAGES pages hold, whose
@@ -320,8 +321,21 @@ def all_comments(host, repo, number):
     states, states_complete = resolved_threads(host, repo, number)
     reviews, complete = api_pages(f"repos/{repo}/pulls/{number}/reviews", host)
     pending = {r.get("id") for r in reviews if r.get("state") == "PENDING"}
+    dismissed = {r.get("id") for r in reviews if r.get("state") == "DISMISSED"}
     issue_comments, issue_complete = api_pages(f"repos/{repo}/issues/{number}/comments", host)
     review_comments, comments_complete = api_pages(f"repos/{repo}/pulls/{number}/comments", host)
+    inline = [
+        {"id": c.get("id"), "in_reply_to": c.get("in_reply_to_id"),
+         "author": login(c.get("user")), "created_at": c.get("created_at"),
+         "path": c.get("path"), "line": c.get("line") or c.get("original_line"),
+         "side": c.get("side"),
+         "outdated": c.get("line") is None and c.get("original_line") is not None,
+         "review_dismissed": c.get("pull_request_review_id") in dismissed,
+         "thread_resolved": states.get(c.get("in_reply_to_id") or c.get("id")),
+         "body": c.get("body") or ""}
+        for c in review_comments
+        if c.get("pull_request_review_id") not in pending
+    ]
     return {
         "issue_comments": [
             {"author": login(c.get("user")), "created_at": c.get("created_at"),
@@ -333,19 +347,11 @@ def all_comments(host, repo, number):
              "submitted_at": r.get("submitted_at"), "body": r.get("body") or ""}
             for r in reviews if r.get("body") and r.get("state") != "PENDING"
         ],
-        "review_comments": [
-            {"id": c.get("id"), "in_reply_to": c.get("in_reply_to_id"),
-             "author": login(c.get("user")), "created_at": c.get("created_at"),
-             "path": c.get("path"), "line": c.get("line") or c.get("original_line"),
-             "side": c.get("side"),
-             "outdated": c.get("line") is None and c.get("original_line") is not None,
-             "thread_resolved": states.get(c.get("in_reply_to_id") or c.get("id")),
-             "body": c.get("body") or ""}
-            for c in review_comments
-            if c.get("pull_request_review_id") not in pending
-        ],
+        "review_comments": inline,
         "omitted": not (complete and issue_complete and comments_complete),
-        "thread_states_complete": states_complete,
+        "thread_states_complete": states_complete and all(
+            c["thread_resolved"] is not None for c in inline
+        ),
     }
 
 

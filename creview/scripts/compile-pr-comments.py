@@ -14,14 +14,15 @@ to it:
 
 Writes <document_path> in the format of /creview:start's review document, with
 findings in severity, path, and line order, empty metadata markers, and the PR,
-Branch, Trust, and Source header bullets. The header takes its values from the
-arguments alone: the compilers that write the extract files can also write under
-<tmp_dir>. Line breaks in a value are folded, no value can open an HTML comment, and a
+Branch, Trust, and Source header bullets. The PR, Branch, Trust, and Scope bullets
+take their values from the arguments alone: the compilers that write the extract files
+can also write under <tmp_dir>. The Reviewers bullet lists the extract files' authors.
+Line breaks in a value are folded, no value can open an HTML comment, and a
 description cannot start a Markdown block, so comment text cannot pass for the
-document's structure. A location that points outside the repository becomes PR. It
-merges no findings, so the same finding from two batches stays as two. --lang selects
-the language of the labels the script writes; finding text stays as extracted. With no
-findings it writes nothing.
+document's structure. A location that points outside the repository or into a .git
+directory becomes PR. It merges no findings, so the same finding from two batches
+stays as two. --lang selects the language of the labels the script writes; finding
+text stays as extracted. With no findings it writes nothing.
 
 Prints {"doc_path", "findings_total", "severity_counts"}; doc_path is null without
 findings. A missing or malformed extract file exits 1, naming every such file on
@@ -96,7 +97,9 @@ def repository_location(location):
     # Later phases read the path a location names, and any commenter can name any path.
     m = LOCATION_RE.fullmatch(location)
     path = m.group(1) if m else location
-    if path.startswith(("/", "\\", "~")) or ":" in path or ".." in re.split(r"[\\/]", path):
+    parts = [part.lower() for part in re.split(r"[\\/]", path)]
+    if (path.startswith(("/", "\\", "~", "$", "%")) or ":" in path
+            or ".." in parts or ".git" in parts):
         return "PR"
     return location
 
