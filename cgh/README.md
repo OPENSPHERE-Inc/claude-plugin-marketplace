@@ -8,10 +8,12 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 
 ## Requirements
 
-- The `creview` plugin, which Claude Code installs with `cgh` as a dependency, and what it needs
-  for a pull request: an authenticated GitHub CLI (`gh`), Git 2.41 or later, and a clone with
-  the pull request's repository as a remote.
-- A pull request that is open.
+- The `creview` plugin, version 0.17.0 or later, which Claude Code installs with `cgh` as a
+  dependency, and what it needs for a pull request: an authenticated GitHub CLI (`gh`), Git 2.41
+  or later, `python3` (3.9 or later) on the `PATH`, and a clone with the pull request's
+  repository as a remote.
+- A pull request that is open when the skill starts. When it is merged after you push,
+  `/cgh:respond` can still post its replies.
 - A session started at the repository root.
 
 ## Skills
@@ -26,7 +28,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 ### `/cgh:review`
 
 Runs `/creview:start`, then `/creview:triage`, shows what it would post, and posts on your
-instruction.
+instruction. A later run does not report again the findings already posted and not yet verified.
 
 - **Event**: Request Changes when a posted finding is Critical or Major, otherwise Comment.
   It makes no LGTM judgment.
@@ -48,10 +50,12 @@ instruction.
 ### `/cgh:gate`
 
 A merge gate for code that has already been self-reviewed. It looks only for broken code,
-regressions of existing behavior, and work left undone with no issue recording it: a `TODO` in
-the code, an open item in the description, or a promised follow-up. Nice-to-have tests,
-refactoring, and style are not findings. A residue that names an issue or a pull request counts
-as recorded. The focus is in [rules/gate-focus.md](rules/gate-focus.md).
+regressions of existing behavior, changes the review could not read, and work left undone with
+no issue recording it: a `TODO` in the code, an open item in the description, or a follow-up the
+description or a code comment promises. Nice-to-have tests, refactoring, and style are not
+findings. A residue that names an issue or a pull request counts as recorded. A conversation
+comment neither creates a residue nor records one. The focus is in
+[rules/gate-focus.md](rules/gate-focus.md).
 
 - **BLOCK** (Request Changes): a posted finding or an earlier gate finding still unverified is
   Critical or Major, or the pull request has merge conflicts.
@@ -61,7 +65,9 @@ The verdict goes in the review body, and findings are placed as in `/cgh:review`
 
 Run it again after fixes until it passes. A later run verifies the earlier gate findings at the
 current head with `/creview:resolve`, reports them in the review body, and reviews the whole
-pull request again. To accept an earlier finding without a fix, tell the skill to waive it.
+pull request again. To accept an earlier finding without a fix, tell the skill to waive it:
+later runs do not report it again. An open item in the description cannot be verified from the code: update the description, then
+waive it.
 
 ### `/cgh:respond`
 
@@ -71,15 +77,22 @@ drafts one reply per comment, with what was done and the commit, or with why no 
 It shows them and posts on your instruction.
 
 - At the confirmation, you can exclude findings from the fixes: their replies say why, from the
-  reason you give. When nothing is left to fix, it does not stop.
+  reason you give.
+- When the triage leaves nothing to fix, it skips the confirmation and goes on to the replies.
 - `--no-confirm` goes from the triage to the fixes without stopping. Replies still wait for your
   instruction, with or without it.
+  - Anyone who can comment on the pull request can put text into the findings, and the
+    confirmation is the last check before the fixes, so do not use it on a pull request you do
+    not trust.
 - A reply to a finding from a review body or an issue comment goes out as an issue comment that
   mentions its author.
-- `post` refuses to send replies until the pull request contains the fix commits. A rebase
-  changes their hashes, so push them as they are.
+- The skill refuses to send replies until the pull request contains the fix commits. A rebase
+  changes their hashes, so push them as they are. If you rebased or squashed them, say so, and
+  the skill collects the commits again.
 - A finding that was not addressed gets no reply. Neither does one whose comment the drafter
   could not identify: the skill lists those.
+- A comment that already has a reply from the skill does not get another one saying no change
+  was made.
 - `/creview:respond` builds and tests the pull request's code. For a pull request you do not
   trust, see the warnings in the [creview README](../creview/README.md).
 
@@ -87,13 +100,20 @@ It shows them and posts on your instruction.
 
 Verifies the findings `/cgh:review` posted under your account with `/creview:resolve`, shows the
 replies, and posts on your instruction. Each reply names the commit checked at. When the code
-follows the fix the finding recommended, the reply leaves out the details.
+follows the fix the finding recommended, the reply leaves out the details. Info findings are
+not verified.
 
 ## Language
 
 Comments and replies go out in the language of the pull request's description. The preview
 stays in the language you write in, and a second file next to it holds the wording that goes
 out. Findings already in the description's language go out untranslated.
+
+## `--adversarial`
+
+Passed to `/creview:start`, it runs the reviewers in adversarial mode, where every Critical /
+Major finding must state a concrete failure scenario. See the
+[creview README](../creview/README.md).
 
 ## `--trust`
 
@@ -118,8 +138,9 @@ reads them. `--no-confirm` skips that chance. `/cgh:respond` also passes `--adr`
 
 The state lives on the pull request, so a later run needs nothing from an earlier one.
 
-- A posted finding carries a hidden marker with its ID and location, and a verification carries
-  one with the IDs it closes. Only markers in your own comments count.
+- A posted finding carries a hidden marker with its ID and location, a verification or a waiver
+  one with the IDs it closes, and a reply one with the comment it answers. Only markers in your
+  own comments count.
 - `/cgh:gate` and `/cgh:resolve` read back only findings carrying a marker: comments you wrote
   by hand are not checked. Dismissing a review drops its findings.
 - Finding IDs number on from the earlier ones, so an ID stays unique on a pull request. An ID on
@@ -131,13 +152,18 @@ The state lives on the pull request, so a later run needs nothing from an earlie
   out anyway counts as posted, and one still pending is deleted. When the state cannot be read,
   the skill says so and refuses to post the same draft again: check the pull request before you
   run it again.
-- When the pull request moves between the review and the post, `post` refuses, and you run the
-  skill again: the findings' line numbers belong to the reviewed head.
-- `/cgh:gate` and `/cgh:resolve` stop when earlier findings need checking and HEAD holds commits
-  the pull request does not have, or uncommitted changes at its head: the result would describe
-  code the pull request does not contain.
+- When the pull request moves between the review and the post, the skill refuses to post, and
+  you run it again: the findings' line numbers belong to the reviewed head.
+- `/cgh:gate` waits for GitHub to compute whether the pull request merges, and refuses to post
+  when GitHub does not finish, or when the verdict has changed since the preview.
+- `/cgh:review`, `/cgh:gate`, and `/cgh:resolve` stop when earlier findings are not yet verified
+  and HEAD holds commits the pull request does not have, or uncommitted changes at its head: the
+  result would describe code the pull request does not contain.
 - GitHub refuses Request Changes on your own pull request, so the skill sends Comment there. With
   `/cgh:gate`, the verdict is still in the review body.
+- A PASS goes out as Comment, which does not clear a Request Changes you sent earlier: it stays
+  on GitHub until it is dismissed, and dismissing it takes that review's findings out of later
+  runs.
 - GitHub allows one pending review per user on a pull request. Submit or discard yours first.
 - Text in the comments comes from reviewers that read the pull request. A script quotes `@`
   mentions in it and escapes HTML comments, but read the preview before you post it.

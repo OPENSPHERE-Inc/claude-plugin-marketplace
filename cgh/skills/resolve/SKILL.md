@@ -16,7 +16,7 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 ## Step 1 — Posted findings
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind review --document {document_path}`, adding `--trust` when given. It finds the findings of `/cgh:review` under your GitHub account and prints `open`, those not yet verified, and `verified`. On a non-zero exit, abort with its error. When `open` is empty, tell the user there is nothing to check, with the count of `verified`, and finish.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind review --document {document_path}`, adding `--trust` when given. It finds the findings of `/cgh:review` under your GitHub account and prints `open`, those not yet verified, leaving out Info, which verification skips, and `verified`. On a non-zero exit, abort with its error. When `open` is empty, tell the user there is nothing to check, with the count of `verified`, and finish.
 
 ## Step 2 — Verify
 
@@ -27,7 +27,7 @@ Run `creview:resolve` with `{document_path}`. Override for every verification su
 
 ## Step 3 — Replies
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' {tmp_dir} {document_path} --lang {lang}`. It writes `{tmp_dir}/replies.json` and prints `unverified`, the findings that got no result, and `pr_body_path`.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' {tmp_dir} {document_path} --lang {lang}`. It writes `{tmp_dir}/replies.json` and prints `replies`, `unverified`, the findings that got no result, and `pr_body_path`. When `replies` is 0, launch no writer and continue at Step 5.
 
 Replies go out in the language of the pull request's description. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)`:
 

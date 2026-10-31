@@ -10,7 +10,7 @@ SKILL が `{skill}` の値と `plugin_root` 変数を指定する。
 
 ## creview スキルの実行
 
-SKILL が指定する引数で Skill ツールから起動する。ユーザーが直接起動したときと同じくそのリーダーとして最終ステップまで実行し、SKILL の次のステップに進む: creview スキルの締めの報告でこのスキルは終わらない。SKILL が指定するオーバーライドを、SKILL が指定する起動プロンプトの「Round-specific overrides」セクションに追加する。creview スキルが中断した、または起動できないときは中断する。
+SKILL が指定する引数で Skill ツールから起動する。ユーザーが直接起動したときと同じくそのリーダーとして最終ステップまで実行し、SKILL の次のステップに進む: creview スキルの締めの報告でこのスキルは終わらない。SKILL が指定するオーバーライドを、SKILL が指定する起動プロンプトの「ラウンド固有のオーバーライド」セクションに追加する。creview スキルが中断した、または起動できないときは中断する。creview スキルの実行中、`plugin_root`、`{tmp_dir}`、`{document_path}`、`{timestamp}` はそのスキルが確定した値とする。SKILL の次のステップからは、SKILL と § セットアップ が確定した値とし、SKILL が置き換えを指定していればその値とする。
 
 ## 境界
 
@@ -25,16 +25,16 @@ GitHub を変更するのは `{{plugin_root}}/scripts/gh-review.py post` 経由�
 1. `selected_ids` と `prior_ids` を最大 15 件のバッチに分ける。最初のバッチだけを（空でも）`comment_lang` = `(decide)` で `Agent(subagent_type="cgh:comment-writer", prompt=...)` として起動し、その後、残りのバッチを返された `comment_lang` で一度に、1 メッセージ最大 20 体まで起動する:
 
 ```
-As your first action, you MUST Read `{{plugin_root}}/skills/review/templates/comment-wording.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+最初の行動として `{{plugin_root}}/skills/review/templates/comment-wording.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
 
-Variables (substitute into the template's {{...}} placeholders):
+変数（テンプレート中の {{...}} placeholder を置換）:
 - draft_path: {json_path}
 - pr_body_path: {pr_body_path}
 - ids: {ids}
 - comment_lang: {comment_lang}
 - output_path: {tmp_dir}/wording-{n}.json
 
-Include `template_id` (Read from the template's frontmatter) in the return value.
+戻り値に `template_id`（テンプレートの frontmatter から Read）を含める。
 ```
 
 返される `template_id` は `a7d2c5e1-4b36-4f08-9e1a-6c3b8d07f2a4` でなければならない。不一致なら再度起動し、2 回続いたら中断する。

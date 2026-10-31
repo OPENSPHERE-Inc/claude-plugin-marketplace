@@ -16,30 +16,30 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 1 — 投稿済みの指摘
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind review --document {document_path}` を実行する。`--trust` が指定されていれば追加する。自分の GitHub アカウントによる `/cgh:review` の指摘を見つけ、`open`（まだ検証されていないもの）と `verified` を出力する。非ゼロ終了なら、そのエラーで中断する。`open` が空なら、確認するものがないことを `verified` の件数とともにユーザーに伝えて終了する。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind review --document {document_path}` を実行する。`--trust` が指定されていれば追加する。自分の GitHub アカウントによる `/cgh:review` の指摘を見つけ、`open`（まだ検証されていないもの。検証の対象外である Info を除く）と `verified` を出力する。非ゼロ終了なら、そのエラーで中断する。`open` が空なら、確認するものがないことを `verified` の件数とともにユーザーに伝えて終了する。
 
 ## Step 2 — 検証
 
 `{document_path}` で `creview:resolve` を実行する。すべての検証サブエージェントへのオーバーライド:
 
-- `For a Resolved finding, begin the verification result in memo_value with [as-recommended] when the code now follows the fix the finding recommends, or [differs] when it is resolved another way or the finding recommends none.`
-- `Write the verification text in {doc_lang}.`
+- `Resolved の指摘では、コードが指摘の推奨する修正に従うようになっていれば memo_value の検証結果を [as-recommended] で始め、別の方法で解決しているか指摘が修正を推奨していなければ [differs] で始める。`
+- `検証結果の文面を {doc_lang} で書く。`
 
 ## Step 3 — 返信
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' {tmp_dir} {document_path} --lang {lang}` を実行する。`{tmp_dir}/replies.json` が書き出され、`unverified`（結果が得られなかった指摘）と `pr_body_path` が出力される。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' {tmp_dir} {document_path} --lang {lang}` を実行する。`{tmp_dir}/replies.json` が書き出され、`replies`、`unverified`（結果が得られなかった指摘）、`pr_body_path` が出力される。`replies` が 0 なら、担当を起動せず Step 5 に進む。
 
 返信は PR 本文の言語で投稿する。`Agent(subagent_type="cgh:comment-writer", prompt=...)` を起動する:
 
 ```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/reply-translate.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/reply-translate.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
 
-Variables (substitute into the template's {{...}} placeholders):
+変数（テンプレート中の {{...}} placeholder を置換）:
 - replies_path: {tmp_dir}/replies.json
 - pr_body_path: {pr_body_path}
 - output_path: {tmp_dir}/wording-1.json
 
-Include `template_id` (Read from the template's frontmatter) in the return value.
+戻り値に `template_id`（テンプレートの frontmatter から Read）を含める。
 ```
 
 返される `template_id` は `c41e8f37-2a95-4d6b-8b10-93e7a5d1c6f2` でなければならない。不一致なら再度起動し、2 回続いたら中断する。その後、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' {tmp_dir}/replies.json` を実行する。

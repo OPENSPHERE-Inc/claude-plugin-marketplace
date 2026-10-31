@@ -131,8 +131,8 @@ When changing a plugin:
   - SKILL.md bodies / `allowed-tools` and bundled agent definitions use
     `${CLAUDE_PLUGIN_ROOT}/...`.
   - `templates/*.md` and bundled rules (opened with Read by a sub-agent, or by a leader for
-    `rules/doc-worktree.md` / `rules/pr-comment-doc.md`) use the `{{plugin_root}}/...` launch
-    variable.
+    `rules/doc-worktree.md` / `rules/pr-comment-doc.md` / `cgh/rules/leader.md`) use the
+    `{{plugin_root}}/...` launch variable.
 - **Agent-dispatch generalization**: skills do **not** bundle specialist reviewers. The
   single-best-match resolution mechanics (enumerate agents recursively `**/*.md` across
   **destination project** → **user** → **plugin bundle** scopes, higher-priority scope wins
@@ -294,10 +294,12 @@ read and write on GitHub goes through `scripts/gh-review.py`, which also compute
 the verdict, and where each finding goes. A bundled `comment-writer` or `reply-drafter`, which
 have Read and Write only, summarize recommendations and translate what goes out into the language
 of the pull request's description; the preview stays in the user's language. Each posted finding carries a hidden marker
-(`<!-- cgh:finding {id} {kind} {location} -->`), and a verification carries
-`<!-- cgh:verified {ids} -->`, read back only from the authenticated user's own comments.
-`gh-review.py prior` rebuilds a review document from them, with the IDs and comment targets
-kept, for `/creview:resolve` to verify. Posted findings number on from the earlier ones, so
+(`<!-- cgh:finding {id} {kind} {location} -->`), a verification carries
+`<!-- cgh:verified {ids} -->`, a waiver `<!-- cgh:waived {ids} -->`, and a reply
+`<!-- cgh:reply {kind} {id} -->`, read back only from the authenticated user's own comments.
+`gh-review.py prior` rebuilds a review document from them, with the IDs kept, for
+`/creview:resolve` to verify, and writes the comment targets to `{tmp_dir}/prior.json`, which
+`gh-review.py replies` reads. Posted findings number on from the earlier ones, so
 an ID stays unique on a pull request.
 
 ### Sub-agent launch contract
@@ -338,6 +340,11 @@ every sub-agent's writes to `{{target_dir}}`, its working directory (`tmp_dir`),
 output paths it is given, judged by prefix with no `..`, where `\` and `/` count as the
 same separator and a drive letter's case is ignored; paths in a task are passed as given,
 never re-rooted by a leader.
+
+The launches of cgh's `reply-drafter` and `comment-writer` are the exception: they pass only
+the variables their templates name, as absolute paths, with no `plugin_root`, `main_root`,
+`target_dir`, or Round-specific overrides, since those templates read no bundled rule and the
+agents have Read and Write only. A cgh launch that goes beyond that passes all three.
 
 ---
 
@@ -380,7 +387,8 @@ never re-rooted by a leader.
    `templates/*.md` as needed; mirror it under `src/<plugin>/skills/<name>/` in Japanese.
 2. Use `${CLAUDE_PLUGIN_ROOT}/...` in the SKILL body / `allowed-tools`; use
    `{{plugin_root}}/...` inside templates and the bundled rules they point to, and pass
-   `plugin_root`, `main_root`, and `target_dir` in every launch prompt — `main_root` is the
+   `plugin_root`, `main_root`, and `target_dir` in every launch prompt (cgh's `reply-drafter`
+   and `comment-writer` excepted; see Sub-agent launch contract) — `main_root` is the
    main working tree's root under `--worktree` or the value an upper flow passed, and
    `(none)` otherwise; `target_dir` is the work target (see Sub-agent launch contract).
 3. Resolve reviewers/fixers via the destination project's `.claude/agents/` with a
@@ -471,6 +479,8 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `rules/doc-worktree.md` is opened with Read by the `/creview:triage` / `respond` /
   `resolve` leaders, so it uses `{{plugin_root}}` as well, and those SKILLs name its
   `plugin_root` variable without writing the `{{...}}` token.
+  `cgh/rules/leader.md` is opened with Read by the `/cgh:*` leaders on the same basis, and
+  their SKILLs name its `plugin_root` variable the same way.
 - **`template_id` must match.** The SKILL step's hard-coded UUID and the template's
   frontmatter `template_id` must be identical, or the leader will loop relaunching.
 - **src ↔ active parity is a contract.** Do not edit one side only. A structural
