@@ -188,14 +188,17 @@ expect("resolved_threads past the page limit", g.resolved_threads("h", "o/r", 7)
 g.MAX_PAGES = real_max_pages
 
 g.run, _ = stub_run(threads_page([(10, True)]))
+long_body = "y" * (g.BODY_CHARS + 1)
 other_pages = {
     "repos/o/r/pulls/7/reviews": [
         {"id": 1, "state": "PENDING", "user": {"login": "me"}, "body": "draft"},
         {"id": 2, "state": "COMMENTED", "user": {"login": "x"}, "body": ""},
-        {"id": 3, "state": "APPROVED", "user": {"login": "x"}, "submitted_at": "t1", "body": "ok"},
+        {"id": 3, "state": "APPROVED", "user": {"login": "x"}, "submitted_at": "t1",
+         "body": long_body},
+        {"id": 4, "state": "DISMISSED", "user": {"login": "x"}, "submitted_at": "t3", "body": ""},
     ],
     "repos/o/r/issues/7/comments": [
-        {"user": {"login": "y"}, "created_at": "t2", "body": "hello"},
+        {"user": {"login": "y"}, "created_at": "t2", "body": long_body},
     ],
 }
 g.api_pages = lambda endpoint, host: ([
@@ -203,27 +206,40 @@ g.api_pages = lambda endpoint, host: ([
     {"id": 11, "in_reply_to_id": 10, "line": None, "original_line": 4, "path": "a", "body": "r"},
     {"id": 12, "line": None, "original_line": None, "side": "LEFT", "path": "b", "body": "file"},
     {"id": 13, "line": None, "original_line": 9, "path": "c", "body": "thread not known"},
-    {"id": 14, "line": 1, "path": "d", "body": "y" * (g.BODY_CHARS + 1)},
+    {"id": 14, "line": 1, "path": "d", "body": long_body},
     {"id": 15, "pull_request_review_id": 1, "line": 2, "path": "e", "body": "pending"},
+    {"id": 16, "pull_request_review_id": 4, "line": 3, "path": "f", "body": "dismissed"},
 ] if endpoint.endswith("/pulls/7/comments") else other_pages[endpoint], True)
 comments = g.all_comments("h", "o/r", 7)
 got = comments["review_comments"]
 expect("all_comments leaves out a pending review's comments", [c["id"] for c in got],
-       [10, 11, 12, 13, 14])
+       [10, 11, 12, 13, 14, 16])
 expect("all_comments keeps a submitted review with a body", comments["reviews"],
-       [{"author": "x", "state": "APPROVED", "submitted_at": "t1", "body": "ok"}])
+       [{"author": "x", "state": "APPROVED", "submitted_at": "t1", "body": long_body}])
 expect("all_comments converts issue comments", comments["issue_comments"],
-       [{"author": "y", "created_at": "t2", "body": "hello"}])
+       [{"author": "y", "created_at": "t2", "body": long_body}])
 expect("all_comments thread_resolved", [c["thread_resolved"] for c in got],
-       [True, True, None, None, None])
+       [True, True, None, None, None, None])
 expect("all_comments outdated", [c["outdated"] for c in got],
-       [False, True, False, True, False])
-expect("all_comments side", [c["side"] for c in got], ["RIGHT", None, "LEFT", None, None])
-expect("all_comments keeps a body past BODY_CHARS", got[4]["body"], "y" * (g.BODY_CHARS + 1))
+       [False, True, False, True, False, False])
+expect("all_comments side", [c["side"] for c in got], ["RIGHT", None, "LEFT", None, None, None])
+expect("all_comments review_dismissed", [c["review_dismissed"] for c in got],
+       [False, False, False, False, False, True])
+expect("all_comments keeps a body past BODY_CHARS", got[4]["body"], long_body)
 expect("all_comments omitted", comments["omitted"], False)
-expect("all_comments thread_states_complete", comments["thread_states_complete"], True)
+expect("all_comments thread_states_complete with a comment in no known thread",
+       comments["thread_states_complete"], False)
 g.run, _ = stub_run(g.Error("boom"))
 expect("all_comments thread_states_complete on a failure",
+       g.all_comments("h", "o/r", 7)["thread_states_complete"], False)
+g.api_pages = lambda endpoint, host: (
+    [{"id": 1, "line": 1, "path": "a", "body": "x"}] if endpoint.endswith("/pulls/7/comments")
+    else [], True)
+g.run, _ = stub_run(threads_page([(1, True)]))
+expect("all_comments thread_states_complete with every comment's thread known",
+       g.all_comments("h", "o/r", 7)["thread_states_complete"], True)
+g.run, _ = stub_run(threads_page([(1, True)], "c1"), g.Error("boom"))
+expect("all_comments thread_states_complete with every comment known and a failed page",
        g.all_comments("h", "o/r", 7)["thread_states_complete"], False)
 for capped_kind in ("/pulls/7/reviews", "/issues/7/comments", "/pulls/7/comments"):
     g.api_pages = lambda endpoint, host, kind=capped_kind: ([], not endpoint.endswith(kind))
@@ -1135,8 +1151,11 @@ expect("the header takes nothing from pr.json",
 expect("pr.json cannot add a heading", "\n## x" in text, False)
 
 OUTSIDE = ("~/.aws/credentials:1", "../../.env:1", "..\\x:1", "C:/Users/x:1", "/etc/passwd",
-           "a/../..:3", "\\\\host\\share\\x:1", "src/a.cpp:stream", "file:///etc/passwd")
-INSIDE = ("src/a.cpp:12", "a:12", ".claude/settings.json:1", "x..y/z:1", "a..:2", "PR")
+           "a/../..:3", "\\\\host\\share\\x:1", "src/a.cpp:stream", "file:///etc/passwd",
+           "$HOME/.ssh/id_rsa:1", "${HOME}/.aws/credentials", "%USERPROFILE%\\.ssh\\id_rsa:1",
+           ".git/config:1", ".git/hooks/pre-commit:1", ".GIT\\config", "sub/.git/config:2")
+INSIDE = ("src/a.cpp:12", "a:12", ".claude/settings.json:1", "x..y/z:1", "a..:2", "PR",
+          ".gitignore:1", ".github/workflows/a.yml:2", "app/routes/posts.$slug.tsx:3", "a%20b/c:1")
 proc, doc = run(setup("locations", [finding(location=location) for location in OUTSIDE + INSIDE]))
 expect("locations exit", proc.returncode, 0)
 with open(doc, encoding="utf-8") as f:
