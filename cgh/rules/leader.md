@@ -10,7 +10,7 @@ Fix once: `{timestamp}` (`YYYYMMDD-HHMMSS`); `{tmp_dir}`, the absolute path of `
 
 ## Running a creview skill
 
-Invoke it with the Skill tool, with the arguments the SKILL names. Act as its leader through its last step, as when the user invokes it directly, then continue at the SKILL's next step: its closing report does not end this skill. Add the overrides the SKILL names to the "Round-specific overrides" section of the launch prompts it names. When the creview skill aborts or cannot be invoked, abort.
+Invoke it with the Skill tool, with the arguments the SKILL names. Act as its leader through its last step, as when the user invokes it directly, then continue at the SKILL's next step: its closing report does not end this skill. Add the overrides the SKILL names to the "Round-specific overrides" section of the launch prompts it names. When the creview skill aborts or cannot be invoked, abort. While the creview skill runs, `plugin_root`, `{tmp_dir}`, `{document_path}`, and `{timestamp}` are the values that skill fixes; from the SKILL's next step on, they are the values the SKILL and § Setup fixed, with any replacement the SKILL names.
 
 ## Boundary
 
