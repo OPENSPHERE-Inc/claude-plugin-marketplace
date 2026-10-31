@@ -279,11 +279,14 @@ only in a sandbox.
 `/creview:triage` and `/creview:resolve` also take a GitHub pull request URL
 in place of a review document. They first compile a review document from the
 pull request's comments, then run on that document as usual. The requirements
-are those of `/creview:start`'s pull request review: an open pull request whose
-repository is a remote of the current clone, an authenticated `gh`, and no
-uncommitted changes to tracked files when HEAD is its head commit. `--base`
-cannot be combined with the URL. `--trust` records `on` in the document's Trust
-bullet, so that a worktree the skill makes has the agent files.
+are an open pull request whose repository is a remote of the current clone, an
+authenticated `gh`, and no uncommitted changes to tracked files when HEAD is its
+head commit. Git 2.41 or later is required only by `/creview:resolve` working in
+a worktree of the pull request; with an older Git it stops with an error after
+compiling the comments. `--base` cannot be combined with the URL. The document's
+Trust bullet records `on` when `--trust` is given or when the skill runs in place
+with HEAD at the head commit, and `off` otherwise. A worktree a skill makes for
+the document has the agent files only when it is `on`.
 
 - The bundled `pr-comment-compiler` turns inline review comments, review bodies,
   and conversation comments that point out a problem in the code or ask for a
@@ -297,27 +300,35 @@ bullet, so that a worktree the skill makes has the agent files.
   - It runs with Read and Write only, without shell or network access.
 - `/creview:triage` leaves out threads marked resolved on GitHub before the
   compilers read them, and reports how many.
+  - The pull request's author can mark a thread resolved too; `/creview:resolve`
+    with the same URL verifies those threads against the code.
 - `/creview:resolve` includes those threads and verifies every finding against
-  the code, with no triage or fix before it: `✅ Verified` when the code does
-  not have the problem, `💬 Feedback` when it still does. Run `/creview:triage`
-  on the document to take the `💬 Feedback` findings on.
+  the code, with no triage or fix before it.
+  - A finding is `✅ Verified` when the code does not have the problem and
+    `💬 Feedback` when it still does.
+  - Run `/creview:triage` on the document to take the `💬 Feedback` findings on.
+- When HEAD contains the head commit but is not it, the skill works on the local
+  code, which can hold commits and uncommitted changes the pull request does not
+  have, and the run reports that.
 - Every comment is compiled, up to 10,000 of each kind, and the run reports when
   more exist.
   - The comments are split into batches of about 40,000 characters that keep each
-    review thread whole. One compiler reads each batch, so a pull request with
-    many comments launches more sub-agents.
+    review thread whole.
+    - One compiler reads each batch, so a pull request with many comments launches
+      more sub-agents.
   - The script `compile-pr-comments.py` builds the document from what the compilers
-    extract. A duplicate within a batch is merged; the same finding in two batches
-    stays as two findings, for `/creview:triage` to judge.
-  - A comment is read up to its first 20,000 characters, and a finding from a
-    longer one says it was cut.
+    extract.
+    - A duplicate within a batch is merged.
+    - The same finding in two batches stays as two findings, which `/creview:triage`
+      judges and `/creview:resolve` verifies separately, so both can become fix
+      targets.
 - The document is written to `.claude/tmp/creview-triage-{timestamp}.md` or
   `.claude/tmp/creview-resolve-{timestamp}.md`, with the header bullets of a
-  pull request review and a `- **Source:** pr-comments` bullet. When the comments
-  hold no findings, the run ends without a document.
+  pull request review and a `- **Source:** pr-comments` bullet.
+  - When the comments hold no findings, the run ends without a document.
 - Anyone who can comment on the pull request can put text into these findings.
-  Check the persisted decisions before running `/creview:respond`, above all for
-  a pull request you do not trust.
+  - Check the persisted decisions before running `/creview:respond`, above all for
+    a pull request you do not trust.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review

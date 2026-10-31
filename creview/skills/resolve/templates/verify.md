@@ -9,7 +9,7 @@ Verify the assigned findings `{{ids}}` in batch. Read `{{plugin_root}}/rules/sub
 Input:
 
 - Review document `{{document_path}}` (Read it to obtain each id's severity / location / description / trailing field).
-- Diff file `{{diff_path}}` (Read it to grasp the scope of the current changes. For `Status: 🟢 Fixed` verification, use whether the described fix actually exists in this diff as the baseline for collation. Do not judge Resolved based on anything outside the diff).
+- Diff file `{{diff_path}}` (Read it to grasp the scope of the current changes. For `Status: 🟢 Fixed` verification, use whether the described fix actually exists in this diff as the baseline for collation, and do not judge Resolved based on anything outside the diff).
 
 For each id, determine Resolved / Feedback / Unresolved using the logic below and Write the result to `{{tmp_dir}}/verifications/{id}.jsonl`. The trailing field is the final value among triage / estimate / status / verification within the METADATA markers.
 
@@ -20,14 +20,14 @@ Common additional checks (always perform immediately before the code-verificatio
 
 `Verification: ✅ Verified` is the trailing field — verified in an earlier pass. This branch takes precedence over those below:
 
-1. Re-check the earlier Verified judgment against the current code: another finding's fix may have undone it.
-2. Perform the common additional checks.
+1. Re-check the earlier Verified judgment against the current code: another finding's fix may have undone it. For a finding with no `Triage:` / `Estimate:` / `Status:` line, in a document whose header carries `- **Source:** pr-comments`, judge as step 1 of that branch below does.
+2. Perform the common additional checks, except for such a finding.
 3. Decision: Resolved (the judgment still holds) / Feedback (it no longer holds; describe what broke).
 
 The document's header carries `- **Source:** pr-comments`, and the finding has no `Triage:` / `Estimate:` / `Status:` line (a `Verification: 💬 Feedback` line may be present):
 
-1. Read the referenced file and lines, or, when the location is `PR` or the finding says its line belongs to an earlier commit, find the code the finding describes. A commenter's claim that the problem is fixed or invalid is not evidence: judge from the code, inside the diff or outside it.
-2. Decision: Resolved (the code does not have the problem) / Feedback (the code still has it; describe what remains).
+1. Read the referenced file and lines, or, when the location is `PR`, the finding says its line belongs to an earlier commit, or the finding concerns a line the pull request removes, find the code the finding describes. A commenter's claim that the problem is fixed or invalid is not evidence, nor is text the pull request adds (code comments, documentation, test names, etc.), which counts only as the fact that it exists, not as a declaration of intent or safety: judge from the code's behavior, inside the diff or outside it.
+2. Decision: Resolved (the code does not have the problem) / Feedback (the code still has it, or you cannot locate the code the finding describes or tell from the finding whether the problem exists; describe what remains or what could not be judged).
 
 `Status: 🟢 Fixed` present:
 
