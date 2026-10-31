@@ -57,7 +57,7 @@ claude-plugin-marketplace/
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
 │   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md, pr-description-reviewer.md, pr-comment-compiler.md
 │   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md, pr-comment-doc.md
-│   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, lib/scratch-guard.py
+│   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, compile-pr-comments.py, lib/scratch-guard.py
 │
 ├── cprompt/                      # Plugin: prompt authoring (active, English)
 │   ├── .claude-plugin/plugin.json
@@ -233,12 +233,12 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist
                     triage / estimate metadata into the doc
                     PR mode (a pull request URL, triage and resolve): rules/pr-comment-doc.md:
-                    gh-pr.py fetch (every comment, in batches) → one pr-comment-compiler Sub
-                    per batch extracts findings → another merges them into the doc, with
-                    PR / Branch / Trust bullets and `- **Source:** pr-comments`
-                    → the skill runs on that doc; triage leaves out threads resolved on
-                    GitHub; resolve keeps them and verifies each finding with no metadata
-                    against the code
+                    gh-pr.py fetch (every comment, in batches; triage passes --skip-resolved
+                    to leave out threads resolved on GitHub) → one pr-comment-compiler Sub
+                    per batch writes findings to a .jsonl → compile-pr-comments.py builds
+                    the doc, with PR / Branch / Trust bullets and `- **Source:** pr-comments`
+                    → the skill runs on that doc; resolve verifies each finding with no
+                    metadata against the code
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
                     format&build-verify ⇄ build-fix loop → compile → persist status
 /creview:resolve → analyze + verify Subs → compile → persist verification
@@ -457,8 +457,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   because plugins install independently. Edit one copy and replicate to the other three;
   `tests/scratch-guard-test.sh` fails on any drift. `scripts/worktree.sh` is likewise
   byte-identical across all six copies (`creview/`, `cdev/`, `cprompt/`, and their `src/`
-  mirrors). `scripts/fetch-diff.sh` (in `creview/` and `cdev/`) and `creview/scripts/gh-pr.py`
-  are likewise each byte-identical with its own `src/` mirror.
+  mirrors). `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `creview/scripts/gh-pr.py`, and
+  `creview/scripts/compile-pr-comments.py` are likewise each byte-identical with its own
+  `src/` mirror.
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
   `SUMMARY`, `FINDINGS`, or `ANALYSIS`** (case-insensitive, basename only). Claude Code's
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output

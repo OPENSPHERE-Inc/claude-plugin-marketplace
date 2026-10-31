@@ -1,7 +1,7 @@
 ---
 name: triage
 description: Triage and estimate the cost of review findings, then persist the triage / estimate metadata into the review document (no source fixes). Use proactively when a review document from /creview:start exists and the next step is deciding which findings to address or estimating their fix cost, or when the user asks to triage the review comments of a GitHub pull request given by URL.
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch --show-current), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch --show-current), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/compile-pr-comments.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Triage & Estimate
@@ -27,7 +27,7 @@ The user supplies a path to a review document (markdown), or a GitHub pull reque
 
 ## PR mode
 
-In PR mode, follow `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, `{skill}` = `triage`, and `{resolved_threads}` = `skip`, since a thread marked resolved on GitHub needs no triage.
+In PR mode, follow `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, `{skill}` = `triage`, and `{fetch_option}` = `--skip-resolved`, since a thread marked resolved on GitHub needs no triage.
 
 ## Worktree
 
@@ -112,7 +112,7 @@ Each decision is written to an intermediate file, and `compile-review.py` compil
 {tmp_dir}/pr.json                ← PR mode: the pull request resolved in Step 1
 {tmp_dir}/pr-context.json        ← PR mode: its context (not used by this skill)
 {tmp_dir}/pr-comments/batch-{n}.json ← PR mode: its comments (input to the compilers)
-{tmp_dir}/pr-comments/extract-{n}.md ← PR mode: findings extracted from that batch
+{tmp_dir}/pr-comments/extract-{n}.jsonl ← PR mode: findings extracted from that batch
 {tmp_dir}/triage-draft.jsonl      ← primary decisions (triage sub-agent)
 {tmp_dir}/challenge-{b}-{n}.jsonl ← outputs of the challenge sub-agents (three per finding batch, spawned by the triage Sub)
 {tmp_dir}/adjudication.jsonl      ← output of the adjudication sub-agent (spawned by the triage Sub)

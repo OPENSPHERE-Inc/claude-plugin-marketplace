@@ -1,7 +1,7 @@
 ---
 name: resolve
 description: レビュー指摘の解決状況を実際のソースコードと照合して検証し、検証メタデータを書き戻す。レビュー修正の完了後（通常 /creview:respond の後）や、指摘が実際に解決されたかの確認を求められたとき、または URL で指定された GitHub プルリクエストのレビューコメントの検証を求められたときに能動的に使用する。
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/compile-pr-comments.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュー検証
@@ -20,7 +20,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 ## PR モード
 
-PR モードでは `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}`、`{skill}` は `resolve`、`{resolved_threads}` は `include` とする（GitHub で解決済みとされたスレッドが本当に解決しているかは本スキルが検証するため）。
+PR モードでは `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}`、`{skill}` は `resolve` とし、`{fetch_option}` は空とする（GitHub で解決済みとされたスレッドが本当に解決しているかは本スキルが検証するため）。
 
 ## ワークツリー
 
@@ -108,7 +108,7 @@ Unresolved の指摘には `verification` 値を書き込まない。
 {tmp_dir}/pr.json                  ← PR モード: ステップ 1 で解決したプルリクエスト
 {tmp_dir}/pr-context.json          ← PR モード: そのコンテキスト（本スキルでは使わない）
 {tmp_dir}/pr-comments/batch-{n}.json ← PR モード: そのコメント（編纂者の入力）
-{tmp_dir}/pr-comments/extract-{n}.md ← PR モード: そのバッチから抽出した指摘
+{tmp_dir}/pr-comments/extract-{n}.jsonl ← PR モード: そのバッチから抽出した指摘
 {tmp_dir}/diff.txt                  ← リーダーがステップ 1 で取得する差分（検証サブエージェント入力）
 {tmp_dir}/verifications/{id}.jsonl  ← 検証サブエージェントの出力（指摘 1 件 1 ファイル）
 {tmp_dir}/events.jsonl              ← compile-review.py の出力（render-review.py 入力）

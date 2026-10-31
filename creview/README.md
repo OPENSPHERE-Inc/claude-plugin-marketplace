@@ -295,8 +295,8 @@ bullet, so that a worktree the skill makes has the agent files.
   - A reply claiming that a problem is fixed stays in the finding as an
     unverified claim.
   - It runs with Read and Write only, without shell or network access.
-- `/creview:triage` leaves out threads marked resolved on GitHub and reports how
-  many.
+- `/creview:triage` leaves out threads marked resolved on GitHub before the
+  compilers read them, and reports how many.
 - `/creview:resolve` includes those threads and verifies every finding against
   the code, with no triage or fix before it: `✅ Verified` when the code does
   not have the problem, `💬 Feedback` when it still does. Run `/creview:triage`
@@ -304,8 +304,11 @@ bullet, so that a worktree the skill makes has the agent files.
 - Every comment is compiled, up to 10,000 of each kind, and the run reports when
   more exist.
   - The comments are split into batches of about 40,000 characters that keep each
-    review thread whole. One compiler reads each batch and another merges the
-    results, so a pull request with many comments launches more sub-agents.
+    review thread whole. One compiler reads each batch, so a pull request with
+    many comments launches more sub-agents.
+  - The script `compile-pr-comments.py` builds the document from what the compilers
+    extract. A duplicate within a batch is merged; the same finding in two batches
+    stays as two findings, for `/creview:triage` to judge.
   - A comment is read up to its first 20,000 characters, and a finding from a
     longer one says it was cut.
 - The document is written to `.claude/tmp/creview-triage-{timestamp}.md` or
@@ -424,8 +427,8 @@ bundled agents are `review-helper` (mechanical aggregation / verification),
 `comment-sensei` (comment-discipline review), `review-leader` (the
 `/creview:rounds` phase leader), `pr-description-reviewer` (the pull
 request description and CI reviewer of `/creview:start`'s PR mode), and
-`pr-comment-compiler` (the review document compiler of `/creview:triage`'s and
-`/creview:resolve`'s PR mode), the last two bundled so that their tools stay
+`pr-comment-compiler` (the extractor of findings from a pull request's comments in
+`/creview:triage`'s and `/creview:resolve`'s PR mode), the last two bundled so that their tools stay
 restricted. Only `comment-sensei` is a selection candidate; the skills launch
 the other four by name.
 
@@ -438,7 +441,9 @@ the other four by name.
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
   `fetch-diff.sh` / `del-tmp.sh`; from a linked worktree it also accepts the
   `.claude/tmp/` of another working tree of the same repository),
-  `worktree.sh` (creates and removes the `--worktree` worktree), and `gh-pr.py`
+  `worktree.sh` (creates and removes the `--worktree` worktree),
+  `compile-pr-comments.py` (builds a review document from the findings extracted
+  from a pull request's comments), and `gh-pr.py`
   (resolves a pull request and checks its head commit out in a worktree, finds
   from a review document's header where its code is and checks it out in a
   worktree when it is not checked out, and removes those worktrees). The

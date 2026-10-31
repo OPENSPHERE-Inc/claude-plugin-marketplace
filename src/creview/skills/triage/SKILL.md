@@ -1,7 +1,7 @@
 ---
 name: triage
 description: レビュー指摘事項のトリアージと修正コストの見積を行い、トリアージ / 見積メタデータをレビュードキュメントに永続化する（ソース修正は行わない）。/creview:start のレビュードキュメントが存在し、どの指摘に対応するかの判断や修正コストの見積が次の作業となるとき、または URL で指定された GitHub プルリクエストのレビューコメントのトリアージを求められたときに能動的に使用する。
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch --show-current), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch --show-current), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/compile-pr-comments.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/triage/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # レビュートリアージ & 見積
@@ -27,7 +27,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 ## PR モード
 
-PR モードでは `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}`、`{skill}` は `triage`、`{resolved_threads}` は `skip` とする（GitHub で解決済みとされたスレッドはトリアージ不要のため）。
+PR モードでは `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}`、`{skill}` は `triage`、`{fetch_option}` は `--skip-resolved` とする（GitHub で解決済みとされたスレッドはトリアージ不要のため）。
 
 ## ワークツリー
 
@@ -112,7 +112,7 @@ PR モードでは `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md` に従う。�
 {tmp_dir}/pr.json                ← PR モード: ステップ 1 で解決したプルリクエスト
 {tmp_dir}/pr-context.json        ← PR モード: そのコンテキスト（本スキルでは使わない）
 {tmp_dir}/pr-comments/batch-{n}.json ← PR モード: そのコメント（編纂者の入力）
-{tmp_dir}/pr-comments/extract-{n}.md ← PR モード: そのバッチから抽出した指摘
+{tmp_dir}/pr-comments/extract-{n}.jsonl ← PR モード: そのバッチから抽出した指摘
 {tmp_dir}/triage-draft.jsonl      ← 一次判定（トリアージサブエージェント）
 {tmp_dir}/challenge-{b}-{n}.jsonl ← 反証サブエージェント（指摘バッチごとに 3 体、トリアージ Sub がネスト起動）の出力
 {tmp_dir}/adjudication.jsonl      ← 裁定サブエージェント（トリアージ Sub がネスト起動）の出力

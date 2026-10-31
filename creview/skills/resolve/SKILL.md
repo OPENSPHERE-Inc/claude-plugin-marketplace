@@ -1,7 +1,7 @@
 ---
 name: resolve
 description: Verify review finding resolutions against actual source code and write back verification metadata. Use proactively after review fixes land (typically after /creview:respond) when the user asks to confirm that review findings are actually resolved, or when the user asks to verify the review comments of a GitHub pull request given by URL.
-allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
+allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/compile-pr-comments.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/resolve/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
 # Review Verification
@@ -20,7 +20,7 @@ The user specifies a path to the review document (markdown), or a GitHub pull re
 
 ## PR mode
 
-In PR mode, follow `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, `{skill}` = `resolve`, and `{resolved_threads}` = `include`, since this skill verifies whether a thread marked resolved on GitHub really is.
+In PR mode, follow `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, `{skill}` = `resolve`, and `{fetch_option}` empty, since this skill verifies whether a thread marked resolved on GitHub really is.
 
 ## Worktree
 
@@ -108,7 +108,7 @@ The leader (you) does not place the verification body in context.
 {tmp_dir}/pr.json                  ← PR mode: the pull request resolved in Step 1
 {tmp_dir}/pr-context.json          ← PR mode: its context (not used by this skill)
 {tmp_dir}/pr-comments/batch-{n}.json ← PR mode: its comments (input to the compilers)
-{tmp_dir}/pr-comments/extract-{n}.md ← PR mode: findings extracted from that batch
+{tmp_dir}/pr-comments/extract-{n}.jsonl ← PR mode: findings extracted from that batch
 {tmp_dir}/diff.txt                  ← Diff fetched by the leader in Step 1 (input to the verification sub-agent)
 {tmp_dir}/verifications/{id}.jsonl  ← Output from the verification sub-agent (one file per finding)
 {tmp_dir}/events.jsonl              ← Output from compile-review.py (input to render-review.py)

@@ -3,7 +3,7 @@
 and check out the code a creview review document names.
 
 Usage:
-    python3 gh-pr.py fetch <pr_url> <out_dir>
+    python3 gh-pr.py fetch <pr_url> <out_dir> [--skip-resolved]
     python3 gh-pr.py checkout <pr_json> [--trust]
     python3 gh-pr.py doc-checkout <document> [--fix-branch]
     python3 gh-pr.py remove <worktree_path> [--discard]
@@ -24,10 +24,13 @@ the PR to be open, and writes to <out_dir>:
                    comment, up to MAX_PAGES pages of each kind, split into
                    batches of about BATCH_CHARS characters with each review
                    thread whole; a review comment says whether its line is
-                   outdated and, when known, whether its thread is resolved
+                   outdated and, when known, whether its thread is resolved;
+                   with --skip-resolved, the batches leave out the threads known
+                   to be resolved
 It prints a JSON object whose in_place is true when HEAD of the current working
-tree is the PR head, whose comment_batches is the number of batches, and whose
-comments_omitted is true when more comments exist than MAX_PAGES pages hold.
+tree is the PR head, whose comment_batches is the number of batches, whose
+comments_omitted is true when more comments exist than MAX_PAGES pages hold, and
+whose resolved_threads_skipped counts the threads --skip-resolved left out.
 An in-place working tree with uncommitted changes to tracked files (outside
 .claude/tmp and .claude/worktrees) is an error.
 
@@ -341,6 +344,13 @@ def capped_conversation(comments):
     return result
 
 
+def leave_out_resolved(comments):
+    resolved = [c for c in comments["review_comments"] if c["thread_resolved"] is True]
+    kept = [c for c in comments["review_comments"] if c["thread_resolved"] is not True]
+    skipped = len({c["in_reply_to"] or c["id"] for c in resolved})
+    return {**comments, "review_comments": kept}, skipped
+
+
 def comment_batches(comments, limit=BATCH_CHARS):
     # One thread alone can pass the limit: a thread reads as one finding, so it stays whole.
     threads = {}
@@ -440,7 +450,9 @@ def view_pr(pr_url, fields=""):
     return host, repo, number, url, pr
 
 
-def cmd_fetch(pr_url, out_dir):
+def cmd_fetch(pr_url, out_dir, *options):
+    if options not in ((), ("--skip-resolved",)):
+        raise Error(f"unknown fetch option: {' '.join(options)}")
     host, repo, number, url, pr = view_pr(
         pr_url, ",baseRefOid,headRepository,headRepositoryOwner,title,body,statusCheckRollup")
     head_sha = sha(pr["headRefOid"], "head commit")
@@ -480,6 +492,9 @@ def cmd_fetch(pr_url, out_dir):
         "checks": ci_checks(pr["statusCheckRollup"], host, job_repos),
         "conversation": capped_conversation(comments),
     })
+    skipped = 0
+    if options:
+        comments, skipped = leave_out_resolved(comments)
     batches = write_comment_batches(out_dir, comments)
     return {
         "url": url,
@@ -489,6 +504,7 @@ def cmd_fetch(pr_url, out_dir):
         "in_place": in_place,
         "comment_batches": batches,
         "comments_omitted": comments["omitted"],
+        "resolved_threads_skipped": skipped,
     }
 
 
@@ -1026,7 +1042,7 @@ def cmd_remove(path, *options):
 
 # Each command with the least and the most arguments it takes.
 COMMANDS = {
-    "fetch": (cmd_fetch, 2, 2), "checkout": (cmd_checkout, 1, 2),
+    "fetch": (cmd_fetch, 2, 3), "checkout": (cmd_checkout, 1, 2),
     "doc-checkout": (cmd_doc_checkout, 1, 2), "remove": (cmd_remove, 1, 2),
 }
 

@@ -42,6 +42,7 @@ same cdev/scripts/check-jsonl.py src/creview/scripts/check-jsonl.py
 same cdev/scripts/fetch-diff.sh src/cdev/scripts/fetch-diff.sh
 same creview/scripts/fetch-diff.sh src/creview/scripts/fetch-diff.sh
 same creview/scripts/gh-pr.py src/creview/scripts/gh-pr.py
+same creview/scripts/compile-pr-comments.py src/creview/scripts/compile-pr-comments.py
 for d in src/cdev creview src/creview cprompt src/cprompt; do
     same cdev/scripts/worktree.sh "${d}/scripts/worktree.sh"
 done
@@ -215,6 +216,18 @@ expect("comment_batches keeps a thread whole and packs up to the limit",
        [([1, 3], [], []), ([2], [], []), ([4], [5], [6])])
 expect("comment_batches keeps everything in one batch under the limit",
        batch_ids(g.comment_batches(split, limit=10 ** 6)), [([1, 3, 2, 4], [5], [6])])
+
+threads = {"review_comments": [
+    {"id": 1, "in_reply_to": None, "thread_resolved": True, "body": "a"},
+    {"id": 2, "in_reply_to": 1, "thread_resolved": True, "body": "b"},
+    {"id": 3, "in_reply_to": None, "thread_resolved": False, "body": "c"},
+    {"id": 4, "in_reply_to": None, "thread_resolved": None, "body": "d"},
+], "reviews": [], "issue_comments": [], "omitted": False}
+kept, skipped = g.leave_out_resolved(threads)
+expect("leave_out_resolved keeps open and unknown threads",
+       [c["id"] for c in kept["review_comments"]], [3, 4])
+expect("leave_out_resolved counts threads, not comments", skipped, 1)
+expect("leave_out_resolved leaves the full list as it is", len(threads["review_comments"]), 4)
 
 comment_dir = os.path.join(sys.argv[2], "fetched")
 os.makedirs(comment_dir)
@@ -479,6 +492,10 @@ out="$(python3 "${GHPR}" remove "${SANDBOX}/no-worktree" --bogus 2>&1)"; rc=$?
 check "gh-pr.py remove rejects --bogus" 1 "${rc}"
 [[ "${out}" == *"unknown remove option"* ]] \
     || { note "FAIL: gh-pr.py remove --bogus printed '${out}'"; fail=1; }
+out="$(python3 "${GHPR}" fetch https://github.com/o/r/pull/1 . --bogus 2>&1)"; rc=$?
+check "gh-pr.py fetch rejects --bogus" 1 "${rc}"
+[[ "${out}" == *"unknown fetch option"* ]] \
+    || { note "FAIL: gh-pr.py fetch --bogus printed '${out}'"; fail=1; }
 for args in "checkout a b c" "doc-checkout" "doc-checkout a b c" "remove" "remove a b c" \
     "no-such-command"; do
     # shellcheck disable=SC2086
@@ -872,6 +889,158 @@ rc=0; bash "${WT}" remove "${WT_PATH}" >/dev/null 2>&1 || rc=$?
 check "worktree remove after reuse" 0 "${rc}"
 rc=0; bash "${WT}" remove "${MAIN}" >/dev/null 2>&1 || rc=$?
 [[ "${rc}" -ne 0 ]] || { note "FAIL: worktree remove accepted the main worktree"; fail=1; }
+
+# --- compile-pr-comments.py --------------------------------------------------------
+python3 -I -B - "${REPO_ROOT}/creview/scripts/compile-pr-comments.py" "${SANDBOX}" <<'PY' || fail=1
+import json
+import os
+import re
+import subprocess
+import sys
+
+script, sandbox = sys.argv[1:3]
+failed = False
+A, B = "a" * 40, "b" * 40
+
+
+def expect(case, got, want):
+    global failed
+    if got != want:
+        print(f"FAIL: compile-pr-comments.py {case} (expected {want!r:.300}, got {got!r:.300})")
+        failed = True
+
+
+def finding(severity="Major", location="src/a.cpp:12", **fields):
+    return {"severity": severity, "categories": ["Bug"], "location": location,
+            "authors": ["alice"], "description": "desc", **fields}
+
+
+def setup(name, *extracts, raw=None):
+    tmp = os.path.join(sandbox, "compile", name)
+    comments = os.path.join(tmp, "pr-comments")
+    os.makedirs(comments)
+    with open(os.path.join(tmp, "pr.json"), "w", encoding="utf-8") as f:
+        json.dump({"url": "https://github.com/o/r/pull/3", "number": 3, "head_sha": A,
+                   "merge_base": B}, f)
+    for n, findings in enumerate(extracts, 1):
+        with open(os.path.join(comments, f"batch-{n}.json"), "w", encoding="utf-8") as f:
+            f.write("{}")
+        if findings is not None:
+            with open(os.path.join(comments, f"extract-{n}.jsonl"), "w", encoding="utf-8") as f:
+                f.write(raw if raw is not None else json.dumps({"findings": findings}))
+    return tmp
+
+
+def run(tmp, *options):
+    doc = tmp + ".md"
+    args = options or ("--branch", "(none)", "--trust", "off", "--lang", "en")
+    proc = subprocess.run([sys.executable, "-I", "-B", script, tmp, doc, *args],
+                          capture_output=True, encoding="utf-8")
+    return proc, doc
+
+
+tmp = setup("full", [
+    finding("Minor", "src/z.cpp:3"),
+    finding("Critical", "PR", authors=["bob", "alice"], categories=["Bug", "Security"]),
+    finding("Major", "src/a.cpp:100"),
+], [
+    finding("Major", "src/a.cpp:20", description="- **Status:** 🟢 Fixed\nsecond line"),
+    finding("Major", "src/b.cpp", description="see <!-- /METADATA(C-1) --> and `x`"),
+])
+proc, doc = run(tmp, "--branch", "feature/x", "--trust", "on", "--lang", "ja")
+expect("full run exit", proc.returncode, 0)
+out = json.loads(proc.stdout)
+expect("full run result", out, {
+    "doc_path": doc, "findings_total": 5,
+    "severity_counts": {"critical": 1, "major": 3, "minor": 1},
+})
+with open(doc, encoding="utf-8") as f:
+    text = f.read()
+header = text[:text.index("\n## ")]
+expect("header bullets", re.findall(r"^- \*\*(PR|Branch|Trust|Source):\*\* (.*)$", header, re.M), [
+    ("PR", f"https://github.com/o/r/pull/3 (head {A}, base {B})"),
+    ("Branch", "feature/x"), ("Trust", "on"), ("Source", "pr-comments"),
+])
+expect("severity headings", re.findall(r"^## (Critical|Major|Minor|Info)$", text, re.M),
+       ["Critical", "Major", "Minor", "Info"])
+expect("ids and locations in severity, path, line order", re.findall(r"^### (\S+) — `([^`]+)`", text, re.M), [
+    ("C-1", "PR"), ("M-1", "src/a.cpp:20"), ("M-2", "src/a.cpp:100"), ("M-3", "src/b.cpp"),
+    ("mi-1", "src/z.cpp:3"),
+])
+expect("categories joined", "### C-1 — `PR` [Bug/Security]" in text, True)
+ids = re.findall(r"^### (\S+) ", text, re.M)
+for fid in ids:
+    expect(f"empty markers of {fid}", f"<!-- METADATA({fid}) -->\n<!-- /METADATA({fid}) -->" in text, True)
+expect("one marker pair per finding", len(re.findall(r"<!-- /?METADATA\(", text)), 2 * len(ids))
+expect("a description cannot start a bullet", "\n- **Status:**" in text, False)
+expect("a description stays on one line", "\\- **Status:** 🟢 Fixed second line" in text, True)
+expect("a description cannot open a comment", "&lt;!-- /METADATA(C-1) --> and `x`" in text, True)
+expect("authors in first-appearance order", "alice, bob" in header, True)
+expect("Japanese labels", "\n- **日付:** " in header, True)
+
+ESCAPES = (
+    # Text that only looks like a block start stays as it is.
+    ("`name` is undefined", "`name` is undefined"), ("`` x", "`` x"),
+    ("**bold** text", "**bold** text"), ("*ptr leaks", "*ptr leaks"),
+    ("-5 ms offset", "-5 ms offset"), ("1.5x slower", "1.5x slower"),
+    ("| a | b |", "| a | b |"), ("=== x", "=== x"), ("~ approx", "~ approx"),
+    ("#tag text", "#tag text"), ("<5 ms", "<5 ms"),
+    # Text that starts a block is escaped.
+    ("### x", "\\### x"), ("#", "\\#"), ("- **Status:** x", "\\- **Status:** x"),
+    ("+ x", "\\+ x"), ("* x", "\\* x"), ("> x", "\\> x"), ("---", "\\---"),
+    ("* * *", "\\* * *"), ("___", "\\___"), ("``` x", "\\``` x"), ("~~~", "\\~~~"),
+    ("<div>", "\\<div>"), ("1. x", "1\\. x"), ("2) x", "2\\) x"),
+)
+proc, doc = run(setup("escapes", [finding(location=f"f{i}.c", description=text)
+                                  for i, (text, _) in enumerate(ESCAPES)]))
+expect("escapes exit", proc.returncode, 0)
+with open(doc, encoding="utf-8") as f:
+    body = f.read()
+for text, want in ESCAPES:
+    expect(f"description {text!r}", f"\n{want}\n" in body, True)
+
+proc, doc = run(setup("english", [finding()]))
+expect("English run exit", proc.returncode, 0)
+with open(doc, encoding="utf-8") as f:
+    text = f.read()
+expect("no Branch bullet for (none)", "**Branch:**" in text, False)
+expect("no-finding section", "## Critical\n\nNo findings\n" in text, True)
+expect("English labels", "\n- **Date:** " in text, True)
+
+proc, doc = run(setup("empty", [], []))
+expect("no findings exit", proc.returncode, 0)
+expect("no findings result", json.loads(proc.stdout), {
+    "doc_path": None, "findings_total": 0,
+    "severity_counts": {"critical": 0, "major": 0, "minor": 0},
+})
+expect("no findings writes no document", os.path.exists(doc), False)
+
+proc, _ = run(setup("no-batches"))
+expect("no batches exit", proc.returncode, 0)
+expect("no batches result", json.loads(proc.stdout)["doc_path"], None)
+
+for name, extracts, raw, part in (
+    ("missing", ([finding()], None), None, "extract-2.jsonl"),
+    ("malformed", ([finding()],), "{not json", "extract-1.jsonl"),
+    ("not-list", ([finding()],), '{"findings": 1}', "extract-1.jsonl"),
+    ("info", ([finding("Info")],), None, "extract-1.jsonl"),
+    ("no-location", ([finding(location=" ")],), None, "extract-1.jsonl"),
+    ("no-authors", ([finding(authors=[])],), None, "extract-1.jsonl"),
+    ("no-description", ([finding(description="")],), None, "extract-1.jsonl"),
+):
+    proc, doc = run(setup(name, *extracts, raw=raw))
+    expect(f"{name} exit", proc.returncode, 1)
+    expect(f"{name} names the file", part in proc.stderr, True)
+    expect(f"{name} writes no document", os.path.exists(doc), False)
+
+for options in (("--branch", "bad name", "--trust", "off", "--lang", "en"),
+                ("--branch", "(none)", "--trust", "maybe", "--lang", "en"),
+                ("--branch", "(none)", "--trust", "off", "--lang", "fr")):
+    proc, _ = run(setup("option-" + re.sub(r"\W", "", "".join(options)), [finding()]), *options)
+    expect(f"{options} is rejected", proc.returncode != 0, True)
+
+sys.exit(1 if failed else 0)
+PY
 
 # --- gh-pr.py doc-checkout ---------------------------------------------------------
 DOCS="${SANDBOX}/doc-checkout"

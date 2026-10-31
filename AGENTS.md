@@ -31,7 +31,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
   `/creview:triage` / `respond` / `resolve` leaders, `pr-comment-doc.md` by the
   `/creview:triage` / `resolve` leaders in PR mode).
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `check-jsonl.py`,
-  `worktree.sh`, `gh-pr.py` (pull request resolution and worktree checkout and removal for
+  `worktree.sh`, `compile-pr-comments.py` (the review document of the PR mode of
+  `/creview:triage` / `resolve`), `gh-pr.py` (pull request resolution and worktree checkout and removal for
   `/creview:start`'s PR mode, and `doc-checkout`: the review document header parsing and
   worktree checkout for `/creview:triage` / `respond` / `resolve`), `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
