@@ -41,7 +41,7 @@ installs with it.
 | `/cdev:coding` | Implement a coding task end to end: design and coding as paired review cells, then a QA gate. |
 | `/cgh:review` | Review a pull request and, on your instruction, post the findings as a Request Changes or Comment review. |
 | `/cgh:gate` | Judge whether a self-reviewed pull request can merge as it stands and, on your instruction, post PASS or BLOCK. Run it again until it passes. |
-| `/cgh:respond` | Fix what a pull request's reviews call for and, after you push and instruct it, reply to them with what was done and the commit. |
+| `/cgh:respond` | Triage a pull request's reviews, fix them on your confirmation (`--no-confirm` skips it) and, after you push and instruct it, reply with what was done and the commit. |
 | `/cgh:resolve` | Verify the findings `/cgh:review` posted and, on your instruction, reply with the result and the commit. |
 
 ## Reviewer / fixer agents

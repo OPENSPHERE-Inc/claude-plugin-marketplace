@@ -20,7 +20,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 |---------|---------|---------|
 | `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial` |
 | `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial` |
-| `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | |
+| `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | `--no-confirm` |
 | `/cgh:resolve` | Verify the findings `/cgh:review` posted, and reply with the result. | |
 
 ### `/cgh:review`
@@ -64,11 +64,15 @@ pull request again. To accept an earlier finding without a fix, tell the skill t
 
 ### `/cgh:respond`
 
-Runs `/creview:triage` on the pull request's comments, then `/creview:respond --commit`, and asks
-you to push. After you push, it drafts one reply per comment, with what was done and the commit,
-or with why no change was made. It shows them and posts on your instruction.
+Runs `/creview:triage` on the pull request's comments, shows the result, and waits for your
+confirmation. It then runs `/creview:respond --commit` and asks you to push. After you push, it
+drafts one reply per comment, with what was done and the commit, or with why no change was made.
+It shows them and posts on your instruction.
 
-- The triage result is not a stop: review the commits before you push them.
+- At the confirmation, you can exclude findings from the fixes: their replies say why, from the
+  reason you give. When nothing is left to fix, it does not stop.
+- `--no-confirm` goes from the triage to the fixes without stopping. Replies still wait for your
+  instruction, with or without it.
 - A reply to a finding from a review body or an issue comment goes out as an issue comment that
   mentions its author.
 - `post` refuses to send replies until the pull request contains the fix commits. A rebase

@@ -1,21 +1,27 @@
 ---
 name: respond
-description: Address the reviews posted on a GitHub pull request given by URL with /creview:triage and /creview:respond, then, after the user has pushed the fixes and told you to, reply to the review comments with what was done and the commit. Use when the user asks to handle the review comments on a pull request.
+description: Triage the reviews posted on a GitHub pull request given by URL with /creview:triage, fix them with /creview:respond once the user confirms, then, after the user has pushed the fixes and told you to, reply to the review comments with what was done and the commit. Use when the user asks to handle the review comments on a pull request.
 allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(git rev-parse:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
 # Pull Request Review Response
 
-Fix what the pull request's reviews call for, and reply to them once the fixes are on the pull request and the user has told you to.
+Triage the pull request's reviews, fix what they call for once the user confirms, and reply to them once the fixes are on the pull request and the user has told you to.
 
-If the argument is `$ARGUMENTS`, interpret it as the pull request URL (`{pr_url}`).
+If the argument is `$ARGUMENTS`, interpret it as the pull request URL (`{pr_url}`) and options.
+
+`--no-confirm` (default OFF) — Go from the triage to the fixes without the user's confirmation. Replies still wait for the user's instruction (§ Confirm and post).
 
 Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}` and `{skill}` = `respond`. `{document_path}` is the review document `creview:triage` reports, in place of the rule's value.
 
 ## Step 1 — Triage and fix
 
 1. Run `creview:triage` with `{pr_url}`. When it reports that the comments hold no findings, tell the user and finish.
-2. Run `creview:respond` with `{document_path} --commit`. Hold its warnings and the findings it left unfixed for Step 5.
+2. Unless `--no-confirm` is given or `maintain` and `alternative` in the triage's compile result are both 0, confirm the fixes:
+   - Read `{document_path}` and show the user each finding's ID, location, and `Triage:` / `Estimate:` lines, with `Cost:`, `Future:`, and `Signals:` left out. Ask whether to fix them, and end your turn.
+   - When the user excludes a finding, replace its `Triage:` line with `- **Triage:** 🚫 Won't Fix — {the user's reason, or, with none given, that the user excluded it}`; the reply cites it, so invent no reason. A finding the triage declined or downgraded cannot be added here: say so. Go on only once the user has told you to fix.
+   - When the user declines, finish.
+3. Run `creview:respond` with `{document_path} --commit`. Hold its warnings and the findings it left unfixed for Step 5.
 
 ## Step 2 — Push
 
