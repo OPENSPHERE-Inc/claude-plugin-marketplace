@@ -8,7 +8,7 @@ template_id: 8b2d5f1c-7a93-4e64-b8d1-2c5e9a3f7b48
 
 入力（id == "{finding-id}" で引く）:
 
-- レビュードキュメント `{{document_path}}` — METADATA マーカー前後から description / location / severity を取得
+- レビュードキュメント `{{document_path}}` — ヘッダーから `- **Source:**` の箇条書きを、METADATA マーカー前後から description / location / severity を取得
 - `{{tmp_dir}}/triage.jsonl` — items 配列から id 一致で verdict / reason を取得
 
 各 id について:

@@ -120,7 +120,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 `by_assignee` の各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で修正サブエージェントを起動する。異なる assignee は並列起動する。同一 assignee 内の ids はテンプレートの並列化制約に従う。
 
-テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path}, ...], template_id}` — `items` のみを集め、status 本文は読み込まない。
+テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path}, ...], left_out: [{id, reason}, ...], template_id}` — `items` と `left_out` のみを集め、status 本文は読み込まない。`left_out` はステップ 7 のために保持する。
 
 ## ステップ 3 — コメントレビュー（comment-sensei サブエージェントへ委譲）
 
@@ -177,6 +177,6 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 ## ステップ 7 — サマリー
 
-リーダーはステップ 6 で受け取った `summary_line` をコンソールに表示する。ステップ 4 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。ステップ 1 の `not_ready` が空でなければ、その id と理由を未修正のまま残った指摘として `summary_line` と併せて表示する（`fix_count == 0` でステップ 2〜5 をスキップした場合も同じ）。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。
+リーダーはステップ 6 で受け取った `summary_line` をコンソールに表示する。ステップ 4 で `workflow_warning` を受け取っていた場合は、`summary_line` と併せて警告行として表示する。ステップ 1 の `not_ready` が空でなければ、その id と理由を未修正のまま残った指摘として `summary_line` と併せて表示する（`fix_count == 0` でステップ 2〜5 をスキップした場合も同じ）。ステップ 2 の `left_out` が空でなければ、その id と理由を、コメント投稿者の提案だけが求めるものとして編集を除いた指摘として `summary_line` と併せて表示する。詳細テーブルが必要な場合のみ、更新後の `{document_path}` を Read し、`${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` のフォーマットに従って表示する。
 
 ワークツリーでは、ティアダウンを実行し（§ ワークツリー）、修正をコミットしたブランチを報告する。
