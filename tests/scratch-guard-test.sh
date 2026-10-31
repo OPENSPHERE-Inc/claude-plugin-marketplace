@@ -33,9 +33,13 @@ same() {
 same cdev/scripts/lib/scratch-guard.py src/cdev/scripts/lib/scratch-guard.py
 same cdev/scripts/lib/scratch-guard.py creview/scripts/lib/scratch-guard.py
 same cdev/scripts/lib/scratch-guard.py src/creview/scripts/lib/scratch-guard.py
+same cdev/scripts/lib/scratch-guard.py cgh/scripts/lib/scratch-guard.py
+same cdev/scripts/lib/scratch-guard.py src/cgh/scripts/lib/scratch-guard.py
 same cdev/scripts/del-tmp.sh src/cdev/scripts/del-tmp.sh
 same cdev/scripts/del-tmp.sh creview/scripts/del-tmp.sh
 same cdev/scripts/del-tmp.sh src/creview/scripts/del-tmp.sh
+same cdev/scripts/del-tmp.sh cgh/scripts/del-tmp.sh
+same cdev/scripts/del-tmp.sh src/cgh/scripts/del-tmp.sh
 same cdev/scripts/check-jsonl.py src/cdev/scripts/check-jsonl.py
 same cdev/scripts/check-jsonl.py creview/scripts/check-jsonl.py
 same cdev/scripts/check-jsonl.py src/creview/scripts/check-jsonl.py
@@ -43,6 +47,7 @@ same cdev/scripts/fetch-diff.sh src/cdev/scripts/fetch-diff.sh
 same creview/scripts/fetch-diff.sh src/creview/scripts/fetch-diff.sh
 same creview/scripts/gh-pr.py src/creview/scripts/gh-pr.py
 same creview/scripts/compile-pr-comments.py src/creview/scripts/compile-pr-comments.py
+same cgh/scripts/gh-review.py src/cgh/scripts/gh-review.py
 for d in src/cdev creview src/creview cprompt src/cprompt; do
     same cdev/scripts/worktree.sh "${d}/scripts/worktree.sh"
 done
@@ -62,6 +67,9 @@ for d in cdev creview src/cdev src/creview; do
 done
 for d in cprompt src/cprompt; do
     mode_check "${d}/scripts/worktree.sh"
+done
+for d in cgh src/cgh; do
+    mode_check "${d}/scripts/del-tmp.sh"
 done
 
 # --- syntax --------------------------------------------------------------------

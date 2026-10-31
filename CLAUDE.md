@@ -3,7 +3,7 @@
 ## Project Overview
 
 **opensphere-inc** is a Claude Code **plugin marketplace** maintained by **OPENSPHERE Inc.**
-under the MIT license. It publishes three first-party plugins:
+under the MIT license. It publishes four first-party plugins:
 
 - **creview** — a multi-agent parallel code review workflow (`start` → `triage` → `respond`
   → `resolve`, plus an automatic multi-round driver `rounds`).
@@ -12,6 +12,9 @@ under the MIT license. It publishes three first-party plugins:
 - **cdev** — a team-native multi-agent coding workflow (`coding`: a standing team runs design
   and coding as paired review cells, then a QA gate). Requires background subagents and
   inter-agent messaging.
+- **cgh** — a GitHub pull request workflow on top of creview (`review`, `gate`, `respond`,
+  `resolve`, each taking a pull request URL). Depends on creview; posts only on the user's
+  instruction and never approves or merges.
 
 There is no compiled artifact. The deliverables are Markdown skills / templates / rules,
 shell + Python helper scripts, and JSON manifests, consumed by Claude Code's plugin system.
@@ -26,7 +29,7 @@ shell + Python helper scripts, and JSON manifests, consumed by Claude Code's plu
 
 This repo is intentionally bilingual; the rule is **not** "English only":
 
-- **Active plugin files** (everything under `creview/`, `cprompt/`, and `cdev/` except their
+- **Active plugin files** (everything under `creview/`, `cprompt/`, `cdev/`, and `cgh/` except their
   `README_ja.md`) are **English**. This includes SKILL.md, templates, bundled rules, and
   `agents/review-helper.md`.
 - **`src/**`** is the **Japanese master** — every file there is Japanese.
@@ -40,7 +43,7 @@ This repo is intentionally bilingual; the rule is **not** "English only":
 ```
 claude-plugin-marketplace/
 ├── .claude-plugin/
-│   └── marketplace.json          # Marketplace listing: creview, cprompt, cdev
+│   └── marketplace.json          # Marketplace listing: creview, cprompt, cdev, cgh
 ├── README.md / README_ja.md      # Top README (EN) + Japanese translation, cross-linked
 ├── LICENSE                       # MIT
 ├── AGENTS.md / CLAUDE.md         # This documentation set
@@ -74,12 +77,21 @@ claude-plugin-marketplace/
 │   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, divergence.md
 │   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
 │
+├── cgh/                          # Plugin: GitHub pull request workflow on top of creview (active, English)
+│   ├── .claude-plugin/plugin.json  # declares the dependency on creview
+│   ├── README.md / README_ja.md
+│   ├── skills/                   # review (+ templates/comment-wording.md), gate, resolve (+ templates/reply-translate.md), respond (+ templates/reply-draft.md)
+│   ├── agents/                   # reply-drafter.md, comment-writer.md
+│   ├── rules/                    # leader.md, gate-focus.md
+│   └── scripts/                  # gh-review.py, del-tmp.sh, lib/scratch-guard.py
+│
 ├── src/                          # Japanese master, mirrors each plugin's tree 1:1 (minus .claude-plugin/README)
 │   ├── creview/...               # src/creview/<same tree as creview/>
 │   ├── cprompt/...               # src/cprompt/<same tree as cprompt/>
-│   └── cdev/...                  # src/cdev/<same tree as cdev/>
+│   ├── cdev/...                  # src/cdev/<same tree as cdev/>
+│   └── cgh/...                   # src/cgh/<same tree as cgh/>
 │
-├── tests/                        # scratch-guard-test.sh — repo-level self-tests (not shipped)
+├── tests/                        # scratch-guard-test.sh, gh-review-test.py — repo-level self-tests (not shipped)
 │
 └── .claude/rules/                # Discipline rules for editing THIS repo
     ├── comment.md  commit.md  development.md
@@ -119,8 +131,8 @@ When changing a plugin:
   - SKILL.md bodies / `allowed-tools` and bundled agent definitions use
     `${CLAUDE_PLUGIN_ROOT}/...`.
   - `templates/*.md` and bundled rules (opened with Read by a sub-agent, or by a leader for
-    `rules/doc-worktree.md` / `rules/pr-comment-doc.md`) use the `{{plugin_root}}/...` launch
-    variable.
+    `rules/doc-worktree.md` / `rules/pr-comment-doc.md` / `cgh/rules/leader.md`) use the
+    `{{plugin_root}}/...` launch variable.
 - **Agent-dispatch generalization**: skills do **not** bundle specialist reviewers. The
   single-best-match resolution mechanics (enumerate agents recursively `**/*.md` across
   **destination project** → **user** → **plugin bundle** scopes, higher-priority scope wins
@@ -154,16 +166,16 @@ There is **no build step**. Validation is consistency-checking + a manual instal
 # JSON manifests parse
 python3 -c "import json; [json.load(open(f,encoding='utf-8')) for f in \
   ['.claude-plugin/marketplace.json'] + \
-  [p+'/.claude-plugin/plugin.json' for p in ('creview','cprompt','cdev')]]; print('json ok')"
+  [p+'/.claude-plugin/plugin.json' for p in ('creview','cprompt','cdev','cgh')]]; print('json ok')"
 
 # Token-placement invariant: no ${CLAUDE_PLUGIN_ROOT} in templates / bundled rules,
 # no {{plugin_root}} in SKILLs
-grep -rl 'CLAUDE_PLUGIN_ROOT' {creview,cprompt,cdev}/skills/*/templates \
-  {creview,cprompt,cdev}/rules && echo BAD || echo ok
-grep -rl '{{plugin_root}}'   {creview,cprompt,cdev}/skills/*/SKILL.md   && echo BAD || echo ok
+grep -rl 'CLAUDE_PLUGIN_ROOT' {creview,cprompt,cdev,cgh}/skills/*/templates \
+  {creview,cprompt,cdev,cgh}/rules && echo BAD || echo ok
+grep -rl '{{plugin_root}}'   {creview,cprompt,cdev,cgh}/skills/*/SKILL.md   && echo BAD || echo ok
 
 # src ↔ active file-set parity (per plugin, excluding .claude-plugin/README)
-for p in creview cprompt cdev; do
+for p in creview cprompt cdev cgh; do
   diff <(cd $p && find . -type f -not -path './.claude-plugin/*' -not -name 'README*.md' \
            -not -path '*/__pycache__/*' | sort) \
        <(cd src/$p && find . -type f -not -path '*/__pycache__/*' | sort) \
@@ -181,8 +193,11 @@ for f in creview/skills/rounds/SKILL.md src/creview/skills/rounds/SKILL.md; do
 done
 
 # Scratch-guard self-test: containment behavior, worktree.sh, and byte-parity of the
-# shared script copies across creview/cdev/cprompt and their src/ mirrors
+# shared script copies across creview/cdev/cprompt/cgh and their src/ mirrors
 bash tests/scratch-guard-test.sh
+
+# cgh's GitHub script, with GitHub and git faked
+python3 tests/gh-review-test.py
 ```
 
 ### Install smoke test
@@ -192,6 +207,7 @@ bash tests/scratch-guard-test.sh
 /plugin install creview@opensphere-inc
 /plugin install cprompt@opensphere-inc
 /plugin install cdev@opensphere-inc
+/plugin install cgh@opensphere-inc
 ```
 
 Then exercise `/creview:start`, `/creview:triage`, `/creview:respond`, `/creview:resolve`
@@ -204,6 +220,8 @@ a pull request URL (which compile a review document from its comments; `/creview
 leaves out threads resolved on GitHub and `/creview:resolve` keeps them; needs an
 authenticated `gh`), `/cprompt:edit`, and `/cdev:coding` (in a runtime with background
 subagents and inter-agent messaging).
+Exercise `/cgh:review`, `/cgh:gate`, `/cgh:respond`, and `/cgh:resolve` on a pull request of a
+scratch repository: they post to GitHub under your account.
 
 ---
 
@@ -211,8 +229,8 @@ subagents and inter-agent messaging).
 
 ### Marketplace
 
-`.claude-plugin/marketplace.json` (`name: opensphere-inc`) lists three plugins. `creview`,
-`cprompt`, and `cdev` use `"source": "./<dir>"` (relative to the repo root). The `src/`
+`.claude-plugin/marketplace.json` (`name: opensphere-inc`) lists four plugins. `creview`,
+`cprompt`, `cdev`, and `cgh` use `"source": "./<dir>"` (relative to the repo root). The `src/`
 tree is **outside** the plugin source dirs, so it is not shipped with the installed plugins.
 
 ### Plugin skills
@@ -267,6 +285,27 @@ Each `(id, field)` is written at most once per phase, so the split phases never 
 duplicate metadata lines. `render-review.py` is also kept for ad-hoc metadata edits (e.g.
 adjusting a status / verification later in a chat).
 
+### The cgh workflow (state lives on the pull request)
+
+cgh skills run creview skills inline with the Skill tool, so a creview skill sees a direct
+invocation and handles its own worktree. `/cgh:gate` shapes them through Round-specific
+overrides that point at `rules/gate-focus.md`, so creview itself stays unaware of cgh. Every
+read and write on GitHub goes through `scripts/gh-review.py`, which refuses a pull request of a
+repository that is not a remote of the clone and also computes the event,
+the verdict, and where each finding goes. A bundled `comment-writer` or `reply-drafter`, which
+have Read and Write only, summarize recommendations and translate what goes out into the language
+of the pull request's description; the preview stays in the user's language. Each posted finding carries a hidden marker
+(`<!-- cgh:finding {id} {kind} {location} -->`), a verification carries
+`<!-- cgh:verified {ids} -->`, a waiver `<!-- cgh:waived {ids} -->`, and a reply
+`<!-- cgh:reply {kind} {id} -->`, read back only from the authenticated user's own comments.
+`gh-review.py prior` rebuilds a review document from them, with the IDs kept, for
+`/creview:resolve` to verify, and writes the comment targets to `{tmp_dir}/prior.json`, which
+`gh-review.py replies` reads. In a finding's thread, the user's latest `cgh:reply` citing no
+commit is a decline and goes in as a `Won't Fix` triage, whose rationale the verification judges;
+a reply by anyone else, or by the user without that marker, goes into the finding's text as an
+unverified claim. Posted findings number on from the earlier ones, so
+an ID stays unique on a pull request.
+
 ### Sub-agent launch contract
 
 Leaders pass a launch prompt that tells the sub-agent to `Read` an external
@@ -305,6 +344,11 @@ every sub-agent's writes to `{{target_dir}}`, its working directory (`tmp_dir`),
 output paths it is given, judged by prefix with no `..`, where `\` and `/` count as the
 same separator and a drive letter's case is ignored; paths in a task are passed as given,
 never re-rooted by a leader.
+
+The launches of cgh's `reply-drafter` and `comment-writer` are the exception: they pass only
+the variables their templates name, as absolute paths, with no `plugin_root`, `main_root`,
+`target_dir`, or Round-specific overrides, since those templates read no bundled rule and the
+agents have Read and Write only. A cgh launch that goes beyond that passes all three.
 
 ---
 
@@ -347,7 +391,8 @@ never re-rooted by a leader.
    `templates/*.md` as needed; mirror it under `src/<plugin>/skills/<name>/` in Japanese.
 2. Use `${CLAUDE_PLUGIN_ROOT}/...` in the SKILL body / `allowed-tools`; use
    `{{plugin_root}}/...` inside templates and the bundled rules they point to, and pass
-   `plugin_root`, `main_root`, and `target_dir` in every launch prompt — `main_root` is the
+   `plugin_root`, `main_root`, and `target_dir` in every launch prompt (cgh's `reply-drafter`
+   and `comment-writer` excepted; see Sub-agent launch contract) — `main_root` is the
    main working tree's root under `--worktree` or the value an upper flow passed, and
    `(none)` otherwise; `target_dir` is the work target (see Sub-agent launch contract).
 3. Resolve reviewers/fixers via the destination project's `.claude/agents/` with a
@@ -379,7 +424,7 @@ There is no automated test suite. Before considering a change done:
   `prompt-editor` as `.claude/skills/...` references).
 - For prompt edits, re-check against [.claude/rules/prompt.md](.claude/rules/prompt.md);
   for doc edits, [.claude/rules/document.md](.claude/rules/document.md).
-- Manually install all three plugins and exercise each command (see install smoke test).
+- Manually install all four plugins and exercise each command (see install smoke test).
 
 ---
 
@@ -438,6 +483,8 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `rules/doc-worktree.md` is opened with Read by the `/creview:triage` / `respond` /
   `resolve` leaders, so it uses `{{plugin_root}}` as well, and those SKILLs name its
   `plugin_root` variable without writing the `{{...}}` token.
+  `cgh/rules/leader.md` is opened with Read by the `/cgh:*` leaders on the same basis, and
+  their SKILLs name its `plugin_root` variable the same way.
 - **`template_id` must match.** The SKILL step's hard-coded UUID and the template's
   frontmatter `template_id` must be identical, or the leader will loop relaunching.
 - **src ↔ active parity is a contract.** Do not edit one side only. A structural
@@ -455,14 +502,15 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   detection rules
   `agents-detection.md` / `build-format-detection.md` instead express their plugin-bundled
   scope with the `{{plugin_root}}/...` launch variable; see the Token-placement invariant.)
-- **`scripts/lib/scratch-guard.py`, `scripts/del-tmp.sh` and `scripts/check-jsonl.py` are
-  byte-identical across all four copies** (`creview/`, `cdev/`, and their `src/` mirrors); each plugin ships its own copy
-  because plugins install independently. Edit one copy and replicate to the other three;
+- **`scripts/lib/scratch-guard.py` and `scripts/del-tmp.sh` are byte-identical across all six
+  copies** (`creview/`, `cdev/`, `cgh/`, and their `src/` mirrors), and `scripts/check-jsonl.py`
+  across all four (`creview/`, `cdev/`, and their mirrors); each plugin ships its own copy
+  because plugins install independently. Edit one copy and replicate to the others;
   `tests/scratch-guard-test.sh` fails on any drift. `scripts/worktree.sh` is likewise
   byte-identical across all six copies (`creview/`, `cdev/`, `cprompt/`, and their `src/`
   mirrors). `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `creview/scripts/gh-pr.py`, and
-  `creview/scripts/compile-pr-comments.py` are likewise each byte-identical with its own
-  `src/` mirror.
+  `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` are likewise each
+  byte-identical with its own `src/` mirror.
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
   `SUMMARY`, `FINDINGS`, or `ANALYSIS`** (case-insensitive, basename only). Claude Code's
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output
