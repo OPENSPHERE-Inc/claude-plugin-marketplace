@@ -14,13 +14,15 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 `--trust`（デフォルト OFF）— `/creview:start` に `--trust` を渡し、プルリクエストの worktree がエージェントファイルを持つようにする。
 
+`--adr`（デフォルト OFF）— `/creview:triage` に `--adr` を渡す。
+
 `${CLAUDE_PLUGIN_ROOT}/rules/leader.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}`、`{skill}` は `review` とする。
 
 ## Step 1 — レビューとトリアージ
 
 1. `{pr_url} --output {document_path}` で `creview:start` を実行する。`--adversarial` と `--trust` が指定されていれば追加する。
 2. 指摘なしと報告されたら、投稿するものがないとユーザーに伝えて終了する。
-3. `{document_path}` で `creview:triage` を実行する。
+3. `{document_path}` で `creview:triage` を実行する。`--adr` が指定されていれば追加する。
 
 ## Step 2 — ドラフト
 

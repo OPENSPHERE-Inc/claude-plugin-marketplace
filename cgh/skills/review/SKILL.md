@@ -14,13 +14,15 @@ If the argument is `$ARGUMENTS`, interpret it as the pull request URL (`{pr_url}
 
 `--trust` (default OFF) — Pass `--trust` to `/creview:start`, so that a worktree of the pull request has its agent files.
 
+`--adr` (default OFF) — Pass `--adr` to `/creview:triage`.
+
 Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}` and `{skill}` = `review`.
 
 ## Step 1 — Review and triage
 
 1. Run `creview:start` with `{pr_url} --output {document_path}`, adding `--adversarial` and `--trust` when given.
 2. When it reports no findings, tell the user there is nothing to post and finish.
-3. Run `creview:triage` with `{document_path}`.
+3. Run `creview:triage` with `{document_path}`, adding `--adr` when given.
 
 ## Step 2 — Draft
 

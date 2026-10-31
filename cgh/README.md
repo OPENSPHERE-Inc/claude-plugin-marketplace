@@ -18,9 +18,9 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 
 | Command | Purpose | Options |
 |---------|---------|---------|
-| `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial`, `--trust` |
-| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust` |
-| `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | `--no-confirm`, `--trust` |
+| `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial`, `--trust`, `--adr` |
+| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust`, `--adr` |
+| `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | `--no-confirm`, `--trust`, `--adr` |
 | `/cgh:resolve` | Verify the findings `/cgh:review` posted, and reply with the result. | `--trust` |
 
 ### `/cgh:review`
@@ -98,6 +98,14 @@ your own chat message gives it.
 
 Claude Code can load those files as instructions, skills, or settings, so use it only for a pull
 request you trust, or in a sandbox. See the [creview README](../creview/README.md).
+
+## `--adr`
+
+Passed to `/creview:triage`, it lets the estimate record design decisions as ADR files next to
+the review document. They stay local and are not posted. With `/cgh:respond`, the confirmation
+after the triage names them so that you can edit them before the fixes, and `/creview:respond`
+reads them. `--no-confirm` skips that chance. `/cgh:respond` also passes `--adr` to
+`/creview:respond`, so that a design decision made while fixing gets an ADR file too.
 
 ## How state is kept
 

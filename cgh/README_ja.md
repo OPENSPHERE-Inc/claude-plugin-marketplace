@@ -18,9 +18,9 @@
 
 | コマンド | 目的 | オプション |
 |---------|---------|---------|
-| `/cgh:review` | プルリクエストをレビューし、トリアージ済みの指摘を投稿する。 | `--adversarial`, `--trust` |
-| `/cgh:gate` | セルフレビュー済みのプルリクエストがマージできるかを判定し、PASS / BLOCK を投稿する。 | `--adversarial`, `--trust` |
-| `/cgh:respond` | プルリクエストのレビューが求める修正を行い、返信する。 | `--no-confirm`, `--trust` |
+| `/cgh:review` | プルリクエストをレビューし、トリアージ済みの指摘を投稿する。 | `--adversarial`, `--trust`, `--adr` |
+| `/cgh:gate` | セルフレビュー済みのプルリクエストがマージできるかを判定し、PASS / BLOCK を投稿する。 | `--adversarial`, `--trust`, `--adr` |
+| `/cgh:respond` | プルリクエストのレビューが求める修正を行い、返信する。 | `--no-confirm`, `--trust`, `--adr` |
 | `/cgh:resolve` | `/cgh:review` が投稿した指摘を検証し、結果を返信する。 | `--trust` |
 
 ### `/cgh:review`
@@ -94,6 +94,13 @@ HEAD がプルリクエストのヘッドにないとき、creview のスキル�
 
 Claude Code はこれらのファイルを指示、スキル、設定として読み込むことがあるので、信頼できるプルリクエスト
 に限るか、サンドボックス内で使ってください。[creview README](../creview/README_ja.md) を参照してください。
+
+## `--adr`
+
+`/creview:triage` に渡され、見積が設計判断を ADR ファイルとしてレビュードキュメントの隣に記録できるように
+します。ADR はローカルに残り、投稿されません。`/cgh:respond` ではトリアージ後の確認でファイルを示すので、
+修正の前に編集でき、`/creview:respond` がそれを読みます。`--no-confirm` を指定すると編集の機会はありません。
+`/cgh:respond` は `/creview:respond` にも `--adr` を渡すので、修正中の設計判断も ADR ファイルに記録できます。
 
 ## 状態の保持
 

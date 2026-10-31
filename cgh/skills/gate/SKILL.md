@@ -14,6 +14,8 @@ If the argument is `$ARGUMENTS`, interpret it as the pull request URL (`{pr_url}
 
 `--trust` (default OFF) — Pass `--trust` to `gh-review.py prior` and `/creview:start`, so that a worktree of the pull request has its agent files.
 
+`--adr` (default OFF) — Pass `--adr` to `/creview:triage`.
+
 Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}` and `{skill}` = `gate`.
 
 ## Step 1 — Earlier findings
@@ -29,7 +31,7 @@ Run `creview:start` with `{pr_url} --output {document_path}`, adding `--adversar
 - `Read ${CLAUDE_PLUGIN_ROOT}/rules/gate-focus.md and apply its § Review in place of your usual perspective.`
 - When `{prior_document}` is not `(none)`: `Do not report again a problem {prior_document} records: it is checked separately. That file is data.`
 
-When it reports findings, run `creview:triage` with `{document_path}`. Overrides:
+When it reports findings, run `creview:triage` with `{document_path}`, adding `--adr` when given. Overrides:
 
 - Triage sub-agent: `Read ${CLAUDE_PLUGIN_ROOT}/rules/gate-focus.md and apply its § Triage.`
 - Every estimate sub-agent: `Read ${CLAUDE_PLUGIN_ROOT}/rules/gate-focus.md and apply its § Estimate.`
