@@ -71,15 +71,17 @@ see **[CLAUDE.md](CLAUDE.md)**.
    bodies/`allowed-tools`, bundled `agents/*.md`); `{{plugin_root}}` only in files opened
    with Read: `templates/*.md` and the bundled `rules/*.md` a sub-agent is pointed to, with
    `plugin_root` passed as a launch variable, `creview/rules/doc-worktree.md`, which the
-   `/creview:triage` / `respond` / `resolve` leaders Read, and
+   `/creview:triage` / `respond` / `resolve` leaders Read,
    `creview/rules/pr-comment-doc.md`, which the `/creview:triage` / `resolve` leaders Read in
-   PR mode, each with the `plugin_root` value their SKILL gives. Never cross them.
+   PR mode, and `cgh/rules/leader.md`, which the `/cgh:*` leaders Read, each with the
+   `plugin_root` value their SKILL gives. Never cross them.
 4. **`template_id` must match** the per-step UUID hard-coded in the SKILL that launches it.
 5. **No bundled specialist reviewers.** Skills resolve reviewers/fixers from the
    destination project's `.claude/agents/`, falling back to `general-purpose`. Only
    the mechanical helpers are bundled (`creview`: `review-helper`, `comment-sensei`,
    `review-leader`; `cdev`: `dev-helper`, `comment-sensei`), plus creview's
-   tool-restricted `pr-description-reviewer` and `pr-comment-compiler`.
+   tool-restricted `pr-description-reviewer` and `pr-comment-compiler`, and cgh's
+   tool-restricted `reply-drafter` and `comment-writer`.
 6. **review-respond split**: `/creview:triage` persists `triage`+`estimate` into the
    review doc; `/creview:respond` reads them back from the doc. The split is the review
    gate — no `--no-confirm`. The handoff is the document, not a shared temp dir.
