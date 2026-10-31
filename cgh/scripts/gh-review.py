@@ -14,6 +14,9 @@ Usage:
     python3 gh-review.py preview <pr_url> <json_path>
     python3 gh-review.py post <pr_url> <json_path> [--commits <fix_commits_json>]
 
+Every subcommand refuses a pull request whose repository on its host is not a remote of
+this clone, before it calls gh.
+
 prior: finds the findings the authenticated user posted with this script, from the
 markers in their comments, leaving out those of a dismissed review. Writes
 <tmp_dir>/prior.json with the findings of --kind not yet marked verified or waived, Info
@@ -87,6 +90,15 @@ import time
 import urllib.parse
 from collections import namedtuple
 
+# A remote URL names its host and ends with the owner and repository, in URL form
+# (https://host/o/r.git, ssh://git@host:22/o/r) or scp form (git@host:o/r.git).
+# A local path has no host, and a file:// URL is left out by its scheme.
+REMOTE_URL_RE = re.compile(
+    r"(?:(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*)://(?:[^@/]*@)?(?P<host>[^/@:]+)(?::[0-9]*)?/"
+    r"|(?:[^@/:]+@)?(?P<scp_host>[^/@:]{2,}):(?!//))"
+    r"(?:.*/)?(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/*"
+)
+SSH_SCHEMES = {"ssh", "git+ssh", "ssh+git"}
 PR_URL_RE = re.compile(
     r"https://([A-Za-z0-9.-]+(?::[0-9]+)?)/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)"
     r"/pull/([0-9]+)(?:[/?#].*)?"
@@ -253,6 +265,66 @@ def parse_pr_url(url):
     host, owner, name, number = m.group(1).lower(), m.group(2), m.group(3), int(m.group(4))
     return PullRequest(host, f"{owner}/{name}", owner, name, number,
                        f"https://{host}/{owner}/{name}/pull/{number}")
+
+
+def normalize_host(host):
+    # gh treats every *.github.com host, such as ssh.github.com, as github.com.
+    host = host.lower()
+    return "github.com" if host.endswith(".github.com") else host
+
+
+def remote_repos():
+    try:
+        names = run(["git", "remote"]).splitlines()
+    except Error:
+        return set()
+    repos = set()
+    for name in names:
+        try:
+            url = run(["git", "remote", "get-url", "--", name]).strip()
+        except Error:
+            continue
+        m = REMOTE_URL_RE.fullmatch(url)
+        scheme = (m.group("scheme") or "").lower() if m else ""
+        if not m or scheme == "file":
+            continue
+        ssh = scheme in SSH_SCHEMES or m.group("scp_host") is not None
+        host = (m.group("host") or m.group("scp_host")).lower()
+        repos.add((host, m.group("owner").lower(), m.group("repo").lower(), ssh))
+    return repos
+
+
+def ssh_hostname(alias):
+    if alias.startswith("-"):
+        return alias
+    try:
+        config = run(["ssh", "-G", alias])
+    except Error:
+        return alias
+    for line in config.splitlines():
+        key, _, value = line.partition(" ")
+        if key == "hostname" and value.strip():
+            return value.strip()
+    return alias
+
+
+def is_remote(host, owner, name):
+    want = normalize_host(host.partition(":")[0])
+    for r_host, r_owner, r_name, ssh in remote_repos():
+        if (r_owner, r_name) != (owner.lower(), name.lower()):
+            continue
+        if normalize_host(r_host) == want:
+            return True
+        if ssh and normalize_host(ssh_hostname(r_host)) == want:
+            return True
+    return False
+
+
+def checked_pr(url):
+    pr = parse_pr_url(url)
+    if not is_remote(pr.host, pr.owner, pr.name):
+        raise Error(f"{pr.repo} on {pr.host} is not a remote of this repository")
+    return pr
 
 
 def graphql(pr, query, **variables):
@@ -617,7 +689,7 @@ def merge_base_of(pr, view):
 
 
 def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
-    pr = parse_pr_url(pr_url)
+    pr = checked_pr(pr_url)
     view = view_pr(pr)
     posted = posted_findings(pr, view["viewer"])
     mine = [f for f in posted.findings.values() if f["kind"] == kind]
@@ -687,7 +759,7 @@ def prior_states(pr, prior_doc, head):
 
 
 def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
-    pr = parse_pr_url(pr_url)
+    pr = checked_pr(pr_url)
     header, findings = checked_document(pr, document)
     view = view_pr(pr)
     if view["headRefOid"] != header.get("head_sha"):
@@ -870,7 +942,7 @@ def preview_replies(data, post):
 
 
 def cmd_preview(pr_url, path):
-    pr = parse_pr_url(pr_url)
+    pr = checked_pr(pr_url)
     data = read_json(path)
     if "findings" in data:
         view = view_for_draft(pr, data)
@@ -912,7 +984,7 @@ def merge_reply_wording(data, wording):
 
 
 def cmd_wording(pr_url, path):
-    parse_pr_url(pr_url)
+    checked_pr(pr_url)
     data = read_json(path)
     directory = glob.escape(os.path.dirname(path) or ".")
     names = sorted(glob.glob(os.path.join(directory, "wording-*.json")))
@@ -1111,11 +1183,11 @@ def pushed_state(pr, commits_path):
 
 
 def cmd_pushed(pr_url, commits_path):
-    return pushed_state(parse_pr_url(pr_url), commits_path)
+    return pushed_state(checked_pr(pr_url), commits_path)
 
 
 def cmd_post(pr_url, path, commits_path):
-    pr = parse_pr_url(pr_url)
+    pr = checked_pr(pr_url)
     data = read_json(path)
     if commits_path:
         if "findings" in data or any(e["verified"] for e in validated_replies(data)):
@@ -1127,7 +1199,7 @@ def cmd_post(pr_url, path, commits_path):
 
 
 def cmd_comments(pr_url, tmp_dir):
-    pr = parse_pr_url(pr_url)
+    pr = checked_pr(pr_url)
     reviews = rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/reviews")
     pending = {r.get("id") for r in reviews if r.get("state") == "PENDING"}
     comments = [c for c in rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/comments")
@@ -1161,7 +1233,7 @@ def cmd_comments(pr_url, tmp_dir):
 
 
 def cmd_fixes(pr_url, tmp_dir, document):
-    pr = parse_pr_url(pr_url)
+    pr = checked_pr(pr_url)
     header, _ = checked_document(pr, document)
     branch = header.get("branch")
     log = run(["git", "log", "--format=%H%x00%s", "--name-only",
@@ -1180,12 +1252,12 @@ def cmd_fixes(pr_url, tmp_dir, document):
     return {
         "path": path, "commits": len(commits), "tip": commits[0]["sha"] if commits else None,
         "branch": branch, "head_ref": head_ref if BRANCH_NAME_RE.fullmatch(head_ref) else None,
-        "head_repo":(view.get("headRepository") or {}).get("nameWithOwner"),
+        "head_repo": (view.get("headRepository") or {}).get("nameWithOwner"),
     }
 
 
 def cmd_replies(pr_url, tmp_dir, document, lang):
-    pr = parse_pr_url(pr_url)
+    pr = checked_pr(pr_url)
     header, findings = checked_document(pr, document)
     labels = labels_for(lang)
     short = header["head_sha"][:SHORT_SHA]

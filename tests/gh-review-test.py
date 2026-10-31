@@ -187,6 +187,8 @@ class FakeGitHub:
         self.fail_delete = False
         self.review_state = "PENDING"
         self.git = {}
+        self.remote_url = "https://github.com/acme/app.git"
+        self.ssh_config = ""
         self.compare_status = {}
         self.mergeable = []
 
@@ -194,6 +196,8 @@ class FakeGitHub:
         self.calls.append(cmd)
         if cmd[0] == "git":
             return self.git_answer(cmd)
+        if cmd[0] == "ssh":
+            return self.ssh_config
         if cmd[:3] == ["gh", "api", "graphql"]:
             return self.graphql(json.loads(input))
         method = "GET"
@@ -207,7 +211,10 @@ class FakeGitHub:
 
     def git_answer(self, cmd):
         key = cmd[1]
-        answer = self.git.get(key, "")
+        default = ""
+        if key == "remote":
+            default = self.remote_url if "get-url" in cmd else "origin\n"
+        answer = self.git.get(key, default)
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -1651,6 +1658,76 @@ class Wording(Base):
         self.fake()
         mod.cmd_comments(URL, self.dir)
         self.assertIn("Description", read_text(os.path.join(self.dir, "pr-body.json")))
+
+
+class Remote(Base):
+    OTHER = "https://github.com/other/app/pull/7"
+
+    def test_every_subcommand_refuses_a_pull_request_of_another_repository(self):
+        path = self.save({"replies": []}, "replies.json")
+        for call in (
+            lambda u: mod.cmd_prior(u, self.dir, "review", os.path.join(self.dir, "p.md")),
+            lambda u: mod.cmd_draft(u, self.dir, self.doc, "review", "ja", None),
+            lambda u: mod.cmd_wording(u, path),
+            lambda u: mod.cmd_comments(u, self.dir),
+            lambda u: mod.cmd_fixes(u, self.dir, self.doc),
+            lambda u: mod.cmd_pushed(u, path),
+            lambda u: mod.cmd_replies(u, self.dir, self.doc, "en"),
+            lambda u: mod.cmd_preview(u, path),
+            lambda u: mod.cmd_post(u, path, None),
+        ):
+            gh = self.fake()
+            with self.assertRaisesRegex(mod.Error, "not a remote of this repository"):
+                call(self.OTHER)
+            self.assertEqual([c for c in gh.calls if c[0] == "gh"], [])
+
+    def accepted(self, remote, url=URL, ssh_config=""):
+        gh = self.fake()
+        gh.remote_url = remote
+        gh.ssh_config = ssh_config
+        try:
+            mod.checked_pr(url)
+        except mod.Error:
+            return False
+        return True
+
+    def test_remote_forms(self):
+        for remote, expected in (
+            ("https://github.com/acme/app.git", True),
+            ("https://github.com/ACME/App.git", True),
+            ("git@github.com:acme/app.git", True),
+            ("ssh://git@ssh.github.com:443/acme/app.git", True),
+            ("https://github.com/acme/other.git", False),
+            ("https://gitlab.com/acme/app.git", False),
+            ("file:///srv/github.com/acme/app.git", False),
+            ("/srv/acme/app.git", False),
+        ):
+            self.assertEqual(self.accepted(remote), expected, remote)
+
+    def test_an_ssh_alias_resolves_to_its_host(self):
+        config = "user git\nhostname github.com\n"
+        self.assertTrue(self.accepted("git@work:acme/app.git", ssh_config=config))
+        self.assertFalse(self.accepted("git@work:acme/app.git", ssh_config="hostname other.test\n"))
+
+    def test_a_host_of_another_case_and_a_port_are_compared_by_name(self):
+        self.assertTrue(self.accepted("https://github.com/acme/app.git",
+                                      "https://GitHub.com/ACME/app/pull/7"))
+        self.assertFalse(self.accepted("https://github.com/acme/app.git",
+                                       "https://ghe.example.test:8443/acme/app/pull/7"))
+
+    def test_no_remote_is_refused(self):
+        gh = self.fake()
+        gh.git["remote"] = mod.Error("not a git repository")
+        with self.assertRaisesRegex(mod.Error, "not a remote"):
+            mod.checked_pr(URL)
+
+
+class ReplyTemplate(unittest.TestCase):
+    def test_a_declined_finding_opens_with_the_fixed_phrase(self):
+        self.assertIn("`Not making this change.`", read_text(os.path.join(
+            ROOT, "cgh", "skills", "respond", "templates", "reply-draft.md")))
+        self.assertIn("`変更を見送ります。`", read_text(os.path.join(
+            ROOT, "src", "cgh", "skills", "respond", "templates", "reply-draft.md")))
 
 
 class Cli(unittest.TestCase):

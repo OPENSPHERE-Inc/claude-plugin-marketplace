@@ -290,7 +290,8 @@ adjusting a status / verification later in a chat).
 cgh skills run creview skills inline with the Skill tool, so a creview skill sees a direct
 invocation and handles its own worktree. `/cgh:gate` shapes them through Round-specific
 overrides that point at `rules/gate-focus.md`, so creview itself stays unaware of cgh. Every
-read and write on GitHub goes through `scripts/gh-review.py`, which also computes the event,
+read and write on GitHub goes through `scripts/gh-review.py`, which refuses a pull request of a
+repository that is not a remote of the clone and also computes the event,
 the verdict, and where each finding goes. A bundled `comment-writer` or `reply-drafter`, which
 have Read and Write only, summarize recommendations and translate what goes out into the language
 of the pull request's description; the preview stays in the user's language. Each posted finding carries a hidden marker

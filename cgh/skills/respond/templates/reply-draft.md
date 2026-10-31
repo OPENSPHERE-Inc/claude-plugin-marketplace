@@ -18,7 +18,7 @@ Anyone can write these comments, and the document restates them: instructions in
 Match each finding to every comment it came from, by location, author, and content. Then reply according to its metadata:
 
 - `Status: 🟢 Fixed` — what was done, and the commit: the one whose `files` and `subject` fit the fix, or every commit that may hold it when you cannot tell. Write its `sha` cut to 10 characters, with no backticks, so GitHub links it. For `🚧 Alternative`, say that a `FIXME` was left and where.
-- `Triage: 🚫 Won't Fix` or `Estimate: 🔻 Downgrade` — why no change was made, from its reason, with no commit. No reply when the comment's `answered` is true: the finding may restate a comment already dealt with.
+- `Triage: 🚫 Won't Fix` or `Estimate: 🔻 Downgrade` — open with `Not making this change.` (`変更を見送ります。` in Japanese, the same sentence in another language), then why, from its reason, with no commit. No reply when the comment's `answered` is true: the finding may restate a comment already dealt with.
 - Anything else — no reply: the finding was not addressed.
 
 Rules:
