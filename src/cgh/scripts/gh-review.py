@@ -16,19 +16,22 @@ Usage:
 
 prior: finds the findings the authenticated user posted with this script, from the
 markers in their comments, leaving out those of a dismissed review. Writes
-<tmp_dir>/prior.json with the findings of --kind not yet marked verified and, when
-there are any, <document>: a review document creview's verification reads, with a
-Source: pr-comments bullet and a Trust bullet: on at the pull request's head or with
---trust, otherwise off. Stops when there are any and the working tree holds what the
-pull request does not: commits past its head, or uncommitted changes at its head.
+<tmp_dir>/prior.json with the findings of --kind not yet marked verified or waived, Info
+left out since creview's verification skips it, and, when there are any, <document>: a
+review document creview's verification reads, with a Source: pr-comments bullet and a
+Trust bullet: on at the pull request's head or with --trust, otherwise off. Stops when
+there are any and the working tree holds what the pull request does not: commits past
+its head, or uncommitted changes at its head. When findings of --kind are waived, writes
+them to <tmp_dir>/waived.md and prints its path as waived_document.
 
 draft: reads a review document of the pull request, with or without findings, which must
-still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after the
-findings already posted, with whether it is selected and where it goes (inline: a line
-of the diff; file: a file of the diff; body: anywhere else). Selected by default: Will
-Fix with Maintain or Alternative, and Will Fix with Downgrade at Critical or Major,
-which stays a real problem. --prior-doc adds the verification of earlier gate findings.
-It also writes <tmp_dir>/pr-body.json, the pull request's title and description.
+still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after
+every ID already used on the pull request, with whether it is selected and where it goes
+(inline: a line of the diff; file: a file of the diff; body: anywhere else). Selected by
+default: Will Fix with Maintain or Alternative, and Will Fix with Downgrade at Critical or
+Major, which stays a real problem. --prior-doc, which must be at the pull request's head too,
+adds the verification of earlier gate findings. It also writes <tmp_dir>/pr-body.json, the pull
+request's title and description.
 
 wording: merges every wording-*.json next to <json_path> into it: comment_lang, the
 language comments go out in, with, per finding, summary (the recommendation for people,
@@ -38,11 +41,13 @@ nothing else in the file, removes the merged files, so that a later run cannot u
 edit to the file, and prints the selected findings and the earlier findings with a note
 that no wording has covered yet.
 
-comments: writes <tmp_dir>/comments.json, the pull request's comments with their IDs, and
+comments: writes <tmp_dir>/comments.json, the pull request's comments with their IDs and
+answered, whether a reply of the authenticated user already marks them, and
 <tmp_dir>/pr-body.json.
 
 fixes: writes <tmp_dir>/fix-commits.json, the commits on the document's Branch bullet,
-or HEAD without one, past the document's head.
+or HEAD without one, past the document's head. Prints head_ref, the pull request's branch,
+as null when its name holds a character unsafe to show in a command.
 
 pushed: says whether the pull request's head contains the newest of those commits.
 
@@ -54,14 +59,18 @@ language, and -post.md, the same in the wording that goes out. The JSON file is
 draft.json, or a file with a "replies" list of {kind: thread|review|issue_comment|issue,
 target_id, finding_ids, body, post_body, selected (default true), verified}. For a draft,
 wording_missing holds what wording would print as missing, an empty recommendation or not.
+For a gate draft, it first waits for GitHub to compute whether the pull request merges, and
+records the verdict it shows as previewed_verdict.
 
 post: sends it. A review needs its wording and its head unchanged, is sent as one pending
-review, and cannot be sent twice. When a call fails, the review's state decides: one that
+review, and cannot be sent twice. A gate draft also needs its verdict to match
+previewed_verdict. When a call fails, the review's state decides: one that
 went out anyway counts as posted, one still pending is deleted, and with the state
 unknown the review counts as posted, so that a rerun cannot send it twice. A reply to a
 review or an issue comment goes out as an issue comment that mentions its author. Replies sent
-are marked in the file, so a rerun skips them. --commits refuses to send anything until
-the pull request contains those commits.
+are marked in the file, so a rerun skips them. --commits refuses a file with findings or a
+reply that marks a finding verified, and refuses to send anything until the pull request
+contains those commits.
 
 Prints a JSON object. Exits 1 with an error message on stderr on any failure.
 """
@@ -74,6 +83,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.parse
 from collections import namedtuple
 
@@ -84,20 +94,32 @@ PR_URL_RE = re.compile(
 PR_BULLET_RE = re.compile(r"- \*\*PR:\*\* (\S+) \(head ([0-9a-f]+), base ([0-9a-f]+)\)")
 BRANCH_BULLET_RE = re.compile(r"- \*\*Branch:\*\* ([\w./+@-]+)")
 BRANCH_NAME_RE = re.compile(r"[\w./+@-]+")
-HEADING_RE = re.compile(r"### ((?:C|M|mi|I)-[0-9]+)\s+[—-]\s+`?([^`]*?)`?(?:\s+\[.*\])?\s*")
+FINDING_ID = r"(?:C|M|mi|I)-[0-9]+"
+FINDING_IDS = rf"{FINDING_ID}(?:,{FINDING_ID})*"
+FINDING_ID_RE = re.compile(FINDING_ID)
+HEADING_RE = re.compile(rf"### ({FINDING_ID})\s+[—-]\s+`?([^`]*?)`?(?:\s+\[.*\])?\s*")
+FINDING_HEADING_RE = re.compile(rf"###\s+{FINDING_ID}")
+METADATA_OPEN_RE = re.compile(rf"<!-- METADATA\(({FINDING_ID})\) -->")
 METADATA_RE = re.compile(r"- \*\*(Triage|Estimate|Status|Verification):\*\* (.*)")
 LABEL_LINE_RE = re.compile(r"\*\*[^*]+[:：]\*\*\s*")
 PLAN_ITEM_RE = re.compile(r"(?:^|\s)\([0-9]+\)\s+")
 LOCATION_RE = re.compile(r"(.+?):([0-9]+)(?:[-–,].*)?")
 HUNK_RE = re.compile(r"@@ -[0-9]+(?:,[0-9]+)? \+([0-9]+)(?:,[0-9]+)? @@")
-CODE_RE = re.compile(r"(```.*?```|`[^`\n]*`)", re.S)
-MENTION_RE = re.compile(r"(?<![\w`/.@-])@[A-Za-z0-9][\w/-]*")
+# Only what GitHub is sure to render as code: a closed fence, or a closed span on one line.
+CODE_RE = re.compile(
+    r"^ {0,3}(?P<fence>`{3,})[^`\n]*\n(?:.*\n)*? {0,3}(?P=fence)`*[ \t\r]*$"
+    r"|(?<![\\`])(?P<ticks>`+)(?!`)[^\n]*?(?<!`)(?P=ticks)(?!`)", re.M)
+# An escape, an active backtick, or a mention, with the backslash that would hide its quote.
+OUTSIDE_CODE_RE = re.compile(
+    r"\\[^@]|`|\\?(?P<mention>(?<![A-Za-z0-9/@])@[A-Za-z0-9][\w/-]*)", re.S)
 # What starts a Markdown block at the beginning of a paragraph of a review document.
 BLOCK_START_RE = re.compile(r"#{1,6}(?:\s|$)|[-+*](?:\s|$)|>|`{3}|~{3}|<[A-Za-z/!?]")
 FINDING_RE = re.compile(
-    r"<!-- cgh:finding (?P<id>(?:C|M|mi|I)-[0-9]+) (?P<kind>review|gate) (?P<loc>\S+) -->"
+    rf"<!-- cgh:finding (?P<id>{FINDING_ID}) (?P<kind>review|gate) (?P<loc>\S+) -->"
     r"(?P<body>.*?)<!-- /cgh:finding (?P=id) -->", re.S)
-VERIFIED_RE = re.compile(r"<!-- cgh:verified ([\w,-]+) -->")
+VERIFIED_RE = re.compile(rf"<!-- cgh:verified ({FINDING_IDS}) -->")
+WAIVED_RE = re.compile(rf"<!-- cgh:waived ({FINDING_IDS}) -->")
+REPLY_RE = re.compile(r"<!-- cgh:reply (thread|review|issue_comment) ([0-9]+) -->")
 REC_MARKER = "<!-- cgh:rec -->"
 COMMENT_LANG_RE = re.compile(r"[a-z]{2,3}(?:-[A-Za-z0-9]+)*")
 FINDING_WORDING = ("summary", "post_text", "post_summary", "post_note")
@@ -109,6 +131,8 @@ SHORT_SHA = 10
 PAGE_SIZE = 100
 MAX_PAGES = 100
 BODY_LIMIT = 65000
+MERGEABLE_TRIES = 5
+MERGEABLE_WAIT = 3
 PR_QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
   viewer { login }
@@ -192,6 +216,7 @@ LABELS = {
 }
 
 PullRequest = namedtuple("PullRequest", "host repo owner name number url")
+Posted = namedtuple("Posted", "findings verified waived used")
 
 
 class Error(Exception):
@@ -255,15 +280,30 @@ def rest_pages(pr, path):
     return items
 
 
-def view_pr(pr):
+def view_pr(pr, require_open=True):
     data = graphql(pr, PR_QUERY, owner=pr.owner, name=pr.name, number=pr.number)
     view = (data.get("repository") or {}).get("pullRequest")
     if not view or view.get("number") != pr.number:
         raise Error(f"gh did not return PR #{pr.number}")
-    if view.get("state") != "OPEN":
+    if require_open and view.get("state") != "OPEN":
         raise Error(f"PR #{pr.number} is not open")
     view["viewer"] = data["viewer"]["login"]
     return view
+
+
+def settled_view(pr):
+    """The pull request once GitHub, which computes mergeable lazily, has settled it."""
+    for attempt in range(MERGEABLE_TRIES):
+        if attempt:
+            time.sleep(MERGEABLE_WAIT)
+        view = view_pr(pr)
+        if view.get("mergeable") != "UNKNOWN":
+            return view
+    raise Error(f"GitHub has not computed whether PR #{pr.number} merges; try again shortly")
+
+
+def view_for_draft(pr, draft):
+    return settled_view(pr) if draft.get("kind") == "gate" else view_pr(pr)
 
 
 def write_json(path, data):
@@ -284,6 +324,11 @@ def severity_of(fid):
     return SEVERITIES[fid.rpartition("-")[0]]
 
 
+def has_label(value, label):
+    """Whether a metadata value starts with the label, past the emoji and spaces before it."""
+    return re.match(rf"[^\w\s]*\s*{re.escape(label)}\b", value) is not None
+
+
 def labels_for(lang):
     return LABELS.get(lang, LABELS["en"])
 
@@ -297,10 +342,22 @@ def write_pr_body(tmp_dir, view):
 def safe_text(text):
     # Posted text comes from reviewers that read pull request content: it must not notify
     # anyone or hide anything in an HTML comment, such as a marker of this script.
-    parts = CODE_RE.split(text.replace("<!--", "&lt;!--"))
-    for i in range(0, len(parts), 2):
-        parts[i] = MENTION_RE.sub(lambda m: f"`{m.group(0)}`", parts[i])
-    return "".join(parts)
+    text = text.replace("<!--", "&lt;!--")
+    kept, last = [], 0
+    for code in CODE_RE.finditer(text):
+        kept += [quiet_outside_code(text[last:code.start()]), code.group(0)]
+        last = code.end()
+    return "".join([*kept, quiet_outside_code(text[last:])])
+
+
+def quiet_outside_code(text):
+    # An active backtick left here could pair with an added quote and leave the mention outside it.
+    def quiet(match):
+        if match.group("mention"):
+            return f"`{match.group('mention')}`"
+        return "\\`" if match.group(0) == "`" else match.group(0)
+
+    return OUTSIDE_CODE_RE.sub(quiet, text)
 
 
 def diff_lines(patch):
@@ -343,6 +400,11 @@ def parse_document(path):
         if line.startswith("## ") and line.startswith("## Orphan"):
             break
         heading = HEADING_RE.fullmatch(line)
+        if not heading and FINDING_HEADING_RE.match(line):
+            raise Error(f"{path} has a malformed finding heading: {line}")
+        opened = METADATA_OPEN_RE.fullmatch(line)
+        if opened and (current is None or opened.group(1) != current["id"]):
+            raise Error(f"{path} has a metadata block under no heading of its ID: {line}")
         if heading:
             current = {"id": heading.group(1), "severity": severity_of(heading.group(1)),
                        "location": heading.group(2).strip(), "text": [], "metadata": {}}
@@ -380,7 +442,7 @@ def recommendation(finding):
     _, marker, plan = estimate.partition(" — Plan: ")
     if marker:
         return [item.strip() for item in PLAN_ITEM_RE.split(plan) if item.strip()]
-    if "Downgrade" in estimate:
+    if has_label(estimate, "Downgrade"):
         return [estimate.rsplit(" — ", 1)[-1].strip()]
     return []
 
@@ -391,9 +453,9 @@ def default_selection(finding, labels):
     triage, estimate = meta.get("Triage", ""), meta.get("Estimate", "")
     if finding["severity"] == "Info":
         return False, "Info"
-    if "Will Fix" not in triage:
+    if not has_label(triage, "Will Fix"):
         return False, triage.rsplit(" — ", 1)[-1].strip() or labels["not_triaged"]
-    if "Downgrade" in estimate and finding["severity"] not in BLOCKING:
+    if has_label(estimate, "Downgrade") and finding["severity"] not in BLOCKING:
         return False, estimate.rsplit(" — ", 1)[-1].strip()
     return True, None
 
@@ -403,7 +465,7 @@ def finding_block(finding, kind, lang, with_location):
     location = finding["location"]
     head = f"**{severity_of(finding['id'])} {finding['id']}**"
     if with_location and location != "PR":
-        head += f" `{location.replace('`', '')}`"
+        head += f" `{location.replace('`', '').replace('<!--', '&lt;!--')}`"
     quoted = urllib.parse.quote(location, safe="/:._-()[]@+$~,")
     parts = [f"<!-- cgh:finding {finding['id']} {kind} {quoted} -->", head, "",
              safe_text(finding["text"])]
@@ -435,16 +497,20 @@ def read_block(body):
 
 
 def posted_findings(pr, viewer):
-    """Every finding the viewer posted, in any kind, and the IDs the viewer marked verified."""
+    """The viewer's findings and verified and waived IDs outside pending and dismissed reviews,
+    and every ID the viewer has used, dismissed reviews included.
+    """
     reviews = rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/reviews")
     comments = rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/comments")
     issue_comments = rest_pages(pr, f"repos/{pr.repo}/issues/{pr.number}/comments")
-    skipped = {r.get("id") for r in reviews if r.get("state") in ("PENDING", "DISMISSED")}
+    pending = {r.get("id") for r in reviews if r.get("state") == "PENDING"}
+    dismissed = {r.get("id") for r in reviews if r.get("state") == "DISMISSED"}
+    skipped = pending | dismissed
 
     def own(entry):
         return (entry.get("user") or {}).get("login") == viewer
 
-    posted, verified = {}, set()
+    posted, verified, waived, used = {}, set(), set(), set()
 
     def add(match, target):
         text, items = read_block(match.group("body"))
@@ -464,11 +530,21 @@ def posted_findings(pr, viewer):
             if not comment.get("in_reply_to_id"):
                 for match in FINDING_RE.finditer(comment.get("body") or ""):
                     add(match, {"kind": "thread", "id": comment.get("id")})
-    for entry in [*reviews, *comments, *issue_comments]:
-        if own(entry) and entry.get("pull_request_review_id", entry.get("id")) not in skipped:
-            for match in VERIFIED_RE.finditer(entry.get("body") or ""):
-                verified.update(match.group(1).split(","))
-    return posted, verified
+    entries = [*((r, r.get("id")) for r in reviews),
+               *((c, c.get("pull_request_review_id")) for c in comments),
+               *((c, None) for c in issue_comments)]
+    for entry, review in entries:
+        if not own(entry) or review in pending:
+            continue
+        body = entry.get("body") or ""
+        used.update(match.group("id") for match in FINDING_RE.finditer(body))
+        for marker_re, marked in ((VERIFIED_RE, verified), (WAIVED_RE, waived)):
+            for match in marker_re.finditer(body):
+                ids = match.group(1).split(",")
+                used.update(ids)
+                if review not in dismissed:
+                    marked.update(ids)
+    return Posted(posted, verified, waived, used)
 
 
 def next_numbers(ids):
@@ -524,6 +600,16 @@ def write_prior_document(path, pr, view, merge_base, viewer, findings, state, tr
         out.write("\n".join(lines))
 
 
+def write_waived_document(path, pr, findings):
+    lines = ["# Waived Findings", "",
+             f"The user accepted these findings of pull request #{pr.number} without a fix.", ""]
+    for f in findings:
+        location = f["location"].replace("`", "").replace("<!--", "&lt;!--")
+        lines += [f"## {f['id']} — `{location}`", "", document_text(f["text"]), ""]
+    with open(path, "w", encoding="utf-8", newline="\n") as out:
+        out.write("\n".join(lines))
+
+
 def merge_base_of(pr, view):
     compare = rest_get(
         pr, f"repos/{pr.repo}/compare/{view['baseRefOid']}...{view['headRefOid']}")
@@ -533,9 +619,15 @@ def merge_base_of(pr, view):
 def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
     pr = parse_pr_url(pr_url)
     view = view_pr(pr)
-    posted, verified = posted_findings(pr, view["viewer"])
-    mine = [f for f in posted.values() if f["kind"] == kind]
-    findings = [f for f in mine if f["id"] not in verified]
+    posted = posted_findings(pr, view["viewer"])
+    mine = [f for f in posted.findings.values() if f["kind"] == kind]
+    closed = posted.verified | posted.waived
+    findings = [f for f in mine if f["id"] not in closed and f["severity"] != "Info"]
+    waived = [f for f in mine if f["id"] in posted.waived - posted.verified]
+    waived_document = None
+    if waived:
+        waived_document = os.path.join(tmp_dir, "waived.md")
+        write_waived_document(waived_document, pr, waived)
     write_json(os.path.join(tmp_dir, "prior.json"), {"findings": findings})
     state = local_state(view["headRefOid"])
     written = None
@@ -553,8 +645,9 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
     return {
         "url": pr.url, "number": pr.number, "head_sha": view["headRefOid"],
         "open": [f["id"] for f in findings],
-        "verified": [f["id"] for f in mine if f["id"] in verified],
-        "document": written,
+        "verified": [f["id"] for f in mine if f["id"] in posted.verified],
+        "waived": [f["id"] for f in waived],
+        "document": written, "waived_document": waived_document,
     }
 
 
@@ -572,19 +665,22 @@ def placement(location, files):
 
 def checked_document(pr, document):
     header, findings = parse_document(document)
-    if header.get("url") != pr.url:
+    if (header.get("url") or "").casefold() != pr.url.casefold():
         raise Error(f"{document} is not a review document of {pr.url}")
     return header, findings
 
 
-def prior_states(prior_doc):
+def prior_states(pr, prior_doc, head):
     if not prior_doc:
         return []
-    _, findings = parse_document(prior_doc)
+    header, findings = checked_document(pr, prior_doc)
+    if header.get("head_sha") != head:
+        raise Error(f"{prior_doc} was verified at {header.get('head_sha')}, but the pull request "
+                    f"is at {head}; run /cgh:gate again")
     prior = []
     for f in findings:
         verification = f["metadata"].get("Verification", "")
-        state = "verified" if "Verified" in verification else "open"
+        state = "verified" if has_label(verification, "Verified") else "open"
         prior.append({"id": f["id"], "severity": f["severity"], "state": state,
                       "note": verification.partition(" — ")[2].strip()})
     return prior
@@ -597,9 +693,9 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
     if view["headRefOid"] != header.get("head_sha"):
         raise Error(f"the pull request moved past the reviewed head {header.get('head_sha')} "
                     f"to {view['headRefOid']}; run the skill again")
-    posted, _ = posted_findings(pr, view["viewer"])
-    prior = prior_states(prior_doc)
-    numbers = next_numbers([*posted, *(p["id"] for p in prior)])
+    used = posted_findings(pr, view["viewer"]).used
+    prior = prior_states(pr, prior_doc, view["headRefOid"])
+    numbers = next_numbers([*used, *(p["id"] for p in prior)])
     files = changed_files(pr)
     entries = []
     labels = labels_for(lang)
@@ -680,9 +776,10 @@ def review_body(draft, plan, body_findings, post):
         lines += [f"### {labels['out_of_diff']}", ""]
         for f in body_findings:
             lines += [finding_block(comment_view(f, post), draft["kind"], lang, True), ""]
-    done = [p["id"] for p in draft["prior"] if p["state"] in ("verified", "waived")]
-    if done:
-        lines.append(f"<!-- cgh:verified {','.join(done)} -->")
+    for state in ("verified", "waived"):
+        done = [p["id"] for p in draft["prior"] if p["state"] == state]
+        if done:
+            lines.append(f"<!-- cgh:{state} {','.join(done)} -->")
     return "\n".join(lines).strip()
 
 
@@ -726,6 +823,11 @@ def preview_review(draft, view, post):
     }
 
 
+def finding_ids_only(value):
+    return isinstance(value, list) and all(
+        isinstance(fid, str) and FINDING_ID_RE.fullmatch(fid) for fid in value)
+
+
 def validated_replies(data):
     replies = data.get("replies")
     if not isinstance(replies, list):
@@ -741,8 +843,10 @@ def validated_replies(data):
             raise Error(f"malformed reply: {entry!r}")
         entry.setdefault("selected", True)
         entry.setdefault("posted", False)
-        entry.setdefault("finding_ids", [])
-        entry.setdefault("verified", [])
+        ids = entry.setdefault("finding_ids", [])
+        verified = entry.setdefault("verified", [])
+        if not finding_ids_only(ids) or not finding_ids_only(verified) or set(verified) - set(ids):
+            raise Error(f"malformed reply: {entry!r}")
     return replies
 
 
@@ -757,8 +861,10 @@ def preview_replies(data, post):
         state = "" if entry["selected"] else " (not selected)"
         target = "" if entry["target_id"] is None else f" {entry['target_id']}"
         ids = ", ".join(entry["finding_ids"])
-        lines += [f"## {entry['kind']}{target}{state}", "", f"Findings: {ids}", "",
-                  safe_text(reply_text(entry, post)), ""]
+        lines += [f"## {entry['kind']}{target}{state}", "", f"Findings: {ids}", ""]
+        if entry["verified"]:
+            lines += [f"Verified: {', '.join(entry['verified'])}", ""]
+        lines += [safe_text(reply_text(entry, post)), ""]
     return "\n".join(lines), {"replies": sum(e["selected"] and not e["posted"] for e in replies),
                               "comment_lang": data.get("comment_lang")}
 
@@ -767,9 +873,12 @@ def cmd_preview(pr_url, path):
     pr = parse_pr_url(pr_url)
     data = read_json(path)
     if "findings" in data:
-        view = view_pr(pr)
+        view = view_for_draft(pr, data)
         text, summary = preview_review(data, view, False)
         post_text, _ = preview_review(data, view, True)
+        if summary["verdict"]:
+            data["previewed_verdict"] = summary["verdict"]
+            write_json(path, data)
     else:
         text, summary = preview_replies(data, False)
         post_text, _ = preview_replies(data, True)
@@ -865,8 +974,8 @@ def settle_failed_review(pr, review_id, path, draft, error):
 def post_review(pr, path, draft):
     if draft.get("posted"):
         raise Error("this review was already posted")
-    view = view_pr(pr)
-    if draft.get("url") != pr.url:
+    view = view_for_draft(pr, draft)
+    if (draft.get("url") or "").casefold() != pr.url.casefold():
         raise Error(f"{path} is not a draft of {pr.url}")
     if view["headRefOid"] != draft["head_sha"]:
         raise Error(f"the pull request moved past the reviewed head {draft['head_sha']} to "
@@ -877,6 +986,10 @@ def post_review(pr, path, draft):
     missing = wording_missing(draft)
     if not draft.get("comment_lang") or missing:
         raise Error(f"the wording is not complete, run gh-review.py wording first: {missing}")
+    previewed = draft.get("previewed_verdict")
+    if previewed and previewed != plan["verdict"]:
+        raise Error(f"the preview showed {previewed}, but the verdict is now {plan['verdict']}; "
+                    "preview it again")
     created = graphql(pr, ADD_REVIEW, input={"pullRequestId": view["id"],
                                              "commitOID": draft["head_sha"]})
     review_id = created["addPullRequestReview"]["pullRequestReview"]["id"]
@@ -922,7 +1035,13 @@ def post_review(pr, path, draft):
 
 
 def belongs(pr, url, kind):
-    return (url or "").rstrip("/").endswith(f"/repos/{pr.repo}/{kind}/{pr.number}")
+    tail = f"/repos/{pr.repo}/{kind}/{pr.number}"
+    return (url or "").rstrip("/").casefold().endswith(tail.casefold())
+
+
+def not_on_pr(pr, comment_id):
+    return Error(f"comment {comment_id} is not on PR #{pr.number}; "
+                 "for a renamed repository, use its current URL")
 
 
 def reply_author(pr, entry, viewer):
@@ -931,7 +1050,7 @@ def reply_author(pr, entry, viewer):
     elif entry["kind"] == "issue_comment":
         target = rest_get(pr, f"repos/{pr.repo}/issues/comments/{entry['target_id']}")
         if not belongs(pr, target.get("issue_url"), "issues"):
-            raise Error(f"comment {entry['target_id']} is not on PR #{pr.number}")
+            raise not_on_pr(pr, entry["target_id"])
     else:
         return None
     login = (target.get("user") or {}).get("login") or ""
@@ -946,20 +1065,23 @@ def send_reply(pr, entry, viewer):
     if entry["kind"] == "thread":
         comment = rest_get(pr, f"repos/{pr.repo}/pulls/comments/{entry['target_id']}")
         if not belongs(pr, comment.get("pull_request_url"), "pulls"):
-            raise Error(f"comment {entry['target_id']} is not on PR #{pr.number}")
-        root = comment.get("in_reply_to_id") or entry["target_id"]
-        path = f"repos/{pr.repo}/pulls/{pr.number}/comments/{root}/replies"
+            raise not_on_pr(pr, entry["target_id"])
+        answered = comment.get("in_reply_to_id") or entry["target_id"]
+        path = f"repos/{pr.repo}/pulls/{pr.number}/comments/{answered}/replies"
     else:
         author = reply_author(pr, entry, viewer)
         if author:
             body = f"@{author} {body}"
+        answered = entry["target_id"]
         path = f"repos/{pr.repo}/issues/{pr.number}/comments"
+    if answered is not None:
+        body += f"\n\n<!-- cgh:reply {entry['kind']} {answered} -->"
     return rest_post(pr, path, {"body": checked_size(body, "a reply")}).get("html_url")
 
 
 def post_replies(pr, path, data):
     replies = validated_replies(data)
-    viewer = view_pr(pr)["viewer"]
+    viewer = view_pr(pr, require_open=False)["viewer"]
     urls = []
     for entry in replies:
         if entry["selected"] and not entry["posted"]:
@@ -974,14 +1096,16 @@ def commit_on_pr(pr, sha, head):
         return True
     try:
         compare = rest_get(pr, f"repos/{pr.repo}/compare/{sha}...{head}")
-    except Error:
+    except Error as e:
+        if "(HTTP 404)" not in str(e):
+            raise
         return False
     return compare.get("status") in ("ahead", "identical")
 
 
 def pushed_state(pr, commits_path):
     commits = read_json(commits_path).get("commits") or []
-    head = view_pr(pr)["headRefOid"]
+    head = view_pr(pr, require_open=False)["headRefOid"]
     tip = commits[0]["sha"] if commits else None
     return {"pushed": tip is None or commit_on_pr(pr, tip, head), "head_sha": head, "tip": tip}
 
@@ -992,9 +1116,13 @@ def cmd_pushed(pr_url, commits_path):
 
 def cmd_post(pr_url, path, commits_path):
     pr = parse_pr_url(pr_url)
-    if commits_path and not pushed_state(pr, commits_path)["pushed"]:
-        raise Error("the pull request does not contain the fix commits yet; push them first")
     data = read_json(path)
+    if commits_path:
+        if "findings" in data or any(e["verified"] for e in validated_replies(data)):
+            raise Error(f"--commits sends only replies that mark nothing verified: {path} holds "
+                        "findings or a verified reply")
+        if not pushed_state(pr, commits_path)["pushed"]:
+            raise Error("the pull request does not contain the fix commits yet; push them first")
     return post_review(pr, path, data) if "findings" in data else post_replies(pr, path, data)
 
 
@@ -1002,26 +1130,34 @@ def cmd_comments(pr_url, tmp_dir):
     pr = parse_pr_url(pr_url)
     reviews = rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/reviews")
     pending = {r.get("id") for r in reviews if r.get("state") == "PENDING"}
-    comments = rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/comments")
+    comments = [c for c in rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/comments")
+                if c.get("pull_request_review_id") not in pending]
+    issue_comments = rest_pages(pr, f"repos/{pr.repo}/issues/{pr.number}/comments")
+    view = view_pr(pr, require_open=False)
 
     def author(entry):
         return (entry.get("user") or {}).get("login") or "ghost"
 
+    answered = {(match.group(1), int(match.group(2)))
+                for c in [*comments, *issue_comments] if author(c) == view["viewer"]
+                for match in REPLY_RE.finditer(c.get("body") or "")}
     path = os.path.join(tmp_dir, "comments.json")
     write_json(path, {
         "review_comments": [
             {"id": c.get("id"), "in_reply_to": c.get("in_reply_to_id"), "author": author(c),
              "path": c.get("path"), "line": c.get("line") or c.get("original_line"),
-             "body": c.get("body") or ""}
-            for c in comments if c.get("pull_request_review_id") not in pending],
+             "body": c.get("body") or "",
+             "answered": ("thread", c.get("in_reply_to_id") or c.get("id")) in answered}
+            for c in comments],
         "reviews": [{"id": r.get("id"), "author": author(r), "state": r.get("state"),
-                     "body": r.get("body") or ""}
+                     "body": r.get("body") or "", "answered": ("review", r.get("id")) in answered}
                     for r in reviews if r.get("body") and r.get("id") not in pending],
         "issue_comments": [
-            {"id": c.get("id"), "author": author(c), "body": c.get("body") or ""}
-            for c in rest_pages(pr, f"repos/{pr.repo}/issues/{pr.number}/comments")],
+            {"id": c.get("id"), "author": author(c), "body": c.get("body") or "",
+             "answered": ("issue_comment", c.get("id")) in answered}
+            for c in issue_comments],
     })
-    return {"path": path, "pr_body_path": write_pr_body(tmp_dir, view_pr(pr))}
+    return {"path": path, "pr_body_path": write_pr_body(tmp_dir, view)}
 
 
 def cmd_fixes(pr_url, tmp_dir, document):
@@ -1039,11 +1175,12 @@ def cmd_fixes(pr_url, tmp_dir, document):
             commits[-1]["files"].append(line.strip())
     path = os.path.join(tmp_dir, "fix-commits.json")
     write_json(path, {"commits": commits})
-    view = view_pr(pr)
+    view = view_pr(pr, require_open=False)
+    head_ref = view.get("headRefName") or ""
     return {
         "path": path, "commits": len(commits), "tip": commits[0]["sha"] if commits else None,
-        "branch": branch, "head_ref": view.get("headRefName"),
-        "head_repo": (view.get("headRepository") or {}).get("nameWithOwner"),
+        "branch": branch, "head_ref": head_ref if BRANCH_NAME_RE.fullmatch(head_ref) else None,
+        "head_repo":(view.get("headRepository") or {}).get("nameWithOwner"),
     }
 
 
@@ -1064,7 +1201,7 @@ def cmd_replies(pr_url, tmp_dir, document, lang):
             unverified.append(fid)
             continue
         note = verification.partition(" — ")[2].strip()
-        verified = "Verified" in verification
+        verified = has_label(verification, "Verified")
         as_recommended = note.startswith("[as-recommended]")
         note = re.sub(r"^\[(?:as-recommended|differs)\]\s*", "", note)
         if verified:
@@ -1088,7 +1225,7 @@ def cmd_replies(pr_url, tmp_dir, document, lang):
     path = os.path.join(tmp_dir, "replies.json")
     write_json(path, {"replies": replies})
     return {"path": path, "replies": len(replies), "unverified": unverified,
-            "pr_body_path": write_pr_body(tmp_dir, view_pr(pr))}
+            "pr_body_path": write_pr_body(tmp_dir, view_pr(pr, require_open=False))}
 
 
 def parser():

@@ -132,11 +132,12 @@ FILES = [
 ]
 
 
-def view(head=HEAD, author="author", viewer="me", mergeable="MERGEABLE"):
+def view(head=HEAD, author="author", viewer="me", mergeable="MERGEABLE", state="OPEN",
+         head_ref="feature"):
     return {"data": {"viewer": {"login": viewer}, "repository": {"pullRequest": {
-        "id": "PR_1", "number": 7, "state": "OPEN", "author": {"login": author},
+        "id": "PR_1", "number": 7, "state": state, "author": {"login": author},
         "title": "Title", "body": "Description",
-        "headRefOid": head, "headRefName": "feature", "baseRefOid": "c" * 40,
+        "headRefOid": head, "headRefName": head_ref, "baseRefOid": "c" * 40,
         "mergeable": mergeable,
         "headRepository": {"nameWithOwner": "acme/app"},
     }}}}
@@ -145,6 +146,26 @@ def view(head=HEAD, author="author", viewer="me", mergeable="MERGEABLE"):
 def read_text(path):
     with open(path, encoding="utf-8") as f:
         return f.read()
+
+
+def outside_code_spans(text):
+    """What CommonMark's inline parser leaves of the text outside code spans."""
+    kept, i = [], 0
+    while i < len(text):
+        if text[i] == "\\":
+            kept.append(text[i:i + 2])
+            i += 2
+        elif text[i] != "`":
+            kept.append(text[i])
+            i += 1
+        else:
+            run = re.match(r"`+", text[i:]).group(0)
+            rest = text[i + len(run):]
+            closer = next((m for m in re.finditer(r"`+", rest) if m.group(0) == run), None)
+            if not closer:
+                kept.append(run)
+            i += len(run) + (closer.end() if closer else 0)
+    return "".join(kept)
 
 
 class FakeGitHub:
@@ -167,6 +188,7 @@ class FakeGitHub:
         self.review_state = "PENDING"
         self.git = {}
         self.compare_status = {}
+        self.mergeable = []
 
     def __call__(self, cmd, input=None, **_):
         self.calls.append(cmd)
@@ -198,19 +220,22 @@ class FakeGitHub:
             if isinstance(status, Exception):
                 raise status
             return {"status": status, "merge_base_commit": {"sha": BASE}}
-        m = re.search(r"[?&]page=([0-9]+)", path)
-        page = int(m.group(1)) if m else 1
+        query = dict(re.findall(r"[?&](\w+)=([0-9]+)", path))
+        page, size = int(query.get("page", 1)), int(query.get("per_page", mod.PAGE_SIZE))
         for tail, items in (("/files", FILES), ("/pulls/7/reviews", self.reviews),
                             ("/pulls/7/comments", self.review_comments),
                             ("/issues/7/comments", self.issue_comments)):
             if tail in path:
-                return items if page == 1 else []
+                return items[(page - 1) * size:page * size]
         raise mod.Error(f"unexpected path {path}")
 
     def graphql(self, body):
         query, variables = body["query"], body.get("variables", {})
         if "mutation" not in query:
             if "node(" not in query:
+                if self.mergeable:
+                    pull = self.view["data"]["repository"]["pullRequest"]
+                    pull["mergeable"] = self.mergeable.pop(0)
                 return json.dumps(self.view)
             if self.fail_state:
                 raise mod.Error("state refused")
@@ -306,6 +331,22 @@ class Parsing(Base):
         self.assertEqual(first["location"], "src/a.py:10")
         self.assertEqual(first["text"], "null を参照する。\n@alice に確認済み。")
 
+    def write_document(self, *lines):
+        with open(self.doc, "w", encoding="utf-8") as f:
+            f.write("\n".join([f"- **PR:** {URL} (head {HEAD}, base {BASE})", "", *lines, ""]))
+
+    def test_malformed_heading_is_refused(self):
+        for heading in ("### M-1 — `src/a`b.py:1`", "### M-1 — `src/a.py:1` [Bug] trailing"):
+            self.write_document(heading, "", "<!-- METADATA(M-1) -->", "<!-- /METADATA(M-1) -->")
+            with self.assertRaisesRegex(mod.Error, "heading.*M-1"):
+                mod.parse_document(self.doc)
+
+    def test_metadata_without_its_heading_is_refused(self):
+        for lines in ((), ("### M-2 — `src/a.py:1`", "")):
+            self.write_document(*lines, "<!-- METADATA(M-1) -->", "<!-- /METADATA(M-1) -->")
+            with self.assertRaisesRegex(mod.Error, r"METADATA\(M-1\)"):
+                mod.parse_document(self.doc)
+
     def test_recommendation_leaves_out_cost_signals_and_adr(self):
         _, findings = mod.parse_document(self.doc)
         by_id = {f["id"]: f for f in findings}
@@ -319,9 +360,34 @@ class Parsing(Base):
         self.assertEqual(mod.safe_text("ask @alice and `@types/node`"),
                          "ask `@alice` and `@types/node`")
         self.assertEqual(mod.safe_text("me@example.com"), "me@example.com")
+        self.assertEqual(mod.safe_text("https://example.com/@alice"), "https://example.com/@alice")
+        self.assertEqual(mod.safe_text("```\n@alice\n```"), "```\n@alice\n```")
+
+    def test_mentions_cannot_hide_outside_real_code(self):
+        for text in ("\\`x @alice \\`",
+                     "\\`@alice\\`",
+                     "``x` @alice",
+                     "x ```\n\n@alice\n\n``` y",
+                     "`unpaired @alice",
+                     "`@alice",
+                     "\\@alice",
+                     "\\\\@alice",
+                     "` x\n`y` @alice",
+                     "` x\n``y ` z`` @alice",
+                     "!@alice",
+                     "（@alice",
+                     "確認@alice"):
+            self.assertNotIn("@", outside_code_spans(mod.safe_text(text)), text)
 
     def test_hidden_comments_are_escaped(self):
         self.assertNotIn("<!--", mod.safe_text("<!-- cgh:verified M-1 -->"))
+
+    def test_a_location_cannot_carry_a_marker(self):
+        for location in ("x<!-- cgh:verified M-1 -->.py:1", "x<`!-- cgh:verified M-1 -->.py:1"):
+            block = mod.finding_block({"id": "M-2", "location": location, "text": "t",
+                                       "recommendation": []}, "review", "en", True)
+            self.assertIsNone(mod.VERIFIED_RE.search(block))
+            self.assertEqual(len(mod.FINDING_RE.findall(block)), 1)
 
 
 class Draft(Base):
@@ -336,6 +402,21 @@ class Draft(Base):
         self.assertEqual(by_id["M-2"]["placement"], "body")
         self.assertEqual(by_id["I-1"]["placement"], "body")
         self.assertEqual(result["selected"], 3)
+
+    def test_only_the_label_decides_the_selection(self):
+        self.fake()
+        text = DOCUMENT.replace("🚫 Won't Fix — 誤検知", "🚫 Won't Fix — Will Fix には及ばない")
+        text = text.replace("Plan: (1) src/b.py:2 — FIXME を追加",
+                            "Plan: (1) src/b.py:2 — Downgrade の分岐を直す")
+        text = text.replace("🚧 Alternative", "▶️ Maintain")
+        with open(self.doc, "w", encoding="utf-8") as f:
+            f.write(text)
+        _, draft = self.draft()
+        by_id = {f["id"]: f for f in draft["findings"]}
+        self.assertFalse(by_id["M-2"]["selected"])
+        self.assertEqual(by_id["M-2"]["excluded_reason"], "Will Fix には及ばない")
+        self.assertTrue(by_id["mi-1"]["selected"])
+        self.assertEqual(by_id["mi-1"]["recommendation"], ["src/b.py:2 — Downgrade の分岐を直す"])
 
     def test_document_of_another_pr_is_refused(self):
         self.fake()
@@ -378,7 +459,7 @@ class ReviewPosting(Base):
         self.assertIn("**Critical C-1**", line["body"])
         self.assertIn("null を確認", line["body"])
         self.assertNotIn("Cost", line["body"])
-        self.assertNotIn("Reviewer", line["body"])
+        self.assertNotIn("レビュアー", line["body"])
         self.assertNotIn("x-adr", line["body"])
         self.assertIn("`@alice`", line["body"])
         file_level = next(t for t in threads if t["subjectType"] == "FILE")
@@ -526,6 +607,68 @@ class Gate(Base):
         _, path = self.gate_draft(mergeable="CONFLICTING")
         self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "BLOCK")
 
+    def no_wait(self):
+        waits = []
+        self.addCleanup(setattr, mod.time, "sleep", mod.time.sleep)
+        mod.time.sleep = waits.append
+        return waits
+
+    def test_unknown_mergeable_never_settling_stops_the_post(self):
+        waits = self.no_wait()
+        gh, path = self.gate_draft(mergeable="UNKNOWN")
+        with self.assertRaisesRegex(mod.Error, "merges"):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.mutations, [])
+        self.assertEqual(waits, [mod.MERGEABLE_WAIT] * (mod.MERGEABLE_TRIES - 1))
+
+    def test_unknown_mergeable_settling_as_conflict_blocks(self):
+        self.no_wait()
+        gh, path = self.gate_draft()
+        gh.mergeable = ["UNKNOWN", "UNKNOWN", "CONFLICTING"]
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "BLOCK")
+
+    def test_a_verdict_changed_since_the_preview_stops_the_post(self):
+        gh, path = self.gate_draft()
+        result, _ = self.preview(path)
+        self.assertEqual(result["verdict"], "PASS")
+        self.assertEqual(json.loads(read_text(path))["previewed_verdict"], "PASS")
+        gh.view = view(mergeable="CONFLICTING")
+        with self.assertRaisesRegex(mod.Error, "preview"):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.mutations, [])
+        self.assertEqual(self.preview(path)[0]["verdict"], "BLOCK")
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "BLOCK")
+
+    def test_a_review_does_not_wait_for_mergeable(self):
+        waits = self.no_wait()
+        self.fake(mergeable="UNKNOWN")
+        self.draft()
+        path = os.path.join(self.dir, "draft.json")
+        self.preview(path)
+        self.assertEqual(mod.cmd_post(URL, path, None)["event"], "REQUEST_CHANGES")
+        self.assertEqual(waits, [])
+
+    def test_feedback_that_mentions_verified_stays_open(self):
+        gh, path = self.gate_draft([("M-7", "💬 Feedback — Verified とあるが未修正")])
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "BLOCK")
+        self.assertNotIn("cgh:verified", gh.named("submitPullRequestReview")[0]["body"])
+
+    def test_prior_document_of_another_head_is_refused(self):
+        self.fake()
+        prior = os.path.join(self.dir, "prior.md")
+        with open(prior, "w", encoding="utf-8") as f:
+            f.write(prior_doc_text([("M-7", "✅ Verified — fixed")]).replace(HEAD, "d" * 40))
+        with self.assertRaisesRegex(mod.Error, "/cgh:gate again"):
+            self.draft("gate", "en", prior)
+
+    def test_prior_document_of_another_pr_is_refused(self):
+        self.fake()
+        prior = os.path.join(self.dir, "prior.md")
+        with open(prior, "w", encoding="utf-8") as f:
+            f.write(prior_doc_text([("M-7", "✅ Verified — fixed")]).replace("/pull/7", "/pull/8"))
+        with self.assertRaisesRegex(mod.Error, "not a review document"):
+            self.draft("gate", "en", prior)
+
     def test_open_prior_major_blocks_and_verified_is_recorded(self):
         gh, path = self.gate_draft([("M-7", "💬 Feedback — still broken"),
                                     ("M-8", "✅ Verified — fixed")])
@@ -546,8 +689,9 @@ class Gate(Base):
         draft["prior"][0]["state"] = "waived"
         result = mod.cmd_post(URL, self.save(draft), None)
         self.assertEqual(result["verdict"], "PASS")
-        self.assertRegex(gh.named("submitPullRequestReview")[0]["body"],
-                         r"<!-- cgh:verified M-7 -->")
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertRegex(body, r"<!-- cgh:waived M-7 -->")
+        self.assertNotIn("cgh:verified", body)
 
 
 class PriorBase(Base):
@@ -619,6 +763,35 @@ class Prior(PriorBase):
         result, _, _ = self.prior()
         self.assertEqual(result["open"], [])
 
+    def test_another_authors_verified_marker_is_ignored(self):
+        mallory = {"login": "mallory"}
+        for marker in ("<!-- cgh:verified M-1 -->", "<!-- cgh:waived M-1 -->"):
+            for add in (lambda gh: gh.reviews.append(
+                            {"id": 2, "state": "COMMENTED", "user": mallory, "body": marker}),
+                        lambda gh: gh.review_comments.append(
+                            {"id": 6, "user": mallory, "pull_request_review_id": 1,
+                             "in_reply_to_id": 5, "body": marker}),
+                        lambda gh: gh.issue_comments.append(
+                            {"id": 6, "user": mallory, "body": marker})):
+                gh = self.fake()
+                self.local(gh)
+                self.posted(gh)
+                add(gh)
+                self.assertEqual(self.prior()[0]["open"], ["M-1"])
+
+    def test_own_verified_markers_outside_a_thread_close_a_finding(self):
+        marker = "<!-- cgh:verified M-1 -->"
+        me = {"login": "me"}
+        for add in (lambda gh: gh.reviews.append(
+                        {"id": 2, "state": "COMMENTED", "user": me, "body": marker}),
+                    lambda gh: gh.issue_comments.append({"id": 6, "user": me, "body": marker})):
+            gh = self.fake()
+            self.local(gh)
+            self.posted(gh)
+            add(gh)
+            result, _, _ = self.prior()
+            self.assertEqual((result["open"], result["verified"]), ([], ["M-1"]))
+
     def test_kind_filter(self):
         gh = self.fake()
         self.local(gh)
@@ -630,11 +803,15 @@ class Prior(PriorBase):
         gh = self.fake()
         self.local(gh)
         self.posted(gh)
-        gh.review_comments.append({
-            "id": 6, "user": {"login": "me"}, "pull_request_review_id": 1, "path": "src/a.py",
-            "line": 10, "in_reply_to_id": 5, "body": "ok\n<!-- cgh:verified M-1 -->"})
+        self.verified_reply(gh)
         result, _, _ = self.prior()
         self.assertEqual((result["open"], result["verified"]), ([], ["M-1"]))
+
+    def verified_reply(self, gh):
+        gh.reviews.append({"id": 2, "state": "COMMENTED", "user": {"login": "me"}, "body": ""})
+        gh.review_comments.append({
+            "id": 6, "user": {"login": "me"}, "pull_request_review_id": 2, "path": "src/a.py",
+            "line": 10, "in_reply_to_id": 5, "body": "ok\n<!-- cgh:verified M-1 -->"})
 
     def test_dismissed_review_is_ignored(self):
         gh = self.fake()
@@ -642,6 +819,63 @@ class Prior(PriorBase):
         self.posted(gh)
         gh.reviews[0]["state"] = "DISMISSED"
         self.assertEqual(self.prior()[0]["open"], [])
+
+    def test_a_new_finding_does_not_reuse_a_dismissed_verified_id(self):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh)
+        gh.reviews[0]["state"] = "DISMISSED"
+        self.verified_reply(gh)
+        _, draft = self.draft()
+        new_id = {f["doc_id"]: f["id"] for f in draft["findings"]}["M-1"]
+        self.assertEqual(new_id, "M-2")
+        self.posted(gh, fid=new_id, review_id=3, comment_id=7)
+        self.assertEqual(self.prior()[0]["open"], ["M-2"])
+
+    def test_a_dismissed_finding_still_advances_the_numbers(self):
+        gh = self.fake()
+        self.posted(gh)
+        gh.reviews[0]["state"] = "DISMISSED"
+        _, draft = self.draft()
+        self.assertEqual({f["doc_id"]: f["id"] for f in draft["findings"]}["M-1"], "M-2")
+
+    def test_a_marker_with_something_other_than_ids_is_ignored(self):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh)
+        gh.issue_comments.append({"id": 6, "user": {"login": "me"},
+                                  "body": "<!-- cgh:verified M-1,abc -->"})
+        self.assertEqual(self.prior()[0]["open"], ["M-1"])
+        _, draft = self.draft()
+        self.assertEqual({f["doc_id"]: f["id"] for f in draft["findings"]}["M-1"], "M-2")
+
+    def test_a_waived_finding_leaves_open_and_reaches_the_waived_document(self):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh)
+        self.posted(gh, fid="M-2", review_id=2, comment_id=6)
+        gh.reviews.append({"id": 3, "state": "COMMENTED", "user": {"login": "me"},
+                           "body": "<!-- cgh:waived M-1 -->"})
+        result, prior, _ = self.prior()
+        self.assertEqual((result["open"], result["waived"]), (["M-2"], ["M-1"]))
+        self.assertEqual([f["id"] for f in prior["findings"]], ["M-2"])
+        self.assertEqual(result["waived_document"], os.path.join(self.dir, "waived.md"))
+        text = read_text(result["waived_document"])
+        self.assertIn("M-1", text)
+        self.assertIn("src/a.py:10", text)
+        self.assertIn("text `@bob`", text)
+        self.assertNotIn("M-2", text)
+        _, draft = self.draft()
+        self.assertEqual({f["doc_id"]: f["id"] for f in draft["findings"]}["M-1"], "M-3")
+
+    def test_no_waived_finding_writes_no_waived_document(self):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh)
+        result, _, _ = self.prior()
+        self.assertEqual(result["waived"], [])
+        self.assertIsNone(result["waived_document"])
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "waived.md")))
 
     def test_finding_in_a_review_body(self):
         gh = self.fake()
@@ -660,6 +894,7 @@ class Prior(PriorBase):
         self.posted(gh)
         with self.assertRaisesRegex(mod.Error, "push"):
             self.prior()
+        self.assertIn(["git", "merge-base", "--is-ancestor", HEAD, "HEAD"], gh.calls)
 
     def test_uncommitted_changes_stop_verification(self):
         gh = self.fake()
@@ -668,6 +903,10 @@ class Prior(PriorBase):
         self.posted(gh)
         with self.assertRaisesRegex(mod.Error, "uncommitted"):
             self.prior()
+        status = next(c for c in gh.calls if c[:2] == ["git", "status"])
+        for argument in ("--untracked-files=no", ":(top,exclude).claude/tmp",
+                         ":(top,exclude).claude/worktrees"):
+            self.assertIn(argument, status)
 
     def test_no_open_finding_writes_no_document(self):
         gh = self.fake()
@@ -676,6 +915,40 @@ class Prior(PriorBase):
         self.assertEqual(result["open"], [])
         self.assertIsNone(result["document"])
         self.assertFalse(os.path.exists(doc))
+
+    def test_detached_head_has_no_branch_bullet(self):
+        gh = self.fake()
+        self.local(gh)
+        gh.git["branch"] = "\n"
+        self.posted(gh)
+        _, _, doc = self.prior()
+        self.assertNotIn("**Branch:**", read_text(doc))
+
+    def test_markers_past_the_first_page_are_read(self):
+        self.addCleanup(setattr, mod, "PAGE_SIZE", mod.PAGE_SIZE)
+        mod.PAGE_SIZE = 2
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh)
+        gh.issue_comments = [{"id": i, "user": {"login": "me"}, "body": "x"} for i in (6, 7)]
+        gh.issue_comments.append({"id": 8, "user": {"login": "me"},
+                                  "body": "<!-- cgh:verified M-1 -->"})
+        result, _, _ = self.prior()
+        self.assertEqual((result["open"], result["verified"]), ([], ["M-1"]))
+
+    def test_info_is_not_verified(self):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh, fid="I-1")
+        result, prior, doc = self.prior()
+        self.assertEqual((result["open"], prior["findings"]), ([], []))
+        self.assertIsNone(result["document"])
+        self.assertFalse(os.path.exists(doc))
+        self.posted(gh, fid="M-1", review_id=2, comment_id=6)
+        result, prior, doc = self.prior()
+        self.assertEqual(result["open"], ["M-1"])
+        self.assertEqual([f["id"] for f in prior["findings"]], ["M-1"])
+        self.assertNotIn("I-1", read_text(doc))
 
 
 class ResolveReplies(Base):
@@ -686,6 +959,7 @@ class ResolveReplies(Base):
             ("M-3", "💬 Feedback — the else branch is unchanged"),
             ("M-4", None),
             ("M-5", "✅ Verified — [as-recommended] done"),
+            ("M-6", "💬 Feedback — the review body is unchanged"),
         ])
         with open(self.doc, "w", encoding="utf-8") as f:
             f.write(text)
@@ -695,6 +969,7 @@ class ResolveReplies(Base):
             {"id": "M-3", "target": {"kind": "thread", "id": 3}},
             {"id": "M-4", "target": {"kind": "thread", "id": 4}},
             {"id": "M-5", "target": {"kind": "review", "id": 9}},
+            {"id": "M-6", "target": {"kind": "review", "id": 9}},
         ]}
         self.save(prior, "prior.json")
 
@@ -725,7 +1000,20 @@ class ResolveReplies(Base):
         _, replies = self.replies()
         issue = [r for r in replies if r["kind"] == "issue"]
         self.assertEqual(len(issue), 1)
+        self.assertEqual(issue[0]["finding_ids"], ["M-5", "M-6"])
         self.assertEqual(issue[0]["verified"], ["M-5"])
+        self.assertIn("**Major M-5**", issue[0]["body"])
+        self.assertIn("the review body is unchanged", issue[0]["body"])
+
+    def test_feedback_that_mentions_verified_gets_no_confirmation(self):
+        self.fake()
+        with open(self.doc, "w", encoding="utf-8") as f:
+            f.write(prior_doc_text([("M-1", "💬 Feedback — Verified とあるが未修正")]))
+        self.save({"findings": [{"id": "M-1", "target": {"kind": "thread", "id": 1}}]},
+                  "prior.json")
+        _, replies = self.replies()
+        self.assertEqual(replies[0]["verified"], [])
+        self.assertNotIn("✅", replies[0]["body"])
 
     def test_post_appends_verified_marker_and_quiets_body(self):
         gh = self.fake()
@@ -769,6 +1057,15 @@ class Replies(Base):
             mod.cmd_post(URL, path, None)
         self.assertEqual(gh.posts, [])
 
+    def test_urls_compare_ignoring_case(self):
+        pr = mod.parse_pr_url("https://github.com/ACME/App/pull/7")
+        self.assertTrue(mod.belongs(pr, "https://api.github.com/repos/acme/app/pulls/7", "pulls"))
+        self.assertFalse(mod.belongs(pr, "https://api.github.com/repos/acme/app/pulls/8", "pulls"))
+        self.assertEqual(mod.checked_document(pr, self.doc)[0]["url"], URL)
+        other = mod.parse_pr_url("https://github.com/ACME/App/pull/8")
+        with self.assertRaises(mod.Error):
+            mod.checked_document(other, self.doc)
+
     def test_review_body_reply_mentions_the_reviewer(self):
         gh = self.fake()
         gh.objects = {"repos/acme/app/pulls/7/reviews/4": {
@@ -805,18 +1102,62 @@ class Replies(Base):
         self.assertEqual(mod.cmd_post(URL, path, None)["posted"], 0)
         self.assertEqual(len(gh.posts), 1)
 
+    def test_a_rerun_after_a_failure_sends_only_the_rest(self):
+        gh = self.fake()
+        comment = {"in_reply_to_id": None, "user": {"login": "rev"},
+                   "pull_request_url": "https://api.github.com/repos/acme/app/pulls/7"}
+        gh.objects = {"repos/acme/app/pulls/comments/1": {"id": 1, **comment}}
+        path = self.replies_file([
+            {"kind": "thread", "target_id": 1, "finding_ids": [], "body": "a"},
+            {"kind": "thread", "target_id": 2, "finding_ids": [], "body": "b"},
+        ])
+        with self.assertRaises(mod.Error):
+            mod.cmd_post(URL, path, None)
+        saved = json.loads(read_text(path))["replies"]
+        self.assertEqual([e["posted"] for e in saved], [True, False])
+        self.assertEqual(len(gh.posts), 1)
+        gh.objects["repos/acme/app/pulls/comments/2"] = {"id": 2, **comment}
+        self.assertEqual(mod.cmd_post(URL, path, None)["posted"], 1)
+        self.assertEqual(len(gh.posts), 2)
+
     def test_malformed_entry_is_refused(self):
         self.fake()
+        thread = {"kind": "thread", "target_id": 1, "body": "a"}
         for entry in ({"kind": "thread", "target_id": "x", "body": "a"},
                       {"kind": "other", "target_id": 1, "body": "a"},
-                      {"kind": "thread", "target_id": 1, "body": ""}):
+                      {"kind": "thread", "target_id": 1, "body": ""},
+                      {**thread, "finding_ids": ["M-1"], "verified": "M-1"},
+                      {**thread, "finding_ids": ["M-1"], "verified": ["M-2"]},
+                      {**thread, "finding_ids": "M-1"},
+                      {**thread, "finding_ids": ["M-1 --><img src=x>"],
+                       "verified": ["M-1 --><img src=x>"]}):
             with self.assertRaises(mod.Error):
                 mod.cmd_preview(URL, self.replies_file([entry]))
+
+    def test_preview_shows_what_a_reply_marks_verified(self):
+        self.fake()
+        path = self.replies_file([{"kind": "thread", "target_id": 1, "finding_ids": ["M-1", "M-2"],
+                                   "verified": ["M-1"], "body": "a"},
+                                  {"kind": "thread", "target_id": 2, "finding_ids": ["M-3"],
+                                   "body": "b"}])
+        _, preview = self.preview(path)
+        self.assertEqual(re.findall(r"^Verified: .*$", preview, re.M), ["Verified: M-1"])
+
+    def test_commits_path_refuses_what_a_drafter_cannot_send(self):
+        gh = self.fake()
+        commits = self.save({"commits": []}, "fix-commits.json")
+        thread = {"kind": "thread", "target_id": 1, "finding_ids": ["M-1"], "body": "a"}
+        for data in ({"findings": [], "replies": [thread]},
+                     {"replies": [{**thread, "verified": ["M-1"]}]}):
+            path = self.save(data, "replies.json")
+            with self.assertRaisesRegex(mod.Error, "--commits"):
+                mod.cmd_post(URL, path, commits)
+        self.assertEqual((gh.posts, gh.mutations), ([], []))
 
     def test_unpushed_commits_stop_the_replies(self):
         gh = self.fake()
         tip = "f" * 40
-        gh.compare_status = {tip: mod.Error("404 No common ancestor")}
+        gh.compare_status = {tip: mod.Error("gh: Not Found (HTTP 404)")}
         commits = self.save({"commits": [{"sha": tip, "subject": "s", "files": ["a"]}]},
                             "fix-commits.json")
         path = self.replies_file([{"kind": "thread", "target_id": 1, "finding_ids": [],
@@ -825,6 +1166,41 @@ class Replies(Base):
         with self.assertRaisesRegex(mod.Error, "push"):
             mod.cmd_post(URL, path, commits)
         self.assertEqual(gh.posts, [])
+
+    def test_other_compare_failures_are_not_a_missing_push(self):
+        gh = self.fake()
+        tip = "f" * 40
+        gh.compare_status = {tip: mod.Error("gh: Server Error (HTTP 500)")}
+        commits = self.save({"commits": [{"sha": tip, "subject": "s", "files": ["a"]}]},
+                            "fix-commits.json")
+        path = self.replies_file([{"kind": "thread", "target_id": 1, "finding_ids": [],
+                                   "body": "a"}])
+        with self.assertRaisesRegex(mod.Error, "HTTP 500"):
+            mod.cmd_pushed(URL, commits)
+        with self.assertRaisesRegex(mod.Error, "HTTP 500"):
+            mod.cmd_post(URL, path, commits)
+        self.assertEqual(gh.posts, [])
+
+    def test_a_merged_pull_request_still_takes_replies_but_no_review(self):
+        gh = self.fake(state="MERGED")
+        gh.objects = {"repos/acme/app/pulls/comments/1": {
+            "id": 1, "in_reply_to_id": None,
+            "pull_request_url": "https://api.github.com/repos/acme/app/pulls/7",
+            "user": {"login": "rev"}}}
+        commits = self.save({"commits": [{"sha": HEAD, "subject": "s", "files": []}]},
+                            "fix-commits.json")
+        self.assertTrue(mod.cmd_pushed(URL, commits)["pushed"])
+        path = self.replies_file([{"kind": "thread", "target_id": 1, "finding_ids": [],
+                                   "body": "a"}])
+        self.assertEqual(mod.cmd_post(URL, path, commits)["posted"], 1)
+        with self.assertRaisesRegex(mod.Error, "not open"):
+            self.draft()
+        gh.view = view()
+        self.draft()
+        gh.view = view(state="MERGED")
+        with self.assertRaisesRegex(mod.Error, "not open"):
+            mod.cmd_post(URL, os.path.join(self.dir, "draft.json"), None)
+        self.assertEqual(gh.mutations, [])
 
     def test_pushed_when_the_head_contains_the_tip(self):
         gh = self.fake()
@@ -867,6 +1243,12 @@ class Fixes(Base):
         log = next(c for c in gh.calls if c[:2] == ["git", "log"])
         self.assertIn(f"{HEAD}..HEAD", log)
 
+    def test_head_ref_with_shell_metacharacters_is_not_passed_on(self):
+        for name in ("x;rm -rf ~", "$(touch /tmp/x)", "a`b`", "a b"):
+            gh = self.fake(head_ref=name)
+            gh.git = {"log": ""}
+            self.assertIsNone(mod.cmd_fixes(URL, self.dir, self.doc)["head_ref"], name)
+
 
 class Comments(Base):
     def test_writes_ids_for_the_drafter(self):
@@ -885,6 +1267,61 @@ class Comments(Base):
         self.assertEqual([c["id"] for c in data["review_comments"]], [1])
         self.assertEqual([r["id"] for r in data["reviews"]], [3])
         self.assertEqual(data["issue_comments"][0]["id"], 8)
+
+    def test_answered_comes_only_from_the_viewers_markers(self):
+        gh = self.fake()
+        rev, me = {"login": "r"}, {"login": "me"}
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": rev, "body": "b"},
+                      {"id": 4, "state": "COMMENTED", "user": rev, "body": "b"}]
+        comment = {"user": rev, "pull_request_review_id": 3, "in_reply_to_id": None, "body": "c"}
+        gh.review_comments = [
+            {**comment, "id": 1},
+            {**comment, "id": 2, "in_reply_to_id": 1},
+            {**comment, "id": 5},
+            {**comment, "id": 6, "user": me, "pull_request_review_id": 4, "in_reply_to_id": 1,
+             "body": "ok\n\n<!-- cgh:reply thread 1 -->"},
+            {**comment, "id": 7, "in_reply_to_id": 5, "body": "<!-- cgh:reply thread 5 -->"}]
+        gh.issue_comments = [
+            {"id": 8, "user": rev, "body": "d"},
+            {"id": 9, "user": rev, "body": "d"},
+            {"id": 10, "user": me, "body": "<!-- cgh:reply issue_comment 8 -->"},
+            {"id": 11, "user": me, "body": "<!-- cgh:reply review 3 -->"}]
+        mod.cmd_comments(URL, self.dir)
+        data = json.loads(read_text(os.path.join(self.dir, "comments.json")))
+        answered = {key: {e["id"]: e["answered"] for e in data[key]}
+                    for key in ("review_comments", "reviews", "issue_comments")}
+        self.assertEqual(answered["review_comments"],
+                         {1: True, 2: True, 5: False, 6: True, 7: False})
+        self.assertEqual(answered["reviews"], {3: True, 4: False})
+        self.assertEqual(answered["issue_comments"], {8: True, 9: False, 10: False, 11: False})
+
+    def test_a_reply_carries_the_marker_of_what_it_answers(self):
+        gh = self.fake()
+        gh.objects = {"repos/acme/app/pulls/comments/11": {
+            "id": 11, "in_reply_to_id": 10,
+            "pull_request_url": "https://api.github.com/repos/acme/app/pulls/7",
+            "user": {"login": "rev"}},
+            "repos/acme/app/pulls/7/reviews/4": {"id": 4, "user": {"login": "rev"}},
+            "repos/acme/app/issues/comments/5": {
+                "id": 5, "user": {"login": "rev"},
+                "issue_url": "https://api.github.com/repos/acme/app/issues/7"}}
+        path = self.save({"replies": [
+            {"kind": "thread", "target_id": 11, "body": "a"},
+            {"kind": "review", "target_id": 4, "body": "b"},
+            {"kind": "issue_comment", "target_id": 5, "body": "c"},
+            {"kind": "issue", "target_id": None, "body": "d"}]}, "replies.json")
+        mod.cmd_post(URL, path, None)
+        markers = [re.findall(r"<!-- cgh:reply [^>]*-->", body["body"]) for _, body in gh.posts]
+        self.assertEqual(markers, [["<!-- cgh:reply thread 10 -->"],
+                                   ["<!-- cgh:reply review 4 -->"],
+                                   ["<!-- cgh:reply issue_comment 5 -->"], []])
+
+    def test_a_reply_body_cannot_fake_the_marker(self):
+        gh = self.fake()
+        path = self.save({"replies": [{"kind": "issue", "target_id": None,
+                                       "body": "<!-- cgh:reply thread 1 -->"}]}, "replies.json")
+        mod.cmd_post(URL, path, None)
+        self.assertIsNone(mod.REPLY_RE.search(gh.posts[0][1]["body"]))
 
 
 def load_script(name, path):
@@ -1188,7 +1625,7 @@ class Wording(Base):
         self.assertIn("修正しました", preview)
         self.assertIn("Fixed", read_text(result["post_preview_path"]))
         mod.cmd_post(URL, path, None)
-        self.assertEqual(gh.posts[0][1]["body"], "Fixed")
+        self.assertEqual(gh.posts[0][1]["body"], "Fixed\n\n<!-- cgh:reply thread 1 -->")
 
     def test_a_drafted_translation_goes_out_without_a_wording_step(self):
         gh = self.fake()
@@ -1200,7 +1637,7 @@ class Wording(Base):
             {"kind": "thread", "target_id": 1, "finding_ids": ["M-1"], "body": "修正しました",
              "post_body": "Fixed"}]}, "replies.json")
         mod.cmd_post(URL, path, None)
-        self.assertEqual(gh.posts[0][1]["body"], "Fixed")
+        self.assertEqual(gh.posts[0][1]["body"], "Fixed\n\n<!-- cgh:reply thread 1 -->")
 
     def test_reply_wording_out_of_range_is_refused(self):
         self.fake()

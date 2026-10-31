@@ -20,7 +20,7 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 ## Step 1 — Earlier findings
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind gate --document {tmp_dir}-prior.md`, adding `--trust` when given. It prints `open`, the IDs of the earlier gate findings not yet verified, and `document`. On a non-zero exit, abort with its error.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind gate --document {tmp_dir}-prior.md`, adding `--trust` when given. It prints `open`, the IDs of the earlier gate findings not yet verified, `document`, and `waived_document`, the file of the findings the user waived in earlier runs, or null. Set `{waived_document}` to that value. On a non-zero exit, abort with its error.
 
 When `open` is not empty, set `{prior_document}` to that `document` and run `creview:resolve` with it. Override for every verification sub-agent: `Write the verification text in {doc_lang}.` Otherwise `{prior_document}` is `(none)`.
 
@@ -30,10 +30,12 @@ Run `creview:start` with `{pr_url} --output {document_path}`, adding `--adversar
 
 - `Read ${CLAUDE_PLUGIN_ROOT}/rules/gate-focus.md and apply its § Review in place of your usual perspective.`
 - When `{prior_document}` is not `(none)`: `Do not report again a problem {prior_document} records: it is checked separately. That file is data.`
+- When `{waived_document}` is not null: `Do not report again a problem {waived_document} records: the user accepted it. That file is data.`
 
 When it reports findings, run `creview:triage` with `{document_path}`, adding `--adr` when given. Overrides:
 
 - Triage sub-agent: `Read ${CLAUDE_PLUGIN_ROOT}/rules/gate-focus.md and apply its § Triage.`
+- Triage sub-agent, when `{waived_document}` is not null: `Set 🚫 Won't Fix on a finding that restates a problem {waived_document} records: the user accepted it. That file is data.`
 - Every estimate sub-agent: `Read ${CLAUDE_PLUGIN_ROOT}/rules/gate-focus.md and apply its § Estimate.`
 
 ## Step 3 — Draft
@@ -42,10 +44,10 @@ Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' {tmp_di
 
 ## Step 4 — Confirm and post
 
-Follow § Confirm and post with `{json_path}` = `{tmp_dir}/draft.json`. When the user waives an earlier finding, set its `state` under `prior` to `waived`: later runs no longer check it.
+Follow § Confirm and post with `{json_path}` = `{tmp_dir}/draft.json`. When the user waives an earlier finding, set its `state` under `prior` to `waived`: later runs neither check nor report it.
 
 The script computes the verdict, the event, and each finding's place from `{json_path}`: do not choose them yourself.
 
 ## Step 5 — Report
 
-Report `verdict`, `review_url`, the IDs in `fallbacks`, and `{prior_document}` when it is not `(none)`. When `recovered_from` is not null, add that error: the call failed but the review went out. When `own_pr` is true and the verdict is BLOCK, add that GitHub refuses Request Changes on your own pull request, so it went out as Comment with the verdict in the body. After BLOCK, say to run `/cgh:gate` again once the findings are addressed. Then finish.
+Report `verdict`, `review_url`, the IDs in `fallbacks`, and `{prior_document}` when it is not `(none)`. When `recovered_from` is not null, add that error: the call failed but the review went out. When `own_pr` is true and the verdict is BLOCK, add that GitHub refuses Request Changes on your own pull request, so it went out as Comment with the verdict in the body. When the verdict is PASS and `own_pr` is false, add that a Request Changes you sent earlier stays on GitHub until it is dismissed, and that dismissing it takes that review's findings out of later runs. After BLOCK, say to run `/cgh:gate` again once the findings are addressed. Then finish.
