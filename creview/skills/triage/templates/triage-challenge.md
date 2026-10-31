@@ -16,7 +16,7 @@ Inputs:
 
 - `{{ids}}` — the draft ids assigned to you. Do not judge draft items outside this list.
 - `{{tmp_dir}}/triage-draft.jsonl` — `{items: [{id, severity, location, stage, verdict, reason}], by_stage}`.
-- `{{document_path}}` — look up the finding body around the METADATA marker, keyed by id, when the draft alone does not give enough to argue against.
+- `{{document_path}}` — Obtain the `- **Source:**` bullet from the header. Look up the finding body around the METADATA marker, keyed by id, when the draft alone does not give enough to argue against.
 - `{{previous_round_doc_paths}}` — when non-empty and not `(none)`, Read each file and use the past-round decision on the same finding (identity is matching file:line and finding summary) as objection material; that is the ground of Won't Fix guideline 7, "already processed in a past round". Do not raise an objection grounded in guideline 7 against a finding whose `stage` is `feedback`: the adjudication sub-agent does not apply guideline 7 to `feedback` findings.
 
 The direction of the objection follows the draft `verdict`:
