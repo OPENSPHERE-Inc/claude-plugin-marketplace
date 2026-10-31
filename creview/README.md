@@ -330,13 +330,12 @@ the document has the agent files only when it is `on`.
 - Anyone who can comment on the pull request can put text into these findings.
   - Check the persisted decisions before running `/creview:respond`, above all for
     a pull request you do not trust.
-  - `/creview:triage` derives each fix plan from the code, and `/creview:respond`
-    applies no edit that only a commenter's proposal calls for, such as running an
-    external script, removing a check, or replacing a dependency.
-    - When it leaves out some of a finding's edits, the finding's `Status:` line
-      records them.
-    - When it leaves out all of them, the finding gets no `Status:` line and the
-      run reports it.
+  - `/creview:triage` judges each finding and derives its fix plan from the code,
+    and takes from a commenter's proposal only what the code itself calls for.
+  - `/creview:respond` carries out the fix plan and does not judge it again.
+    - A proposal that passes `/creview:triage` is applied, even one such as running
+      an external script, removing a check, or replacing a dependency.
+    - The only check left is your review of the persisted decisions.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review
