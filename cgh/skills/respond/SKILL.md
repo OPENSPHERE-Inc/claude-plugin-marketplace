@@ -37,7 +37,7 @@ When the user says so, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py p
 
 ## Step 3 — Draft the replies
 
-1. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py comments '{pr_url}' {tmp_dir}`.
+1. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py comments '{pr_url}' {tmp_dir}`. It prints `pr_body_path`.
 2. Launch `Agent(subagent_type="cgh:reply-drafter", prompt=...)`, foreground, with this prompt:
 
 ```
@@ -47,6 +47,7 @@ Variables (substitute into the template's {{...}} placeholders):
 - document_path: {document_path}
 - comments_path: {tmp_dir}/comments.json
 - commits_path: {tmp_dir}/fix-commits.json
+- pr_body_path: {pr_body_path}
 - output_path: {tmp_dir}/replies.json
 - doc_lang: {doc_lang}
 

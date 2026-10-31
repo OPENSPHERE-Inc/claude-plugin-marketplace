@@ -6,6 +6,7 @@ Usage:
         [--trust]
     python3 gh-review.py draft <pr_url> <tmp_dir> <document> --kind review|gate --lang en|ja
         [--prior-doc <path>]
+    python3 gh-review.py wording <pr_url> <json_path>
     python3 gh-review.py comments <pr_url> <tmp_dir>
     python3 gh-review.py fixes <pr_url> <tmp_dir> <document>
     python3 gh-review.py pushed <pr_url> <fix_commits_json>
@@ -27,8 +28,18 @@ findings already posted, with whether it is selected and where it goes (inline: 
 of the diff; file: a file of the diff; body: anywhere else). Selected by default: Will
 Fix with Maintain or Alternative, and Will Fix with Downgrade at Critical or Major,
 which stays a real problem. --prior-doc adds the verification of earlier gate findings.
+It also writes <tmp_dir>/pr-body.json, the pull request's title and description.
 
-comments: writes <tmp_dir>/comments.json, the pull request's comments with their IDs.
+wording: merges every wording-*.json next to <json_path> into it: comment_lang, the
+language comments go out in, with, per finding, summary (the recommendation for people,
+in the preview's language) and post_text, post_summary, post_note (the wording that goes
+out, when it differs from the preview's), or, per reply by index, post_body. It changes
+nothing else in the file, removes the merged files, so that a later run cannot undo an
+edit to the file, and prints the selected findings and the earlier findings with a note
+that no wording has covered yet.
+
+comments: writes <tmp_dir>/comments.json, the pull request's comments with their IDs, and
+<tmp_dir>/pr-body.json.
 
 fixes: writes <tmp_dir>/fix-commits.json, the commits on the document's Branch bullet,
 or HEAD without one, past the document's head.
@@ -36,15 +47,19 @@ or HEAD without one, past the document's head.
 pushed: says whether the pull request's head contains the newest of those commits.
 
 replies: writes <tmp_dir>/replies.json from the verification in <document> and the
-targets in <tmp_dir>/prior.json.
+targets in <tmp_dir>/prior.json, and <tmp_dir>/pr-body.json.
 
-preview: writes <json_path minus .json>-preview.md, what post would send. The JSON file
-is draft.json, or a file with a "replies" list of {kind: thread|review|issue_comment|
-issue, target_id, finding_ids, body, selected (default true), verified}.
+preview: writes <json_path minus .json>-preview.md, what post would send in the preview's
+language, and -post.md, the same in the wording that goes out. The JSON file is
+draft.json, or a file with a "replies" list of {kind: thread|review|issue_comment|issue,
+target_id, finding_ids, body, post_body, selected (default true), verified}. For a draft,
+wording_missing holds what wording would print as missing, an empty recommendation or not.
 
-post: sends it. A review needs its head unchanged, is sent as one pending review and
-deleted when it cannot be submitted, and cannot be sent twice. A reply to a review or
-an issue comment goes out as an issue comment that mentions its author. Replies sent
+post: sends it. A review needs its wording and its head unchanged, is sent as one pending
+review, and cannot be sent twice. When a call fails, the review's state decides: one that
+went out anyway counts as posted, one still pending is deleted, and with the state
+unknown the review counts as posted, so that a rerun cannot send it twice. A reply to a
+review or an issue comment goes out as an issue comment that mentions its author. Replies sent
 are marked in the file, so a rerun skips them. --commits refuses to send anything until
 the pull request contains those commits.
 
@@ -53,6 +68,7 @@ Prints a JSON object. Exits 1 with an error message on stderr on any failure.
 
 import argparse
 import datetime
+import glob
 import json
 import os
 import re
@@ -83,6 +99,8 @@ FINDING_RE = re.compile(
     r"(?P<body>.*?)<!-- /cgh:finding (?P=id) -->", re.S)
 VERIFIED_RE = re.compile(r"<!-- cgh:verified ([\w,-]+) -->")
 REC_MARKER = "<!-- cgh:rec -->"
+COMMENT_LANG_RE = re.compile(r"[a-z]{2,3}(?:-[A-Za-z0-9]+)*")
+FINDING_WORDING = ("summary", "post_text", "post_summary", "post_note")
 SEVERITIES = {"C": "Critical", "M": "Major", "mi": "Minor", "I": "Info"}
 BLOCKING = ("Critical", "Major")
 SCRATCH_EXCLUDES = [":(top,exclude).claude/tmp", ":(top,exclude).claude/worktrees"]
@@ -96,7 +114,7 @@ query($owner: String!, $name: String!, $number: Int!) {
   viewer { login }
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      id number state headRefOid headRefName baseRefOid mergeable
+      id number state title body headRefOid headRefName baseRefOid mergeable
       author { login }
       headRepository { nameWithOwner }
     }
@@ -116,6 +134,11 @@ mutation($input: AddPullRequestReviewThreadInput!) {
 SUBMIT_REVIEW = """
 mutation($input: SubmitPullRequestReviewInput!) {
   submitPullRequestReview(input: $input) { pullRequestReview { url } }
+}
+"""
+REVIEW_STATE = """
+query($id: ID!) {
+  node(id: $id) { ... on PullRequestReview { state url } }
 }
 """
 DELETE_REVIEW = """
@@ -143,6 +166,7 @@ LABELS = {
         "excluded": "Not posted",
         "replies": "Replies",
         "not_triaged": "not triaged",
+        "comment_lang": "Comments go out in",
     },
     "ja": {
         "recommendation": "推奨",
@@ -163,6 +187,7 @@ LABELS = {
         "excluded": "投稿しない指摘",
         "replies": "返信",
         "not_triaged": "未トリアージ",
+        "comment_lang": "投稿する言語",
     },
 }
 
@@ -257,6 +282,16 @@ def read_json(path):
 
 def severity_of(fid):
     return SEVERITIES[fid.rpartition("-")[0]]
+
+
+def labels_for(lang):
+    return LABELS.get(lang, LABELS["en"])
+
+
+def write_pr_body(tmp_dir, view):
+    path = os.path.join(tmp_dir, "pr-body.json")
+    write_json(path, {"title": view.get("title") or "", "body": view.get("body") or ""})
+    return path
 
 
 def safe_text(text):
@@ -364,9 +399,9 @@ def default_selection(finding, labels):
 
 
 def finding_block(finding, kind, lang, with_location):
-    labels = LABELS[lang]
+    labels = labels_for(lang)
     location = finding["location"]
-    head = f"**{finding['id']}**"
+    head = f"**{severity_of(finding['id'])} {finding['id']}**"
     if with_location and location != "PR":
         head += f" `{location.replace('`', '')}`"
     quoted = urllib.parse.quote(location, safe="/:._-()[]@+$~,")
@@ -375,9 +410,20 @@ def finding_block(finding, kind, lang, with_location):
     items = finding.get("recommendation") or []
     if items:
         parts += ["", REC_MARKER, f"**{labels['recommendation']}**", ""]
-        parts += [f"{n}. {safe_text(item)}" for n, item in enumerate(items, 1)]
+        if len(items) == 1:
+            parts.append(safe_text(items[0]))
+        else:
+            parts += [f"{n}. {safe_text(item)}" for n, item in enumerate(items, 1)]
     parts += ["", f"<!-- /cgh:finding {finding['id']} -->"]
     return "\n".join(parts)
+
+
+def comment_view(finding, post):
+    """The finding as the preview (post False) or the pull request (post True) shows it."""
+    text = (post and finding.get("post_text")) or finding["text"]
+    summary = (post and finding.get("post_summary")) or finding.get("summary")
+    return {**finding, "text": text,
+            "recommendation": [summary] if summary else finding.get("recommendation") or []}
 
 
 def read_block(body):
@@ -556,7 +602,7 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
     numbers = next_numbers([*posted, *(p["id"] for p in prior)])
     files = changed_files(pr)
     entries = []
-    labels = LABELS[lang]
+    labels = labels_for(lang)
     for finding in findings:
         prefix, _, n = finding["id"].rpartition("-")
         base = numbers.get(prefix, 0)
@@ -576,6 +622,9 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
     return {
         "path": os.path.join(tmp_dir, "draft.json"), "total": len(entries),
         "selected": len(selected),
+        "selected_ids": [e["id"] for e in selected],
+        "prior_ids": [p["id"] for p in prior],
+        "pr_body_path": write_pr_body(tmp_dir, view),
         "by_placement": {p: sum(e["placement"] == p for e in selected)
                          for p in ("inline", "file", "body")},
     }
@@ -598,9 +647,14 @@ def review_plan(draft, view):
     }
 
 
-def review_body(draft, plan, body_findings):
-    lang = draft["lang"]
-    labels = LABELS[lang]
+def wording_missing(draft):
+    missing = [f["id"] for f in draft["findings"] if f["selected"] and not f.get("worded")]
+    return missing + [p["id"] for p in draft["prior"] if p["note"] and not p.get("worded")]
+
+
+def review_body(draft, plan, body_findings, post):
+    lang = draft.get("comment_lang", draft["lang"]) if post else draft["lang"]
+    labels = labels_for(lang)
     lines = []
     short = draft["head_sha"][:SHORT_SHA]
     if plan["verdict"]:
@@ -618,13 +672,14 @@ def review_body(draft, plan, body_findings):
         lines += [f"### {labels['prior']}", ""]
         for p in draft["prior"]:
             icon = {"verified": "✅", "waived": "➖"}.get(p["state"], "💬")
-            note = {"waived": labels["waived"]}.get(p["state"]) or p["note"]
+            note = {"waived": labels["waived"]}.get(p["state"])
+            note = note or (post and p.get("post_note")) or p["note"]
             lines.append(f"- {icon} **{p['id']}**: {safe_text(note or labels['not_verified'])}")
         lines.append("")
     if body_findings:
         lines += [f"### {labels['out_of_diff']}", ""]
         for f in body_findings:
-            lines += [finding_block(f, draft["kind"], lang, True), ""]
+            lines += [finding_block(comment_view(f, post), draft["kind"], lang, True), ""]
     done = [p["id"] for p in draft["prior"] if p["state"] in ("verified", "waived")]
     if done:
         lines.append(f"<!-- cgh:verified {','.join(done)} -->")
@@ -638,9 +693,10 @@ def checked_size(text, what):
     return text
 
 
-def preview_review(draft, view):
+def preview_review(draft, view, post):
     plan = review_plan(draft, view)
-    labels = LABELS[draft["lang"]]
+    lang = draft.get("comment_lang", draft["lang"]) if post else draft["lang"]
+    labels = labels_for(lang)
     by_place = {p: [f for f in plan["selected"] if f["placement"] == p]
                 for p in ("inline", "file", "body")}
     lines = []
@@ -649,21 +705,24 @@ def preview_review(draft, view):
     lines += [f"**{labels['event']}:** {plan['event']}", ""]
     if plan["own_pr"] and plan["wanted"] != plan["event"]:
         lines += [labels["own_pr"], ""]
-    lines += [f"## {labels['body']}", "", review_body(draft, plan, by_place["body"]), ""]
+    if draft.get("comment_lang"):
+        lines += [f"**{labels['comment_lang']}:** {draft['comment_lang']}", ""]
+    lines += [f"## {labels['body']}", "", review_body(draft, plan, by_place["body"], post), ""]
     for place, title in (("inline", labels["inline"]), ("file", labels["file"])):
         if by_place[place]:
             lines += [f"## {title}", ""]
             for f in by_place[place]:
-                lines += [f"`{f['location']}`", "",
-                          finding_block(f, draft["kind"], draft["lang"], place == "file"), ""]
+                block = finding_block(comment_view(f, post), draft["kind"], lang, place == "file")
+                lines += [f"`{f['location']}`", "", block, ""]
     excluded = [f for f in draft["findings"] if not f["selected"]]
-    if excluded:
+    if excluded and not post:
         lines += [f"## {labels['excluded']}", ""]
         lines += [f"- **{f['id']}** `{f['location']}`: {f['excluded_reason'] or ''}"
                   for f in excluded]
     return "\n".join(lines) + "\n", {
         "event": plan["event"], "verdict": plan["verdict"], "own_pr": plan["own_pr"],
-        "selected": len(plan["selected"]),
+        "selected": len(plan["selected"]), "comment_lang": draft.get("comment_lang"),
+        "wording_missing": wording_missing(draft),
     }
 
 
@@ -687,32 +746,91 @@ def validated_replies(data):
     return replies
 
 
-def preview_replies(replies):
+def reply_text(entry, post):
+    return (post and entry.get("post_body")) or entry["body"]
+
+
+def preview_replies(data, post):
+    replies = validated_replies(data)
     lines = []
     for entry in replies:
         state = "" if entry["selected"] else " (not selected)"
         target = "" if entry["target_id"] is None else f" {entry['target_id']}"
         ids = ", ".join(entry["finding_ids"])
         lines += [f"## {entry['kind']}{target}{state}", "", f"Findings: {ids}", "",
-                  safe_text(entry["body"]), ""]
-    return "\n".join(lines), {"replies": sum(e["selected"] and not e["posted"] for e in replies)}
+                  safe_text(reply_text(entry, post)), ""]
+    return "\n".join(lines), {"replies": sum(e["selected"] and not e["posted"] for e in replies),
+                              "comment_lang": data.get("comment_lang")}
 
 
 def cmd_preview(pr_url, path):
     pr = parse_pr_url(pr_url)
     data = read_json(path)
     if "findings" in data:
-        text, summary = preview_review(data, view_pr(pr))
+        view = view_pr(pr)
+        text, summary = preview_review(data, view, False)
+        post_text, _ = preview_review(data, view, True)
     else:
-        text, summary = preview_replies(validated_replies(data))
-    preview = re.sub(r"\.json$", "", path) + "-preview.md"
-    with open(preview, "w", encoding="utf-8", newline="\n") as f:
-        f.write(text)
-    return {"preview_path": preview, **summary}
+        text, summary = preview_replies(data, False)
+        post_text, _ = preview_replies(data, True)
+    stem = re.sub(r"\.json$", "", path)
+    paths = {"preview_path": stem + "-preview.md", "post_preview_path": stem + "-post.md"}
+    for name, content in (("preview_path", text), ("post_preview_path", post_text)):
+        with open(paths[name], "w", encoding="utf-8", newline="\n") as f:
+            f.write(content)
+    return {**paths, **summary}
+
+
+def merge_wording(data, wording):
+    for entry in wording.get("findings", []):
+        if not isinstance(entry, dict):
+            raise Error(f"malformed wording: {entry!r}")
+        known = [e for e in [*data["findings"], *data["prior"]] if e["id"] == entry.get("id")]
+        values = {k: entry[k] for k in FINDING_WORDING if k in entry}
+        if not known or not all(isinstance(v, str) for v in values.values()):
+            raise Error(f"malformed wording: {entry!r}")
+        known[0].update(values, worded=True)
+
+
+def merge_reply_wording(data, wording):
+    replies = validated_replies(data)
+    for entry in wording.get("replies", []):
+        index = entry.get("index") if isinstance(entry, dict) else None
+        valid = type(index) is int and 0 <= index < len(replies)
+        if not valid or not isinstance(entry.get("post_body"), str):
+            raise Error(f"malformed wording: {entry!r}")
+        replies[index]["post_body"] = entry["post_body"]
+
+
+def cmd_wording(pr_url, path):
+    parse_pr_url(pr_url)
+    data = read_json(path)
+    directory = glob.escape(os.path.dirname(path) or ".")
+    names = sorted(glob.glob(os.path.join(directory, "wording-*.json")))
+    for name in names:
+        wording = read_json(name)
+        lang = wording.get("comment_lang") if isinstance(wording, dict) else None
+        if not isinstance(lang, str) or not COMMENT_LANG_RE.fullmatch(lang):
+            raise Error(f"{name} has no valid comment_lang")
+        if data.get("comment_lang", lang) != lang:
+            raise Error(f"{name} names another comment language than {data['comment_lang']}")
+        data["comment_lang"] = lang
+        for key in ("findings", "replies"):
+            if not isinstance(wording.get(key, []), list):
+                raise Error(f"malformed wording in {name}: {key} is not a list")
+        if "findings" in data:
+            merge_wording(data, wording)
+        else:
+            merge_reply_wording(data, wording)
+    write_json(path, data)
+    for name in names:
+        os.remove(name)
+    missing = wording_missing(data) if "findings" in data else []
+    return {"path": path, "comment_lang": data.get("comment_lang"), "missing": missing}
 
 
 def add_thread(pr, review_id, finding, draft, as_file):
-    body = finding_block(finding, draft["kind"], draft["lang"], as_file)
+    body = finding_block(comment_view(finding, True), draft["kind"], draft["comment_lang"], as_file)
     path, line = split_location(finding["location"])
     fields = {"pullRequestReviewId": review_id, "path": path,
               "body": checked_size(body, f"{finding['id']}")}
@@ -721,6 +839,27 @@ def add_thread(pr, review_id, finding, draft, as_file):
     else:
         fields.update(subjectType="LINE", line=line, side="RIGHT")
     graphql(pr, ADD_THREAD, input=fields)
+
+
+def settle_failed_review(pr, review_id, path, draft, error):
+    """Returns the URL of a review a failed call still submitted; raises otherwise."""
+    try:
+        node = graphql(pr, REVIEW_STATE, id=review_id).get("node") or {}
+        if not node.get("state"):
+            raise Error("GitHub did not report its state")
+    except Error as e:
+        draft["posted"] = True
+        write_json(path, draft)
+        raise Error(f"{error}; whether the review went out is unknown ({e}): check {pr.url} "
+                    "before running the skill again") from None
+    if node["state"] != "PENDING":
+        return node.get("url")
+    try:
+        graphql(pr, DELETE_REVIEW, input={"pullRequestReviewId": review_id})
+    except Error as e:
+        raise Error(f"{error}; the pending review could not be deleted ({e}): submit or discard "
+                    "it on GitHub before running the skill again") from None
+    raise error
 
 
 def post_review(pr, path, draft):
@@ -735,12 +874,16 @@ def post_review(pr, path, draft):
     plan = review_plan(draft, view)
     if not plan["selected"] and draft["kind"] != "gate":
         raise Error("no finding is selected")
+    missing = wording_missing(draft)
+    if not draft.get("comment_lang") or missing:
+        raise Error(f"the wording is not complete, run gh-review.py wording first: {missing}")
     created = graphql(pr, ADD_REVIEW, input={"pullRequestId": view["id"],
                                              "commitOID": draft["head_sha"]})
     review_id = created["addPullRequestReview"]["pullRequestReview"]["id"]
+    to_body, fallbacks = [], []
+    counts = {"inline": 0, "file": 0}
+    recovered = None
     try:
-        to_body, fallbacks = [], []
-        counts = {"inline": 0, "file": 0}
         for finding in plan["selected"]:
             place = finding["placement"]
             if place == "body":
@@ -760,19 +903,21 @@ def post_review(pr, path, draft):
                 if place == "file":
                     fallbacks.append(finding["id"])
                 to_body.append(finding)
-        body = checked_size(review_body(draft, plan, to_body), "the review body")
+        body = checked_size(review_body(draft, plan, to_body, True), "the review body")
         submitted = graphql(pr, SUBMIT_REVIEW, input={
             "pullRequestReviewId": review_id, "event": plan["event"], "body": body})
-    except Error:
-        graphql(pr, DELETE_REVIEW, input={"pullRequestReviewId": review_id})
-        raise
+        url = submitted["submitPullRequestReview"]["pullRequestReview"]["url"]
+    except Exception as e:
+        # GitHub can apply a submit whose response fails.
+        url = settle_failed_review(pr, review_id, path, draft, e)
+        recovered = str(e)
     draft["posted"] = True
     write_json(path, draft)
     return {
-        "review_url": submitted["submitPullRequestReview"]["pullRequestReview"]["url"],
+        "review_url": url,
         "event": plan["event"], "verdict": plan["verdict"], "own_pr": plan["own_pr"],
         "inline": counts["inline"], "file": counts["file"], "body": len(to_body),
-        "fallbacks": fallbacks,
+        "fallbacks": fallbacks, "recovered_from": recovered,
     }
 
 
@@ -795,7 +940,7 @@ def reply_author(pr, entry, viewer):
 
 
 def send_reply(pr, entry, viewer):
-    body = safe_text(entry["body"])
+    body = safe_text(reply_text(entry, True))
     if entry["verified"]:
         body += f"\n\n<!-- cgh:verified {','.join(entry['verified'])} -->"
     if entry["kind"] == "thread":
@@ -876,7 +1021,7 @@ def cmd_comments(pr_url, tmp_dir):
             {"id": c.get("id"), "author": author(c), "body": c.get("body") or ""}
             for c in rest_pages(pr, f"repos/{pr.repo}/issues/{pr.number}/comments")],
     })
-    return {"path": path}
+    return {"path": path, "pr_body_path": write_pr_body(tmp_dir, view_pr(pr))}
 
 
 def cmd_fixes(pr_url, tmp_dir, document):
@@ -905,9 +1050,10 @@ def cmd_fixes(pr_url, tmp_dir, document):
 def cmd_replies(pr_url, tmp_dir, document, lang):
     pr = parse_pr_url(pr_url)
     header, findings = checked_document(pr, document)
-    labels = LABELS[lang]
+    labels = labels_for(lang)
     short = header["head_sha"][:SHORT_SHA]
-    targets = {f["id"]: f["target"] for f in read_json(os.path.join(tmp_dir, "prior.json"))["findings"]}
+    prior = read_json(os.path.join(tmp_dir, "prior.json"))["findings"]
+    targets = {f["id"]: f["target"] for f in prior}
     replies, body_lines, body_ids, body_verified, unverified = [], [], [], [], []
     for finding in findings:
         fid, verification = finding["id"], finding["metadata"].get("Verification", "")
@@ -922,11 +1068,12 @@ def cmd_replies(pr_url, tmp_dir, document, lang):
         as_recommended = note.startswith("[as-recommended]")
         note = re.sub(r"^\[(?:as-recommended|differs)\]\s*", "", note)
         if verified:
-            text = f"✅ **{fid}**: {labels['confirmed'].format(sha=short)}"
+            text = f"✅ **{severity_of(fid)} {fid}**: {labels['confirmed'].format(sha=short)}"
             if not as_recommended and note:
                 text += f" {note}"
         else:
-            text = f"💬 **{fid}**: {labels['not_resolved'].format(sha=short)} {note}"
+            result = labels["not_resolved"].format(sha=short)
+            text = f"💬 **{severity_of(fid)} {fid}**: {result} {note}"
         if target["kind"] == "thread":
             replies.append({"kind": "thread", "target_id": target["id"], "finding_ids": [fid],
                             "body": text, "verified": [fid] if verified else []})
@@ -940,7 +1087,8 @@ def cmd_replies(pr_url, tmp_dir, document, lang):
                         "body": "\n\n".join(body_lines), "verified": body_verified})
     path = os.path.join(tmp_dir, "replies.json")
     write_json(path, {"replies": replies})
-    return {"path": path, "replies": len(replies), "unverified": unverified}
+    return {"path": path, "replies": len(replies), "unverified": unverified,
+            "pr_body_path": write_pr_body(tmp_dir, view_pr(pr))}
 
 
 def parser():
@@ -961,6 +1109,7 @@ def parser():
     draft.add_argument("--kind", required=True, choices=("review", "gate"))
     draft.add_argument("--lang", required=True, choices=sorted(LABELS))
     draft.add_argument("--prior-doc")
+    command("wording", "pr_url", "path")
     command("comments", "pr_url", "tmp_dir")
     command("fixes", "pr_url", "tmp_dir", "document")
     command("pushed", "pr_url", "commits")
@@ -978,6 +1127,8 @@ def dispatch(args):
     if args.command == "draft":
         return cmd_draft(args.pr_url, args.tmp_dir, args.document, args.kind, args.lang,
                          args.prior_doc)
+    if args.command == "wording":
+        return cmd_wording(args.pr_url, args.path)
     if args.command == "comments":
         return cmd_comments(args.pr_url, args.tmp_dir)
     if args.command == "fixes":

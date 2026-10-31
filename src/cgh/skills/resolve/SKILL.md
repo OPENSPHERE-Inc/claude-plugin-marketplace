@@ -23,10 +23,26 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 `{document_path}` で `creview:resolve` を実行する。すべての検証サブエージェントへのオーバーライド:
 
 - `For a Resolved finding, begin the verification result in memo_value with [as-recommended] when the code now follows the fix the finding recommends, or [differs] when it is resolved another way or the finding recommends none.`
+- `Write the verification text in {doc_lang}.`
 
 ## Step 3 — 返信
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' {tmp_dir} {document_path} --lang {lang}` を実行する。`{tmp_dir}/replies.json` が書き出され、`unverified`（結果が得られなかった指摘）が出力される。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' {tmp_dir} {document_path} --lang {lang}` を実行する。`{tmp_dir}/replies.json` が書き出され、`unverified`（結果が得られなかった指摘）と `pr_body_path` が出力される。
+
+返信は PR 本文の言語で投稿する。`Agent(subagent_type="cgh:comment-writer", prompt=...)` を起動する:
+
+```
+As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/reply-translate.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+Variables (substitute into the template's {{...}} placeholders):
+- replies_path: {tmp_dir}/replies.json
+- pr_body_path: {pr_body_path}
+- output_path: {tmp_dir}/wording-1.json
+
+Include `template_id` (Read from the template's frontmatter) in the return value.
+```
+
+返される `template_id` は `c41e8f37-2a95-4d6b-8b10-93e7a5d1c6f2` でなければならない。不一致なら再度起動し、2 回続いたら中断する。その後、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' {tmp_dir}/replies.json` を実行する。
 
 ## Step 4 — 確認と投稿
 

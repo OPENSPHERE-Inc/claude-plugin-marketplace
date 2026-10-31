@@ -37,7 +37,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 3 — 返信のドラフト
 
-1. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py comments '{pr_url}' {tmp_dir}` を実行する。
+1. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py comments '{pr_url}' {tmp_dir}` を実行する。`pr_body_path` が出力される。
 2. `Agent(subagent_type="cgh:reply-drafter", prompt=...)` をフォアグラウンドで次のプロンプトで起動する:
 
 ```
@@ -47,6 +47,7 @@ Variables (substitute into the template's {{...}} placeholders):
 - document_path: {document_path}
 - comments_path: {tmp_dir}/comments.json
 - commits_path: {tmp_dir}/fix-commits.json
+- pr_body_path: {pr_body_path}
 - output_path: {tmp_dir}/replies.json
 - doc_lang: {doc_lang}
 

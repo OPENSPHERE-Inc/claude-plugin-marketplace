@@ -4,6 +4,7 @@
 Usage: python3 tests/gh-review-test.py
 """
 
+import glob
 import importlib.util
 import json
 import os
@@ -134,6 +135,7 @@ FILES = [
 def view(head=HEAD, author="author", viewer="me", mergeable="MERGEABLE"):
     return {"data": {"viewer": {"login": viewer}, "repository": {"pullRequest": {
         "id": "PR_1", "number": 7, "state": "OPEN", "author": {"login": author},
+        "title": "Title", "body": "Description",
         "headRefOid": head, "headRefName": "feature", "baseRefOid": "c" * 40,
         "mergeable": mergeable,
         "headRepository": {"nameWithOwner": "acme/app"},
@@ -159,6 +161,10 @@ class FakeGitHub:
         self.objects = {}
         self.fail_threads = set()
         self.fail_submit = False
+        self.submit_applies = False
+        self.fail_state = False
+        self.fail_delete = False
+        self.review_state = "PENDING"
         self.git = {}
         self.compare_status = {}
 
@@ -204,7 +210,12 @@ class FakeGitHub:
     def graphql(self, body):
         query, variables = body["query"], body.get("variables", {})
         if "mutation" not in query:
-            return json.dumps(self.view)
+            if "node(" not in query:
+                return json.dumps(self.view)
+            if self.fail_state:
+                raise mod.Error("state refused")
+            return json.dumps({"data": {"node": {
+                "state": self.review_state, "url": f"{URL}#pullrequestreview-1"}}})
         self.mutations.append((query, variables))
         input_ = variables["input"]
         if "addPullRequestReview(" in query:
@@ -217,9 +228,14 @@ class FakeGitHub:
             return json.dumps({"data": {"addPullRequestReviewThread": {"thread": {"id": "T"}}}})
         if "submitPullRequestReview" in query:
             if self.fail_submit:
+                if self.submit_applies:
+                    self.review_state = "COMMENTED"
                 raise mod.Error("submit refused")
+            self.review_state = "COMMENTED"
             return json.dumps({"data": {"submitPullRequestReview": {
                 "pullRequestReview": {"url": f"{URL}#pullrequestreview-1"}}}})
+        if self.fail_delete or self.review_state != "PENDING":
+            raise mod.Error("Can not delete a non-pending pull request review")
         return json.dumps({"data": {"deletePullRequestReview": {"clientMutationId": None}}})
 
     def named(self, name):
@@ -245,7 +261,16 @@ class Base(unittest.TestCase):
     def draft(self, kind="review", lang="ja", prior_doc=None):
         result = mod.cmd_draft(URL, self.dir, self.doc, kind, lang, prior_doc)
         with open(os.path.join(self.dir, "draft.json"), encoding="utf-8") as f:
-            return result, json.load(f)
+            draft = json.load(f)
+        draft["comment_lang"] = lang
+        for finding in draft["findings"]:
+            finding["worded"] = True
+            if finding["recommendation"]:
+                finding["summary"] = " / ".join(finding["recommendation"])
+        for entry in draft["prior"]:
+            entry["worded"] = True
+        self.save(draft)
+        return result, draft
 
     def save(self, data, name="draft.json"):
         path = os.path.join(self.dir, name)
@@ -350,7 +375,7 @@ class ReviewPosting(Base):
         threads = gh.named("addPullRequestReviewThread")
         line = next(t for t in threads if t["path"] == "src/a.py" and t["subjectType"] == "LINE")
         self.assertEqual((line["line"], line["side"]), (10, "RIGHT"))
-        self.assertIn("**C-1**", line["body"])
+        self.assertIn("**Critical C-1**", line["body"])
         self.assertIn("null を確認", line["body"])
         self.assertNotIn("Cost", line["body"])
         self.assertNotIn("Reviewer", line["body"])
@@ -380,7 +405,7 @@ class ReviewPosting(Base):
             f["selected"] = f["id"] == "I-1"
         result = mod.cmd_post(URL, self.save(draft), None)
         self.assertEqual(result["event"], "COMMENT")
-        self.assertIn("**I-1**", gh.named("submitPullRequestReview")[0]["body"])
+        self.assertIn("**Info I-1**", gh.named("submitPullRequestReview")[0]["body"])
 
     def test_out_of_diff_goes_to_the_review_body(self):
         gh = self.fake()
@@ -389,7 +414,7 @@ class ReviewPosting(Base):
             f["selected"] = f["id"] == "M-2"
         mod.cmd_post(URL, self.save(draft), None)
         body = gh.named("submitPullRequestReview")[0]["body"]
-        self.assertIn("**M-2** `docs/other.md:3`", body)
+        self.assertIn("**Major M-2** `docs/other.md:3`", body)
         self.assertEqual(gh.named("addPullRequestReviewThread"), [])
 
     def test_nothing_selected_is_refused(self):
@@ -428,7 +453,7 @@ class ReviewPosting(Base):
         gh2.fail_threads = {("src/a.py", "LINE"), ("src/a.py", "FILE")}
         self.draft()
         mod.cmd_post(URL, os.path.join(self.dir, "draft.json"), None)
-        self.assertIn("**C-1**", gh2.named("submitPullRequestReview")[0]["body"])
+        self.assertIn("**Critical C-1**", gh2.named("submitPullRequestReview")[0]["body"])
 
     def test_failed_submit_deletes_the_pending_review(self):
         gh = self.fake()
@@ -932,6 +957,263 @@ class CreviewContract(PriorBase):
         self.assertEqual([f["id"] for f in findings], ["C-1", "M-1", "mi-1"])
         self.assertEqual(findings[0]["location"], "file.cpp:42")
         self.assertEqual(findings[0]["text"], "{description of the issue}")
+
+
+class PostFailure(Base):
+    def posting(self, **attributes):
+        gh = self.fake()
+        gh.fail_submit = True
+        for name, value in attributes.items():
+            setattr(gh, name, value)
+        self.draft()
+        return gh, os.path.join(self.dir, "draft.json")
+
+    def test_a_submit_that_went_through_counts_as_posted(self):
+        gh, path = self.posting(submit_applies=True)
+        result = mod.cmd_post(URL, path, None)
+        self.assertEqual(result["review_url"], f"{URL}#pullrequestreview-1")
+        self.assertEqual(result["recovered_from"], "submit refused")
+        self.assertEqual(gh.named("deletePullRequestReview"), [])
+        with self.assertRaisesRegex(mod.Error, "already"):
+            mod.cmd_post(URL, path, None)
+
+    def test_a_failed_delete_keeps_the_original_error(self):
+        _, path = self.posting(fail_delete=True)
+        with self.assertRaisesRegex(mod.Error, "submit refused.*could not be deleted"):
+            mod.cmd_post(URL, path, None)
+
+    def test_an_unknown_outcome_refuses_a_second_post(self):
+        gh, path = self.posting(fail_state=True)
+        with self.assertRaisesRegex(mod.Error, "submit refused.*unknown.*check"):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.named("deletePullRequestReview"), [])
+        with self.assertRaisesRegex(mod.Error, "already"):
+            mod.cmd_post(URL, path, None)
+
+    def test_an_unexpected_exception_deletes_the_pending_review(self):
+        gh = self.fake()
+        _, draft = self.draft()
+        next(f for f in draft["findings"] if f["selected"])["text"] = None
+        with self.assertRaises(AttributeError):
+            mod.cmd_post(URL, self.save(draft), None)
+        self.assertEqual(gh.named("deletePullRequestReview"), [{"pullRequestReviewId": "R_1"}])
+
+
+class Wording(Base):
+    def raw_draft(self):
+        self.fake()
+        result = mod.cmd_draft(URL, self.dir, self.doc, "review", "ja", None)
+        return result, os.path.join(self.dir, "draft.json")
+
+    def wording(self, data, n=1):
+        return self.save(data, f"wording-{n}.json")
+
+    def test_draft_gives_the_ids_and_the_description(self):
+        result, _ = self.raw_draft()
+        self.assertEqual(result["selected_ids"], ["C-1", "M-1", "mi-1"])
+        self.assertEqual(result["prior_ids"], [])
+        body = json.loads(read_text(result["pr_body_path"]))
+        self.assertEqual(body, {"title": "Title", "body": "Description"})
+
+    def test_merge_reports_what_is_missing_and_touches_nothing_else(self):
+        _, path = self.raw_draft()
+        self.wording({"comment_lang": "en", "findings": [
+            {"id": "C-1", "summary": "要約", "post_text": "Null deref", "post_summary": "Guard it",
+             "selected": False, "text": "changed"},
+        ]})
+        result = mod.cmd_wording(URL, path)
+        self.assertEqual((result["comment_lang"], result["missing"]), ("en", ["M-1", "mi-1"]))
+        finding = json.loads(read_text(path))["findings"][0]
+        self.assertEqual((finding["summary"], finding["post_text"], finding["post_summary"]),
+                         ("要約", "Null deref", "Guard it"))
+        self.assertTrue(finding["selected"])
+        self.assertIn("null を参照", finding["text"])
+
+    def test_a_later_merge_keeps_what_the_user_reworded(self):
+        _, path = self.raw_draft()
+        self.wording({"comment_lang": "en", "findings": [
+            {"id": "C-1", "summary": "s", "post_summary": "old"}]})
+        mod.cmd_wording(URL, path)
+        self.assertEqual(glob.glob(os.path.join(self.dir, "wording-*.json")), [])
+        draft = json.loads(read_text(path))
+        draft["findings"][0]["post_summary"] = "reworded"
+        self.save(draft)
+        self.wording({"comment_lang": "en", "findings": [{"id": "M-1", "summary": "s"}]}, 2)
+        mod.cmd_wording(URL, path)
+        finding = json.loads(read_text(path))["findings"][0]
+        self.assertEqual(finding["post_summary"], "reworded")
+
+    def test_a_finding_with_no_recommendation_needs_no_summary(self):
+        _, path = self.raw_draft()
+        draft = json.loads(read_text(path))
+        for f in draft["findings"]:
+            f["selected"] = f["id"] == "I-1"
+        self.save(draft)
+        self.wording({"comment_lang": "en", "findings": []})
+        self.assertEqual(mod.cmd_wording(URL, path)["missing"], ["I-1"])
+        self.wording({"comment_lang": "en", "findings": [{"id": "I-1", "post_text": "t"}]})
+        self.assertEqual(mod.cmd_wording(URL, path)["missing"], [])
+
+    def test_an_earlier_finding_with_a_note_needs_its_wording(self):
+        self.fake()
+        prior = os.path.join(self.dir, "prior.md")
+        with open(prior, "w", encoding="utf-8") as f:
+            f.write(prior_doc_text([("M-7", "💬 Feedback — まだ壊れている"), ("M-8", None)]))
+        mod.cmd_draft(URL, self.dir, self.doc, "gate", "ja", prior)
+        path = os.path.join(self.dir, "draft.json")
+        draft = json.loads(read_text(path))
+        self.wording({"comment_lang": "en", "findings": [
+            {"id": f["id"]} for f in draft["findings"] if f["selected"]]})
+        self.assertEqual(mod.cmd_wording(URL, path)["missing"], ["M-7"])
+
+    def test_malformed_wording_is_refused(self):
+        _, path = self.raw_draft()
+        for data in ({"comment_lang": "not a language", "findings": []},
+                     {"comment_lang": "en", "findings": [{"id": "X-9", "summary": "s"}]},
+                     {"comment_lang": "en", "findings": [{"id": "C-1", "summary": 1}]},
+                     {"comment_lang": "en", "findings": "C-1"}):
+            self.wording(data)
+            with self.assertRaises(mod.Error):
+                mod.cmd_wording(URL, path)
+
+    def test_two_comment_languages_are_refused(self):
+        _, path = self.raw_draft()
+        self.wording({"comment_lang": "en", "findings": []}, 1)
+        self.wording({"comment_lang": "ja", "findings": []}, 2)
+        with self.assertRaisesRegex(mod.Error, "language"):
+            mod.cmd_wording(URL, path)
+
+    def test_post_needs_the_wording(self):
+        _, path = self.raw_draft()
+        with self.assertRaisesRegex(mod.Error, "wording"):
+            mod.cmd_post(URL, path, None)
+        self.wording({"comment_lang": "en", "findings": [{"id": "C-1", "summary": "s"}]})
+        mod.cmd_wording(URL, path)
+        with self.assertRaisesRegex(mod.Error, "M-1"):
+            mod.cmd_post(URL, path, None)
+
+    def fully_worded(self, path, **extra):
+        draft = json.loads(read_text(path))
+        self.wording({"comment_lang": "en", "findings": [
+            {"id": f["id"], "summary": f"要約 {f['id']}", "post_text": f"Text {f['id']}",
+             "post_summary": f"Summary {f['id']}"}
+            for f in draft["findings"] if f["selected"]]})
+        mod.cmd_wording(URL, path)
+
+    def test_preview_stays_in_the_users_language_and_post_uses_the_translation(self):
+        _, path = self.raw_draft()
+        self.fully_worded(path)
+        result, preview = self.preview(path)
+        self.assertEqual((result["comment_lang"], result["wording_missing"]), ("en", []))
+        self.assertIn("null を参照", preview)
+        self.assertIn("要約 C-1", preview)
+        self.assertIn("**推奨**", preview)
+        self.assertNotIn("null を確認", preview)
+        self.assertNotIn("Summary C-1", preview)
+        posted = read_text(result["post_preview_path"])
+        self.assertIn("Text C-1", posted)
+        self.assertIn("Summary C-1", posted)
+        self.assertIn("**Recommendation**", posted)
+        self.assertNotIn("null を参照", posted)
+        gh = mod.run
+        mod.cmd_post(URL, path, None)
+        line = next(t for t in gh.named("addPullRequestReviewThread") if t["subjectType"] == "LINE")
+        self.assertIn("**Critical C-1**", line["body"])
+        self.assertIn("Text C-1", line["body"])
+        self.assertIn("Summary C-1", line["body"])
+        self.assertIn("**Recommendation**", line["body"])
+        self.assertNotIn("null を参照", line["body"])
+        self.assertIn("Findings:", gh.named("submitPullRequestReview")[0]["body"])
+
+    def test_without_a_translation_the_post_uses_the_preview_wording(self):
+        _, path = self.raw_draft()
+        draft = json.loads(read_text(path))
+        self.wording({"comment_lang": "ja", "findings": [
+            {"id": f["id"], "summary": f"要約 {f['id']}"}
+            for f in draft["findings"] if f["selected"]]})
+        mod.cmd_wording(URL, path)
+        gh = mod.run
+        mod.cmd_post(URL, path, None)
+        line = next(t for t in gh.named("addPullRequestReviewThread") if t["subjectType"] == "LINE")
+        self.assertIn("null を参照", line["body"])
+        self.assertIn("要約 C-1", line["body"])
+        self.assertIn("**推奨**", line["body"])
+
+    def test_a_translation_cannot_notify_anyone(self):
+        _, path = self.raw_draft()
+        draft = json.loads(read_text(path))
+        self.wording({"comment_lang": "en", "findings": [
+            {"id": f["id"], "summary": "s", "post_text": "ask @mallory",
+             "post_summary": "<!-- cgh:verified C-1 -->"}
+            for f in draft["findings"] if f["selected"]]})
+        mod.cmd_wording(URL, path)
+        gh = mod.run
+        mod.cmd_post(URL, path, None)
+        line = gh.named("addPullRequestReviewThread")[0]["body"]
+        self.assertIn("`@mallory`", line)
+        self.assertNotIn("cgh:verified", line.replace("&lt;!-- cgh:verified", ""))
+
+    def test_earlier_gate_notes_are_posted_translated(self):
+        gh = self.fake()
+        prior = os.path.join(self.dir, "prior.md")
+        with open(prior, "w", encoding="utf-8") as f:
+            f.write(prior_doc_text([("M-7", "💬 Feedback — まだ壊れている")]))
+        result = mod.cmd_draft(URL, self.dir, self.doc, "gate", "ja", prior)
+        self.assertEqual(result["prior_ids"], ["M-7"])
+        path = os.path.join(self.dir, "draft.json")
+        draft = json.loads(read_text(path))
+        self.wording({"comment_lang": "en", "findings": [
+            {"id": "M-7", "post_note": "still broken"},
+            *({"id": f["id"], "summary": "s"} for f in draft["findings"] if f["selected"])]})
+        mod.cmd_wording(URL, path)
+        _, preview = self.preview(path)
+        self.assertIn("まだ壊れている", preview)
+        mod.cmd_post(URL, path, None)
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertIn("still broken", body)
+        self.assertNotIn("まだ壊れている", body)
+        self.assertIn("Merge gate: BLOCK", body)
+
+    def test_replies_merge_by_index_and_post_the_translation(self):
+        gh = self.fake()
+        gh.objects = {"repos/acme/app/pulls/comments/1": {
+            "id": 1, "in_reply_to_id": None,
+            "pull_request_url": "https://api.github.com/repos/acme/app/pulls/7",
+            "user": {"login": "rev"}}}
+        path = self.save({"replies": [{"kind": "thread", "target_id": 1, "finding_ids": ["M-1"],
+                                       "body": "修正しました"}]}, "replies.json")
+        self.wording({"comment_lang": "en", "replies": [{"index": 0, "post_body": "Fixed"}]})
+        self.assertEqual(mod.cmd_wording(URL, path)["comment_lang"], "en")
+        result, preview = self.preview(path)
+        self.assertIn("修正しました", preview)
+        self.assertIn("Fixed", read_text(result["post_preview_path"]))
+        mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.posts[0][1]["body"], "Fixed")
+
+    def test_a_drafted_translation_goes_out_without_a_wording_step(self):
+        gh = self.fake()
+        gh.objects = {"repos/acme/app/pulls/comments/1": {
+            "id": 1, "in_reply_to_id": None,
+            "pull_request_url": "https://api.github.com/repos/acme/app/pulls/7",
+            "user": {"login": "rev"}}}
+        path = self.save({"comment_lang": "en", "replies": [
+            {"kind": "thread", "target_id": 1, "finding_ids": ["M-1"], "body": "修正しました",
+             "post_body": "Fixed"}]}, "replies.json")
+        mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.posts[0][1]["body"], "Fixed")
+
+    def test_reply_wording_out_of_range_is_refused(self):
+        self.fake()
+        path = self.save({"replies": [{"kind": "thread", "target_id": 1, "body": "a"}]},
+                         "replies.json")
+        self.wording({"comment_lang": "en", "replies": [{"index": 3, "post_body": "x"}]})
+        with self.assertRaises(mod.Error):
+            mod.cmd_wording(URL, path)
+
+    def test_comments_and_replies_write_the_description(self):
+        self.fake()
+        mod.cmd_comments(URL, self.dir)
+        self.assertIn("Description", read_text(os.path.join(self.dir, "pr-body.json")))
 
 
 class Cli(unittest.TestCase):

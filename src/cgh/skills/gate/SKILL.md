@@ -22,7 +22,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind gate --document {tmp_dir}-prior.md` を実行する。`--trust` が指定されていれば追加する。`open`（まだ検証されていない前回までのゲート指摘の ID）と `document` が出力される。非ゼロ終了なら、そのエラーで中断する。
 
-`open` が空でなければ、`{prior_document}` をその `document` とし、それで `creview:resolve` を実行する。空なら `{prior_document}` は `(none)` とする。
+`open` が空でなければ、`{prior_document}` をその `document` とし、それで `creview:resolve` を実行する。すべての検証サブエージェントへのオーバーライド: `Write the verification text in {doc_lang}.` 空なら `{prior_document}` は `(none)` とする。
 
 ## Step 2 — レビューとトリアージ
 
@@ -38,7 +38,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 3 — ドラフト
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' {tmp_dir} {document_path} --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc {prior_document}` を追加する。`{tmp_dir}/draft.json` が書き出される。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' {tmp_dir} {document_path} --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc {prior_document}` を追加する。`{tmp_dir}/draft.json` が書き出される。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
 
 ## Step 4 — 確認と投稿
 
@@ -48,4 +48,4 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 5 — 報告
 
-`verdict`、`review_url`、`fallbacks` の ID、`(none)` でなければ `{prior_document}` を報告する。`own_pr` が true で判定が BLOCK なら、GitHub は自分のプルリクエストへの Request Changes を拒否するため、判定を本文に記載して Comment で送ったことを添える。BLOCK の後は、指摘への対応後に `/cgh:gate` を再度実行するよう伝える。その後終了する。
+`verdict`、`review_url`、`fallbacks` の ID、`(none)` でなければ `{prior_document}` を報告する。`recovered_from` が null でなければ、その呼び出しは失敗したがレビューは投稿されたとしてそのエラーを添える。`own_pr` が true で判定が BLOCK なら、GitHub は自分のプルリクエストへの Request Changes を拒否するため、判定を本文に記載して Comment で送ったことを添える。BLOCK の後は、指摘への対応後に `/cgh:gate` を再度実行するよう伝える。その後終了する。

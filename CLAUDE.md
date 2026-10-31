@@ -80,8 +80,8 @@ claude-plugin-marketplace/
 ├── cgh/                          # Plugin: GitHub pull request workflow on top of creview (active, English)
 │   ├── .claude-plugin/plugin.json  # declares the dependency on creview
 │   ├── README.md / README_ja.md
-│   ├── skills/                   # review, gate, resolve (SKILL.md), respond (SKILL.md + templates/reply-draft.md)
-│   ├── agents/                   # reply-drafter.md
+│   ├── skills/                   # review (+ templates/comment-wording.md), gate, resolve (+ templates/reply-translate.md), respond (+ templates/reply-draft.md)
+│   ├── agents/                   # reply-drafter.md, comment-writer.md
 │   ├── rules/                    # leader.md, gate-focus.md
 │   └── scripts/                  # gh-review.py, del-tmp.sh, lib/scratch-guard.py
 │
@@ -291,7 +291,9 @@ cgh skills run creview skills inline with the Skill tool, so a creview skill see
 invocation and handles its own worktree. `/cgh:gate` shapes them through Round-specific
 overrides that point at `rules/gate-focus.md`, so creview itself stays unaware of cgh. Every
 read and write on GitHub goes through `scripts/gh-review.py`, which also computes the event,
-the verdict, and where each finding goes. Each posted finding carries a hidden marker
+the verdict, and where each finding goes. A bundled `comment-writer` or `reply-drafter`, which
+have Read and Write only, summarize recommendations and translate what goes out into the language
+of the pull request's description; the preview stays in the user's language. Each posted finding carries a hidden marker
 (`<!-- cgh:finding {id} {kind} {location} -->`), and a verification carries
 `<!-- cgh:verified {ids} -->`, read back only from the authenticated user's own comments.
 `gh-review.py prior` rebuilds a review document from them, with the IDs and comment targets

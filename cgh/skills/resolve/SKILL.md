@@ -23,10 +23,26 @@ Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_di
 Run `creview:resolve` with `{document_path}`. Override for every verification sub-agent:
 
 - `For a Resolved finding, begin the verification result in memo_value with [as-recommended] when the code now follows the fix the finding recommends, or [differs] when it is resolved another way or the finding recommends none.`
+- `Write the verification text in {doc_lang}.`
 
 ## Step 3 — Replies
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' {tmp_dir} {document_path} --lang {lang}`. It writes `{tmp_dir}/replies.json` and prints `unverified`, the findings that got no result.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' {tmp_dir} {document_path} --lang {lang}`. It writes `{tmp_dir}/replies.json` and prints `unverified`, the findings that got no result, and `pr_body_path`.
+
+Replies go out in the language of the pull request's description. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)`:
+
+```
+As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/reply-translate.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+Variables (substitute into the template's {{...}} placeholders):
+- replies_path: {tmp_dir}/replies.json
+- pr_body_path: {pr_body_path}
+- output_path: {tmp_dir}/wording-1.json
+
+Include `template_id` (Read from the template's frontmatter) in the return value.
+```
+
+The returned `template_id` must be `c41e8f37-2a95-4d6b-8b10-93e7a5d1c6f2`; on mismatch, launch it again, and abort when it happens twice. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' {tmp_dir}/replies.json`.
 
 ## Step 4 — Confirm and post
 

@@ -22,7 +22,7 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind gate --document {tmp_dir}-prior.md`, adding `--trust` when given. It prints `open`, the IDs of the earlier gate findings not yet verified, and `document`. On a non-zero exit, abort with its error.
 
-When `open` is not empty, set `{prior_document}` to that `document` and run `creview:resolve` with it. Otherwise `{prior_document}` is `(none)`.
+When `open` is not empty, set `{prior_document}` to that `document` and run `creview:resolve` with it. Override for every verification sub-agent: `Write the verification text in {doc_lang}.` Otherwise `{prior_document}` is `(none)`.
 
 ## Step 2 — Review and triage
 
@@ -38,7 +38,7 @@ When it reports findings, run `creview:triage` with `{document_path}`, adding `-
 
 ## Step 3 — Draft
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' {tmp_dir} {document_path} --kind gate --lang {lang}`, adding `--prior-doc {prior_document}` when it is not `(none)`. It writes `{tmp_dir}/draft.json`.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' {tmp_dir} {document_path} --kind gate --lang {lang}`, adding `--prior-doc {prior_document}` when it is not `(none)`. It writes `{tmp_dir}/draft.json`. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
 
 ## Step 4 — Confirm and post
 
@@ -48,4 +48,4 @@ The script computes the verdict, the event, and each finding's place from `{json
 
 ## Step 5 — Report
 
-Report `verdict`, `review_url`, the IDs in `fallbacks`, and `{prior_document}` when it is not `(none)`. When `own_pr` is true and the verdict is BLOCK, add that GitHub refuses Request Changes on your own pull request, so it went out as Comment with the verdict in the body. After BLOCK, say to run `/cgh:gate` again once the findings are addressed. Then finish.
+Report `verdict`, `review_url`, the IDs in `fallbacks`, and `{prior_document}` when it is not `(none)`. When `recovered_from` is not null, add that error: the call failed but the review went out. When `own_pr` is true and the verdict is BLOCK, add that GitHub refuses Request Changes on your own pull request, so it went out as Comment with the verdict in the body. After BLOCK, say to run `/cgh:gate` again once the findings are addressed. Then finish.

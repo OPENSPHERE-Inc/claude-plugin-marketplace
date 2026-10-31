@@ -30,8 +30,9 @@ instruction.
 
 - **Event**: Request Changes when a posted finding is Critical or Major, otherwise Comment.
   It makes no LGTM judgment.
-- **Content**: each comment holds the finding ID (`C-1`, `M-1`, `mi-1`), the finding, and the
-  recommendation from the estimate. Cost, signals, and reviewer agents are left out.
+- **Content**: each comment holds the severity and finding ID (`Critical C-1`, `Major M-1`,
+  `Minor mi-1`), the finding, and the estimate's recommendation, summarized for people. Cost,
+  signals, and reviewer agents are left out.
 - **Posted by default**: findings triaged Will Fix, including a Critical or Major finding the
   estimate downgraded, since the problem stays in the code.
   - Info, Won't Fix, and a downgraded Minor finding stay out unless you ask for them. The
@@ -88,6 +89,12 @@ Verifies the findings `/cgh:review` posted under your account with `/creview:res
 replies, and posts on your instruction. Each reply names the commit checked at. When the code
 follows the fix the finding recommended, the reply leaves out the details.
 
+## Language
+
+Comments and replies go out in the language of the pull request's description. The preview
+stays in the language you write in, and a second file next to it holds the wording that goes
+out. Findings already in the description's language go out untranslated.
+
 ## `--trust`
 
 When HEAD is not at the pull request's head, the creview skills work in a worktree of the pull
@@ -120,6 +127,10 @@ The state lives on the pull request, so a later run needs nothing from an earlie
 
 ## Limitations
 
+- A failed call during a post is resolved from the review's state on GitHub: a review that went
+  out anyway counts as posted, and one still pending is deleted. When the state cannot be read,
+  the skill says so and refuses to post the same draft again: check the pull request before you
+  run it again.
 - When the pull request moves between the review and the post, `post` refuses, and you run the
   skill again: the findings' line numbers belong to the reviewed head.
 - `/cgh:gate` and `/cgh:resolve` stop when earlier findings need checking and HEAD holds commits

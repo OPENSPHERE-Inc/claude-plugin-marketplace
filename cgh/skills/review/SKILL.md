@@ -26,7 +26,7 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 ## Step 2 — Draft
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' {tmp_dir} {document_path} --kind review --lang {lang}`. It writes `{tmp_dir}/draft.json`.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' {tmp_dir} {document_path} --kind review --lang {lang}`. It writes `{tmp_dir}/draft.json`. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
 
 ## Step 3 — Confirm and post
 
@@ -36,4 +36,4 @@ The script computes the event and each finding's place from `{json_path}`: do no
 
 ## Step 4 — Report
 
-Report `review_url`, `event`, and the IDs in `fallbacks` (GitHub refused their place, so they went on the file or into the body). When `own_pr` is true and the findings called for Request Changes, add that GitHub refuses it on your own pull request, so it went out as Comment. Then finish.
+Report `review_url`, `event`, and the IDs in `fallbacks` (GitHub refused their place, so they went on the file or into the body). When `recovered_from` is not null, add that error: the call failed but the review went out. When `own_pr` is true and the findings called for Request Changes, add that GitHub refuses it on your own pull request, so it went out as Comment. Then finish.
