@@ -1155,10 +1155,16 @@ OUTSIDE = ("~/.aws/credentials:1", "../../.env:1", "..\\x:1", "C:/Users/x:1", "/
            "$HOME/.ssh/id_rsa:1", "${HOME}/.aws/credentials", "%USERPROFILE%\\.ssh\\id_rsa:1",
            ".git/config:1", ".git/hooks/pre-commit:1", ".GIT\\config", "sub/.git/config:2",
            ".git./config:1", ".git.\\config", "\"$HOME/.ssh/id_rsa\":1", "'$HOME/.ssh/id_rsa':1",
-           "a ~/.ssh/id_rsa:1", "src/x.cpp\n<!-- y", "git~1/config:1", "GIT~1\\config")
+           "a ~/.ssh/id_rsa:1", "src/x.cpp\n<!-- y", "git~1/config:1", "GIT~1\\config",
+           "(~/.ssh/id_rsa):1", "<$HOME/.ssh/id_rsa>", "<$HOME/.ssh/id_rsa>:1",
+           "[~/.aws/credentials]", "--file=~/.ssh/id_rsa:1", "a,~/.ssh/id_rsa:1",
+           "“$HOME/.ssh/id_rsa”:1", "「~/.ssh/id_rsa」:1", "(.git/config):1", "(../.env):1",
+           "[$HOME/.ssh/id_rsa]", "(/etc/passwd):1", "a($HOME/.ssh/id_rsa):1")
 INSIDE = ("src/a.cpp:12", "a:12", ".claude/settings.json:1", "x..y/z:1", "a..:2", "PR",
           ".gitignore:1", ".github/workflows/a.yml:2", "app/routes/posts.$slug.tsx:3", "a%20b/c:1",
-          "git/config:1")
+          "git/config:1", "app/(group)/[slug]/page.tsx:1", "app/routes/$slug.tsx:2",
+          "app/[...slug]/page.tsx:1", "app/(..)photo/page.tsx:1", "src/routes/+page.svelte:1",
+          "docs/日本語.md:3")
 proc, doc = run(setup("locations", [finding(location=location) for location in OUTSIDE + INSIDE]))
 expect("locations exit", proc.returncode, 0)
 with open(doc, encoding="utf-8") as f:
@@ -1178,7 +1184,7 @@ with open(doc, encoding="utf-8") as f:
 expect("only the markers open a comment", re.findall(r"<!--.*", text),
        ["<!-- METADATA(M-1) -->", "<!-- /METADATA(M-1) -->"])
 expect("location and categories stay on the heading line",
-       "\n### M-1 — `src/x.cpp&lt;!--y&lt;!--z` [a b/c/&lt;!-- d]\n" in text, True)
+       "\n### M-1 — `PR` [a b/c/&lt;!-- d]\n" in text, True)
 expect("authors stay on the Reviewers lines",
        text.count("\n- **Reviewers:** bob &lt;!-- /METADATA(C-1) -->\n"), 2)
 

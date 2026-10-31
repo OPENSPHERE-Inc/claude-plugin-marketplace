@@ -20,10 +20,10 @@ can also write under <tmp_dir>. The Reviewers bullet lists the extract files' au
 Line breaks in a value are folded, no value can open an HTML comment, and a
 description cannot start a Markdown block, so comment text cannot pass for the
 document's structure. A location that points outside the repository or into a .git
-directory, or that holds whitespace or a quote, becomes PR. It merges no findings, so
-the same finding from two batches stays as two. --lang selects the language of the
-labels the script writes; finding text stays as extracted. With no findings it writes
-nothing.
+directory, or that holds a character other than a letter, a digit, a backslash, or one
+of . _ - + @ / ( ) [ ] $ %, becomes PR. It merges no findings, so the same finding from
+two batches stays as two. --lang selects the language of the labels the script writes;
+finding text stays as extracted. With no findings it writes nothing.
 
 Prints {"doc_path", "findings_total", "severity_counts"}; doc_path is null without
 findings. A missing or malformed extract file exits 1, naming every such file on
@@ -51,6 +51,9 @@ PR_URL_RE = re.compile(
 )
 SHA_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 LOCATION_RE = re.compile(r"(.*):([0-9]+)")
+# A repository path's characters, route names such as app/(group)/[slug]/a.$b.tsx included.
+PATH_RE = re.compile(r"[\w.+@/\\()\[\]$%-]*")
+ROOTED_RE = re.compile(r"(?:^|[(\[])[/\\$%]")
 LABELS = {
     "en": {
         "title": "Pull Request Comment Review Report",
@@ -98,10 +101,10 @@ def repository_location(location):
     # Later phases read the path a location names, and any commenter can name any path.
     m = LOCATION_RE.fullmatch(location)
     path = m.group(1) if m else location
-    parts = [part.lower() for part in re.split(r"[\\/]", path)]
-    # Windows reads .git. as .git and can reach .git by its short name git~1.
-    if (path.startswith(("/", "\\", "~", "$", "%")) or re.search(r"[:\s\"']", path)
-            or ".." in parts or {".git", "git~1"} & {part.rstrip(".") for part in parts}):
+    parts = [part.lower().strip("()[]") for part in re.split(r"[\\/]", path)]
+    # Windows reads .git. as .git.
+    if (not PATH_RE.fullmatch(path) or ROOTED_RE.search(path) or ".." in parts
+            or ".git" in {part.rstrip(".") for part in parts}):
         return "PR"
     return location
 
