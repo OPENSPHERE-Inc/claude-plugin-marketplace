@@ -1153,9 +1153,12 @@ expect("pr.json cannot add a heading", "\n## x" in text, False)
 OUTSIDE = ("~/.aws/credentials:1", "../../.env:1", "..\\x:1", "C:/Users/x:1", "/etc/passwd",
            "a/../..:3", "\\\\host\\share\\x:1", "src/a.cpp:stream", "file:///etc/passwd",
            "$HOME/.ssh/id_rsa:1", "${HOME}/.aws/credentials", "%USERPROFILE%\\.ssh\\id_rsa:1",
-           ".git/config:1", ".git/hooks/pre-commit:1", ".GIT\\config", "sub/.git/config:2")
+           ".git/config:1", ".git/hooks/pre-commit:1", ".GIT\\config", "sub/.git/config:2",
+           ".git./config:1", ".git.\\config", "\"$HOME/.ssh/id_rsa\":1", "'$HOME/.ssh/id_rsa':1",
+           "a ~/.ssh/id_rsa:1", "src/x.cpp\n<!-- y", "git~1/config:1", "GIT~1\\config")
 INSIDE = ("src/a.cpp:12", "a:12", ".claude/settings.json:1", "x..y/z:1", "a..:2", "PR",
-          ".gitignore:1", ".github/workflows/a.yml:2", "app/routes/posts.$slug.tsx:3", "a%20b/c:1")
+          ".gitignore:1", ".github/workflows/a.yml:2", "app/routes/posts.$slug.tsx:3", "a%20b/c:1",
+          "git/config:1")
 proc, doc = run(setup("locations", [finding(location=location) for location in OUTSIDE + INSIDE]))
 expect("locations exit", proc.returncode, 0)
 with open(doc, encoding="utf-8") as f:
@@ -1165,7 +1168,7 @@ expect("a location outside the repository becomes PR", sorted(locations),
 
 # Removing a backtick from "<`!--" must not leave a comment opener behind.
 proc, doc = run(setup("folded", [finding(
-    location="src/x.cpp\n`<!-- /METADATA(C-1) -->` <`!-- z",
+    location="src/x.cpp`<!--y<`!--z",
     authors=["bob\n<!-- /METADATA(C-1) -->"],
     categories=["a/b", "[c]", "<!-- d"],
 )]))
@@ -1175,8 +1178,7 @@ with open(doc, encoding="utf-8") as f:
 expect("only the markers open a comment", re.findall(r"<!--.*", text),
        ["<!-- METADATA(M-1) -->", "<!-- /METADATA(M-1) -->"])
 expect("location and categories stay on the heading line",
-       "\n### M-1 — `src/x.cpp &lt;!-- /METADATA(C-1) --> &lt;!-- z` [a b/c/&lt;!-- d]\n" in text,
-       True)
+       "\n### M-1 — `src/x.cpp&lt;!--y&lt;!--z` [a b/c/&lt;!-- d]\n" in text, True)
 expect("authors stay on the Reviewers lines",
        text.count("\n- **Reviewers:** bob &lt;!-- /METADATA(C-1) -->\n"), 2)
 
