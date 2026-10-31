@@ -120,7 +120,7 @@ When `fix_count == 0`, skip Steps 2–5 and proceed to Step 6 (compile; nothing 
 
 For each `{assignee, ids}` in `by_assignee`, launch a fix sub-agent via `Agent(subagent_type=assignee, prompt=...)`. Different assignees launch in parallel; ids within the same assignee follow the parallelization constraint in the template.
 
-Template `fix.md`, `template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `ids = {ids}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, `adr_flag = {on|off, per --adr}`, `timestamp = {timestamp}`, overrides `(none)`. Return value per agent: `{items: [{id, path}, ...], left_out: [{id, reason}, ...], template_id}` — collect only `items` and `left_out`; do not load the status body. Hold `left_out` for Step 7.
+Template `fix.md`, `template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `ids = {ids}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, `adr_flag = {on|off, per --adr}`, `timestamp = {timestamp}`, overrides `(none)`. Return value per agent: `{items: [{id, path}, ...], template_id}` — collect only `items`; do not load the status body.
 
 ## Step 3 — Comment review (delegate to the comment-sensei sub-agent)
 
@@ -177,6 +177,6 @@ The leader (you) does not load decision bodies into context. The fix `status` is
 
 ## Step 7 — Summary
 
-The leader prints the `summary_line` received in Step 6 to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. If Step 1's `not_ready` is non-empty, present its ids and reasons together with the `summary_line` as findings left unfixed, including when `fix_count == 0` skipped Steps 2–5. If Step 2's `left_out` is non-empty, present its ids and reasons together with the `summary_line` as findings with edits left out because only a commenter's proposal calls for them. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.
+The leader prints the `summary_line` received in Step 6 to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. If Step 1's `not_ready` is non-empty, present its ids and reasons together with the `summary_line` as findings left unfixed, including when `fix_count == 0` skipped Steps 2–5. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.
 
 In a worktree, run the teardown (§ Worktree) and report the branch the fixes were committed to.
