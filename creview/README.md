@@ -145,9 +145,9 @@ For a document compiled by the PR mode of `/creview:triage` and
 `/creview:resolve` (see below), the sub-agents are also told not to open a path
 that the document, an ADR file, or another sub-agent's output names, unless it
 lies under the work target (`target_dir`) outside its `.git`, is an ADR file in
-the document's directory, lies in the sub-agent's working directory, or is a path
-its launch prompt gives as a variable. This rule is an instruction, not
-enforcement, and it does not prevent:
+the document's directory, lies under the sub-agent's temporary working directory
+(`tmp_dir`), or is a path its launch prompt gives as a variable. This rule is an
+instruction, not enforcement, and it does not prevent:
 
 - Reading symbolic links and gitignored files inside the work target.
 - Reads by the sub-agents of the build stage.
