@@ -141,6 +141,23 @@ the worktree. These are instructions, not enforcement: for a pull request you
 do not trust, also rely on your environment (a sandbox, hooks, or permission
 rules).
 
+For a document compiled by the PR mode of `/creview:triage` and
+`/creview:resolve` (see below), the sub-agents are also told not to open a path
+that the document, an ADR file, or another sub-agent's output names, unless it
+lies under the work target (`target_dir`) outside its `.git`, is an ADR file in
+the document's directory, lies in the sub-agent's working directory, or is a path
+its launch prompt gives as a variable. This rule is an instruction, not
+enforcement, and it does not prevent:
+
+- Reading symbolic links and gitignored files inside the work target.
+- Reads by the sub-agents of the build stage.
+- Reads through Bash.
+- Reading code that a sub-agent locates itself from a name a comment gives, such
+  as a library name.
+- A sub-agent breaking the rule itself.
+
+Protecting secrets is left to your environment (permission deny rules, a sandbox).
+
 During a worktree review, and while `/creview:triage`, `/creview:respond`, or
 `/creview:resolve` work in a worktree of a pull request (see below), the
 session's working directory is the worktree.
@@ -331,15 +348,17 @@ the document has the agent files only when it is `on`.
   - Check the persisted decisions before running `/creview:respond`, above all for
     a pull request you do not trust.
     - Read the ` — Plan: ` segment of each `Estimate:` line, not only the verdict
-      labels: it lists the edits `/creview:respond` will make.
+      labels: it lists the edits planned for `/creview:respond`.
+    - When the line also names an ADR file, read its Decision as well: on a conflict,
+      it takes precedence over the plan.
   - `/creview:triage` judges each finding and derives its fix plan from the code,
     and takes from a commenter's proposal only what the code itself calls for.
   - `/creview:respond` carries out the fix plan and does not judge it again.
     - A proposal that passes `/creview:triage` is applied, even one such as running
       an external script, removing a check, or replacing a dependency.
     - Within creview, the only check left is your review of the persisted decisions.
-      - For a pull request you do not trust, also rely on your environment (a sandbox,
-        hooks, or permission rules).
+      - For a pull request you do not trust, run `/creview:respond` only in a sandbox;
+        hooks and permission rules add to it and do not replace it.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review
