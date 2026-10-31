@@ -44,8 +44,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
   `.claude-plugin/` and the READMEs).
 - `tests/scratch-guard-test.sh` — repo-level self-test: containment, `worktree.sh`, and
   byte-parity of the shared `lib/scratch-guard.py` / `del-tmp.sh` / `check-jsonl.py` /
-  `worktree.sh` copies and of `fetch-diff.sh` and `gh-pr.py` with their `src/` mirrors
-  (not shipped).
+  `worktree.sh` copies and of `fetch-diff.sh`, `gh-pr.py`, and `compile-pr-comments.py` with
+  their `src/` mirrors (not shipped).
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
 - `.claude/rules/*.md` — Discipline rules for editing this repo (prompt/document/comment/…).
 
@@ -58,15 +58,17 @@ see **[CLAUDE.md](CLAUDE.md)**.
    `scripts/lib/scratch-guard.py` / `scripts/del-tmp.sh` / `scripts/check-jsonl.py` are
    byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors),
    `scripts/worktree.sh` across all six (`cprompt/` and its mirror too), and
-   `scripts/fetch-diff.sh` (`creview/`, `cdev/`) and `creview/scripts/gh-pr.py` each with its
-   own `src/` mirror — the `src/` copies stay English; see CLAUDE.md.
+   `scripts/fetch-diff.sh` (`creview/`, `cdev/`), `creview/scripts/gh-pr.py`, and
+   `creview/scripts/compile-pr-comments.py` each with its own `src/` mirror — the `src/`
+   copies stay English; see CLAUDE.md.
 3. **Token-placement invariant.** The token follows who opens the file.
    `${CLAUDE_PLUGIN_ROOT}` only in files Claude Code loads itself (SKILL.md
    bodies/`allowed-tools`, bundled `agents/*.md`); `{{plugin_root}}` only in files opened
    with Read: `templates/*.md` and the bundled `rules/*.md` a sub-agent is pointed to, with
-   `plugin_root` passed as a launch variable, and `creview/rules/doc-worktree.md`, which the
-   `/creview:triage` / `respond` / `resolve` leaders Read with the `plugin_root` value their
-   SKILL gives. Never cross them.
+   `plugin_root` passed as a launch variable, `creview/rules/doc-worktree.md`, which the
+   `/creview:triage` / `respond` / `resolve` leaders Read, and
+   `creview/rules/pr-comment-doc.md`, which the `/creview:triage` / `resolve` leaders Read in
+   PR mode, each with the `plugin_root` value their SKILL gives. Never cross them.
 4. **`template_id` must match** the per-step UUID hard-coded in the SKILL that launches it.
 5. **No bundled specialist reviewers.** Skills resolve reviewers/fixers from the
    destination project's `.claude/agents/`, falling back to `general-purpose`. Only

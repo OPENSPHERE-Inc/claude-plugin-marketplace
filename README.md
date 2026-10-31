@@ -50,8 +50,8 @@ a selection candidate. The skills launch the other bundled agents by name:
 workflow helper agents such as the `review-helper` aggregation agent, the
 fixed-role reviewer `pr-description-reviewer`, which checks a pull request's
 description and CI results when `/creview:start` reviews a pull request, and
-`pr-comment-compiler`, which compiles a pull request's comments into a review
-document when `/creview:triage` or `/creview:resolve` is given a pull request URL.
+`pr-comment-compiler`, which extracts findings from a pull request's comments when
+`/creview:triage` or `/creview:resolve` is given a pull request URL.
 
 ## Source of truth and localization
 

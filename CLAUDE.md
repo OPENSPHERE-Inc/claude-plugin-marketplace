@@ -130,9 +130,9 @@ When changing a plugin:
   multi-select variant (it picks *all* relevant reviewers, not one). Only the mechanical
   helpers (`review-helper`, `comment-sensei`, `review-leader`) are bundled, plus
   `pr-description-reviewer`, the fixed-role reviewer of a pull request's description and CI
-  results in `/creview:start`'s PR mode, and `pr-comment-compiler`, the fixed-role compiler of
-  a review document from a pull request's comments in the PR mode of `/creview:triage` /
-  `resolve`, bundled so that their `tools:` keep the untrusted pull request text away from a
+  results in `/creview:start`'s PR mode, and `pr-comment-compiler`, the fixed-role extractor of
+  findings from a pull request's comments in the PR mode of `/creview:triage` / `resolve`,
+  bundled so that their `tools:` keep the untrusted pull request text away from a
   shell and the network. Launch a bundled agent by its
   namespaced name (`creview:review-helper`, `cdev:dev-helper`); a bare name resolves only
   to a project or user agent of that name. The detection rules and `scope-analysis.md`
@@ -199,8 +199,11 @@ in a project that has its own `.claude/agents/` (or none, to test the `general-p
 fallback), `/creview:start` with a pull request URL (both with HEAD at the pull request's
 head and elsewhere, which reviews in a worktree; needs an authenticated `gh`), the
 `/creview:triage` / `respond` / `resolve` on that review document with HEAD elsewhere
-(which work in a worktree of the pull request), `/cprompt:edit`, and `/cdev:coding` (in a
-runtime with background subagents and inter-agent messaging).
+(which work in a worktree of the pull request), `/creview:triage` and `/creview:resolve` with
+a pull request URL (which compile a review document from its comments; `/creview:triage`
+leaves out threads resolved on GitHub and `/creview:resolve` keeps them; needs an
+authenticated `gh`), `/cprompt:edit`, and `/cdev:coding` (in a runtime with background
+subagents and inter-agent messaging).
 
 ---
 

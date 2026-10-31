@@ -47,11 +47,11 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 フォールバックします。プラグイン同梱のエージェントのうち選定候補になるのは、
 コメント規律のレビュアー `comment-sensei` だけです。集約用の `review-helper` など
 ワークフロー用の補助エージェント、固定の役割のレビュアー
-`pr-description-reviewer`、`pr-comment-compiler` は、スキルが名前を指定して起動します。
-`pr-description-reviewer` は、`/creview:start` がプルリクエストをレビューするときに、
+`pr-description-reviewer`、指摘を抽出する `pr-comment-compiler` は、スキルが名前を指定して
+起動します。`pr-description-reviewer` は、`/creview:start` がプルリクエストをレビューするときに、
 その本文と CI 結果を確認します。`pr-comment-compiler` は、`/creview:triage` または
-`/creview:resolve` にプルリクエストの URL が渡されたときに、そのコメントを
-レビュードキュメントに編纂します。
+`/creview:resolve` にプルリクエストの URL が渡されたときに、そのコメントから指摘を
+抽出します。
 
 ## 信頼できる原本とローカライズ
 
