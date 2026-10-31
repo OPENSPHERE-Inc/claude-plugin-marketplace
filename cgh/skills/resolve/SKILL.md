@@ -8,13 +8,15 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 Check whether the findings `/cgh:review` posted are resolved at the pull request's head, and reply once the user has seen the replies and told you to.
 
-If the argument is `$ARGUMENTS`, interpret it as the pull request URL (`{pr_url}`).
+If the argument is `$ARGUMENTS`, interpret it as the pull request URL (`{pr_url}`) and options.
+
+`--trust` (default OFF) — Pass `--trust` to `gh-review.py prior`, so that a worktree of the pull request has its agent files. `/creview:resolve` takes the setting from the document it writes.
 
 Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}` and `{skill}` = `resolve`.
 
 ## Step 1 — Posted findings
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind review --document {document_path}`. It finds the findings of `/cgh:review` under your GitHub account and prints `open`, those not yet verified, and `verified`. On a non-zero exit, abort with its error. When `open` is empty, tell the user there is nothing to check, with the count of `verified`, and finish.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind review --document {document_path}`, adding `--trust` when given. It finds the findings of `/cgh:review` under your GitHub account and prints `open`, those not yet verified, and `verified`. On a non-zero exit, abort with its error. When `open` is empty, tell the user there is nothing to check, with the count of `verified`, and finish.
 
 ## Step 2 — Verify
 

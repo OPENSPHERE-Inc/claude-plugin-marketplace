@@ -3,6 +3,7 @@
 
 Usage:
     python3 gh-review.py prior <pr_url> <tmp_dir> --kind review|gate --document <path>
+        [--trust]
     python3 gh-review.py draft <pr_url> <tmp_dir> <document> --kind review|gate --lang en|ja
         [--prior-doc <path>]
     python3 gh-review.py comments <pr_url> <tmp_dir>
@@ -16,8 +17,9 @@ prior: finds the findings the authenticated user posted with this script, from t
 markers in their comments, leaving out those of a dismissed review. Writes
 <tmp_dir>/prior.json with the findings of --kind not yet marked verified and, when
 there are any, <document>: a review document creview's verification reads, with a
-Source: pr-comments bullet. Stops when there are any and the working tree holds what
-the pull request does not: commits past its head, or uncommitted changes at its head.
+Source: pr-comments bullet and a Trust bullet: on at the pull request's head or with
+--trust, otherwise off. Stops when there are any and the working tree holds what the
+pull request does not: commits past its head, or uncommitted changes at its head.
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after the
@@ -447,7 +449,7 @@ def document_text(text):
     return "\\" + text if BLOCK_START_RE.match(text) else text
 
 
-def write_prior_document(path, pr, view, merge_base, viewer, findings, state):
+def write_prior_document(path, pr, view, merge_base, viewer, findings, state, trust):
     branch = None
     if state == "head":
         name = run(["git", "branch", "--show-current"]).strip()
@@ -457,7 +459,8 @@ def write_prior_document(path, pr, view, merge_base, viewer, findings, state):
              f"- **PR:** {pr.url} (head {view['headRefOid']}, base {merge_base})"]
     if branch:
         lines.append(f"- **Branch:** {branch}")
-    lines += [f"- **Trust:** {'on' if state == 'head' else 'off'}", "- **Source:** pr-comments",
+    lines += [f"- **Trust:** {'on' if trust or state == 'head' else 'off'}",
+              "- **Source:** pr-comments",
               f"- **Scope:** Findings posted to pull request #{pr.number}",
               f"- **Reviewers:** {viewer}", ""]
     for severity in ("Critical", "Major", "Minor", "Info"):
@@ -481,7 +484,7 @@ def merge_base_of(pr, view):
     return (compare.get("merge_base_commit") or {}).get("sha")
 
 
-def cmd_prior(pr_url, tmp_dir, kind, document):
+def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
     pr = parse_pr_url(pr_url)
     view = view_pr(pr)
     posted, verified = posted_findings(pr, view["viewer"])
@@ -499,7 +502,7 @@ def cmd_prior(pr_url, tmp_dir, kind, document):
             raise Error("the working tree is at the pull request's head but has uncommitted "
                         "changes; commit or stash them first")
         write_prior_document(document, pr, view, merge_base_of(pr, view), view["viewer"],
-                             findings, state)
+                             findings, state, trust)
         written = document
     return {
         "url": pr.url, "number": pr.number, "head_sha": view["headRefOid"],
@@ -953,6 +956,7 @@ def parser():
     prior = command("prior", "pr_url", "tmp_dir")
     prior.add_argument("--kind", required=True, choices=("review", "gate"))
     prior.add_argument("--document", required=True)
+    prior.add_argument("--trust", action="store_true")
     draft = command("draft", "pr_url", "tmp_dir", "document")
     draft.add_argument("--kind", required=True, choices=("review", "gate"))
     draft.add_argument("--lang", required=True, choices=sorted(LABELS))
@@ -970,7 +974,7 @@ def parser():
 
 def dispatch(args):
     if args.command == "prior":
-        return cmd_prior(args.pr_url, args.tmp_dir, args.kind, args.document)
+        return cmd_prior(args.pr_url, args.tmp_dir, args.kind, args.document, args.trust)
     if args.command == "draft":
         return cmd_draft(args.pr_url, args.tmp_dir, args.document, args.kind, args.lang,
                          args.prior_doc)

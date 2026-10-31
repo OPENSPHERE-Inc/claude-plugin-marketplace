@@ -18,10 +18,10 @@
 
 | コマンド | 目的 | オプション |
 |---------|---------|---------|
-| `/cgh:review` | プルリクエストをレビューし、トリアージ済みの指摘を投稿する。 | `--adversarial` |
-| `/cgh:gate` | セルフレビュー済みのプルリクエストがマージできるかを判定し、PASS / BLOCK を投稿する。 | `--adversarial` |
-| `/cgh:respond` | プルリクエストのレビューが求める修正を行い、返信する。 | `--no-confirm` |
-| `/cgh:resolve` | `/cgh:review` が投稿した指摘を検証し、結果を返信する。 | |
+| `/cgh:review` | プルリクエストをレビューし、トリアージ済みの指摘を投稿する。 | `--adversarial`, `--trust` |
+| `/cgh:gate` | セルフレビュー済みのプルリクエストがマージできるかを判定し、PASS / BLOCK を投稿する。 | `--adversarial`, `--trust` |
+| `/cgh:respond` | プルリクエストのレビューが求める修正を行い、返信する。 | `--no-confirm`, `--trust` |
+| `/cgh:resolve` | `/cgh:review` が投稿した指摘を検証し、結果を返信する。 | `--trust` |
 
 ### `/cgh:review`
 
@@ -83,6 +83,17 @@ issue やプルリクエストを挙げている残余は記録済みとみな�
 
 自分のアカウントで `/cgh:review` が投稿した指摘を `/creview:resolve` で検証し、返信を示して、指示を
 受けて投稿します。各返信は確認したコミットを示します。コードが指摘の推奨どおりの修正なら、詳細は省きます。
+
+## `--trust`
+
+HEAD がプルリクエストのヘッドにないとき、creview のスキルはプルリクエストの worktree で作業します。
+この worktree はデフォルトでエージェントファイル（`CLAUDE.md`、`CLAUDE.local.md`、`AGENTS.md`、
+`.mcp.json`、`.claude`）を含みません。そのためこれらのファイルの指摘は差分だけからレビューされ、
+`/creview:respond` は修正しません。`--trust` はこれらを worktree に含めます。自分のチャットメッセージで
+指定したときだけ有効です。
+
+Claude Code はこれらのファイルを指示、スキル、設定として読み込むことがあるので、信頼できるプルリクエスト
+に限るか、サンドボックス内で使ってください。[creview README](../creview/README_ja.md) を参照してください。
 
 ## 状態の保持
 

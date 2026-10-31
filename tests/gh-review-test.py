@@ -566,6 +566,18 @@ class Prior(PriorBase):
         self.assertIn("- **Trust:** on\n", text)
         self.assertIn("- **Source:** pr-comments\n", text)
 
+    def test_trust_records_on_away_from_the_head(self):
+        gh = self.fake()
+        self.local(gh, "elsewhere")
+        self.posted(gh)
+        doc = os.path.join(self.dir, "prior.md")
+        mod.cmd_prior(URL, self.dir, "review", doc, True)
+        text = read_text(doc)
+        self.assertIn("- **Trust:** on\n", text)
+        self.assertNotIn("**Branch:**", text)
+        header = load_script("gh_pr", ("creview", "scripts", "gh-pr.py")).parse_header(doc)
+        self.assertEqual(header["trust"], "on")
+
     def test_elsewhere_has_no_branch_and_no_trust(self):
         gh = self.fake()
         self.local(gh, "elsewhere")

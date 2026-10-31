@@ -18,10 +18,10 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 
 | Command | Purpose | Options |
 |---------|---------|---------|
-| `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial` |
-| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial` |
-| `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | `--no-confirm` |
-| `/cgh:resolve` | Verify the findings `/cgh:review` posted, and reply with the result. | |
+| `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial`, `--trust` |
+| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust` |
+| `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | `--no-confirm`, `--trust` |
+| `/cgh:resolve` | Verify the findings `/cgh:review` posted, and reply with the result. | `--trust` |
 
 ### `/cgh:review`
 
@@ -87,6 +87,17 @@ It shows them and posts on your instruction.
 Verifies the findings `/cgh:review` posted under your account with `/creview:resolve`, shows the
 replies, and posts on your instruction. Each reply names the commit checked at. When the code
 follows the fix the finding recommended, the reply leaves out the details.
+
+## `--trust`
+
+When HEAD is not at the pull request's head, the creview skills work in a worktree of the pull
+request, which by default leaves out its agent files (`CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`,
+`.mcp.json`, and `.claude`). Findings in those files are then reviewed from the diff only, and
+`/creview:respond` does not fix them. `--trust` keeps them in the worktree. It counts only when
+your own chat message gives it.
+
+Claude Code can load those files as instructions, skills, or settings, so use it only for a pull
+request you trust, or in a sandbox. See the [creview README](../creview/README.md).
 
 ## How state is kept
 

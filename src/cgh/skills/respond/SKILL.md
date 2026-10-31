@@ -12,11 +12,13 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 `--no-confirm`（デフォルト OFF）— ユーザーの確認なしでトリアージから修正へ進む。返信はそれでもユーザーの指示を待つ（§ 確認と投稿）。
 
+`--trust`（デフォルト OFF）— `/creview:triage` に `--trust` を渡し、プルリクエストの worktree がエージェントファイルを持つようにする。`/creview:respond` はこの設定をドキュメントから受け取る。
+
 `${CLAUDE_PLUGIN_ROOT}/rules/leader.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}`、`{skill}` は `respond` とする。`{document_path}` はルールの値に代えて、`creview:triage` が報告するレビュードキュメントとする。
 
 ## Step 1 — トリアージと修正
 
-1. `{pr_url}` で `creview:triage` を実行する。コメントに指摘がないと報告されたら、ユーザーに伝えて終了する。
+1. `{pr_url}` で `creview:triage` を実行する。`--trust` が指定されていれば追加する。コメントに指摘がないと報告されたら、ユーザーに伝えて終了する。
 2. `--no-confirm` が指定されているか、トリアージの compile 結果の `maintain` と `alternative` がともに 0 である場合を除き、修正を確認する:
    - `{document_path}` を Read し、各指摘の ID、場所、`Triage:` / `Estimate:` 行を、`Cost:`、`Future:`、`Signals:` を除いてユーザーに示す。修正してよいか尋ね、ターンを終える。
    - ユーザーが指摘を除外したら、その `Triage:` 行を `- **Triage:** 🚫 Won't Fix — {ユーザーの理由。なければユーザーが除外した旨}` に置き換える。返信がこれを引用するので、理由を創作しない。トリアージが却下した指摘や Downgrade された指摘はここでは追加できない: その旨を伝える。ユーザーが修正を指示してから先へ進む。
