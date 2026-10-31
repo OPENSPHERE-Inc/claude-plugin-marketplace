@@ -30,9 +30,9 @@ Add this marketplace, then install the plugins:
 | Command | Purpose |
 |---------|---------|
 | `/creview:start` | Run a parallel code review of local changes or a GitHub pull request and produce a review document. |
-| `/creview:triage` | Triage and estimate the findings; persist `triage` / `estimate` into the document. |
+| `/creview:triage` | Triage and estimate the findings of a review document or of a GitHub pull request's comments; persist `triage` / `estimate` into the document. |
 | `/creview:respond` | Fix the Will-Fix / Maintain / Alternative findings; persist `status`. |
-| `/creview:resolve` | Verify fixes against the source; persist `verification`. |
+| `/creview:resolve` | Verify the findings of a review document or of a GitHub pull request's comments against the source; persist `verification`. |
 | `/creview:rounds` | Automatically iterate the four phases across multiple rounds. |
 | `/cprompt:edit` | Create or edit an AI-facing prompt and self-check it. |
 | `/cdev:coding` | Implement a coding task end to end: design and coding as paired review cells, then a QA gate. |
@@ -47,9 +47,11 @@ each agent's `description`, and selects the most relevant agents per finding.
 When no suitable agent exists, it falls back to `general-purpose`.
 From the plugin bundle, only the comment-discipline reviewer `comment-sensei` is
 a selection candidate. The skills launch the other bundled agents by name:
-workflow helper agents such as the `review-helper` aggregation agent, and the
+workflow helper agents such as the `review-helper` aggregation agent, the
 fixed-role reviewer `pr-description-reviewer`, which checks a pull request's
-description and CI results when `/creview:start` reviews a pull request.
+description and CI results when `/creview:start` reviews a pull request, and
+`pr-comment-compiler`, which extracts findings from a pull request's comments when
+`/creview:triage` or `/creview:resolve` is given a pull request URL.
 
 ## Source of truth and localization
 

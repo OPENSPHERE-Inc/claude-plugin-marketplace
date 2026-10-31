@@ -3,14 +3,14 @@
 and check out the code a creview review document names.
 
 Usage:
-    python3 gh-pr.py fetch <pr_url> <out_dir>
+    python3 gh-pr.py fetch <pr_url> <out_dir> [--skip-resolved]
     python3 gh-pr.py checkout <pr_json> [--trust]
     python3 gh-pr.py doc-checkout <document> [--fix-branch]
     python3 gh-pr.py remove <worktree_path> [--discard]
 
 fetch: resolves <pr_url> (https://<host>/<owner>/<repo>/pull/<number>) with gh,
 requires <owner>/<repo> on <host> to be a remote of the current repository and
-the PR to be open, and writes two files to <out_dir>:
+the PR to be open, and writes to <out_dir>:
   pr.json          url, head and base commits, merge base
   pr-context.json  title and body, CI check results (the latest attempt of each
                    check in each workflow run; the first MAX_JOB_LOGS failed
@@ -19,8 +19,22 @@ the PR to be open, and writes two files to <out_dir>:
                    comments, submitted review bodies, and review comments, at
                    most MAX_COMMENTS of each kind, with omitted set when any
                    were left out
+  pr-comments/batch-<n>.json
+                   every issue comment, submitted review body, and review
+                   comment, up to MAX_PAGES pages of each kind, split into
+                   batches of about BATCH_CHARS characters with each review
+                   thread whole; a review comment says whether its line is
+                   outdated, which side of the diff its line is on (LEFT: a line
+                   of the base that the PR removes), whether its review was
+                   dismissed, and, when known, whether its thread is resolved;
+                   with --skip-resolved, the batches leave out the threads known
+                   to be resolved
 It prints a JSON object whose in_place is true when HEAD of the current working
-tree is the PR head.
+tree is the PR head, whose comment_batches is the number of batches, whose
+comments_omitted is true when more comments exist than MAX_PAGES pages hold, whose
+resolved_threads_skipped counts the threads --skip-resolved left out, and whose
+thread_states_complete is false when the state of some review threads could not be
+read, so that some of the threads left in can be resolved ones.
 An in-place working tree with uncommitted changes to tracked files (outside
 .claude/tmp and .claude/worktrees) is an error.
 
@@ -127,8 +141,22 @@ LOG_LINE_CHARS = 500
 BODY_CHARS = 20000
 COMMENT_CHARS = 4000
 PAGE_SIZE = 100
-MAX_PAGES = 10
+MAX_PAGES = 100
 MAX_COMMENTS = 50
+BATCH_CHARS = 40000
+COMMENT_KINDS = ("issue_comments", "reviews", "review_comments")
+REVIEW_THREADS_QUERY = """
+query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $cursor) {
+        nodes { isResolved comments(first: 1) { nodes { databaseId } } }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+"""
 
 
 class Error(Exception):
@@ -255,37 +283,122 @@ def ci_checks(rollup, host, repos):
     return checks
 
 
-def conversation(host, repo, number):
+def thread_state(thread):
+    try:
+        comment_id = thread["comments"]["nodes"][0]["databaseId"]
+        resolved = thread["isResolved"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    if type(comment_id) is not int or not isinstance(resolved, bool):
+        return None
+    return comment_id, resolved
+
+
+def resolved_threads(host, repo, number):
+    # Only GraphQL reports a thread's state, keyed here by the ID of its first comment. A thread
+    # this cannot read stays out of the states; the second value is False when there is one.
+    owner, name = repo.split("/")
+    states, cursor, complete = {}, None, True
+    for _ in range(MAX_PAGES):
+        cmd = ["gh", "api", "graphql", "--hostname", host, "-f", f"query={REVIEW_THREADS_QUERY}",
+               "-f", f"owner={owner}", "-f", f"name={name}", "-F", f"number={number}"]
+        if cursor:
+            cmd += ["-f", f"cursor={cursor}"]
+        try:
+            threads = json.loads(run(cmd))["data"]["repository"]["pullRequest"]["reviewThreads"]
+            read = [thread_state(thread) for thread in threads["nodes"]]
+            states.update(state for state in read if state)
+            complete = complete and all(read)
+            cursor = threads["pageInfo"]["endCursor"]
+            if not threads["pageInfo"]["hasNextPage"]:
+                return states, complete
+        except (Error, ValueError, KeyError, TypeError):
+            return states, False
+    return states, False
+
+
+def all_comments(host, repo, number):
+    states, states_complete = resolved_threads(host, repo, number)
     reviews, complete = api_pages(f"repos/{repo}/pulls/{number}/reviews", host)
     pending = {r.get("id") for r in reviews if r.get("state") == "PENDING"}
+    dismissed = {r.get("id") for r in reviews if r.get("state") == "DISMISSED"}
     issue_comments, issue_complete = api_pages(f"repos/{repo}/issues/{number}/comments", host)
     review_comments, comments_complete = api_pages(f"repos/{repo}/pulls/{number}/comments", host)
-    lists = {
+    inline = [
+        {"id": c.get("id"), "in_reply_to": c.get("in_reply_to_id"),
+         "author": login(c.get("user")), "created_at": c.get("created_at"),
+         "path": c.get("path"), "line": c.get("line") or c.get("original_line"),
+         "side": c.get("side"),
+         "outdated": c.get("line") is None and c.get("original_line") is not None,
+         "review_dismissed": c.get("pull_request_review_id") in dismissed,
+         "thread_resolved": states.get(c.get("in_reply_to_id") or c.get("id")),
+         "body": c.get("body") or ""}
+        for c in review_comments
+        if c.get("pull_request_review_id") not in pending
+    ]
+    return {
         "issue_comments": [
             {"author": login(c.get("user")), "created_at": c.get("created_at"),
-             "body": clip(c.get("body"), COMMENT_CHARS)}
+             "body": c.get("body") or ""}
             for c in issue_comments
         ],
         "reviews": [
             {"author": login(r.get("user")), "state": r.get("state"),
-             "submitted_at": r.get("submitted_at"), "body": clip(r.get("body"), COMMENT_CHARS)}
+             "submitted_at": r.get("submitted_at"), "body": r.get("body") or ""}
             for r in reviews if r.get("body") and r.get("state") != "PENDING"
         ],
-        "review_comments": [
-            {"id": c.get("id"), "in_reply_to": c.get("in_reply_to_id"),
-             "author": login(c.get("user")), "created_at": c.get("created_at"),
-             "path": c.get("path"), "line": c.get("line") or c.get("original_line"),
-             "body": clip(c.get("body"), COMMENT_CHARS)}
-            for c in review_comments
-            if c.get("pull_request_review_id") not in pending
-        ],
+        "review_comments": inline,
+        "omitted": not (complete and issue_complete and comments_complete),
+        "thread_states_complete": states_complete and all(
+            c["thread_resolved"] is not None for c in inline
+        ),
     }
-    omitted = not (complete and issue_complete and comments_complete) or any(
-        len(entries) > MAX_COMMENTS for entries in lists.values()
+
+
+def capped_conversation(comments):
+    result = {
+        kind: [{**c, "body": clip(c["body"], COMMENT_CHARS)}
+               for c in comments[kind][-MAX_COMMENTS:]]
+        for kind in COMMENT_KINDS
+    }
+    result["omitted"] = comments["omitted"] or any(
+        len(comments[kind]) > MAX_COMMENTS for kind in COMMENT_KINDS
     )
-    result = {kind: entries[-MAX_COMMENTS:] for kind, entries in lists.items()}
-    result["omitted"] = omitted
     return result
+
+
+def leave_out_resolved(comments):
+    resolved = [c for c in comments["review_comments"] if c["thread_resolved"] is True]
+    kept = [c for c in comments["review_comments"] if c["thread_resolved"] is not True]
+    skipped = len({c["in_reply_to"] or c["id"] for c in resolved})
+    return {**comments, "review_comments": kept}, skipped
+
+
+def comment_batches(comments, limit=BATCH_CHARS):
+    # One thread alone can pass the limit: a thread reads as one finding, so it stays whole.
+    threads = {}
+    for c in comments["review_comments"]:
+        threads.setdefault(c["in_reply_to"] or c["id"], []).append(c)
+    units = [("review_comments", thread) for thread in threads.values()]
+    units += [(kind, [c]) for kind in ("reviews", "issue_comments") for c in comments[kind]]
+    batches, size = [], 0
+    for kind, entries in units:
+        chars = sum(len(json.dumps(c, ensure_ascii=False)) for c in entries)
+        if not batches or size + chars > limit:
+            batches.append({k: [] for k in COMMENT_KINDS})
+            size = 0
+        batches[-1][kind].extend(entries)
+        size += chars
+    return batches
+
+
+def write_comment_batches(out_dir, comments):
+    batches = comment_batches(comments)
+    directory = os.path.join(out_dir, "pr-comments")
+    os.makedirs(directory, exist_ok=True)
+    for n, batch in enumerate(batches, 1):
+        write_json(os.path.join(directory, f"batch-{n}.json"), batch)
+    return len(batches)
 
 
 def normalize_host(host):
@@ -360,7 +473,9 @@ def view_pr(pr_url, fields=""):
     return host, repo, number, url, pr
 
 
-def cmd_fetch(pr_url, out_dir):
+def cmd_fetch(pr_url, out_dir, *options):
+    if options not in ((), ("--skip-resolved",)):
+        raise Error(f"unknown fetch option: {' '.join(options)}")
     host, repo, number, url, pr = view_pr(
         pr_url, ",baseRefOid,headRepository,headRepositoryOwner,title,body,statusCheckRollup")
     head_sha = sha(pr["headRefOid"], "head commit")
@@ -385,6 +500,7 @@ def cmd_fetch(pr_url, out_dir):
             "commit or stash them first"
         )
 
+    comments = all_comments(host, repo, number)
     write_json(os.path.join(out_dir, "pr.json"), {
         "url": url,
         "repo": repo,
@@ -397,14 +513,22 @@ def cmd_fetch(pr_url, out_dir):
         "title": pr["title"],
         "body": clip(pr["body"], BODY_CHARS),
         "checks": ci_checks(pr["statusCheckRollup"], host, job_repos),
-        "conversation": conversation(host, repo, number),
+        "conversation": capped_conversation(comments),
     })
+    skipped = 0
+    if options:
+        comments, skipped = leave_out_resolved(comments)
+    batches = write_comment_batches(out_dir, comments)
     return {
         "url": url,
         "number": number,
         "head_sha": head_sha,
         "merge_base": merge_base,
         "in_place": in_place,
+        "comment_batches": batches,
+        "comments_omitted": comments["omitted"],
+        "resolved_threads_skipped": skipped,
+        "thread_states_complete": comments["thread_states_complete"],
     }
 
 
@@ -942,7 +1066,7 @@ def cmd_remove(path, *options):
 
 # Each command with the least and the most arguments it takes.
 COMMANDS = {
-    "fetch": (cmd_fetch, 2, 2), "checkout": (cmd_checkout, 1, 2),
+    "fetch": (cmd_fetch, 2, 3), "checkout": (cmd_checkout, 1, 2),
     "doc-checkout": (cmd_doc_checkout, 1, 2), "remove": (cmd_remove, 1, 2),
 }
 

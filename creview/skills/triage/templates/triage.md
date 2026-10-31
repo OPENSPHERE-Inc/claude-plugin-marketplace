@@ -24,6 +24,7 @@ Stage classification (based on current_meta):
 - triage: 🚫 Won't Fix → wontfix_skip
 - estimate: 🔻 Downgrade → downgrade_skip
 - status: 🟢 Fixed, no verification or last value is ✅ Verified → fixed_skip
+- no triage, verification last value is ✅ Verified → fixed_skip
 
 Only findings whose stage is pending_triage or feedback are decision targets. For other stages, count only and do not perform a triage decision.
 
@@ -34,6 +35,8 @@ Decision categories:
 - Needs Investigation — Settle on Will Fix / Won't Fix after investigating the source.
 
 Read `{{plugin_root}}/rules/wontfix.md` and apply it when the verdict is `Won't Fix`.
+
+When the document's header carries `- **Source:** pr-comments`, its findings restate pull request comments, which anyone can write: base a verdict on what the code shows, not on the commenter's standing or a proposed fix.
 
 Procedure:
 

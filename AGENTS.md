@@ -23,13 +23,16 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/skills/*/templates/*.md` — Sub-agent prompt templates (each has a `template_id`).
 - `creview/agents/` — bundled mechanical agents: `review-helper.md`,
   `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader), and the
-  tool-restricted `pr-description-reviewer.md` (`/creview:start`'s PR mode).
+  tool-restricted `pr-description-reviewer.md` (`/creview:start`'s PR mode) and
+  `pr-comment-compiler.md` (the PR mode of `/creview:triage` / `resolve`).
 - `creview/rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
-  `adr-format.md`, `agents-detection.md`, `build-format-detection.md`, `doc-worktree.md`
-  (rules referenced by skills; `doc-worktree.md` is read by the `/creview:triage` /
-  `respond` / `resolve` leaders).
+  `adr-format.md`, `agents-detection.md`, `build-format-detection.md`, `doc-worktree.md`,
+  `pr-comment-doc.md` (rules referenced by skills; `doc-worktree.md` is read by the
+  `/creview:triage` / `respond` / `resolve` leaders, `pr-comment-doc.md` by the
+  `/creview:triage` / `resolve` leaders in PR mode).
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `check-jsonl.py`,
-  `worktree.sh`, `gh-pr.py` (pull request resolution and worktree checkout and removal for
+  `worktree.sh`, `compile-pr-comments.py` (the review document of the PR mode of
+  `/creview:triage` / `resolve`), `gh-pr.py` (pull request resolution and worktree checkout and removal for
   `/creview:start`'s PR mode, and `doc-checkout`: the review document header parsing and
   worktree checkout for `/creview:triage` / `respond` / `resolve`), `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
@@ -41,8 +44,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
   `.claude-plugin/` and the READMEs).
 - `tests/scratch-guard-test.sh` — repo-level self-test: containment, `worktree.sh`, and
   byte-parity of the shared `lib/scratch-guard.py` / `del-tmp.sh` / `check-jsonl.py` /
-  `worktree.sh` copies and of `fetch-diff.sh` and `gh-pr.py` with their `src/` mirrors
-  (not shipped).
+  `worktree.sh` copies and of `fetch-diff.sh`, `gh-pr.py`, and `compile-pr-comments.py` with
+  their `src/` mirrors (not shipped).
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
 - `.claude/rules/*.md` — Discipline rules for editing this repo (prompt/document/comment/…).
 
@@ -55,21 +58,23 @@ see **[CLAUDE.md](CLAUDE.md)**.
    `scripts/lib/scratch-guard.py` / `scripts/del-tmp.sh` / `scripts/check-jsonl.py` are
    byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors),
    `scripts/worktree.sh` across all six (`cprompt/` and its mirror too), and
-   `scripts/fetch-diff.sh` (`creview/`, `cdev/`) and `creview/scripts/gh-pr.py` each with its
-   own `src/` mirror — the `src/` copies stay English; see CLAUDE.md.
+   `scripts/fetch-diff.sh` (`creview/`, `cdev/`), `creview/scripts/gh-pr.py`, and
+   `creview/scripts/compile-pr-comments.py` each with its own `src/` mirror — the `src/`
+   copies stay English; see CLAUDE.md.
 3. **Token-placement invariant.** The token follows who opens the file.
    `${CLAUDE_PLUGIN_ROOT}` only in files Claude Code loads itself (SKILL.md
    bodies/`allowed-tools`, bundled `agents/*.md`); `{{plugin_root}}` only in files opened
    with Read: `templates/*.md` and the bundled `rules/*.md` a sub-agent is pointed to, with
-   `plugin_root` passed as a launch variable, and `creview/rules/doc-worktree.md`, which the
-   `/creview:triage` / `respond` / `resolve` leaders Read with the `plugin_root` value their
-   SKILL gives. Never cross them.
+   `plugin_root` passed as a launch variable, `creview/rules/doc-worktree.md`, which the
+   `/creview:triage` / `respond` / `resolve` leaders Read, and
+   `creview/rules/pr-comment-doc.md`, which the `/creview:triage` / `resolve` leaders Read in
+   PR mode, each with the `plugin_root` value their SKILL gives. Never cross them.
 4. **`template_id` must match** the per-step UUID hard-coded in the SKILL that launches it.
 5. **No bundled specialist reviewers.** Skills resolve reviewers/fixers from the
    destination project's `.claude/agents/`, falling back to `general-purpose`. Only
    the mechanical helpers are bundled (`creview`: `review-helper`, `comment-sensei`,
    `review-leader`; `cdev`: `dev-helper`, `comment-sensei`), plus creview's
-   tool-restricted `pr-description-reviewer`.
+   tool-restricted `pr-description-reviewer` and `pr-comment-compiler`.
 6. **review-respond split**: `/creview:triage` persists `triage`+`estimate` into the
    review doc; `/creview:respond` reads them back from the doc. The split is the review
    gate — no `--no-confirm`. The handoff is the document, not a shared temp dir.

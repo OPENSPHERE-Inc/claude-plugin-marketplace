@@ -30,9 +30,9 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 | コマンド | 目的 |
 |---------|---------|
 | `/creview:start` | ローカルの変更または GitHub プルリクエストの並列コードレビューを実行し、レビュードキュメントを生成する。 |
-| `/creview:triage` | 指摘をトリアージ・見積し、`triage` / `estimate` をドキュメントへ永続化する。 |
+| `/creview:triage` | レビュードキュメントまたは GitHub プルリクエストのコメントの指摘をトリアージ・見積し、`triage` / `estimate` をドキュメントへ永続化する。 |
 | `/creview:respond` | Will-Fix / Maintain / Alternative の指摘を修正し、`status` を永続化する。 |
-| `/creview:resolve` | 修正をソースに照らして検証し、`verification` を永続化する。 |
+| `/creview:resolve` | レビュードキュメントまたは GitHub プルリクエストのコメントの指摘をソースに照らして検証し、`verification` を永続化する。 |
 | `/creview:rounds` | 4 つのフェーズを複数ラウンドにわたって自動反復する。 |
 | `/cprompt:edit` | AI 向けプロンプトを作成・編集し、セルフチェックする。 |
 | `/cdev:coding` | コーディングタスクをエンドツーエンドで実装する: 設計とコーディングをペアレビューセルで行い、最後に QA ゲート。 |
@@ -46,10 +46,12 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 選定します。適切なエージェントが存在しない場合は `general-purpose` に
 フォールバックします。プラグイン同梱のエージェントのうち選定候補になるのは、
 コメント規律のレビュアー `comment-sensei` だけです。集約用の `review-helper` など
-ワークフロー用の補助エージェントと、固定の役割のレビュアー
-`pr-description-reviewer` は、スキルが名前を指定して起動します。
-`pr-description-reviewer` は、`/creview:start` がプルリクエストをレビューするときに、
-その本文と CI 結果を確認します。
+ワークフロー用の補助エージェント、固定の役割のレビュアー
+`pr-description-reviewer`、指摘を抽出する `pr-comment-compiler` は、スキルが名前を指定して
+起動します。`pr-description-reviewer` は、`/creview:start` がプルリクエストをレビューするときに、
+その本文と CI 結果を確認します。`pr-comment-compiler` は、`/creview:triage` または
+`/creview:resolve` にプルリクエストの URL が渡されたときに、そのコメントから指摘を
+抽出します。
 
 ## 信頼できる原本とローカライズ
 

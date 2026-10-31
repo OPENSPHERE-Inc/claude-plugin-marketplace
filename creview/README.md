@@ -9,9 +9,9 @@ A multi-agent parallel code review workflow for Claude Code.
 | Command | Maps from | Purpose |
 |---------|-----------|---------|
 | `/creview:start` | `parallel-review` | Run a parallel code review of local changes or a GitHub pull request; produce a review document with metadata markers. |
-| `/creview:triage` | `review-respond` (triage + estimate) | Triage and estimate findings; persist `triage` / `estimate` into the document. |
+| `/creview:triage` | `review-respond` (triage + estimate) | Triage and estimate the findings of a review document or of a GitHub pull request's comments; persist `triage` / `estimate` into the document. |
 | `/creview:respond` | `review-respond` (fix) | Fix Will-Fix / Maintain / Alternative findings; verify the build; persist `status`. |
-| `/creview:resolve` | `review-resolve` | Verify fix resolutions against the source; persist `verification`. |
+| `/creview:resolve` | `review-resolve` | Verify the resolutions of a review document's findings or of a GitHub pull request's comments against the source; persist `verification`. |
 | `/creview:rounds` | `review-rounds` | Automatically iterate start → triage → respond → resolve across rounds. |
 
 Every command requires a session started at the repository root, with or
@@ -141,6 +141,30 @@ the worktree. These are instructions, not enforcement: for a pull request you
 do not trust, also rely on your environment (a sandbox, hooks, or permission
 rules).
 
+For a document compiled by the PR mode of `/creview:triage` and
+`/creview:resolve` (see below), the sub-agents are also told not to open a path
+that the document, an ADR file, or another sub-agent's output names, unless it
+lies under the work target (`target_dir`) outside its `.git`, is an ADR file
+(named `*-adr-*.md`) directly in the document's directory, lies under the
+sub-agent's temporary working directory (`tmp_dir`), or is a path its launch
+prompt gives as a variable. This rule is an instruction, not enforcement, and
+it does not prevent, among others:
+
+- Following a symbolic link inside the work target to a file outside it, when
+  working in place (a worktree of the pull request holds symbolic links as plain
+  files).
+- Reading a gitignored file inside the work target, such as `.env`.
+- Reads by the `/creview:respond` sub-agents that run the format, build, and
+  test commands and that fix their failures.
+- Reads through Bash.
+- Reading code that a sub-agent locates itself from a name a comment gives, such
+  as a library name.
+- A sub-agent breaking the rule itself.
+
+Protecting secrets is left to your environment. For a pull request you do not
+trust, run in a sandbox that cannot reach them. Permission deny rules add to it
+and do not replace it: a `Read` deny rule does not stop a Bash subprocess.
+
 During a worktree review, and while `/creview:triage`, `/creview:respond`, or
 `/creview:resolve` work in a worktree of a pull request (see below), the
 session's working directory is the worktree.
@@ -185,8 +209,8 @@ it. Run on their own, `/creview:triage`, `/creview:respond`, and
 A worktree for a document with a PR bullet holds the pull request's code and
 is checked out like a worktree review: git hooks and filter drivers disabled,
 Git LFS smudging skipped, symbolic links as plain files, and the agent files
-left out unless the Trust bullet is `on`. The three skills take no `--trust`:
-following the Trust bullet, they work with the files the review had, and a
+left out unless the Trust bullet is `on`. Run on a document, the three skills
+take no `--trust`: following the Trust bullet, they work with the files the review had, and a
 document without one counts as `off`. To work with the agent files, review the
 pull request again with `--trust`. Their sub-agents are told what a worktree
 review's sub-agents are told, except that `/creview:respond`, which fixes,
@@ -275,6 +299,73 @@ a repository or pull request fetched from the network is safe. Keep the agent
 safe through your environment, such as a sandbox and permission rules, and
 check out a pull request you do not trust, and run `/creview:respond` on it,
 only in a sandbox.
+
+`/creview:triage` and `/creview:resolve` also take a GitHub pull request URL
+in place of a review document. They first compile a review document from the
+pull request's comments, then run on that document as usual. The requirements
+are an open pull request whose repository is a remote of the current clone, an
+authenticated `gh`, and no uncommitted changes to tracked files when HEAD is its
+head commit. Git 2.41 or later is required only by `/creview:resolve` working in
+a worktree of the pull request; with an older Git it stops with an error after
+compiling the comments. `--base` cannot be combined with the URL. The document's
+Trust bullet records `on` when `--trust` is given or when the skill runs in place
+with HEAD at the head commit, and `off` otherwise. A worktree a skill makes for
+the document has the agent files only when it is `on`.
+
+- The bundled `pr-comment-compiler` turns inline review comments, review bodies,
+  and conversation comments that point out a problem in the code or ask for a
+  change into findings.
+  - It leaves out approvals, questions that state no problem, and CI and bot
+    status reports.
+  - It restates each finding in your chat language, with a severity from the
+    consequence the comment describes.
+  - A reply claiming that a problem is fixed stays in the finding as an
+    unverified claim.
+  - It runs with Read and Write only, without shell or network access.
+- `/creview:triage` leaves out threads marked resolved on GitHub before the
+  compilers read them, and reports how many.
+  - The pull request's author can mark a thread resolved too; `/creview:resolve`
+    with the same URL verifies those threads against the code.
+- `/creview:resolve` includes those threads and verifies every finding against
+  the code, with no triage or fix before it.
+  - A finding is `✅ Verified` when the code does not have the problem and
+    `💬 Feedback` when it still does, or when the code the finding describes cannot
+    be located or the finding does not show whether the problem exists.
+  - Run `/creview:triage` on the document to take the `💬 Feedback` findings on.
+- When HEAD contains the head commit but is not it, the skill works on the local
+  code, which can hold commits and uncommitted changes the pull request does not
+  have, and the run reports that.
+- Every comment is compiled, up to 10,000 of each kind, and the run reports when
+  more exist.
+  - The comments are split into batches of about 40,000 characters that keep each
+    review thread whole.
+    - One compiler reads each batch, so a pull request with many comments launches
+      more sub-agents.
+  - The script `compile-pr-comments.py` builds the document from what the compilers
+    extract.
+    - A duplicate within a batch is merged.
+    - The same finding in two batches stays as two findings, which `/creview:triage`
+      judges and `/creview:resolve` verifies separately, so both can become fix
+      targets.
+- The document is written to `.claude/tmp/creview-triage-{timestamp}.md` or
+  `.claude/tmp/creview-resolve-{timestamp}.md`, with the header bullets of a
+  pull request review and a `- **Source:** pr-comments` bullet.
+  - When the comments hold no findings, the run ends without a document.
+- Anyone who can comment on the pull request can put text into these findings.
+  - Check the persisted decisions before running `/creview:respond`, above all for
+    a pull request you do not trust.
+    - Read the ` — Plan: ` segment of each `Estimate:` line, not only the verdict
+      labels: it lists the edits planned for `/creview:respond`.
+    - When the line also names an ADR file, read its Decision as well: on a conflict,
+      it takes precedence over the plan.
+  - `/creview:triage` judges each finding and derives its fix plan from the code,
+    and takes from a commenter's proposal only what the code itself calls for.
+  - `/creview:respond` carries out the fix plan and does not judge it again.
+    - A proposal that passes `/creview:triage` is applied, even one such as running
+      an external script, removing a check, or replacing a dependency.
+    - Within creview, the only check left is your review of the persisted decisions.
+      - For a pull request you do not trust, run `/creview:respond` only in a sandbox;
+        hooks and permission rules add to it and do not replace it.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review
@@ -382,21 +473,25 @@ concern than the code's behavior, such as comments alone). With no match, they
 fall back to `general-purpose`. The
 bundled agents are `review-helper` (mechanical aggregation / verification),
 `comment-sensei` (comment-discipline review), `review-leader` (the
-`/creview:rounds` phase leader), and `pr-description-reviewer` (the pull
-request description and CI reviewer of `/creview:start`'s PR mode, bundled so
-that its tools stay restricted). Only `comment-sensei` is a selection
-candidate; the skills launch the other three by name.
+`/creview:rounds` phase leader), `pr-description-reviewer` (the pull
+request description and CI reviewer of `/creview:start`'s PR mode), and
+`pr-comment-compiler` (the extractor of findings from a pull request's comments in
+`/creview:triage`'s and `/creview:resolve`'s PR mode), the last two bundled so that their tools stay
+restricted. Only `comment-sensei` is a selection candidate; the skills launch
+the other four by name.
 
 ## Bundled support files
 
 - `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
-  `adr-format.md`, `doc-worktree.md` (only the rules the skills reference).
+  `adr-format.md`, `doc-worktree.md`, `pr-comment-doc.md` (only the rules the skills reference).
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`,
   `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it),
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
   `fetch-diff.sh` / `del-tmp.sh`; from a linked worktree it also accepts the
   `.claude/tmp/` of another working tree of the same repository),
-  `worktree.sh` (creates and removes the `--worktree` worktree), and `gh-pr.py`
+  `worktree.sh` (creates and removes the `--worktree` worktree),
+  `compile-pr-comments.py` (builds a review document from the findings extracted
+  from a pull request's comments), and `gh-pr.py`
   (resolves a pull request and checks its head commit out in a worktree, finds
   from a review document's header where its code is and checks it out in a
   worktree when it is not checked out, and removes those worktrees). The

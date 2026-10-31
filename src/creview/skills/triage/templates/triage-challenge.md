@@ -16,7 +16,7 @@ template_id: b8701509-403b-488b-8b13-c867f9c6700b
 
 - `{{ids}}` — 自身の担当となる draft の id。このリスト外の draft 項目は判断しない。
 - `{{tmp_dir}}/triage-draft.jsonl` — `{items: [{id, severity, location, stage, verdict, reason}], by_stage}`。
-- `{{document_path}}` — draft だけでは反論を組み立てられない場合に、id をキーに METADATA マーカー前後から指摘本文を引く。
+- `{{document_path}}` — ヘッダーから `- **Source:**` の箇条書きを取得する。draft だけでは反論を組み立てられない場合は、id をキーに METADATA マーカー前後から指摘本文を引く。
 - `{{previous_round_doc_paths}}` — 非空かつ `(none)` でない場合は各ファイルを Read し、過去ラウンドの同一指摘（同一性は file:line と指摘要旨の一致）に関する判定を反論材料に使う。これは Won't Fix ガイドライン 7「過去ラウンドで処理済み」の根拠にあたる。`stage` が `feedback` の指摘には、ガイドライン 7 を根拠とする反論を立てない。裁定 Sub は `feedback` の指摘にガイドライン 7 を適用しないため。
 
 反論の方向は draft の `verdict` により決まる:
