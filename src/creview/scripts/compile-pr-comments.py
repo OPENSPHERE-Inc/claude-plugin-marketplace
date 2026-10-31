@@ -3,22 +3,25 @@
 from a pull request's comments.
 
 Usage:
-    python3 compile-pr-comments.py <tmp_dir> <document_path> --branch <branch|(none)>
-        --trust <on|off> --lang <en|ja>
+    python3 compile-pr-comments.py <tmp_dir> <document_path> --pr-url <url> --head <sha>
+        --merge-base <sha> --branch <branch|(none)> --trust <on|off> --lang <en|ja>
 
-Reads <tmp_dir>/pr.json, which gh-pr.py fetch wrote, and for each
-<tmp_dir>/pr-comments/batch-<n>.json the file extract-<n>.jsonl next to it:
+Reads, for each <tmp_dir>/pr-comments/batch-<n>.json, the file extract-<n>.jsonl next
+to it:
     {"findings": [{"severity": "Critical" | "Major" | "Minor",
                    "categories": ["..."], "location": "path:line" | "path" | "PR",
                    "authors": ["..."], "description": "..."}]}
 
 Writes <document_path> in the format of /creview:start's review document, with
 findings in severity, path, and line order, empty metadata markers, and the PR,
-Branch, Trust, and Source header bullets. Line breaks in a value are folded, and a
-description can neither start a Markdown block nor open an HTML comment, so comment
-text cannot pass for the document's structure. It merges no findings, so the same
-finding from two batches stays as two. --lang selects the language of the labels the
-script writes; finding text stays as extracted. With no findings it writes nothing.
+Branch, Trust, and Source header bullets. The header takes its values from the
+arguments alone: the compilers that write the extract files can also write under
+<tmp_dir>. Line breaks in a value are folded, no value can open an HTML comment, and a
+description cannot start a Markdown block, so comment text cannot pass for the
+document's structure. A location that points outside the repository becomes PR. It
+merges no findings, so the same finding from two batches stays as two. --lang selects
+the language of the labels the script writes; finding text stays as extracted. With no
+findings it writes nothing.
 
 Prints {"doc_path", "findings_total", "severity_counts"}; doc_path is null without
 findings. A missing or malformed extract file exits 1, naming every such file on
@@ -41,6 +44,10 @@ BLOCK_START_RE = re.compile(
 )
 ORDERED_ITEM_RE = re.compile(r"([0-9]{1,9})([.)](?:\s|$).*)")
 BRANCH_RE = re.compile(r"[\w./+@-]+")
+PR_URL_RE = re.compile(
+    r"https://[A-Za-z0-9.-]+(?::[0-9]+)?/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/([0-9]+)"
+)
+SHA_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 LOCATION_RE = re.compile(r"(.*):([0-9]+)")
 LABELS = {
     "en": {
@@ -75,7 +82,23 @@ class Invalid(Exception):
 
 
 def one_line(value):
-    return " ".join(str(value).split())
+    return " ".join(value.split()).replace("<!--", "&lt;!--")
+
+
+def string_field(entry, field):
+    value = entry.get(field)
+    if not isinstance(value, str):
+        raise Invalid(f"{field} is not a string")
+    return value
+
+
+def repository_location(location):
+    # Later phases read the path a location names, and any commenter can name any path.
+    m = LOCATION_RE.fullmatch(location)
+    path = m.group(1) if m else location
+    if path.startswith(("/", "\\", "~")) or ":" in path or ".." in re.split(r"[\\/]", path):
+        return "PR"
+    return location
 
 
 def names(value, what):
@@ -85,7 +108,7 @@ def names(value, what):
 
 
 def description_text(value):
-    text = one_line(value).replace("<!--", "&lt;!--")
+    text = one_line(value)
     if BLOCK_START_RE.match(text):
         return "\\" + text
     item = ORDERED_ITEM_RE.fullmatch(text)
@@ -97,10 +120,10 @@ def read_finding(entry):
     if not isinstance(entry, dict):
         raise Invalid("a finding is not an object")
     if entry.get("severity") not in [name for name, _ in SEVERITIES]:
-        raise Invalid(f"severity {entry.get('severity')!r}")
-    location = one_line(entry.get("location") or "").replace("`", "")
+        raise Invalid("invalid severity")
+    location = repository_location(one_line(string_field(entry, "location").replace("`", "")))
     authors = names(entry.get("authors"), "authors")
-    text = description_text(entry.get("description") or "")
+    text = description_text(string_field(entry, "description"))
     if not location or not authors or not text:
         raise Invalid("a finding lacks its location, authors, or description")
     categories = [re.sub(r"[/\[\]]", " ", c).strip()
@@ -114,7 +137,12 @@ def read_extract(path):
         data = json.load(f)
     if not isinstance(data, dict) or not isinstance(data.get("findings"), list):
         raise Invalid("it has no findings list")
-    return [read_finding(entry) for entry in data["findings"]]
+    findings = [read_finding(entry) for entry in data["findings"]]
+    try:
+        json.dumps(findings, ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError:
+        raise Invalid("a value cannot be encoded as UTF-8") from None
+    return findings
 
 
 def batch_number(path):
@@ -143,11 +171,11 @@ def location_key(finding):
     return (1, m.group(1), int(m.group(2))) if m else (1, location, 0)
 
 
-def render(findings, pr, args):
+def render(findings, args):
     labels = LABELS[args.lang]
     authors = list(dict.fromkeys(a for f in findings for a in f["authors"]))
-    pr_ref = f"{pr['url']} (head {pr['head_sha']}, base {pr['merge_base']})"
-    scope = labels["scope_value"].format(number=pr["number"])
+    pr_ref = f"{args.pr_url} (head {args.head}, base {args.merge_base})"
+    scope = labels["scope_value"].format(number=PR_URL_RE.fullmatch(args.pr_url).group(1))
     lines = [f"# {labels['title']}", "",
              f"- **{labels['date']}:** {datetime.date.today().isoformat()}",
              f"- **PR:** {pr_ref}"]
@@ -189,10 +217,25 @@ def branch_arg(value):
     return value
 
 
+def pr_url_arg(value):
+    if not PR_URL_RE.fullmatch(value):
+        raise argparse.ArgumentTypeError(f"invalid pull request URL: {value!r}")
+    return value
+
+
+def sha_arg(value):
+    if not SHA_RE.fullmatch(value):
+        raise argparse.ArgumentTypeError(f"invalid commit: {value!r}")
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("tmp_dir")
     parser.add_argument("document_path")
+    parser.add_argument("--pr-url", required=True, type=pr_url_arg)
+    parser.add_argument("--head", required=True, type=sha_arg)
+    parser.add_argument("--merge-base", required=True, type=sha_arg)
     parser.add_argument("--branch", required=True, type=branch_arg)
     parser.add_argument("--trust", required=True, choices=("on", "off"))
     parser.add_argument("--lang", required=True, choices=sorted(LABELS))
@@ -200,14 +243,12 @@ def main():
 
     try:
         findings = read_extracts(args.tmp_dir)
-        with open(os.path.join(args.tmp_dir, "pr.json"), encoding="utf-8") as f:
-            pr = json.load(f)
         counts = dict.fromkeys((name for name, _ in SEVERITIES), 0)
         if findings:
-            text, counts = render(findings, pr, args)
+            text, counts = render(findings, args)
             with open(args.document_path, "w", encoding="utf-8", newline="\n") as f:
                 f.write(text)
-    except (OSError, ValueError, KeyError, Invalid) as e:
+    except (OSError, ValueError, Invalid) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
     print(json.dumps({

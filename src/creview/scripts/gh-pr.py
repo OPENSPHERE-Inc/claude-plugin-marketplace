@@ -24,13 +24,16 @@ the PR to be open, and writes to <out_dir>:
                    comment, up to MAX_PAGES pages of each kind, split into
                    batches of about BATCH_CHARS characters with each review
                    thread whole; a review comment says whether its line is
-                   outdated and, when known, whether its thread is resolved;
-                   with --skip-resolved, the batches leave out the threads known
-                   to be resolved
+                   outdated, which side of the diff its line is on (LEFT: a line
+                   of the base that the PR removes), and, when known, whether
+                   its thread is resolved; with --skip-resolved, the batches
+                   leave out the threads known to be resolved
 It prints a JSON object whose in_place is true when HEAD of the current working
 tree is the PR head, whose comment_batches is the number of batches, whose
-comments_omitted is true when more comments exist than MAX_PAGES pages hold, and
-whose resolved_threads_skipped counts the threads --skip-resolved left out.
+comments_omitted is true when more comments exist than MAX_PAGES pages hold, whose
+resolved_threads_skipped counts the threads --skip-resolved left out, and whose
+thread_states_complete is false when the state of some review threads could not be
+read, so that some of the threads left in can be resolved ones.
 An in-place working tree with uncommitted changes to tracked files (outside
 .claude/tmp and .claude/worktrees) is an error.
 
@@ -279,11 +282,22 @@ def ci_checks(rollup, host, repos):
     return checks
 
 
+def thread_state(thread):
+    try:
+        comment_id = thread["comments"]["nodes"][0]["databaseId"]
+        resolved = thread["isResolved"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    if type(comment_id) is not int or not isinstance(resolved, bool):
+        return None
+    return comment_id, resolved
+
+
 def resolved_threads(host, repo, number):
     # Only GraphQL reports a thread's state, keyed here by the ID of its first comment. A thread
-    # this cannot read stays out of the result: its state is not known.
+    # this cannot read stays out of the states; the second value is False when there is one.
     owner, name = repo.split("/")
-    states, cursor = {}, None
+    states, cursor, complete = {}, None, True
     for _ in range(MAX_PAGES):
         cmd = ["gh", "api", "graphql", "--hostname", host, "-f", f"query={REVIEW_THREADS_QUERY}",
                "-f", f"owner={owner}", "-f", f"name={name}", "-F", f"number={number}"]
@@ -291,18 +305,19 @@ def resolved_threads(host, repo, number):
             cmd += ["-f", f"cursor={cursor}"]
         try:
             threads = json.loads(run(cmd))["data"]["repository"]["pullRequest"]["reviewThreads"]
-            for thread in threads["nodes"]:
-                states[thread["comments"]["nodes"][0]["databaseId"]] = thread["isResolved"]
+            read = [thread_state(thread) for thread in threads["nodes"]]
+            states.update(state for state in read if state)
+            complete = complete and all(read)
             cursor = threads["pageInfo"]["endCursor"]
             if not threads["pageInfo"]["hasNextPage"]:
-                break
-        except (Error, ValueError, KeyError, IndexError, TypeError):
-            break
-    return states
+                return states, complete
+        except (Error, ValueError, KeyError, TypeError):
+            return states, False
+    return states, False
 
 
 def all_comments(host, repo, number):
-    states = resolved_threads(host, repo, number)
+    states, states_complete = resolved_threads(host, repo, number)
     reviews, complete = api_pages(f"repos/{repo}/pulls/{number}/reviews", host)
     pending = {r.get("id") for r in reviews if r.get("state") == "PENDING"}
     issue_comments, issue_complete = api_pages(f"repos/{repo}/issues/{number}/comments", host)
@@ -310,25 +325,27 @@ def all_comments(host, repo, number):
     return {
         "issue_comments": [
             {"author": login(c.get("user")), "created_at": c.get("created_at"),
-             "body": clip(c.get("body"), BODY_CHARS)}
+             "body": c.get("body") or ""}
             for c in issue_comments
         ],
         "reviews": [
             {"author": login(r.get("user")), "state": r.get("state"),
-             "submitted_at": r.get("submitted_at"), "body": clip(r.get("body"), BODY_CHARS)}
+             "submitted_at": r.get("submitted_at"), "body": r.get("body") or ""}
             for r in reviews if r.get("body") and r.get("state") != "PENDING"
         ],
         "review_comments": [
             {"id": c.get("id"), "in_reply_to": c.get("in_reply_to_id"),
              "author": login(c.get("user")), "created_at": c.get("created_at"),
              "path": c.get("path"), "line": c.get("line") or c.get("original_line"),
+             "side": c.get("side"),
              "outdated": c.get("line") is None and c.get("original_line") is not None,
              "thread_resolved": states.get(c.get("in_reply_to_id") or c.get("id")),
-             "body": clip(c.get("body"), BODY_CHARS)}
+             "body": c.get("body") or ""}
             for c in review_comments
             if c.get("pull_request_review_id") not in pending
         ],
         "omitted": not (complete and issue_complete and comments_complete),
+        "thread_states_complete": states_complete,
     }
 
 
@@ -505,6 +522,7 @@ def cmd_fetch(pr_url, out_dir, *options):
         "comment_batches": batches,
         "comments_omitted": comments["omitted"],
         "resolved_threads_skipped": skipped,
+        "thread_states_complete": comments["thread_states_complete"],
     }
 
 
