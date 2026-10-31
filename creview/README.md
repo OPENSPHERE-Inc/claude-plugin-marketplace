@@ -305,7 +305,8 @@ the document has the agent files only when it is `on`.
 - `/creview:resolve` includes those threads and verifies every finding against
   the code, with no triage or fix before it.
   - A finding is `✅ Verified` when the code does not have the problem and
-    `💬 Feedback` when it still does.
+    `💬 Feedback` when it still does, or when the code the finding describes cannot
+    be located or the finding does not show whether the problem exists.
   - Run `/creview:triage` on the document to take the `💬 Feedback` findings on.
 - When HEAD contains the head commit but is not it, the skill works on the local
   code, which can hold commits and uncommitted changes the pull request does not
@@ -329,6 +330,13 @@ the document has the agent files only when it is `on`.
 - Anyone who can comment on the pull request can put text into these findings.
   - Check the persisted decisions before running `/creview:respond`, above all for
     a pull request you do not trust.
+  - `/creview:triage` derives each fix plan from the code, and `/creview:respond`
+    applies no edit that only a commenter's proposal calls for, such as running an
+    external script, removing a check, or replacing a dependency.
+    - When it leaves out some of a finding's edits, the finding's `Status:` line
+      records them.
+    - When it leaves out all of them, the finding gets no `Status:` line and the
+      run reports it.
 
 `/creview:triage` and `/creview:respond` take an `--adr` option (default OFF)
 that permits creating ADR files recording design decisions next to the review
