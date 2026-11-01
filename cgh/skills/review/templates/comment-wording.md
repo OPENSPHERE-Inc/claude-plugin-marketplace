@@ -22,7 +22,7 @@ For each id of `{{ids}}` in `findings`:
 
 For each id of `{{ids}}` in `prior`, `post_note`: `note` translated into `comment_lang`, when `note` is not empty.
 
-Keep code, identifiers, paths, and finding IDs verbatim when translating, and add or drop no claim. When `comment_lang` is already the language of the text, leave out its `post_` field: the script then posts the text as it is. List every id of `{{ids}}`, even with no other field: an id missing from the file counts as not done. When `{{ids}}` is empty, decide `comment_lang` and write an empty `findings`.
+Keep code, identifiers, paths, and finding IDs verbatim when translating, and add or drop no claim. Do not write `@` mentions in what you write: name a person or a team without the `@`. A `@` in code stays, in backticks. When `comment_lang` is already the language of the text, leave out its `post_` field: the script then posts the text as it is. List every id of `{{ids}}`, even with no other field: an id missing from the file counts as not done. When `{{ids}}` is empty, decide `comment_lang` and write an empty `findings`.
 
 Write `{{output_path}}` as one JSON object:
 

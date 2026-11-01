@@ -97,7 +97,7 @@ target_id, finding_ids, body, post_body, selected (default true), verified, orig
 wording_missing holds what wording would print as missing, an empty recommendation or not.
 post_differs holds the IDs of what goes out in other wording than the preview's, a reply with no
 finding IDs by its kind and target. Findings not posted are listed with Critical and Major first,
-marked.
+marked. A reply that post would send with a mention names its target in a Mentions line.
 For a gate draft, it first waits for GitHub to compute whether the pull request merges, and
 records the verdict it shows as previewed_verdict.
 
@@ -155,7 +155,8 @@ LABEL_LINE_RE = re.compile(r"\*\*[^*]+[:：]\*\*\s*")
 PLAN_ITEM_RE = re.compile(r"(?:^|\s)\([0-9]+\)\s+")
 LOCATION_RE = re.compile(r"(.+?):([0-9]+)(?:[-–,].*)?")
 HUNK_RE = re.compile(r"@@ -[0-9]+(?:,[0-9]+)? \+([0-9]+)(?:,[0-9]+)? @@")
-# Only what GitHub is sure to render as code: a closed fence, or a closed span on one line.
+# What safe_text keeps as code: a closed fence, or a closed span on one line. GitHub can render
+# some of these as text.
 CODE_RE = re.compile(
     r"^ {0,3}(?P<fence>`{3,})[^`\n]*\n(?:.*\n)*? {0,3}(?P=fence)`*[ \t\r]*$"
     r"|(?<![\\`])(?P<ticks>`+)(?!`)[^\n]*?(?<!`)(?P=ticks)(?!`)", re.M)
@@ -506,8 +507,10 @@ def write_pr_body(tmp_dir, view):
 
 
 def safe_text(text):
-    # Posted text comes from reviewers that read pull request content: it must not notify
-    # anyone or hide anything in an HTML comment, such as a marker of this script.
+    # Posted text comes from reviewers that read pull request content: it must not hide anything in
+    # an HTML comment, such as a marker of this script. Quieting mentions is best effort, since
+    # CODE_RE can disagree with GitHub's rendering and matching it exactly is not worth the cost:
+    # the prompts that word the text ask for no mentions, and the user reads the preview.
     text = text.replace("<!--", "&lt;!--")
     kept, last = [], 0
     for code in CODE_RE.finditer(text):
@@ -1293,7 +1296,7 @@ def reply_text(entry, post):
     return (post and entry.get("post_body")) or entry["body"]
 
 
-def preview_replies(data, post):
+def preview_replies(pr, data, viewer, post):
     replies = validated_replies(data)
     lines = []
     for entry in replies:
@@ -1303,6 +1306,10 @@ def preview_replies(data, post):
         lines += [f"## {entry['kind']}{target}{state}", "", f"Findings: {ids}", ""]
         if entry["verified"]:
             lines += [f"Verified: {', '.join(entry['verified'])}", ""]
+        goes_out = entry["selected"] and not entry["posted"]
+        author = reply_author(pr, entry, viewer) if goes_out else None
+        if author:
+            lines += [f"Mentions: @{author}", ""]
         lines += [safe_text(reply_text(entry, post)), ""]
     return "\n".join(lines), {"replies": sum(e["selected"] and not e["posted"] for e in replies),
                               "comment_lang": data.get("comment_lang")}
@@ -1334,8 +1341,9 @@ def cmd_preview(pr_url, path):
             data["previewed_verdict"] = summary["verdict"]
             write_json(path, data)
     else:
-        text, summary = preview_replies(data, False)
-        post_text, _ = preview_replies(data, True)
+        viewer = view_pr(pr, require_open=False)["viewer"]
+        text, summary = preview_replies(pr, data, viewer, False)
+        post_text, _ = preview_replies(pr, data, viewer, True)
     stem = re.sub(r"\.json$", "", path)
     paths = {"preview_path": stem + "-preview.md", "post_preview_path": stem + "-post.md"}
     for name, content in (("preview_path", text), ("post_preview_path", post_text)):

@@ -205,4 +205,5 @@ The state lives on the pull request, so a later run needs nothing from an earlie
   runs.
 - GitHub allows one pending review per user on a pull request. Submit or discard yours first.
 - Text in the comments comes from reviewers that read the pull request. A script quotes `@`
-  mentions in it and escapes HTML comments, but read the preview before you post it.
+  mentions in it and escapes HTML comments, but this does not catch every mention, so read the
+  preview before you post it.

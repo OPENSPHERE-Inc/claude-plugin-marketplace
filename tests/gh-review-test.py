@@ -1317,6 +1317,37 @@ class Replies(Base):
         _, preview = self.preview(path)
         self.assertEqual(re.findall(r"^Verified: .*$", preview, re.M), ["Verified: M-1"])
 
+    def test_preview_names_whom_a_reply_mentions(self):
+        gh = self.fake()
+        issue_url = "https://api.github.com/repos/acme/app/issues/7"
+        gh.objects = {
+            "repos/acme/app/pulls/7/reviews/4": {"id": 4, "user": {"login": "coderabbitai[bot]"}},
+            "repos/acme/app/issues/comments/5": {
+                "id": 5, "user": {"login": "pal"}, "issue_url": issue_url},
+            "repos/acme/app/issues/comments/6": {
+                "id": 6, "user": {"login": "me"}, "issue_url": issue_url},
+        }
+        reply = {"finding_ids": ["M-1"], "body": "b"}
+        path = self.replies_file([
+            {"kind": "review", "target_id": 4, **reply},
+            {"kind": "issue_comment", "target_id": 5, **reply},
+            {"kind": "issue_comment", "target_id": 6, **reply},
+            {"kind": "thread", "target_id": 1, **reply},
+        ])
+        result, preview = self.preview(path)
+        expected = ["Mentions: @coderabbitai", "Mentions: @pal"]
+        self.assertEqual(re.findall(r"^Mentions: .*$", preview, re.M), expected)
+        self.assertEqual(re.findall(r"^Mentions: .*$", read_text(result["post_preview_path"]), re.M),
+                         expected)
+        self.assertNotIn("repos/acme/app/pulls/comments/1", " ".join(map(str, gh.calls)))
+
+    def test_preview_names_no_mention_for_a_reply_that_does_not_go_out(self):
+        self.fake()
+        reply = {"finding_ids": ["M-1"], "body": "b"}
+        path = self.replies_file([{"kind": "review", "target_id": 4, "selected": False, **reply},
+                                  {"kind": "review", "target_id": 5, "posted": True, **reply}])
+        self.assertNotIn("Mentions:", self.preview(path)[1])
+
     def test_commits_path_refuses_what_a_drafter_cannot_send(self):
         gh = self.fake()
         commits = self.save({"commits": []}, "fix-commits.json")
@@ -2609,7 +2640,10 @@ class Wording(Base):
         self.assertEqual(self.preview(path)[0]["post_differs"], [])
 
     def test_preview_names_the_replies_that_go_out_in_other_wording(self):
-        self.fake()
+        gh = self.fake()
+        gh.objects = {"repos/acme/app/issues/comments/5": {
+            "id": 5, "user": {"login": "pal"},
+            "issue_url": "https://api.github.com/repos/acme/app/issues/7"}}
         path = self.save({"replies": [
             {"kind": "thread", "target_id": 1, "finding_ids": ["M-1"], "body": "b",
              "post_body": "p"},
@@ -2858,6 +2892,7 @@ class Cli(unittest.TestCase):
             (["wording", URL, "j"], "cmd_wording", (URL, "j")),
             (["comments", URL, "t"], "cmd_comments", (URL, "t")),
             (["raised", URL, "t"], "cmd_raised", (URL, "t")),
+            (["participants", URL], "cmd_participants", (URL,)),
             (["fixes", URL, "t", "d"], "cmd_fixes", (URL, "t", "d")),
             (["pushed", URL, "c"], "cmd_pushed", (URL, "c")),
             (["replies", URL, "t", "d", "--lang", "ja"], "cmd_replies", (URL, "t", "d", "ja")),
