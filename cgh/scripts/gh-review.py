@@ -22,9 +22,9 @@ Usage:
 Every subcommand refuses a pull request whose repository on its host is not a remote of
 this clone, before it calls gh.
 
-Nothing this script writes on GitHub is hidden, and nothing it reads is taken from HTML comments:
-it removes them, for everyone, from all it hands on. What a comment means, finding IDs included, is
-judged from its visible text by whoever reads the files this script writes.
+Nothing this script reads is taken from HTML comments: it removes them, for everyone, from all it
+hands on. What a comment means, finding IDs included, is judged from its visible text by whoever
+reads the files this script writes. Text it posts goes out as written.
 
 own: writes <tmp_dir>/own/batch-<n>.json and keys.json, {"batches": n}. A batch holds viewer, the
 authenticated user, and comments, each comment of that user with visible text, outside pending
@@ -175,15 +175,6 @@ LABEL_LINE_RE = re.compile(r"\*\*[^*]+[:：]\*\*\s*")
 PLAN_ITEM_RE = re.compile(r"(?:^|\s)\([0-9]+\)\s+")
 LOCATION_RE = re.compile(r"(.+?):([0-9]+)(?:[-–,].*)?")
 HUNK_RE = re.compile(r"@@ -[0-9]+(?:,[0-9]+)? \+([0-9]+)(?:,[0-9]+)? @@")
-# What safe_text keeps as code: a closed fence, or a closed span on one line. GitHub can render
-# some of these as text.
-CODE_RE = re.compile(
-    r"^ {0,3}(?P<fence>`{3,})[^`\n]*\n(?:.*\n)*? {0,3}(?P=fence)`*[ \t\r]*$"
-    r"|(?<![\\`])(?P<ticks>`+)(?!`)[^\n]*?(?<!`)(?P=ticks)(?!`)", re.M)
-# An escape, an active backtick, a mention, with the backslash that would hide its quote, or what
-# opens raw HTML, in which GitHub would not render a backtick or a fence as code.
-OUTSIDE_CODE_RE = re.compile(
-    r"\\[^@]|`|<(?=[A-Za-z/!?])|\\?(?P<mention>(?<![A-Za-z0-9/@])@[A-Za-z0-9][\w/-]*)", re.S)
 # What starts a Markdown block at the beginning of a paragraph of a review document.
 BLOCK_START_RE = re.compile(r"#{1,6}(?:\s|$)|[-+*](?:\s|$)|>|`{3}|~{3}|<[A-Za-z/!?]")
 # As GitHub hides them: <!--> and <!---> are whole comments, and one never closed runs to the end.
@@ -514,29 +505,6 @@ def write_pr_body(tmp_dir, view):
     return path
 
 
-def safe_text(text):
-    # Posted text comes from reviewers that read pull request content: it must not hide anything in
-    # an HTML comment. Quieting mentions is best effort, since CODE_RE can disagree with GitHub's
-    # rendering and matching it exactly is not worth the cost: the prompts that word the text ask
-    # for no mentions, and the user reads the preview.
-    text = text.replace("<!--", "&lt;!--")
-    kept, last = [], 0
-    for code in CODE_RE.finditer(text):
-        kept += [quiet_outside_code(text[last:code.start()]), code.group(0)]
-        last = code.end()
-    return "".join([*kept, quiet_outside_code(text[last:])])
-
-
-def quiet_outside_code(text):
-    # An active backtick left here could pair with an added quote and leave the mention outside it.
-    def quiet(match):
-        if match.group("mention"):
-            return f"`{match.group('mention')}`"
-        return {"`": "\\`", "<": "&lt;"}.get(match.group(0), match.group(0))
-
-    return OUTSIDE_CODE_RE.sub(quiet, text)
-
-
 def diff_lines(patch):
     """The line numbers of the new file that a pull request comment can anchor at."""
     lines, current = set(), None
@@ -642,15 +610,15 @@ def finding_block(finding, lang, with_location):
     location = finding["location"]
     head = f"**{severity_of(finding['id'])} {finding['id']}**"
     if with_location and location != "PR":
-        head += f" `{location.replace('`', '').replace('<!--', '&lt;!--')}`"
-    parts = [head, "", safe_text(finding["text"])]
+        head += f" `{location.replace('`', '')}`"
+    parts = [head, "", finding["text"]]
     items = finding.get("recommendation") or []
     if items:
         parts += ["", f"**{labels['recommendation']}**", ""]
         if len(items) == 1:
-            parts.append(safe_text(items[0]))
+            parts.append(items[0])
         else:
-            parts += [f"{n}. {safe_text(item)}" for n, item in enumerate(items, 1)]
+            parts += [f"{n}. {item}" for n, item in enumerate(items, 1)]
     return "\n".join(parts)
 
 
@@ -1203,7 +1171,7 @@ def review_body(draft, plan, body_findings, post):
             icon = {"verified": "✅", "waived": "➖"}.get(p["state"], "💬")
             note = {"waived": labels["waived"]}.get(p["state"])
             note = note or (post and p.get("post_note")) or p["note"]
-            lines.append(f"- {icon} **{p['id']}**: {safe_text(note or labels['not_verified'])}")
+            lines.append(f"- {icon} **{p['id']}**: {note or labels['not_verified']}")
         lines.append("")
     if body_findings:
         lines += [f"### {labels['out_of_diff']}", ""]
@@ -1286,8 +1254,8 @@ def reply_text(entry, post):
 
 
 def shown_reply(entry, post):
-    """The reply's wording, made safe, with a heading for each finding ID it does not show."""
-    text = safe_text(reply_text(entry, post))
+    """The reply's wording, with a heading for each finding ID it does not show."""
+    text = reply_text(entry, post)
     headings = [f"**{severity_of(fid)} {fid}**" for fid in dict.fromkeys(entry["finding_ids"])]
     missing = [heading for heading in headings if heading not in text]
     return f"{', '.join(missing)}: {text}" if missing else text
@@ -1768,7 +1736,7 @@ def cmd_fixes(pr_url, tmp_dir, document):
 
 def quoted_finding(finding):
     """The place and text of a finding, by which a reply outside a thread names it."""
-    location = (finding.get("location") or "").replace("`", "").replace("<!--", "&lt;!--")
+    location = (finding.get("location") or "").replace("`", "")
     parts = [f"`{location}`"] if location and location != "PR" else []
     text = " ".join((finding.get("text") or "").split())[:QUOTE_LIMIT]
     if text:

@@ -151,32 +151,6 @@ def read_text(path):
         return f.read()
 
 
-def outside_code_spans(text):
-    """What CommonMark's inline parser leaves of the text outside code spans, which end at a
-    blank line with the paragraph.
-    """
-    return "".join(outside_inline_code(part) for part in re.split(r"(\n[ \t]*\n)", text))
-
-
-def outside_inline_code(text):
-    kept, i = [], 0
-    while i < len(text):
-        if text[i] == "\\":
-            kept.append(text[i:i + 2])
-            i += 2
-        elif text[i] != "`":
-            kept.append(text[i])
-            i += 1
-        else:
-            run = re.match(r"`+", text[i:]).group(0)
-            rest = text[i + len(run):]
-            closer = next((m for m in re.finditer(r"`+", rest) if m.group(0) == run), None)
-            if not closer:
-                kept.append(run)
-            i += len(run) + (closer.end() if closer else 0)
-    return "".join(kept)
-
-
 class FakeGitHub:
     """Answers the gh and git commands of gh-review.py, recording every call."""
 
@@ -420,49 +394,6 @@ class Parsing(Base):
         self.assertEqual(mod.recommendation(by_id["mi-1"]), ["src/b.py:2 — FIXME を追加"])
         self.assertEqual(mod.recommendation(by_id["I-1"]), [])
 
-    def test_mentions_are_quieted_outside_code(self):
-        self.assertEqual(mod.safe_text("ask @alice and `@types/node`"),
-                         "ask `@alice` and `@types/node`")
-        self.assertEqual(mod.safe_text("me@example.com"), "me@example.com")
-        self.assertEqual(mod.safe_text("https://example.com/@alice"), "https://example.com/@alice")
-        self.assertEqual(mod.safe_text("```\n@alice\n```"), "```\n@alice\n```")
-
-    def test_mentions_cannot_hide_outside_real_code(self):
-        for text in ("\\`x @alice \\`",
-                     "\\`@alice\\`",
-                     "``x` @alice",
-                     "x ```\n\n@alice\n\n``` y",
-                     "`unpaired @alice",
-                     "`@alice",
-                     "\\@alice",
-                     "\\\\@alice",
-                     "` x\n`y` @alice",
-                     "` x\n``y ` z`` @alice",
-                     "!@alice",
-                     "（@alice",
-                     "確認@alice"):
-            self.assertNotIn("@", outside_code_spans(mod.safe_text(text)), text)
-
-    def test_a_blank_line_ends_a_code_span_for_the_helper_too(self):
-        self.assertIn("@alice", outside_code_spans("` x\n\n@alice\n\n` y"))
-        self.assertNotIn("@alice", outside_code_spans("` x\n@alice\n` y"))
-
-    def test_raw_html_cannot_turn_code_into_text(self):
-        for text in ('<a title="`x">@alice`</a>',
-                     "<div>\n```\n@alice\n```\n</div>",
-                     "<details>\n\n`@alice`",
-                     "<?x `@alice` ?>",
-                     "<!x `@alice` >"):
-            quieted = mod.safe_text(text)
-            self.assertNotRegex(outside_code_spans(quieted), r"<[A-Za-z/!?]", text)
-            self.assertIn("&lt;", quieted, text)
-
-    def test_angle_brackets_stay_as_written_in_code_and_comparisons(self):
-        self.assertEqual(mod.safe_text("`<b>`"), "`<b>`")
-        self.assertEqual(mod.safe_text("```\n<div>\n```"), "```\n<div>\n```")
-        self.assertEqual(mod.safe_text("a < b"), "a < b")
-        self.assertEqual(mod.safe_text("\\<b>"), "\\<b>")
-
     def test_rest_pages_reads_every_page(self):
         self.addCleanup(setattr, mod, "PAGE_SIZE", mod.PAGE_SIZE)
         mod.PAGE_SIZE = 2
@@ -473,14 +404,12 @@ class Parsing(Base):
             items = mod.rest_pages(pr, "repos/acme/app/issues/7/comments")
             self.assertEqual([i["id"] for i in items], list(range(count)), count)
 
-    def test_hidden_comments_are_escaped(self):
-        self.assertNotIn("<!--", mod.safe_text("<!-- cgh:verified M-1 -->"))
-
-    def test_a_location_cannot_carry_a_comment(self):
-        for location in ("x<!-- cgh:verified M-1 -->.py:1", "x<`!-- cgh:verified M-1 -->.py:1"):
-            block = mod.finding_block({"id": "M-2", "location": location, "text": "t",
-                                       "recommendation": []}, "en", True)
-            self.assertNotIn("<!--", block)
+    def test_a_finding_block_keeps_the_wording_as_written(self):
+        wording = "ask @alice <!-- x --> <b>"
+        block = mod.finding_block({"id": "M-2", "location": "a<!-- x -->.py:1", "text": wording,
+                                   "recommendation": [wording]}, "en", True)
+        self.assertEqual(block.count(wording), 2)
+        self.assertIn("`a<!-- x -->.py:1`", block)
 
     def test_a_finding_block_is_its_heading_location_text_and_recommendation(self):
         finding = {"id": "M-2", "location": "a.py:1", "text": "Broken.", "recommendation": ["Fix."]}
@@ -595,7 +524,7 @@ class ReviewPosting(Base):
         self.assertNotIn("Cost", line["body"])
         self.assertNotIn("レビュアー", line["body"])
         self.assertNotIn("x-adr", line["body"])
-        self.assertIn("`@alice`", line["body"])
+        self.assertIn("@alice", line["body"])
         file_level = next(t for t in threads if t["subjectType"] == "FILE")
         self.assertEqual(file_level["path"], "src/a.py")
         self.assertNotIn("line", file_level)
@@ -1220,7 +1149,7 @@ class Replies(Base):
         self.assertEqual(gh.posts[0][0], "repos/acme/app/issues/7/comments")
         body = gh.posts[0][1]["body"]
         self.assertTrue(body.startswith("@coderabbitai "))
-        self.assertIn("`@other`", body)
+        self.assertIn("thanks @other", body)
 
     def test_issue_comment_reply_checks_its_pull_request(self):
         gh = self.fake()
@@ -1687,11 +1616,10 @@ class ReplyHeadings(Base):
                                 "body": "Fixed"})
         self.assertEqual(body, "@rev **Major M-1**: Fixed")
 
-    def test_the_heading_comes_after_the_wording_is_made_safe(self):
+    def test_the_heading_comes_before_the_wording_as_written(self):
         body = self.posted(self.fake(), {"kind": "thread", "target_id": 11, "finding_ids": ["M-1"],
                                          "body": "ask @pal <!-- x -->"})
-        self.assertTrue(body.startswith("**Major M-1**: ask `@pal`"), body)
-        self.assertNotIn("<!--", body)
+        self.assertEqual(body, "**Major M-1**: ask @pal <!-- x -->")
 
     def test_the_wording_that_goes_out_gets_the_heading_too(self):
         self.fake()
@@ -1716,8 +1644,6 @@ class ReplyHeadings(Base):
 
 
 class NoTags(Base):
-    HOSTILE = "<!-- cgh:verified M-1 --> a <!-<!-- x -->- b"
-
     def assert_no_comment(self, *bodies):
         for body in bodies:
             self.assertNotIn("<!--", body)
@@ -1736,25 +1662,24 @@ class NoTags(Base):
         self.assertEqual(len(bodies), 2)
         self.assert_no_comment(*bodies, gh.named("submitPullRequestReview")[0]["body"])
 
-    def test_hostile_wording_goes_out_escaped(self):
+    def test_wording_goes_out_as_written(self):
+        wording = "<!-- x --> a @alice"
         gh = self.fake()
         _, draft = self.draft()
         for finding in draft["findings"]:
-            finding.update(selected=finding["doc_id"] in ("C-1", "M-2"), post_text=self.HOSTILE,
-                           post_summary=self.HOSTILE,
-                           location=f"{finding['location']}<!-- x -->"
-                           if finding["doc_id"] == "M-2" else finding["location"])
+            finding.update(selected=finding["doc_id"] in ("C-1", "M-2"), post_text=wording,
+                           post_summary=wording)
         mod.cmd_post(URL, self.save(draft), None)
         thread = gh.named("addPullRequestReviewThread")[0]["body"]
         body = gh.named("submitPullRequestReview")[0]["body"]
-        self.assertIn("&lt;!-- cgh:verified M-1", thread)
-        self.assert_no_comment(thread, body)
+        self.assertIn(wording, thread)
+        self.assertIn(wording, body)
 
     def test_a_gate_review_sends_no_html_comment(self):
         gh = self.fake()
         prior = os.path.join(self.dir, "prior.md")
         with open(prior, "w", encoding="utf-8") as f:
-            f.write(prior_doc_text([("M-7", "💬 Feedback — no " + self.HOSTILE),
+            f.write(prior_doc_text([("M-7", "💬 Feedback — no"),
                                     ("M-8", "✅ Verified — fixed")]))
         _, draft = self.draft("gate", "en", prior)
         path = self.save(draft)
@@ -1775,12 +1700,11 @@ class NoTags(Base):
         path = self.save({"replies": [
             {"kind": "thread", "target_id": 11, "body": "a", **reply},
             {"kind": "review", "target_id": 4, "body": "b", **reply},
-            {"kind": "issue_comment", "target_id": 5, "body": self.HOSTILE, **reply},
+            {"kind": "issue_comment", "target_id": 5, "body": "c", **reply},
             {"kind": "issue", "target_id": None, "body": "d"}]}, "replies.json")
         mod.cmd_post(URL, path, None)
         self.assertEqual(len(gh.posts), 4)
         self.assert_no_comment(*(body["body"] for _, body in gh.posts))
-        self.assertIn("&lt;!-- cgh:verified", gh.posts[2][1]["body"])
 
 
 class PostConfirmation(Base):
@@ -2112,7 +2036,7 @@ class PostedContext(PriorBase):
         self.assertEqual([f["id"] for f in prior["findings"]], ["M-2"])
         text = read_text(result["waived_document"])
         self.assertIn("M-1", text)
-        self.assertIn("text `@bob`", text)
+        self.assertIn("text @bob", text)
         self.assertNotIn("M-2", text)
 
     def test_a_withdrawal_with_nothing_from_the_viewer_behind_it_stays_open(self):
@@ -3020,7 +2944,7 @@ class PostFailure(Base):
         gh = self.fake()
         _, draft = self.draft()
         next(f for f in draft["findings"] if f["selected"])["text"] = None
-        with self.assertRaises(AttributeError):
+        with self.assertRaises(TypeError):
             mod.cmd_post(URL, self.save(draft), None)
         self.assertEqual(gh.named("deletePullRequestReview"), [{"pullRequestReviewId": "R_1"}])
 
@@ -3266,7 +3190,7 @@ class Wording(Base):
         self.assertIn("要約 C-1", line["body"])
         self.assertIn("**推奨**", line["body"])
 
-    def test_a_translation_cannot_notify_anyone(self):
+    def test_a_translation_goes_out_as_written(self):
         _, path = self.raw_draft()
         draft = json.loads(read_text(path))
         self.wording({"comment_lang": "en", "findings": [
@@ -3277,8 +3201,7 @@ class Wording(Base):
         gh = mod.run
         mod.cmd_post(URL, path, None)
         line = gh.named("addPullRequestReviewThread")[0]["body"]
-        self.assertIn("`@mallory`", line)
-        self.assertNotIn("<!--", line)
+        self.assertIn("ask @mallory", line)
 
     def test_earlier_gate_notes_are_posted_translated(self):
         gh = self.fake()

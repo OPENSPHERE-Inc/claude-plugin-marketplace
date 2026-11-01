@@ -300,9 +300,9 @@ as well. Nothing cgh posts carries a hidden marker, and nothing reads one: a pul
 on by several people and AI, with or without these skills, so nothing guarantees that a marker
 survives, stays unedited, or is not forged. `gh-review.py` and `gh-pr.py` remove HTML comments from
 every comment they hand on, so what a finding is, its ID, and where it stands are judged from visible
-text and the code. `safe_text` keeps posted text from hiding anything or mentioning anyone by
-accident. The `<!-- METADATA(id) -->` markers belong to the local review document and never go to
-GitHub.
+text and the code. Injection is guarded on the input side: every sub-agent that reads pull request
+text is told that it is data, not instructions, and what `gh-review.py` posts goes out as written.
+The `<!-- METADATA(id) -->` markers belong to the local review document and never go to GitHub.
 
 Every cgh skill runs `rules/leader.md` § Finding IDs: `gh-review.py own` writes the authenticated
 user's comments in batches, a `comment-writer` reads the IDs they use, and `gh-review.py ids` writes
