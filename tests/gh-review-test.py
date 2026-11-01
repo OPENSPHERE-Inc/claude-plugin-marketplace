@@ -3226,7 +3226,7 @@ class PostFailure(Base):
         self.assertEqual(len(gh.named("submitPullRequestReview")), 1)
 
     def test_a_rerun_goes_on_when_the_review_is_gone(self):
-        for answer in ('{"data": {"node": null}}', mod.Rejected("no such node")):
+        for answer in ('{"data": {"node": null}}', mod.Rejected("gone", {"NOT_FOUND"})):
             gh, path = self.interrupted()
             gh.state_queue = [answer]
             mod.cmd_post(URL, path, None)
@@ -3243,6 +3243,21 @@ class PostFailure(Base):
                 mod.cmd_post(URL, path, None)
             self.assertEqual(gh.mutations, [])
             self.assertFalse(json.loads(read_text(path))["posted"])
+
+    def test_a_rerun_sends_nothing_on_a_refusal_other_than_not_found(self):
+        for types in ({"UNPROCESSABLE"}, {"NOT_FOUND", "UNPROCESSABLE"}, set()):
+            gh, path = self.interrupted()
+            gh.state_queue = [mod.Rejected("refused", types)]
+            with self.assertRaisesRegex(mod.Error, "unknown"):
+                mod.cmd_post(URL, path, None)
+            self.assertEqual(gh.mutations, [])
+            self.assertFalse(json.loads(read_text(path))["posted"])
+            self.assertEqual(json.loads(read_text(path))["review_id"], "R_1")
+
+    def test_a_rejection_keeps_the_error_types(self):
+        error = mod.Error("failed")
+        error.stdout = json.dumps({"errors": [{"type": "NOT_FOUND"}]})
+        self.assertEqual(mod.rejection(error).types, {"NOT_FOUND"})
 
     def test_a_rerun_stops_when_the_pending_review_cannot_be_deleted(self):
         gh, path = self.interrupted()

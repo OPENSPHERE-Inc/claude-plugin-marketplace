@@ -328,6 +328,10 @@ class Error(Exception):
 class Rejected(Error):
     """GitHub refused what a GraphQL call asked for, so the call changed nothing."""
 
+    def __init__(self, message, types=()):
+        super().__init__(message)
+        self.types = set(types)
+
 
 def executable(name):
     # Windows looks a bare program name up in the working directory before PATH.
@@ -431,7 +435,7 @@ def rejection(error):
         types = {entry["type"] for entry in json.loads(error.stdout)["errors"]}
     except (ValueError, KeyError, TypeError):
         return None
-    return Rejected(str(error)) if types and not types & CALLER_ERRORS else None
+    return Rejected(str(error), types) if types and not types & CALLER_ERRORS else None
 
 
 def graphql(pr, query, **variables):
@@ -1496,11 +1500,12 @@ def settle_earlier_review(pr, path, draft):
         node = graphql(pr, REVIEW_STATE, id=review_id).get("node")
         if node is not None and not node.get("state"):
             raise Error("GitHub did not report its state")
-    except Rejected:
-        node = None
     except Exception as e:
-        raise Error(f"whether the review of an earlier run went out is unknown ({e}): nothing was "
-                    f"sent; check {pr.url} and try again") from None
+        if isinstance(e, Rejected) and e.types == {"NOT_FOUND"}:
+            node = None
+        else:
+            raise Error(f"whether the review of an earlier run went out is unknown ({e}): nothing "
+                        f"was sent; check {pr.url} and try again") from None
     if node and node["state"] != "PENDING":
         draft["posted"] = True
         write_json(path, draft)
