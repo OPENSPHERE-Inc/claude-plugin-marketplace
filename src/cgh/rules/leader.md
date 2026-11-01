@@ -18,6 +18,27 @@ SKILL が指定する引数で Skill ツールから起動する。ユーザー�
 
 GitHub を変更するのは `{{plugin_root}}/scripts/gh-review.py post` 経由だけとする。`git push` は実行しない。承認、マージ、クローズ、解決済みマークも行わない: これらはユーザーが行う。
 
+## 投稿済みの指摘
+
+SKILL が `{kind}` と `{prior_path}` を指定する。
+
+1. `python3 {{plugin_root}}/scripts/gh-review.py collect '{pr_url}' {tmp_dir} --kind {kind}` を実行する。自分の GitHub アカウントで投稿した指摘とその会話が `{directory}/batch-{n}.json`（`{n}` は 1 から）に書き出され、`directory` と `batches` が出力される。非ゼロ終了なら、そのエラーで中断する。
+2. バッチごとに `Agent(subagent_type="cgh:comment-writer", prompt=...)` を起動する。1 メッセージで最大 20 個まで:
+
+```
+最初の行動として `{{plugin_root}}/skills/resolve/templates/posted-extract.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
+
+変数（テンプレート中の {{...}} placeholder を置換）:
+- batch_path: {directory}/batch-{n}.json
+- output_path: {directory}/extract-{n}.json
+- doc_lang: {doc_lang}
+
+戻り値に `template_id`（テンプレートの frontmatter から Read）を含める。
+```
+
+返される `template_id` は `3ab4949f-308c-4ca8-b856-0e6f91dfc72f` でなければならない。不一致なら再度起動し、2 回続いたら中断する。
+3. `python3 {{plugin_root}}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind {kind} --document {prior_path}` を実行する。`--trust` が指定されていれば追加する。`open`（まだ検証されていない指摘の ID）、`verified`（以前に検証済みで、検証が再度確認するもの）、`document`（確認する指摘の文書、なければ null）、`waived_document`（取り下げられた指摘のファイル、なければ null）が出力される。エラーが `extract-{n}.json` を名指すときは、そのバッチの担当をもう一度起動して再度実行する。2 度目の失敗か他の非ゼロ終了なら、そのエラーで中断する。
+
 ## コメントの文面
 
 コメントは PR 本文の言語で投稿し、プレビューは `{doc_lang}` のままとする。`draft` が `selected_ids`、`prior_ids`、`pr_body_path` を出力している。

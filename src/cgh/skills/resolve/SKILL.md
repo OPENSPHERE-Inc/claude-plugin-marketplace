@@ -1,12 +1,12 @@
 ---
 name: resolve
-description: URL で指定された GitHub プルリクエストに /cgh:review が投稿した指摘をコードに照らして検証し、ユーザーの指示を受けて、結果と確認したコミットを各指摘に返信する。投稿したレビューに作者が対応したか確認するよう求められたときに使う。
+description: URL で指定された GitHub プルリクエストにユーザーが挙げた指摘を、/cgh:review の投稿か手書きかを問わずコードに照らして検証し、ユーザーの指示を受けて、結果と確認したコミットを各指摘に返信する。投稿したレビューに作者が対応したか確認するよう求められたときに使う。
 allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(git rev-parse:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
 # 投稿済みレビューの検証
 
-`/cgh:review` が投稿した指摘がプルリクエストのヘッドで解決しているかを確認し、返信をユーザーが確認して指示した後に投稿する。
+`/cgh:review` または手書きで挙げた自分の指摘がプルリクエストのヘッドで解決しているかを確認し、返信をユーザーが確認して指示した後に投稿する。
 
 引数が `$ARGUMENTS` なら、プルリクエスト URL（`{pr_url}`）とオプションとして解釈する。
 
@@ -16,7 +16,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 1 — 投稿済みの指摘
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind review --document {document_path}` を実行する。`--trust` が指定されていれば追加する。自分の GitHub アカウントによる `/cgh:review` の指摘を、検証の対象外である Info を除いて見つけ、`open`（まだ検証されていないもの）、`verified`（以前に検証済みで、検証が再度確認するもの）、`document` を出力する。非ゼロ終了なら、そのエラーで中断する。`document` が null なら、確認するものがないことをユーザーに伝えて終了する。
+`{kind}` = `review`、`{prior_path}` = `{document_path}` で § 投稿済みの指摘 に従う。対象は自分の指摘だけで、検証の対象外である Info を除く。`document` が null なら、確認するものがないことをユーザーに伝えて終了する。
 
 ## Step 2 — 検証
 

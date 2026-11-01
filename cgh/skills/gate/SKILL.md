@@ -20,7 +20,7 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 ## Step 1 — Earlier findings
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind gate --document {tmp_dir}-prior.md`, adding `--trust` when given. It prints `open`, the IDs of the earlier gate findings not yet verified, `verified`, those verified earlier, which the verification checks again, `document`, the findings to check, or null, and `waived_document`, the file of the findings the user waived in earlier runs, or null. Set `{waived_document}` to that value. On a non-zero exit, abort with its error.
+Follow § Posted findings with `{kind}` = `gate` and `{prior_path}` = `{tmp_dir}-prior.md`. Set `{waived_document}` to the `waived_document` it prints.
 
 When `document` is not null, set `{prior_document}` to it and run `creview:resolve` with it. Override for every verification sub-agent: `Write the verification text in {doc_lang}.` Otherwise `{prior_document}` is `(none)`.
 

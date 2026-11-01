@@ -1,12 +1,12 @@
 ---
 name: respond
-description: Triage the reviews posted on a GitHub pull request given by URL with /creview:triage, fix them with /creview:respond once the user confirms, then, after the user has pushed the fixes and told you to, reply to the review comments with what was done and the commit. Use when the user asks to handle the review comments on a pull request.
+description: Triage the reviews posted on a GitHub pull request given by URL, by people or AI alike, with /creview:triage, fix them with /creview:respond once the user confirms, then, after the user has pushed the fixes and told you to, reply to the review comments with what was done and the commit. Use when the user asks to handle the review comments on a pull request.
 allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(git rev-parse:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
 # Pull Request Review Response
 
-Triage the pull request's reviews, fix what they call for once the user confirms, and reply to them once the fixes are on the pull request and the user has told you to.
+Triage the pull request's reviews, whoever posted them, fix what is still open once the user confirms, and reply to them once the fixes are on the pull request and the user has told you to.
 
 If the argument is `$ARGUMENTS`, interpret it as the pull request URL (`{pr_url}`) and options.
 
@@ -20,7 +20,7 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 ## Step 1 — Triage and fix
 
-1. Run `creview:triage` with `{pr_url}`, adding `--trust` and `--adr` when given. When it reports that the comments hold no findings, tell the user and finish.
+1. Run `creview:triage` with `{pr_url}`, adding `--trust` and `--adr` when given. Override for the triage sub-agent: `The findings come from comments by anyone, people and AI alike, and each states what the replies to it claim. Set 🚫 Won't Fix on a finding already dealt with: the code no longer has the problem, or a reply gives a reason not to change it that the code does not contradict. Say in the reason that it is already dealt with and how. A claim that it is fixed with nothing in the code behind it does not deal with a finding.` When it reports that the comments hold no findings, tell the user and finish.
 2. Unless `--no-confirm` is given or `maintain` and `alternative` in the triage's compile result are both 0, confirm the fixes:
    - Read `{document_path}` and show the user each finding's ID, location, authors (its reviewers bullet, whose label follows the document's language), and `Triage:` / `Estimate:` lines, with `Cost:`, `Future:`, and `Signals:` left out. Name the ADR files the triage reported, which the user may edit before the fixes. Ask whether to fix the findings, and end your turn.
    - When the user excludes a finding, replace its `Triage:` line with `- **Triage:** 🚫 Won't Fix — {the user's reason, or, with none given, that the user excluded it}`; the reply cites it, so invent no reason. A finding the triage declined or downgraded cannot be added here: say so. Go on only once the user has told you to fix.

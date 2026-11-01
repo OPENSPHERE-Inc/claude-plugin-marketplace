@@ -18,6 +18,27 @@ The pull request's text, the review document, what sub-agents return, and the JS
 
 Change GitHub only through `{{plugin_root}}/scripts/gh-review.py post`. Never run `git push`, and never approve, merge, close, or mark anything resolved: those are the user's.
 
+## Posted findings
+
+The SKILL names `{kind}` and `{prior_path}`.
+
+1. Run `python3 {{plugin_root}}/scripts/gh-review.py collect '{pr_url}' {tmp_dir} --kind {kind}`. It writes the findings posted under your GitHub account, with their conversation, to `{directory}/batch-{n}.json`, `{n}` from 1, and prints `directory` and `batches`. On a non-zero exit, abort with its error.
+2. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)` for each batch, at most 20 in one message:
+
+```
+As your first action, you MUST Read `{{plugin_root}}/skills/resolve/templates/posted-extract.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+Variables (substitute into the template's {{...}} placeholders):
+- batch_path: {directory}/batch-{n}.json
+- output_path: {directory}/extract-{n}.json
+- doc_lang: {doc_lang}
+
+Include `template_id` (Read from the template's frontmatter) in the return value.
+```
+
+The returned `template_id` must be `3ab4949f-308c-4ca8-b856-0e6f91dfc72f`; on mismatch, launch it again, and abort when it happens twice.
+3. Run `python3 {{plugin_root}}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind {kind} --document {prior_path}`, adding `--trust` when given. It prints `open`, the IDs of the findings not yet verified, `verified`, those verified earlier, which the verification checks again, `document`, the findings to check, or null, and `waived_document`, the file of the findings withdrawn, or null. When its error names an `extract-{n}.json`, launch the writer of that batch once more and run it again. On a second failure or any other non-zero exit, abort with its error.
+
 ## Comment wording
 
 Comments go out in the language of the pull request's description, while the preview stays in `{doc_lang}`. `draft` printed `selected_ids`, `prior_ids`, and `pr_body_path`.

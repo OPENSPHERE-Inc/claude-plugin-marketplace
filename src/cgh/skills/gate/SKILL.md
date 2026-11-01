@@ -20,7 +20,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 1 — 前回までの指摘
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind gate --document {tmp_dir}-prior.md` を実行する。`--trust` が指定されていれば追加する。`open`（まだ検証されていない前回までのゲート指摘の ID）、`verified`（以前に検証済みで、検証が再度確認するもの）、`document`（確認する指摘の文書、なければ null）、`waived_document`（ユーザーが以前の実行で取り下げた指摘のファイル、なければ null）が出力される。`{waived_document}` をその値とする。非ゼロ終了なら、そのエラーで中断する。
+`{kind}` = `gate`、`{prior_path}` = `{tmp_dir}-prior.md` で § 投稿済みの指摘 に従う。`{waived_document}` を、出力された `waived_document` とする。
 
 `document` が null でなければ、`{prior_document}` をそれとし、それで `creview:resolve` を実行する。すべての検証サブエージェントへのオーバーライド: `検証結果の文面を {doc_lang} で書く。` null なら `{prior_document}` は `(none)` とする。
 

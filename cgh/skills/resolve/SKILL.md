@@ -1,12 +1,12 @@
 ---
 name: resolve
-description: Verify against the code the findings that /cgh:review posted on a GitHub pull request given by URL, then, on the user's instruction, reply to each with the result and the commit it was checked at. Use when the user asks to check whether the author addressed the review they posted.
+description: Verify against the code the findings the user raised on a GitHub pull request given by URL, whether /cgh:review posted them or the user wrote them by hand, then, on the user's instruction, reply to each with the result and the commit it was checked at. Use when the user asks to check whether the author addressed the review they posted.
 allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(git rev-parse:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
 # Posted Review Verification
 
-Check whether the findings `/cgh:review` posted are resolved at the pull request's head, and reply once the user has seen the replies and told you to.
+Check whether the findings you raised, through `/cgh:review` or by hand, are resolved at the pull request's head, and reply once the user has seen the replies and told you to.
 
 If the argument is `$ARGUMENTS`, interpret it as the pull request URL (`{pr_url}`) and options.
 
@@ -16,7 +16,7 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 ## Step 1 — Posted findings
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind review --document {document_path}`, adding `--trust` when given. It finds the findings of `/cgh:review` under your GitHub account, leaving out Info, which verification skips, and prints `open`, those not yet verified, `verified`, those verified earlier, which the verification checks again, and `document`. On a non-zero exit, abort with its error. When `document` is null, tell the user there is nothing to check and finish.
+Follow § Posted findings with `{kind}` = `review` and `{prior_path}` = `{document_path}`. It takes your own findings only, leaving out Info, which verification skips. When `document` is null, tell the user there is nothing to check and finish.
 
 ## Step 2 — Verify
 
