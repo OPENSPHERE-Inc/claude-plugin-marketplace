@@ -182,8 +182,14 @@ The state lives on the pull request, so a later run needs nothing from an earlie
 - A thread marked resolved on GitHub counts as dealt with in `/cgh:respond`, and the skill reports
   how many it left out.
 - Finding IDs number on from your earlier ones, so an ID stays unique among your findings on a
-  pull request. An ID on the pull request can therefore differ from the ID in the local review
-  document.
+  pull request. The review document of `/cgh:review` numbers its own way, so an ID posted from it
+  can differ from the ID in that document.
+- `/cgh:respond` keeps these IDs.
+  - Your own findings have the same ID in its review document, its preview, and its report.
+  - A finding by anyone else takes a new ID, since IDs others write can collide with yours. The
+    reply that answers it records the ID, and later runs reuse it. Until then, the ID can change
+    from run to run.
+- `post` reads back what it sent and reports the URL of anything that reads back differently.
 
 ## Limitations
 

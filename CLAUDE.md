@@ -320,7 +320,9 @@ what comments by anyone already raise, and an override has the triage sub-agent 
 triage sub-agent an override tells to judge what is already dealt with, and its drafter judges
 from the conversation whether a comment needs a reply. Posted findings number on from the
 authenticated user's earlier ones, so an ID stays unique among that user's findings on a pull
-request.
+request. `/cgh:respond` passes `/creview:triage` the file `gh-review.py ids` writes, through
+`--finding-ids`, so that its document keeps the IDs of that user's comments and gives any other
+finding a new ID, which the posted reply records in `cgh:ids`. `post` reads back what it sent.
 
 ### Sub-agent launch contract
 

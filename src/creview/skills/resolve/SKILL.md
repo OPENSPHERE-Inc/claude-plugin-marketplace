@@ -20,7 +20,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 ## PR モード
 
-PR モードでは `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}`、`{skill}` は `resolve` とし、`{fetch_option}` は空とする（GitHub で解決済みとされたスレッドが本当に解決しているかは本スキルが検証するため）。
+PR モードでは `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}`、`{skill}` は `resolve` とし、`{compile_option}` は空、`{fetch_option}` は空とする（GitHub で解決済みとされたスレッドが本当に解決しているかは本スキルが検証するため）。
 
 ## ワークツリー
 

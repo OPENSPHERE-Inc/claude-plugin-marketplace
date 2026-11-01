@@ -338,12 +338,12 @@ def all_comments(host, repo, number):
     ]
     return {
         "issue_comments": [
-            {"author": login(c.get("user")), "created_at": c.get("created_at"),
-             "body": c.get("body") or ""}
+            {"id": c.get("id"), "author": login(c.get("user")),
+             "created_at": c.get("created_at"), "body": c.get("body") or ""}
             for c in issue_comments
         ],
         "reviews": [
-            {"author": login(r.get("user")), "state": r.get("state"),
+            {"id": r.get("id"), "author": login(r.get("user")), "state": r.get("state"),
              "submitted_at": r.get("submitted_at"), "body": r.get("body") or ""}
             for r in reviews if r.get("body") and r.get("state") != "PENDING"
         ],

@@ -20,8 +20,8 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 1 — トリアージと修正
 
-1. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py participants '{pr_url}'` を実行する。`viewer`、`author`、`assignees` が出力される。`{deciders}` を `assignees` とし、`assignees` が空なら `author` とする: 両者が異なるときは `assignees` を優先する。`{pr_url}` で `creview:triage` を実行する。`--trust` と `--adr` が指定されていれば追加する。オーバーライド:
-   - すべての `pr-comment-compiler`: `返信の主張を、発言者の login とともに指摘の説明に書く。`
+1. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py participants '{pr_url}'` を実行する。`viewer`、`author`、`assignees` が出力される。`{deciders}` を `assignees` とし、`assignees` が空なら `author` とする: 両者が異なるときは `assignees` を優先する。`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py ids '{pr_url}' '{tmp_dir}'` を実行する。`path` が出力される。自分の指摘はドキュメントでも ID を保ち、それ以外の指摘は新しい ID を受け取り、その指摘に投稿する返信がそれを記録する。`{pr_url} --finding-ids '{path}'` で `creview:triage` を実行する。`--trust` と `--adr` が指定されていれば追加する。オーバーライド:
+   - すべての `pr-comment-compiler`: `返信の主張を、発言者の login とともに指摘の説明に書く。cgh:finding マーカー内の一節では、指摘の "id" にマーカーの ID も設定する。`
    - トリアージサブエージェント: `指摘は人間や AI を問わず誰かのコメントに由来し、それぞれ返信が主張する内容と発言者を述べている。既に対応済みの指摘には 🚫 Won't Fix を設定する: (a) コードに問題がもうない: 理由を [resolved] で始める。(b) そのレビューが dismiss された。(c) {deciders} の誰かが理由を述べて変更しないと決めた。(d) 指摘したレビュアー本人が取り下げた。理由にはどう対応されたかを、そう述べた人の login とともに書く。それ以外の人の発言は判断基準にしない。ただし、プルリクエストの作者の質問に誰かが答え作者がそれを受けている場合のように、{deciders} の誰かかそのレビュアーが述べたと見なせるときは採用する。返信で判断を変えるときは必ず述べられた事実をコードで確認し、コードが否定するなら採用しない。コードの裏付けのない修正済みという主張は対応にならない。これらの理由には別 PR の推奨を付けない。`
 
    コメントに指摘がないと報告されたら、ユーザーに伝えて終了する。

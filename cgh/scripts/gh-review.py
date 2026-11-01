@@ -78,6 +78,11 @@ posted.
 participants: prints viewer, the authenticated user, and author and assignees, the pull
 request's.
 
+ids: writes <tmp_dir>/finding-ids.json for creview's compile-pr-comments.py: comments, the IDs the
+authenticated user's comments give the comments they raise or answer, by item key, and used, every
+ID that user has used on the pull request. Nobody else's comments count, since their IDs can
+collide with the user's.
+
 fixes: writes <tmp_dir>/fix-commits.json, the commits on the document's Branch bullet,
 or HEAD without one, past the document's head. Prints head_ref, the pull request's branch,
 as null when its name holds a character unsafe to show in a command.
@@ -109,9 +114,15 @@ unknown the review counts as posted, so that a rerun cannot send it twice. A rep
 review or an issue comment goes out as an issue comment that mentions its author. Replies sent
 are marked in the file, so a rerun skips them. A reply is marked as attempted before it goes
 out, and a rerun sends an attempted one only when the user has no comment with the same body on
-the pull request. --commits refuses a file with findings or a
+the pull request. A reply records in a cgh:ids marker each of its finding IDs that its target does
+not carry yet, so that ids gives them back. --commits refuses a file with findings or a
 reply that marks a finding verified, and refuses to send anything until the pull request
 contains those commits.
+
+post then reads back what it sent: a reply's body, author, and thread, or a review's state, body,
+and number of comments. A difference, or a failure to read, exits 1 and names the URL, with what
+was sent marked in the file, so that a rerun does not send it again. A review a failed call still
+submitted is not read back. The output's confirmed says how much was.
 
 Prints a JSON object. Exits 1 with an error message on stderr on any failure.
 """
@@ -232,9 +243,10 @@ mutation($input: SubmitPullRequestReviewInput!) {
 """
 REVIEW_STATE = """
 query($id: ID!) {
-  node(id: $id) { ... on PullRequestReview { state url } }
+  node(id: $id) { ... on PullRequestReview { state url body comments { totalCount } } }
 }
 """
+SUBMITTED_STATES = {"COMMENT": "COMMENTED", "REQUEST_CHANGES": "CHANGES_REQUESTED"}
 REVIEW_THREADS = """
 query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
@@ -732,6 +744,42 @@ def used_ids(pr, viewer):
                 used.update(match.group(1).split(","))
         used.update(fid for ids in recorded_ids([body]).values() for fid in ids)
     return used
+
+
+def own_finding_ids(pr, viewer):
+    """The IDs the viewer's comments give the comments they raise or answer, by item key."""
+    known = {}
+
+    def add(key, ids):
+        for fid in ids:
+            if fid not in known.setdefault(key, []):
+                known[key].append(fid)
+
+    reviews, comments, issue_comments = visible_comments(pr)
+    own = [e for group in (reviews, comments, issue_comments) for e in group
+           if comment_author(e) == viewer]
+    for review in reviews:
+        if comment_author(review) == viewer:
+            add(f"review:{review.get('id')}",
+                [m.group("id") for m in FINDING_RE.finditer(review.get("body") or "")])
+    for comment in comments:
+        if comment_author(comment) == viewer:
+            body = comment.get("body") or ""
+            add(f"thread:{comment.get('in_reply_to_id') or comment.get('id')}",
+                [m.group("id") for m in FINDING_RE.finditer(body)]
+                + [m.group(1) for m in REPLY_ID_RE.finditer(body)])
+    for key, ids in recorded_ids([e.get("body") or "" for e in own]).items():
+        add(key, ids)
+    return {key: ids for key, ids in known.items() if ids}
+
+
+def cmd_ids(pr_url, tmp_dir):
+    pr = checked_pr(pr_url)
+    viewer = view_pr(pr, require_open=False)["viewer"]
+    comments = own_finding_ids(pr, viewer)
+    path = os.path.join(tmp_dir, "finding-ids.json")
+    write_json(path, {"comments": comments, "used": sorted(used_ids(pr, viewer))})
+    return {"path": path, "comments": len(comments)}
 
 
 def spoken(comment, viewer):
@@ -1443,6 +1491,28 @@ def settle_failed_review(pr, review_id, path, draft, error):
     raise error
 
 
+def same_text(left, right):
+    normalized = [(text or "").replace("\r\n", "\n").strip() for text in (left, right)]
+    return normalized[0] == normalized[1]
+
+
+def confirm_review(pr, review_id, url, event, body, threads):
+    try:
+        node = graphql(pr, REVIEW_STATE, id=review_id).get("node") or {}
+    except Error as e:
+        raise Error(f"the review at {url} went out but could not be read back: {e}") from None
+    problems = []
+    if node.get("state") != SUBMITTED_STATES.get(event):
+        problems.append(f"state {node.get('state')} for {event}")
+    if not same_text(node.get("body"), body):
+        problems.append("another body")
+    found = (node.get("comments") or {}).get("totalCount")
+    if found != threads:
+        problems.append(f"{found} comments of {threads}")
+    if problems:
+        raise Error(f"the review at {url} went out but reads back with {', '.join(problems)}")
+
+
 def post_review(pr, path, draft):
     if draft.get("posted"):
         raise Error("this review was already posted")
@@ -1498,11 +1568,13 @@ def post_review(pr, path, draft):
         recovered = str(e)
     draft["posted"] = True
     write_json(path, draft)
+    if not recovered:
+        confirm_review(pr, review_id, url, plan["event"], body, counts["inline"] + counts["file"])
     return {
         "review_url": url,
         "event": plan["event"], "verdict": plan["verdict"], "own_pr": plan["own_pr"],
         "inline": counts["inline"], "file": counts["file"], "body": len(to_body),
-        "fallbacks": fallbacks, "recovered_from": recovered,
+        "fallbacks": fallbacks, "recovered_from": recovered, "confirmed": not recovered,
     }
 
 
@@ -1530,8 +1602,19 @@ def reply_author(pr, entry, viewer):
     return login if login and login != viewer else None
 
 
-def reply_request(pr, entry, viewer):
-    """Where a reply is sent, the comments it joins there, and its body."""
+def record_new_ids(entry, key, known):
+    """Adds to the reply's origins the finding IDs its target does not carry yet. A reply already
+    attempted keeps its origins: a rerun finds whether it landed by its body.
+    """
+    recorded = {fid for ids in entry["origins"].values() for fid in ids}
+    new = [fid for fid in entry["finding_ids"]
+           if fid not in known.get(key, []) and fid not in recorded]
+    if new and not entry.get("attempted"):
+        entry["origins"][key] = new
+
+
+def reply_request(pr, entry, viewer, known):
+    """Where a reply is sent, the comment it answers, the comments it joins there, and its body."""
     body = safe_text(reply_text(entry, True))
     if entry["verified"]:
         body += f"\n\n<!-- cgh:verified {','.join(entry['verified'])} -->"
@@ -1549,11 +1632,13 @@ def reply_request(pr, entry, viewer):
         answered = entry["target_id"]
         collection = path = f"repos/{pr.repo}/issues/{pr.number}/comments"
     label = entry["kind"] if answered is None else f"{entry['kind']} {answered}"
+    if answered is not None:
+        record_new_ids(entry, f"{entry['kind']}:{answered}", known)
     body += f"\n\n<!-- cgh:reply {label} -->"
     if entry["origins"]:
         origins = ";".join(f"{key}={','.join(ids)}" for key, ids in entry["origins"].items())
         body += f"\n<!-- cgh:ids {origins} -->"
-    return path, collection, checked_size(body, "a reply")
+    return path, answered, collection, checked_size(body, "a reply")
 
 
 def sent_reply(pr, collection, body, viewer):
@@ -1565,24 +1650,48 @@ def sent_reply(pr, collection, body, viewer):
     return None
 
 
+def confirm_reply(pr, entry, sent, answered, body, viewer):
+    """Reads a reply back and returns its URL."""
+    url = sent.get("html_url") or pr.url
+    kind = "pulls" if entry["kind"] == "thread" else "issues"
+    try:
+        comment = rest_get(pr, f"repos/{pr.repo}/{kind}/comments/{sent.get('id')}")
+    except Error as e:
+        raise Error(f"the reply at {url} went out but could not be read back: {e}") from None
+    problems = []
+    if not same_text(comment.get("body"), body):
+        problems.append("another body")
+    if comment_author(comment) != viewer:
+        problems.append(f"author {comment_author(comment)}")
+    if entry["kind"] == "thread" and comment.get("in_reply_to_id") != answered:
+        problems.append(f"thread {comment.get('in_reply_to_id')} for {answered}")
+    if problems:
+        raise Error(f"the reply at {url} went out but reads back with {', '.join(problems)}")
+    return comment.get("html_url") or url
+
+
 def post_replies(pr, path, data):
     replies = validated_replies(data)
     viewer = view_pr(pr, require_open=False)["viewer"]
     urls = []
+    known = None
     for entry in replies:
         if not entry["selected"] or entry["posted"]:
             continue
-        target, collection, body = reply_request(pr, entry, viewer)
+        if known is None:
+            known = own_finding_ids(pr, viewer)
+        target, answered, collection, body = reply_request(pr, entry, viewer, known)
         # GitHub can apply a post whose response fails.
         url = sent_reply(pr, collection, body, viewer) if entry.get("attempted") else None
+        sent = None
         if not url:
             entry["attempted"] = True
             write_json(path, data)
-            url = rest_post(pr, target, {"body": body}).get("html_url")
-        urls.append(url)
+            sent = rest_post(pr, target, {"body": body})
         entry["posted"] = True
         write_json(path, data)
-    return {"posted": len(urls), "urls": urls}
+        urls.append(confirm_reply(pr, entry, sent, answered, body, viewer) if sent else url)
+    return {"posted": len(urls), "urls": urls, "confirmed": len(urls)}
 
 
 def commit_on_pr(pr, sha, head):
@@ -1825,6 +1934,7 @@ def parser():
     command("comments", "pr_url", "tmp_dir")
     command("raised", "pr_url", "tmp_dir")
     command("participants", "pr_url")
+    command("ids", "pr_url", "tmp_dir")
     command("fixes", "pr_url", "tmp_dir", "document")
     command("pushed", "pr_url", "commits")
     replies = command("replies", "pr_url", "tmp_dir", "document")
@@ -1851,6 +1961,8 @@ def dispatch(args):
         return cmd_raised(args.pr_url, args.tmp_dir)
     if args.command == "participants":
         return cmd_participants(args.pr_url)
+    if args.command == "ids":
+        return cmd_ids(args.pr_url, args.tmp_dir)
     if args.command == "fixes":
         return cmd_fixes(args.pr_url, args.tmp_dir, args.document)
     if args.command == "pushed":

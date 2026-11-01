@@ -192,6 +192,9 @@ class FakeGitHub:
         self.fail_threads = set()
         self.thread_error = mod.Rejected("thread refused")
         self.post_failures = []
+        self.read_back = {}
+        self.thread_count = 0
+        self.submitted = {}
         self.threads = []
         self.state_answer = None
         self.fail_submit = False
@@ -232,7 +235,15 @@ class FakeGitHub:
                            "body": body["body"], "html_url": f"https://github.com/{path}#landed"})
         if failure:
             raise mod.Error(f"post {failure}")
-        return json.dumps({"html_url": f"https://github.com/{path}#new"})
+        cid = 1000 + len(self.posts)
+        replied = re.search(r"/comments/([0-9]+)/replies$", path)
+        kind = "issues" if "/issues/" in path else "pulls"
+        url = f"https://github.com/{path}#new"
+        self.objects[f"repos/acme/app/{kind}/comments/{cid}"] = {
+            "id": cid, "user": {"login": self.view["data"]["viewer"]["login"]},
+            "body": body["body"], "html_url": url,
+            "in_reply_to_id": int(replied.group(1)) if replied else None, **self.read_back}
+        return json.dumps({"id": cid, "html_url": url})
 
     def git_answer(self, cmd):
         key = cmd[3] if cmd[1] == "-c" else cmd[1]
@@ -276,7 +287,9 @@ class FakeGitHub:
             if self.state_answer is not None:
                 return self.state_answer
             return json.dumps({"data": {"node": {
-                "state": self.review_state, "url": f"{URL}#pullrequestreview-1"}}})
+                "state": self.review_state, "url": f"{URL}#pullrequestreview-1",
+                "body": self.submitted.get("body"),
+                "comments": {"totalCount": self.thread_count}, **self.read_back}}})
         self.mutations.append((query, variables))
         input_ = variables["input"]
         if "addPullRequestReview(" in query:
@@ -286,13 +299,17 @@ class FakeGitHub:
             key = (input_["path"], input_.get("subjectType"))
             if key in self.fail_threads:
                 raise self.thread_error
+            self.thread_count += 1
             return json.dumps({"data": {"addPullRequestReviewThread": {"thread": {"id": "T"}}}})
         if "submitPullRequestReview" in query:
+            submitted = {"COMMENT": "COMMENTED",
+                         "REQUEST_CHANGES": "CHANGES_REQUESTED"}[input_["event"]]
+            self.submitted = input_
             if self.fail_submit:
                 if self.submit_applies:
-                    self.review_state = "COMMENTED"
+                    self.review_state = submitted
                 raise mod.Error("submit refused")
-            self.review_state = "COMMENTED"
+            self.review_state = submitted
             return json.dumps({"data": {"submitPullRequestReview": {
                 "pullRequestReview": {"url": f"{URL}#pullrequestreview-1"}}}})
         if self.fail_delete or self.review_state != "PENDING":
@@ -1421,6 +1438,241 @@ class Replies(Base):
         self.fake()
         commits = self.save({"commits": []}, "fix-commits.json")
         self.assertTrue(mod.cmd_pushed(URL, commits)["pushed"])
+
+
+def own_finding(fid, kind="review", location="a.py:1"):
+    return (f"<!-- cgh:finding {fid} {kind} {location} -->\ntext\n<!-- /cgh:finding {fid} -->")
+
+
+THREAD_11 = {"id": 11, "in_reply_to_id": 10,
+             "pull_request_url": "https://api.github.com/repos/acme/app/pulls/7",
+             "user": {"login": "rev"}}
+
+
+class FindingIds(Base):
+    def ids(self):
+        result = mod.cmd_ids(URL, self.dir)
+        self.assertEqual(result["path"], os.path.join(self.dir, "finding-ids.json"))
+        return json.loads(read_text(result["path"]))
+
+    def test_own_markers_give_the_ids_of_their_comments(self):
+        gh = self.fake()
+        gh.review_comments = [
+            {"id": 5, "user": {"login": "me"}, "body": own_finding("mi-13")},
+            {"id": 6, "user": {"login": "rev"}, "body": own_finding("mi-99")},
+        ]
+        gh.reviews = [{"id": 4, "state": "COMMENTED", "user": {"login": "me"},
+                       "body": own_finding("M-1") + own_finding("mi-2", "gate")}]
+        written = self.ids()
+        self.assertEqual(written["comments"], {"thread:5": ["mi-13"], "review:4": ["M-1", "mi-2"]})
+        self.assertEqual(written["used"], ["M-1", "mi-13", "mi-2"])
+
+    def test_own_replies_give_the_ids_of_the_comments_they_answer(self):
+        gh = self.fake()
+        gh.review_comments = [
+            {"id": 8, "user": {"login": "copilot"}, "body": "bad"},
+            {"id": 9, "in_reply_to_id": 8, "user": {"login": "me"},
+             "body": "fixed\n\n<!-- cgh:reply thread 8 -->\n<!-- cgh:ids thread:8=mi-50 -->"},
+            {"id": 12, "user": {"login": "me"}, "body": "hand written"},
+            {"id": 13, "in_reply_to_id": 12, "user": {"login": "me"},
+             "body": "💬 **Minor mi-7**: not yet\n\n<!-- cgh:reply thread 12 -->"},
+            {"id": 14, "in_reply_to_id": 12, "user": {"login": "rev"},
+             "body": "**Minor mi-98**\n<!-- cgh:ids thread:12=mi-97 -->"},
+        ]
+        gh.issue_comments = [{"id": 20, "user": {"login": "me"},
+                              "body": "x\n<!-- cgh:ids issue_comment:3=M-4;review:6=M-5 -->"}]
+        self.assertEqual(self.ids()["comments"], {
+            "thread:8": ["mi-50"], "thread:12": ["mi-7"], "issue_comment:3": ["M-4"],
+            "review:6": ["M-5"]})
+
+    def test_a_reply_records_an_id_its_target_does_not_carry(self):
+        gh = self.fake()
+        gh.objects = {"repos/acme/app/pulls/comments/11": THREAD_11}
+        path = self.save({"replies": [{"kind": "thread", "target_id": 11,
+                                       "finding_ids": ["mi-50"], "body": "fixed"}]}, "r.json")
+        mod.cmd_post(URL, path, None)
+        self.assertIn("<!-- cgh:ids thread:10=mi-50 -->", gh.posts[0][1]["body"])
+        self.assertEqual(self.ids()["comments"], {})
+        gh.review_comments.append({"id": 30, "in_reply_to_id": 10, "user": {"login": "me"},
+                                   "body": gh.posts[0][1]["body"]})
+        self.assertEqual(self.ids()["comments"], {"thread:10": ["mi-50"]})
+
+    def test_a_reply_to_a_finding_with_its_id_on_the_target_records_nothing(self):
+        gh = self.fake()
+        gh.review_comments = [{"id": 10, "user": {"login": "me"}, "body": own_finding("mi-13")}]
+        gh.objects = {"repos/acme/app/pulls/comments/10": {**THREAD_11, "id": 10,
+                                                           "in_reply_to_id": None}}
+        path = self.save({"replies": [{"kind": "thread", "target_id": 10,
+                                       "finding_ids": ["mi-13"], "body": "fixed"}]}, "r.json")
+        mod.cmd_post(URL, path, None)
+        self.assertNotIn("cgh:ids", gh.posts[0][1]["body"])
+
+    def test_a_reply_outside_threads_records_under_its_target(self):
+        gh = self.fake()
+        gh.objects = {
+            "repos/acme/app/pulls/7/reviews/4": {"id": 4, "user": {"login": "rev"}},
+            "repos/acme/app/issues/comments/3": {
+                "id": 3, "user": {"login": "rev"},
+                "issue_url": "https://api.github.com/repos/acme/app/issues/7"}}
+        path = self.save({"replies": [
+            {"kind": "review", "target_id": 4, "finding_ids": ["M-9"], "body": "a"},
+            {"kind": "issue_comment", "target_id": 3, "finding_ids": ["M-8"], "body": "b"},
+        ]}, "r.json")
+        mod.cmd_post(URL, path, None)
+        self.assertIn("cgh:ids review:4=M-9", gh.posts[0][1]["body"])
+        self.assertIn("cgh:ids issue_comment:3=M-8", gh.posts[1][1]["body"])
+
+    def test_an_id_a_reply_already_records_is_not_recorded_again(self):
+        gh = self.fake()
+        gh.objects = {"repos/acme/app/pulls/comments/11": THREAD_11}
+        path = self.save({"replies": [{
+            "kind": "thread", "target_id": 11, "finding_ids": ["mi-2"], "body": "a",
+            "origins": {"thread:11": ["mi-2"]}}]}, "r.json")
+        mod.cmd_post(URL, path, None)
+        self.assertEqual(re.findall(r"cgh:ids (\S+)", gh.posts[0][1]["body"]), ["thread:11=mi-2"])
+
+    def test_a_rerun_finds_a_landed_reply_by_the_body_it_first_had(self):
+        gh = self.fake()
+        gh.objects = {"repos/acme/app/pulls/comments/11": THREAD_11}
+        gh.post_failures = ["lost"]
+        path = self.save({"replies": [{"kind": "thread", "target_id": 11,
+                                       "finding_ids": ["mi-50"], "body": "fixed"}]}, "r.json")
+        with self.assertRaises(mod.Error):
+            mod.cmd_post(URL, path, None)
+        gh.review_comments[-1]["in_reply_to_id"] = 10
+        self.assertEqual(mod.cmd_post(URL, path, None)["posted"], 1)
+        self.assertEqual(len(gh.posts), 1)
+
+    def test_compiled_document_keeps_the_ids_the_script_writes(self):
+        gh = self.fake()
+        gh.review_comments = [
+            {"id": 5, "user": {"login": "me"}, "body": own_finding("mi-13")},
+            {"id": 8, "user": {"login": "copilot"}, "body": own_finding("mi-1")},
+        ]
+        ids_path = mod.cmd_ids(URL, self.dir)["path"]
+        tmp = os.path.join(self.dir, "compile")
+        os.makedirs(os.path.join(tmp, "pr-comments"))
+        with open(os.path.join(tmp, "pr-comments", "batch-1.json"), "w", encoding="utf-8") as f:
+            json.dump({}, f)
+        with open(os.path.join(tmp, "pr-comments", "extract-1.jsonl"), "w", encoding="utf-8") as f:
+            json.dump({"findings": [
+                {"severity": "Major", "location": "a.py:1", "authors": ["me"],
+                 "description": "x", "sources": ["thread:5"]},
+                {"severity": "Minor", "location": "b.py:1", "authors": ["copilot"],
+                 "description": "y", "sources": ["thread:8"]},
+            ]}, f)
+        doc = os.path.join(self.dir, "compiled.md")
+        subprocess.run([sys.executable,
+                        os.path.join(ROOT, "creview", "scripts", "compile-pr-comments.py"),
+                        tmp, doc, "--pr-url", URL, "--head", HEAD, "--merge-base", BASE,
+                        "--branch", "(none)", "--trust", "off", "--lang", "ja",
+                        "--finding-ids", ids_path], check=True, capture_output=True)
+        _, findings = mod.parse_document(doc)
+        self.assertEqual([f["id"] for f in findings], ["mi-13", "mi-14"])
+
+
+class PostConfirmation(Base):
+    def post_one(self, gh):
+        gh.objects = {"repos/acme/app/pulls/comments/11": THREAD_11}
+        path = self.save({"replies": [{"kind": "thread", "target_id": 11, "finding_ids": [],
+                                       "body": "fixed"}]}, "r.json")
+        return path, mod.cmd_post(URL, path, None)
+
+    def test_a_reply_is_read_back(self):
+        gh = self.fake()
+        path, result = self.post_one(gh)
+        self.assertEqual((result["posted"], result["confirmed"]), (1, 1))
+        self.assertIn(["gh", "api", "--hostname", "github.com", "repos/acme/app/pulls/comments/1001"],
+                      [c[:5] for c in gh.calls])
+
+    def assert_refused(self, gh, pattern):
+        path = self.save({"replies": [{"kind": "thread", "target_id": 11, "finding_ids": [],
+                                       "body": "fixed"}]}, "r.json")
+        gh.objects = {"repos/acme/app/pulls/comments/11": THREAD_11}
+        with self.assertRaisesRegex(mod.Error, pattern):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(len(gh.posts), 1)
+        self.assertTrue(json.loads(read_text(path))["replies"][0]["posted"])
+        self.assertEqual(mod.cmd_post(URL, path, None)["posted"], 0)
+        self.assertEqual(len(gh.posts), 1)
+
+    def test_a_reply_that_reads_back_with_another_body_is_reported(self):
+        gh = self.fake()
+        gh.read_back = {"body": "something else"}
+        self.assert_refused(gh, "body")
+
+    def test_a_reply_that_reads_back_in_another_thread_is_reported(self):
+        gh = self.fake()
+        gh.read_back = {"in_reply_to_id": 99}
+        self.assert_refused(gh, "thread")
+
+    def test_a_reply_that_reads_back_by_another_author_is_reported(self):
+        gh = self.fake()
+        gh.read_back = {"user": {"login": "rev"}}
+        self.assert_refused(gh, "author")
+
+    def test_a_reply_that_cannot_be_read_back_is_reported(self):
+        gh = self.fake()
+        real = gh.rest
+
+        def rest(path):
+            if path.endswith("/comments/1001"):
+                raise mod.Error("gone")
+            return real(path)
+        gh.rest = rest
+        self.assert_refused(gh, "gone")
+
+    def test_a_reply_outside_threads_is_read_back_from_issue_comments(self):
+        gh = self.fake()
+        path = self.save({"replies": [{"kind": "issue", "target_id": None, "finding_ids": [],
+                                       "body": "fixed"}]}, "r.json")
+        self.assertEqual(mod.cmd_post(URL, path, None)["confirmed"], 1)
+        self.assertIn("repos/acme/app/issues/comments/1001", [c[4] for c in gh.calls
+                                                              if len(c) > 4])
+
+    def test_line_endings_do_not_count_as_another_body(self):
+        gh = self.fake()
+        gh.objects = {"repos/acme/app/pulls/comments/11": THREAD_11}
+        path = self.save({"replies": [{"kind": "thread", "target_id": 11, "finding_ids": [],
+                                       "body": "a\nb"}]}, "r.json")
+        real = gh.rest
+
+        def rest(path):
+            answer = real(path)
+            return ({**answer, "body": answer["body"].replace("\n", "\r\n")}
+                    if path.endswith("/comments/1001") else answer)
+        gh.rest = rest
+        self.assertEqual(mod.cmd_post(URL, path, None)["confirmed"], 1)
+
+    def test_a_review_is_read_back(self):
+        self.fake()
+        self.draft()
+        result = mod.cmd_post(URL, os.path.join(self.dir, "draft.json"), None)
+        self.assertTrue(result["confirmed"])
+
+    def assert_review_refused(self, gh, pattern):
+        self.draft()
+        path = os.path.join(self.dir, "draft.json")
+        with self.assertRaisesRegex(mod.Error, pattern):
+            mod.cmd_post(URL, path, None)
+        self.assertTrue(json.loads(read_text(path))["posted"])
+        with self.assertRaisesRegex(mod.Error, "already posted"):
+            mod.cmd_post(URL, path, None)
+
+    def test_a_review_that_reads_back_in_another_state_is_reported(self):
+        gh = self.fake()
+        gh.read_back = {"state": "PENDING"}
+        self.assert_review_refused(gh, "state")
+
+    def test_a_review_that_reads_back_with_fewer_threads_is_reported(self):
+        gh = self.fake()
+        gh.read_back = {"comments": {"totalCount": 0}}
+        self.assert_review_refused(gh, "comment")
+
+    def test_a_review_that_reads_back_with_another_body_is_reported(self):
+        gh = self.fake()
+        gh.read_back = {"body": "something else"}
+        self.assert_review_refused(gh, "body")
 
 
 class Fixes(Base):
@@ -2739,7 +2991,8 @@ class Wording(Base):
         self.assertIn("修正しました", preview)
         self.assertIn("Fixed", read_text(result["post_preview_path"]))
         mod.cmd_post(URL, path, None)
-        self.assertEqual(gh.posts[0][1]["body"], "Fixed\n\n<!-- cgh:reply thread 1 -->")
+        self.assertEqual(gh.posts[0][1]["body"],
+                         "Fixed\n\n<!-- cgh:reply thread 1 -->\n<!-- cgh:ids thread:1=M-1 -->")
 
     def test_a_drafted_translation_goes_out_without_a_wording_step(self):
         gh = self.fake()
@@ -2751,7 +3004,8 @@ class Wording(Base):
             {"kind": "thread", "target_id": 1, "finding_ids": ["M-1"], "body": "修正しました",
              "post_body": "Fixed"}]}, "replies.json")
         mod.cmd_post(URL, path, None)
-        self.assertEqual(gh.posts[0][1]["body"], "Fixed\n\n<!-- cgh:reply thread 1 -->")
+        self.assertEqual(gh.posts[0][1]["body"],
+                         "Fixed\n\n<!-- cgh:reply thread 1 -->\n<!-- cgh:ids thread:1=M-1 -->")
 
     def test_reply_wording_out_of_range_is_refused(self):
         self.fake()
@@ -2893,6 +3147,7 @@ class Cli(unittest.TestCase):
             (["comments", URL, "t"], "cmd_comments", (URL, "t")),
             (["raised", URL, "t"], "cmd_raised", (URL, "t")),
             (["participants", URL], "cmd_participants", (URL,)),
+            (["ids", URL, "t"], "cmd_ids", (URL, "t")),
             (["fixes", URL, "t", "d"], "cmd_fixes", (URL, "t", "d")),
             (["pushed", URL, "c"], "cmd_pushed", (URL, "c")),
             (["replies", URL, "t", "d", "--lang", "ja"], "cmd_replies", (URL, "t", "d", "ja")),

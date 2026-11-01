@@ -206,7 +206,7 @@ other_pages = {
         {"id": 4, "state": "DISMISSED", "user": {"login": "x"}, "submitted_at": "t3", "body": ""},
     ],
     "repos/o/r/issues/7/comments": [
-        {"user": {"login": "y"}, "created_at": "t2", "body": long_body},
+        {"id": 8, "user": {"login": "y"}, "created_at": "t2", "body": long_body},
     ],
 }
 g.api_pages = lambda endpoint, host: ([
@@ -223,9 +223,10 @@ got = comments["review_comments"]
 expect("all_comments leaves out a pending review's comments", [c["id"] for c in got],
        [10, 11, 12, 13, 14, 16])
 expect("all_comments keeps a submitted review with a body", comments["reviews"],
-       [{"author": "x", "state": "APPROVED", "submitted_at": "t1", "body": long_body}])
+       [{"id": 3, "author": "x", "state": "APPROVED", "submitted_at": "t1",
+         "body": long_body}])
 expect("all_comments converts issue comments", comments["issue_comments"],
-       [{"author": "y", "created_at": "t2", "body": long_body}])
+       [{"id": 8, "author": "y", "created_at": "t2", "body": long_body}])
 expect("all_comments thread_resolved", [c["thread_resolved"] for c in got],
        [True, True, None, None, None, None])
 expect("all_comments outdated", [c["outdated"] for c in got],
@@ -1143,6 +1144,75 @@ with open(doc, encoding="utf-8") as f:
     body = f.read()
 for text, want in ESCAPES:
     expect(f"description {text!r}", f"\n{want}\n" in body, True)
+
+
+
+def with_ids(name, known, *findings):
+    tmp = setup(name, list(findings))
+    path = os.path.join(tmp, "ids.json")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(known if isinstance(known, str) else json.dumps(known))
+    return run(tmp, "--branch", "(none)", "--trust", "off", "--lang", "en", "--finding-ids", path)
+
+
+def ids_of(doc):
+    with open(doc, encoding="utf-8") as f:
+        return re.findall(r"^### (\S+) — `([^`]+)`", f.read(), re.M)
+
+
+proc, doc = with_ids("kept", {"comments": {"thread:5": ["mi-13"], "thread:6": ["M-4"]},
+                              "used": ["mi-13", "M-4", "mi-20", "C-2"]},
+                     finding("Minor", "a.c:1", sources=["thread:5"]),
+                     finding("Minor", "b.c:1", sources=["thread:8"]),
+                     finding("Minor", "c.c:1"),
+                     finding("Critical", "d.c:1", sources=["thread:9"]),
+                     finding("Minor", "e.c:1", sources=["thread:6"]))
+expect("kept ids exit", proc.returncode, 0)
+expect("an own finding keeps its id and the others number on after every used id", ids_of(doc), [
+    ("C-3", "d.c:1"), ("M-4", "e.c:1"), ("mi-13", "a.c:1"), ("mi-21", "b.c:1"), ("mi-22", "c.c:1"),
+])
+with open(doc, encoding="utf-8") as f:
+    text = f.read()
+expect("a kept id has its markers", "<!-- METADATA(mi-13) -->\n<!-- /METADATA(mi-13) -->" in text, True)
+
+proc, doc = with_ids("own-several", {"comments": {"review:4": ["M-1", "mi-2", "mi-3"]},
+                                 "used": ["M-1", "mi-2", "mi-3"]},
+                     finding("Major", "z.c:1", sources=["review:4"], id="mi-3"),
+                     finding("Minor", "y.c:1", sources=["review:4"]),
+                     finding("Major", "x.c:1", sources=["review:4"]),
+                     finding("Major", "w.c:1", sources=["review:4"]))
+expect("a comment's ids go by the id named, then by severity, once each", ids_of(doc), [
+    ("M-2", "w.c:1"), ("M-1", "x.c:1"), ("mi-2", "y.c:1"), ("mi-3", "z.c:1"),
+])
+
+proc, doc = with_ids("foreign", {"comments": {"thread:5": ["mi-13"]}, "used": ["mi-13"]},
+                     finding("Minor", "a.c:1", sources=["thread:7"], id="mi-13"),
+                     finding("Minor", "b.c:1", id="C-9", sources=["thread:5"]))
+expect("an id named but not on the finding's comments does not count", ids_of(doc), [
+    ("mi-14", "a.c:1"), ("mi-13", "b.c:1"),
+])
+
+proc, doc = with_ids("own-info", {"comments": {"thread:5": ["I-3"]}, "used": ["I-3"]},
+                     finding("Minor", "a.c:1", sources=["thread:5"]))
+expect("an own Info finding keeps its id", ids_of(doc), [("I-3", "a.c:1")])
+with open(doc, encoding="utf-8") as f:
+    text = f.read()
+expect("an own Info finding goes under Info", text.index("## Info") < text.index("### I-3"), True)
+expect("the summary counts it", "- **Info:** 1\n" in text, True)
+expect("the total counts it", json.loads(proc.stdout)["findings_total"], 1)
+
+proc, doc = run(setup("no-map", [finding("Minor", "a.c:1", sources=["thread:5"], id="mi-13")]))
+expect("without a map an id named does not count", ids_of(doc), [("mi-1", "a.c:1")])
+
+for name, known in (("not-json", "{"), ("not-object", "[]"),
+                    ("bad-key", {"comments": {"thread:5\n## x": ["M-1"]}, "used": []}),
+                    ("bad-id", {"comments": {"thread:5": ["X-1"]}, "used": []}),
+                    ("bad-used", {"comments": {}, "used": ["x"]})):
+    proc, doc = with_ids("map-" + name, known, finding())
+    expect(f"a malformed map fails: {name}", (proc.returncode, os.path.exists(doc)), (1, False))
+
+bad = setup("bad-sources", [finding(sources="thread:5")])
+expect("sources must be a list", run(bad)[0].returncode, 1)
 
 proc, doc = run(setup("english", [finding()]))
 expect("English run exit", proc.returncode, 0)
