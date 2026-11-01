@@ -748,6 +748,21 @@ else
     note "SKIP: symlink escape cases (real symlinks unavailable on this platform)"
 fi
 
+# a symlinked .claude must be rejected before the caller creates .claude/tmp through it
+LINKED="${SANDBOX}/linked-claude"
+mkdir -p "${LINKED}"
+MSYS=winsymlinks:nativestrict ln -s ../outside "${LINKED}/.claude" 2>/dev/null || true
+if [[ -L "${LINKED}/.claude" ]]; then
+    rc=0; (cd "${LINKED}" && run_guard -p .claude/tmp/new/x) >/dev/null 2>&1 || rc=$?
+    check "guard symlinked .claude with no .claude/tmp" 1 "${rc}"
+    mkdir -p "${SANDBOX}/outside/tmp"
+    rc=0; (cd "${LINKED}" && run_guard -w .claude/tmp/x) >/dev/null 2>&1 || rc=$?
+    check "guard symlinked .claude with .claude/tmp" 1 "${rc}"
+    rmdir "${SANDBOX}/outside/tmp"
+else
+    note "SKIP: symlinked .claude cases (real symlinks unavailable on this platform)"
+fi
+
 # --- del-tmp.sh end-to-end --------------------------------------------------------
 mkdir -p .claude/tmp/e2e/dir
 : > .claude/tmp/e2e/dir/f

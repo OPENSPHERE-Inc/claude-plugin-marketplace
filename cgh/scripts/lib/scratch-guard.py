@@ -174,6 +174,8 @@ def guard(mode, raw):
         # cannot escape scratch_root.
         if scratch_root.is_symlink():
             return fail(f"{SCRATCH_ROOT.as_posix()} itself is a symlink: {raw}")
+        if scratch_root.parent.is_symlink():
+            return fail(f"{SCRATCH_ROOT.parent.as_posix()} is a symlink: {raw}")
         try:
             # Non-strict: scratch_root may not exist yet (rc=3 lets the
             # caller create it).
