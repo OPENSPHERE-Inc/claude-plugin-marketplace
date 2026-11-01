@@ -23,7 +23,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 | `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial`, `--trust`, `--adr` |
 | `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust`, `--adr` |
 | `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | `--no-confirm`, `--trust`, `--adr` |
-| `/cgh:resolve` | Verify the findings `/cgh:review` posted, and reply with the result. | `--trust` |
+| `/cgh:resolve` | Verify the findings you raised, posted by `/cgh:review` or written by hand, and reply with the result. | `--trust` |
 
 ### `/cgh:review`
 
@@ -32,9 +32,10 @@ instruction.
 
 Before the review, it collects the problems comments on the pull request already raise, yours and
 everyone else's, people and AI alike. Triage leaves out a finding that raises one of them, with a
-reason such as "Already raised (@name)". The preview lists it under what is not posted, and you
-can still select it. A finding stays when the code shows that the comment is wrong about the
-problem's cause, location, or effect.
+reason such as "Already raised (@name)", since whoever raised the problem can be expected to see
+it through. The preview lists it under what is not posted, a Critical or Major one first and
+marked ⚠️, and you can still select it. A finding stays when the code shows that the comment is
+wrong about the problem's cause, location, or effect.
 
 - **Event**: Request Changes when a posted finding is Critical or Major, otherwise Comment.
   It makes no LGTM judgment.
@@ -74,14 +75,15 @@ current head with `/creview:resolve`, reports them in the review body, and revie
 pull request again. To accept an earlier finding without a fix, tell the skill to waive it:
 later runs do not report it again. Earlier findings already verified are checked again: one that
 still holds is left out of the review body, and one that no longer holds counts as unverified
-again. An open item in the description cannot be verified from the code: update the description, then
-waive it.
+again. An open item in the description cannot be verified from the code: update the description,
+then waive it.
 
 ### `/cgh:respond`
 
 Runs `/creview:triage` on the pull request's comments, shows the result, and waits for your
 confirmation. It then runs `/creview:respond --commit` and asks you to push. After you push, it
-drafts one reply per comment, with what was done and the commit, or with why no change was made.
+drafts one reply per comment, with what was done and the commit, with the fact that the problem
+is no longer in the code, or with why no change was made.
 It shows them and posts on your instruction.
 
 - At the confirmation, you can exclude findings from the fixes: their replies say why, from the
@@ -100,7 +102,13 @@ It shows them and posts on your instruction.
 - A finding that was not addressed gets no reply. Neither does one whose comment the drafter
   could not identify: the skill lists those.
 - Findings come from comments by anyone, people and AI alike, such as CodeRabbit or Copilot, and
-  triage judges from the conversation and the code whether each is already dealt with.
+  triage judges from the conversation and the code whether each is already dealt with: the code
+  no longer has the problem, its review was dismissed, the pull request's assignees (or, with
+  none, its author) decided not to change it and said why, or the reviewer who raised it withdrew
+  it.
+  - Anyone else's word counts only when one of those people can be taken to have stated it, and
+    the facts a reply states are checked against the code.
+  - The report lists every finding set to Won't Fix, with its location, authors, and reason.
 - A comment that already has an answer to the same effect, from anyone, with nothing after it
   reopening the matter, does not get another reply saying no change was made.
 - `/creview:respond` builds and tests the pull request's code. For a pull request you do not
@@ -109,13 +117,18 @@ It shows them and posts on your instruction.
 ### `/cgh:resolve`
 
 Verifies with `/creview:resolve` the findings you raised, whether `/cgh:review` posted them or
-you wrote them by hand, and no one else's. It shows the replies, and posts on your instruction. Each reply names the commit checked at. When the code
+you wrote them by hand, and no one else's. It shows the replies, and posts on your instruction.
+Each reply names the commit checked at. When the code
 follows the fix the finding recommended, the reply leaves out the details. Info findings are
 not verified.
 
 A sub-agent judges from the conversation where each finding stands: open, declined with a reason,
 verified earlier, or withdrawn by you. It reads the replies in the thread and, for a finding in a
 review body or an issue comment, the conversation outside threads.
+
+A decline counts only from the pull request's assignees or, with none, its author, and anyone
+else's word only when one of them can be taken to have stated it. Verification checks the facts a
+decline states against the code.
 
 Findings verified earlier are checked again on every run, since a later change can undo a fix. One
 that still holds gets no reply; one that no longer holds gets a reply saying so. A decline stays
@@ -125,8 +138,8 @@ reason flawed, `/cgh:respond` can answer again, with a fix or with a new reason.
 ## Language
 
 Comments and replies go out in the language of the pull request's description. The preview
-stays in the language you write in, and a second file next to it holds the wording that goes
-out. Findings already in the description's language go out untranslated.
+stays in the language you write in, and when the wording that goes out differs, the skill shows
+that as well. Findings already in the description's language go out untranslated.
 
 ## `--adversarial`
 
@@ -168,8 +181,9 @@ The state lives on the pull request, so a later run needs nothing from an earlie
   drops its findings from those checks.
 - A thread marked resolved on GitHub counts as dealt with in `/cgh:respond`, and the skill reports
   how many it left out.
-- Finding IDs number on from the earlier ones, so an ID stays unique on a pull request. An ID on
-  the pull request can therefore differ from the ID in the local review document.
+- Finding IDs number on from your earlier ones, so an ID stays unique among your findings on a
+  pull request. An ID on the pull request can therefore differ from the ID in the local review
+  document.
 
 ## Limitations
 
@@ -181,7 +195,7 @@ The state lives on the pull request, so a later run needs nothing from an earlie
   you run it again: the findings' line numbers belong to the reviewed head.
 - `/cgh:gate` waits for GitHub to compute whether the pull request merges, and refuses to post
   when GitHub does not finish, or when the verdict has changed since the preview.
-- `/cgh:review`, `/cgh:gate`, and `/cgh:resolve` stop when there are earlier findings to check
+- `/cgh:gate` and `/cgh:resolve` stop when there are earlier findings to check
   and HEAD holds commits the pull request does not have, or uncommitted changes at its head: the
   result would describe code the pull request does not contain.
 - GitHub refuses Request Changes on your own pull request, so the skill sends Comment there. With

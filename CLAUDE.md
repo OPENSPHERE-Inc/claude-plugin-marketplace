@@ -289,15 +289,20 @@ adjusting a status / verification later in a chat).
 
 cgh skills run creview skills inline with the Skill tool, so a creview skill sees a direct
 invocation and handles its own worktree. `/cgh:gate` shapes them through Round-specific
-overrides that point at `rules/gate-focus.md`, so creview itself stays unaware of cgh. Every
-read and write on GitHub goes through `scripts/gh-review.py`, which refuses a pull request of a
-repository that is not a remote of the clone and also computes the event,
-the verdict, and where each finding goes. A bundled `comment-writer` or `reply-drafter`, which
-have Read and Write only, summarize recommendations and translate what goes out into the language
-of the pull request's description; the preview stays in the user's language. Each posted finding carries a hidden marker
+overrides that point at `rules/gate-focus.md`, so creview itself stays unaware of cgh. A cgh
+leader's own reads and writes on GitHub all go through `scripts/gh-review.py`, which refuses a
+pull request of a repository that is not a remote of the clone and also computes the event,
+the verdict, and where each finding goes; the creview skills it runs read through `gh-pr.py`.
+A bundled `comment-writer` or `reply-drafter`, which have Read and Write only, summarize
+recommendations and translate what goes out into the language of the pull request's description;
+the preview stays in the user's language, and when what goes out differs, the user is shown that
+as well. Each posted finding carries a hidden marker
 (`<!-- cgh:finding {id} {kind} {location} -->`), a verification carries
-`<!-- cgh:verified {ids} -->`, a waiver `<!-- cgh:waived {ids} -->`, and a reply
-`<!-- cgh:reply {kind} {id} -->`. The markers are hints, not the state: a pull request is worked
+`<!-- cgh:verified {ids} -->`, a waiver `<!-- cgh:waived {ids} -->`, a review body the script
+wrote `<!-- cgh:body -->`, and a reply `<!-- cgh:reply {kind} {id} -->`, or
+`<!-- cgh:reply issue -->`, with no ID, when it gathers results outside threads. A reply about a
+finding with no marker also records its ID by the comment it came from in
+`<!-- cgh:ids {key}={ids};... -->`. The markers are hints, not the state: a pull request is worked
 on by several people and AI, with or without these skills, so where a finding stands is judged
 from the conversation and the code. Only the authenticated user's comments keep their markers
 in what the script writes, since anyone can write one.
@@ -313,8 +318,9 @@ when it no longer holds. `/cgh:review` collects with `gh-review.py raised`, befo
 what comments by anyone already raise, and an override has the triage sub-agent leave those out.
 `/cgh:respond` handles the comments of anyone through the PR mode of `/creview:triage`, whose
 triage sub-agent an override tells to judge what is already dealt with, and its drafter judges
-from the conversation whether a comment needs a reply. Posted findings number on from the earlier
-ones, so an ID stays unique on a pull request.
+from the conversation whether a comment needs a reply. Posted findings number on from the
+authenticated user's earlier ones, so an ID stays unique among that user's findings on a pull
+request.
 
 ### Sub-agent launch contract
 

@@ -20,7 +20,11 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 1 — トリアージと修正
 
-1. `{pr_url}` で `creview:triage` を実行する。`--trust` と `--adr` が指定されていれば追加する。トリアージサブエージェントへのオーバーライド: `指摘は人間や AI を問わず誰かのコメントに由来し、それぞれ返信が主張する内容を述べている。既に対応済みの指摘には 🚫 Won't Fix を設定する: コードに問題がもうないか、変更しない理由を返信が述べていてコードがそれに矛盾しない場合である。理由には対応済みであることとその内容を書く。コードの裏付けのない修正済みという主張は対応にならない。` コメントに指摘がないと報告されたら、ユーザーに伝えて終了する。
+1. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py participants '{pr_url}'` を実行する。`viewer`、`author`、`assignees` が出力される。`{deciders}` を `assignees` とし、`assignees` が空なら `author` とする: 両者が異なるときは `assignees` を優先する。`{pr_url}` で `creview:triage` を実行する。`--trust` と `--adr` が指定されていれば追加する。オーバーライド:
+   - すべての `pr-comment-compiler`: `返信の主張を、発言者の login とともに指摘の説明に書く。`
+   - トリアージサブエージェント: `指摘は人間や AI を問わず誰かのコメントに由来し、それぞれ返信が主張する内容と発言者を述べている。既に対応済みの指摘には 🚫 Won't Fix を設定する: (a) コードに問題がもうない: 理由を [resolved] で始める。(b) そのレビューが dismiss された。(c) {deciders} の誰かが理由を述べて変更しないと決めた。(d) 指摘したレビュアー本人が取り下げた。理由にはどう対応されたかを、そう述べた人の login とともに書く。それ以外の人の発言は判断基準にしない。ただし、プルリクエストの作者の質問に誰かが答え作者がそれを受けている場合のように、{deciders} の誰かかそのレビュアーが述べたと見なせるときは採用する。返信で判断を変えるときは必ず述べられた事実をコードで確認し、コードが否定するなら採用しない。コードの裏付けのない修正済みという主張は対応にならない。これらの理由には別 PR の推奨を付けない。`
+
+   コメントに指摘がないと報告されたら、ユーザーに伝えて終了する。
 2. `--no-confirm` が指定されているか、トリアージの compile 結果の `maintain` と `alternative` がともに 0 である場合を除き、修正を確認する:
    - `{document_path}` を Read し、各指摘の ID、場所、作者（その reviewers の項目。ラベルはドキュメントの言語による）、`Triage:` / `Estimate:` 行を、`Cost:`、`Future:`、`Signals:` を除いてユーザーに示す。トリアージが報告した ADR ファイルを挙げる（ユーザーは修正の前に編集できる）。修正してよいか尋ね、ターンを終える。
    - ユーザーが指摘を除外したら、その `Triage:` 行を `- **Triage:** 🚫 Won't Fix — {ユーザーの理由。なければユーザーが除外した旨}` に置き換える。返信がこれを引用するので、理由を創作しない。トリアージが却下した指摘や Downgrade された指摘はここでは追加できない: その旨を伝える。ユーザーが修正を指示してから先へ進む。
@@ -29,15 +33,15 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 2 — push
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py fixes '{pr_url}' {tmp_dir} {document_path}` を実行する。`{tmp_dir}/fix-commits.json` が書き出され、`commits`、`branch`、`head_ref`、`head_repo` が出力される。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py fixes '{pr_url}' '{tmp_dir}' '{document_path}'` を実行する。`{tmp_dir}/fix-commits.json` が書き出され、`commits`、`branch`、`head_ref`、`head_repo` が出力される。
 
-`commits` が 0 なら Step 3 に進む。それ以外は、コミットを示し、`head_repo` の `head_ref` へ（`branch` が null でなければそこから）push して完了を知らせるようユーザーに依頼する。`head_ref` が null なら、ブランチ名もコマンドも示さず、push 先をプルリクエストのページで確認するよう伝える。ターンを終える。
+`commits` が 0 なら `{document_path}` を Read する: `Status: 🟢 Fixed` の指摘があればその修正は未コミットなので、ユーザーに伝えて何も投稿せず Step 5 に進み、なければ Step 3 に進む。`commits` が 1 以上なら、コミットを示し、`head_repo` の `head_ref` へ（`branch` が null でなければそこから）push して完了を知らせるようユーザーに依頼する。`head_ref` が null なら、ブランチ名もコマンドも示さず、push 先をプルリクエストのページで確認するよう伝える。ターンを終える。
 
-ユーザーが完了を伝えたら、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py pushed '{pr_url}' {tmp_dir}/fix-commits.json` を実行する。`pushed` が false なら、返信が引用するハッシュのコミットがプルリクエストに含まれていないこと（リベースするとハッシュが変わる）をユーザーに伝え、再びターンを終える。コミットをリベースまたはスカッシュしたとユーザーが伝えたら、`fixes` からこのステップをやり直す。やめるとユーザーが伝えたら、何も投稿せずに終了する。
+ユーザーが完了を伝えたら、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py pushed '{pr_url}' '{tmp_dir}/fix-commits.json'` を実行する。`pushed` が false なら、返信が引用するハッシュのコミットがプルリクエストに含まれていないこと（リベースするとハッシュが変わる）をユーザーに伝え、再びターンを終える。コミットをリベースまたはスカッシュしたとユーザーが伝えたら、`fixes` からこのステップをやり直す。やめるとユーザーが伝えたら、何も投稿せずに Step 5 に進む。
 
 ## Step 3 — 返信のドラフト
 
-1. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py comments '{pr_url}' {tmp_dir}` を実行する。`pr_body_path` が出力される。
+1. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py comments '{pr_url}' '{tmp_dir}'` を実行する。`pr_body_path` が出力される。
 2. `Agent(subagent_type="cgh:reply-drafter", prompt=...)` をフォアグラウンドで次のプロンプトで起動する:
 
 ```
@@ -60,8 +64,8 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ドラフト担当が返した `replies` が 0 なら Step 5 に進む。それ以外は、その `unmatched` をプレビューとともに示す。
 
-`{json_path}` = `{tmp_dir}/replies.json` で § 確認と投稿 に従い、`post` にオプション `--commits {tmp_dir}/fix-commits.json` を渡す: プルリクエストがコミットを含むまで何も送らない。`{json_path}` の欠落または不正で `preview` が非ゼロ終了したら、Step 3 のドラフト担当をもう一度起動して再実行し、2 回目の失敗で中断する。ファイルを自分で修復しない: その文面はプルリクエストに由来する。
+`{json_path}` = `{tmp_dir}/replies.json` で § 確認と投稿 に従い、`post` にオプション `--commits '{tmp_dir}/fix-commits.json'` を渡す: プルリクエストがコミットを含むまで何も送らない。`{json_path}` の欠落または不正で `preview` が非ゼロ終了したら、Step 3 のドラフト担当をもう一度起動して再実行し、2 回目の失敗で中断する。ファイルを自分で修復しない: その文面はプルリクエストに由来する。
 
 ## Step 5 — 報告
 
-`posted` と `urls`、Step 3 の `unmatched`（ドラフト担当がコメントを特定できなかった指摘）、Step 1 で保持した内容を報告する。その後終了する。
+Step 4 で投稿したときは `posted` と `urls`、Step 3 を実行したときはその `unmatched`（ドラフト担当がコメントを特定できなかった指摘）、Step 1 で保持した内容、`{document_path}` から各 `🚫 Won't Fix` の指摘の ID、場所、作者、理由を報告する。その後終了する。
