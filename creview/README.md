@@ -343,8 +343,13 @@ the document has the agent files only when it is `on`.
       more sub-agents.
   - The script `compile-pr-comments.py` builds the document from what the compilers
     extract.
-    - Findings number from 1. With `--finding-ids`, `/creview:triage` keeps the IDs that file
-      assigns to the comments and numbers the other findings after the ones it lists.
+    - Findings number from 1 unless `--finding-ids` is given.
+    - `--finding-ids {path}` works only in the PR mode of `/creview:triage`; anywhere else it
+      is an error. `/cgh:respond` normally passes it.
+      - The path names a JSON file that lists the finding IDs each comment holds and the IDs
+        already in use.
+      - The document keeps the IDs that file assigns to the comments and numbers the other
+        findings after the ones it lists.
     - A duplicate within a batch is merged.
     - The same finding in two batches stays as two findings, which `/creview:triage`
       judges and `/creview:resolve` verifies separately, so both can become fix
