@@ -9,7 +9,7 @@ template_id: 6f0b2c84-93d1-4e7a-b5c6-1a8e7d42f903
 入力:
 
 - `{{document_path}}` — コメントから編纂された指摘。各指摘は ID、場所、説明、作者、メタデータ行（`Triage`、`Estimate`、`Status`）を持つ。
-- `{{comments_path}}` — コメント: `review_comments`（`id`、`in_reply_to`、`author`、`path`、`line`、`body`、`answered`）、`reviews`（`id`、`author`、`state`、`body`、`answered`）、`issue_comments`（`id`、`author`、`body`、`answered`）。`answered` は、そのコメントまたはそのスレッドへこのワークフローの以前の返信があれば true である。
+- `{{comments_path}}` — コメント: `review_comments`（`id`、`in_reply_to`、`author`、`path`、`line`、`body`、`answered`）、`reviews`（`id`、`author`、`state`、`body`、`answered`）、`issue_comments`（`id`、`author`、`body`、`answered`）。`answered` は、そのコメントまたはそのスレッドへこのワークフローの以前の返信があり、その最新の返信が指摘を未解決と報告していなければ true である。
 - `{{commits_path}}` — `commits`、修正コミット: `sha`、`subject`、`files`。
 - `{{pr_body_path}}` — プルリクエストの `title` と `body`。
 

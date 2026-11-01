@@ -20,9 +20,9 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 1 — 前回までの指摘
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind gate --document {tmp_dir}-prior.md` を実行する。`--trust` が指定されていれば追加する。`open`（まだ検証されていない前回までのゲート指摘の ID）、`document`、`waived_document`（ユーザーが以前の実行で取り下げた指摘のファイル、なければ null）が出力される。`{waived_document}` をその値とする。非ゼロ終了なら、そのエラーで中断する。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind gate --document {tmp_dir}-prior.md` を実行する。`--trust` が指定されていれば追加する。`open`（まだ検証されていない前回までのゲート指摘の ID）、`verified`（以前に検証済みで、検証が再度確認するもの）、`document`（確認する指摘の文書、なければ null）、`waived_document`（ユーザーが以前の実行で取り下げた指摘のファイル、なければ null）が出力される。`{waived_document}` をその値とする。非ゼロ終了なら、そのエラーで中断する。
 
-`open` が空でなければ、`{prior_document}` をその `document` とし、それで `creview:resolve` を実行する。すべての検証サブエージェントへのオーバーライド: `検証結果の文面を {doc_lang} で書く。` 空なら `{prior_document}` は `(none)` とする。
+`document` が null でなければ、`{prior_document}` をそれとし、それで `creview:resolve` を実行する。すべての検証サブエージェントへのオーバーライド: `検証結果の文面を {doc_lang} で書く。` null なら `{prior_document}` は `(none)` とする。
 
 ## Step 2 — レビューとトリアージ
 
@@ -40,7 +40,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 3 — ドラフト
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' {tmp_dir} {document_path} --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc {prior_document}` を追加する。`{tmp_dir}/draft.json` が書き出される。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' {tmp_dir} {document_path} --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc {prior_document}` を追加する。`{tmp_dir}/draft.json` が書き出され、`unchanged`（以前に検証済みで解決が保たれており、レビュー本文に載せない指摘）が出力される。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
 
 ## Step 4 — 確認と投稿
 
@@ -50,4 +50,4 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 5 — 報告
 
-`verdict`、`review_url`、`fallbacks` の ID、`(none)` でなければ `{prior_document}` を報告する。`recovered_from` が null でなければ、その呼び出しは失敗したがレビューは投稿されたとしてそのエラーを添える。`own_pr` が true で判定が BLOCK なら、GitHub は自分のプルリクエストへの Request Changes を拒否するため、判定を本文に記載して Comment で送ったことを添える。判定が PASS で `own_pr` が false なら、以前に送った Request Changes は dismiss されるまで GitHub に残ることと、dismiss するとそのレビューの指摘が以後の実行の対象外になることを添える。BLOCK の後は、指摘への対応後に `/cgh:gate` を再度実行するよう伝える。その後終了する。
+`verdict`、`review_url`、`fallbacks` の ID、`unchanged` の件数、`(none)` でなければ `{prior_document}` を報告する。`recovered_from` が null でなければ、その呼び出しは失敗したがレビューは投稿されたとしてそのエラーを添える。`own_pr` が true で判定が BLOCK なら、GitHub は自分のプルリクエストへの Request Changes を拒否するため、判定を本文に記載して Comment で送ったことを添える。判定が PASS で `own_pr` が false なら、以前に送った Request Changes は dismiss されるまで GitHub に残ることと、dismiss するとそのレビューの指摘が以後の実行の対象外になることを添える。BLOCK の後は、指摘への対応後に `/cgh:gate` を再度実行するよう伝える。その後終了する。

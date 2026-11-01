@@ -80,7 +80,7 @@ claude-plugin-marketplace/
 ├── cgh/                          # Plugin: GitHub pull request workflow on top of creview (active, English)
 │   ├── .claude-plugin/plugin.json  # declares the dependency on creview
 │   ├── README.md / README_ja.md
-│   ├── skills/                   # review (+ templates/comment-wording.md), gate, resolve (+ templates/reply-translate.md), respond (+ templates/reply-draft.md)
+│   ├── skills/                   # review (+ templates/comment-wording.md, raised-extract.md), gate, resolve (+ templates/reply-translate.md), respond (+ templates/reply-draft.md)
 │   ├── agents/                   # reply-drafter.md, comment-writer.md
 │   ├── rules/                    # leader.md, gate-focus.md
 │   └── scripts/                  # gh-review.py, del-tmp.sh, lib/scratch-guard.py
@@ -296,15 +296,24 @@ the verdict, and where each finding goes. A bundled `comment-writer` or `reply-d
 have Read and Write only, summarize recommendations and translate what goes out into the language
 of the pull request's description; the preview stays in the user's language. Each posted finding carries a hidden marker
 (`<!-- cgh:finding {id} {kind} {location} -->`), a verification carries
-`<!-- cgh:verified {ids} -->`, a waiver `<!-- cgh:waived {ids} -->`, and a reply
-`<!-- cgh:reply {kind} {id} -->`, read back only from the authenticated user's own comments.
+`<!-- cgh:verified {ids} -->`, a waiver `<!-- cgh:waived {ids} -->`, a reply
+`<!-- cgh:reply {kind} {id} -->`, and a reply that finds a verification undone
+`<!-- cgh:reopened {ids} -->`, read back only from the authenticated user's own comments.
 `gh-review.py prior` rebuilds a review document from them, with the IDs kept, for
 `/creview:resolve` to verify, and writes the comment targets to `{tmp_dir}/prior.json`, which
-`gh-review.py replies` reads. In a finding's thread, the user's latest `cgh:reply` citing no
-commit is a decline and goes in as a `Won't Fix` triage, whose rationale the verification judges;
+`gh-review.py replies` reads. In a finding's thread, the user's latest `cgh:reply` that reports
+neither a verification nor a feedback and cites no commit is a decline and goes in as a
+`Won't Fix` triage, whose rationale the verification judges;
 a reply by anyone else, or by the user without that marker, goes into the finding's text as an
-unverified claim. Posted findings number on from the earlier ones, so
+unverified claim. A finding marked verified stays in the document with a `Verification` line, so
+`/creview:resolve` checks it again, and `gh-review.py replies` and `draft` report it only when it
+no longer holds, with `<!-- cgh:reopened {ids} -->`. A feedback reply leaves its thread unanswered,
+so `/cgh:respond` can reply there again. Posted findings number on from the earlier ones, so
 an ID stays unique on a pull request.
+
+`/cgh:review` leaves out in its triage what comments already on the pull request raise:
+`gh-review.py raised` writes the comments in batches, a `comment-writer` lists the problems of
+each, and an override points the triage sub-agent at those lists.
 
 ### Sub-agent launch contract
 

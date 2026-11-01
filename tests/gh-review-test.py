@@ -1433,6 +1433,370 @@ class PriorReplies(PriorBase):
         self.assertEqual(mod.parse_document(doc)[1][0]["metadata"], {})
 
 
+class Recheck(PriorBase):
+    def reply(self, gh, body, login="me", comment_id=6, created_at="2026-01-01T00:00:00Z"):
+        gh.review_comments.append({
+            "id": comment_id, "user": {"login": login}, "pull_request_review_id": 1,
+            "path": "src/a.py", "line": 10, "in_reply_to_id": 5, "body": body,
+            "created_at": created_at})
+
+    def verified(self, gh, kind="review"):
+        self.local(gh)
+        self.posted(gh, kind=kind)
+        self.reply(gh, f"Confirmed at {HEAD[:10]}.\n\n<!-- cgh:verified M-1 -->\n\n"
+                       "<!-- cgh:reply thread 5 -->")
+
+    def replies(self, doc):
+        result = mod.cmd_replies(URL, self.dir, doc, "en")
+        return result, json.loads(read_text(os.path.join(self.dir, "replies.json")))["replies"]
+
+    def rendered(self, doc, value):
+        events = os.path.join(self.dir, "events.jsonl")
+        with open(events, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"id": "M-1", "field": "verification", "value": value}) + "\n")
+        render = os.path.join(ROOT, "creview", "scripts", "render-review.py")
+        subprocess.run(["python3", render, doc, events, doc], check=True)
+
+    def test_a_verified_finding_stays_in_the_document_to_be_checked_again(self):
+        gh = self.fake()
+        self.verified(gh)
+        result, prior, doc = self.prior()
+        self.assertEqual((result["open"], result["verified"]), ([], ["M-1"]))
+        self.assertEqual(result["document"], doc)
+        self.assertTrue(prior["findings"][0]["verified"])
+        metadata = mod.parse_document(doc)[1][0]["metadata"]
+        self.assertEqual(metadata["Verification"], mod.PRIOR_VERIFIED)
+        self.assertTrue(mod.has_label(metadata["Verification"], "Verified"))
+
+    def test_a_gate_finding_verified_earlier_stays_in_too(self):
+        gh = self.fake()
+        self.verified(gh, "gate")
+        result, prior, doc = self.prior("gate")
+        self.assertEqual((result["open"], result["verified"], result["document"]),
+                         ([], ["M-1"], doc))
+        self.assertTrue(prior["findings"][0]["verified"])
+
+    def test_a_feedback_on_a_decline_keeps_the_reason(self):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh)
+        self.reply(gh, "Not making this change. It is safe.\n\n<!-- cgh:reply thread 5 -->")
+        self.reply(gh, f"💬 **Major M-1**: not resolved at {HEAD[:10]}. The reason does not hold."
+                       "\n\n<!-- cgh:reply thread 5 -->", comment_id=7)
+        _, _, doc = self.prior()
+        self.assertIn("It is safe", mod.parse_document(doc)[1][0]["metadata"]["Triage"])
+
+    def test_a_new_decline_after_a_feedback_replaces_the_reason(self):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh)
+        self.reply(gh, "Not making this change. Old.\n\n<!-- cgh:reply thread 5 -->")
+        self.reply(gh, f"💬 **Major M-1**: not resolved at {HEAD[:10]}.\n\n"
+                       "<!-- cgh:reply thread 5 -->", comment_id=7)
+        self.reply(gh, "Not making this change. New.\n\n<!-- cgh:reply thread 5 -->", comment_id=8)
+        _, _, doc = self.prior()
+        triage = mod.parse_document(doc)[1][0]["metadata"]["Triage"]
+        self.assertIn("New", triage)
+        self.assertNotIn("Old", triage)
+
+    def test_a_fix_after_a_feedback_on_a_decline_clears_it(self):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh)
+        self.reply(gh, "Not making this change. Old.\n\n<!-- cgh:reply thread 5 -->")
+        self.reply(gh, f"💬 **Major M-1**: not resolved at {HEAD[:10]}.\n\n"
+                       "<!-- cgh:reply thread 5 -->", comment_id=7)
+        self.reply(gh, "Fixed in 0123456789.\n\n<!-- cgh:reply thread 5 -->", comment_id=8)
+        _, _, doc = self.prior()
+        self.assertEqual(mod.parse_document(doc)[1][0]["metadata"], {})
+
+    def test_a_verified_decline_keeps_its_reason(self):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh)
+        self.reply(gh, "Not making this change. It is safe.\n\n<!-- cgh:reply thread 5 -->")
+        self.reply(gh, f"Confirmed at {HEAD[:10]}.\n\n<!-- cgh:verified M-1 -->\n\n"
+                       "<!-- cgh:reply thread 5 -->", comment_id=7)
+        _, _, doc = self.prior()
+        metadata = mod.parse_document(doc)[1][0]["metadata"]
+        self.assertIn("It is safe", metadata["Triage"])
+        self.assertEqual(metadata["Verification"], mod.PRIOR_VERIFIED)
+
+    def test_a_held_verification_gets_no_reply_and_is_reported_as_unchanged(self):
+        gh = self.fake()
+        self.verified(gh)
+        _, _, doc = self.prior()
+        self.rendered(doc, "✅ Verified — Re-checked: unchanged")
+        result, replies = self.replies(doc)
+        self.assertEqual(replies, [])
+        self.assertEqual((result["replies"], result["unchanged"]), (0, ["M-1"]))
+        self.assertEqual(result["unverified"], [])
+
+    def test_a_broken_verification_replies_and_reopens(self):
+        gh = self.fake()
+        self.verified(gh)
+        _, _, doc = self.prior()
+        self.rendered(doc, "💬 Feedback — the guard is gone again")
+        result, replies = self.replies(doc)
+        self.assertEqual(result["unchanged"], [])
+        self.assertEqual((replies[0]["reopened"], replies[0]["verified"]), (["M-1"], []))
+        self.assertIn("the guard is gone again", replies[0]["body"])
+
+    def test_a_finding_left_unchecked_is_unverified(self):
+        gh = self.fake()
+        self.verified(gh)
+        _, _, doc = self.prior()
+        result, replies = self.replies(doc)
+        self.assertEqual(replies, [])
+        self.assertEqual((result["unverified"], result["unchanged"]), (["M-1"], []))
+
+    def test_findings_of_a_review_body_reopen_in_one_comment(self):
+        gh = self.fake()
+        self.local(gh)
+        block = mod.finding_block({"id": "M-1", "location": "src/a.py:10", "text": "t",
+                                   "recommendation": []}, "review", "en", False)
+        gh.reviews.append({"id": 1, "state": "COMMENTED", "user": {"login": "me"}, "body": block})
+        gh.issue_comments.append({"id": 9, "user": {"login": "me"}, "body": "c\n\n"
+                                  "<!-- cgh:verified M-1 -->", "created_at": "2026-01-01T00:00:00Z"})
+        _, _, doc = self.prior()
+        self.rendered(doc, "💬 Feedback — broken again")
+        _, replies = self.replies(doc)
+        self.assertEqual((replies[0]["kind"], replies[0]["reopened"]), ("issue", ["M-1"]))
+
+    def test_post_marks_a_reopened_finding(self):
+        gh = self.fake()
+        path = self.save({"replies": [{"kind": "thread", "target_id": 5, "finding_ids": ["M-1"],
+                                       "body": "broken", "reopened": ["M-1"]}]}, "replies.json")
+        gh.objects = {"repos/acme/app/pulls/comments/5": {
+            "id": 5, "in_reply_to_id": None, "user": {"login": "me"},
+            "pull_request_url": "https://api.github.com/repos/acme/app/pulls/7"}}
+        mod.cmd_post(URL, path, None)
+        self.assertIn("<!-- cgh:reopened M-1 -->", gh.posts[0][1]["body"])
+
+    def test_a_reopen_marker_undoes_the_verification_before_it_only(self):
+        reopened = "broken\n\n<!-- cgh:reopened M-1 -->"
+        verified = "ok\n\n<!-- cgh:verified M-1 -->"
+        for stamps, expected in ((("01", "02"), ["M-1"]), (("02", "01"), [])):
+            gh = self.fake()
+            self.local(gh)
+            self.posted(gh)
+            # The verification comes first in the list whichever is older.
+            self.reply(gh, verified, created_at=f"2026-01-{stamps[1]}T00:00:00Z")
+            self.reply(gh, reopened, comment_id=7, created_at=f"2026-01-{stamps[0]}T00:00:00Z")
+            result, _, _ = self.prior()
+            self.assertEqual(result["open"], [] if expected else ["M-1"], stamps)
+            self.assertEqual(result["verified"], expected, stamps)
+
+    def test_another_authors_reopen_marker_is_ignored(self):
+        gh = self.fake()
+        self.verified(gh)
+        self.reply(gh, "x\n\n<!-- cgh:reopened M-1 -->", login="mallory", comment_id=7,
+                   created_at="2026-02-01T00:00:00Z")
+        self.assertEqual(self.prior()[0]["verified"], ["M-1"])
+
+    def test_reopened_is_validated_and_shown(self):
+        self.fake()
+        entry = {"kind": "thread", "target_id": 5, "finding_ids": ["M-1"], "body": "b"}
+        path = self.save({"replies": [{**entry, "reopened": ["M-1"]}]}, "replies.json")
+        mod.cmd_preview(URL, path)
+        self.assertIn("Reopened: M-1", read_text(os.path.join(self.dir, "replies-preview.md")))
+        bad = self.save({"replies": [{**entry, "reopened": ["M-2"]}]}, "bad.json")
+        with self.assertRaisesRegex(mod.Error, "malformed reply"):
+            mod.cmd_preview(URL, bad)
+
+    def test_commits_refuses_a_reopening_reply(self):
+        self.fake()
+        path = self.save({"replies": [{"kind": "thread", "target_id": 5, "finding_ids": ["M-1"],
+                                       "body": "b", "reopened": ["M-1"]}]}, "replies.json")
+        commits = self.save({"commits": []}, "commits.json")
+        with self.assertRaisesRegex(mod.Error, "--commits sends only"):
+            mod.cmd_post(URL, path, commits)
+
+
+class GateRecheck(Base):
+    gate_draft = Gate.gate_draft
+
+    def rechecked(self, verification, earlier=("M-7",)):
+        self.save({"findings": [{"id": fid, "verified": True} for fid in earlier]}, "prior.json")
+        return self.gate_draft([("M-7", verification)])
+
+    def test_a_held_verification_is_left_out_and_reported_as_unchanged(self):
+        self.fake()
+        self.save({"findings": [{"id": "M-7", "verified": True}]}, "prior.json")
+        prior = os.path.join(self.dir, "prior.md")
+        with open(prior, "w", encoding="utf-8") as f:
+            f.write(prior_doc_text([("M-7", "✅ Verified — Re-checked: unchanged")]))
+        result, draft = self.draft("gate", "en", prior)
+        self.assertEqual(draft["prior"], [])
+        self.assertEqual((result["prior_ids"], result["unchanged"]), ([], ["M-7"]))
+
+    def test_a_held_verification_passes_and_posts_no_marker(self):
+        gh, path = self.rechecked("✅ Verified — Re-checked: unchanged")
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "PASS")
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertNotIn("cgh:verified", body)
+        self.assertNotIn("M-7", body)
+
+    def test_a_broken_verification_blocks_and_reopens(self):
+        gh, path = self.rechecked("💬 Feedback — broken again")
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "BLOCK")
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertIn("broken again", body)
+        self.assertIn("<!-- cgh:reopened M-7 -->", body)
+
+    def test_a_finding_left_unchecked_blocks_without_reopening(self):
+        gh, path = self.rechecked(mod.PRIOR_VERIFIED)
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "BLOCK")
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertNotIn("cgh:reopened", body)
+        self.assertNotIn(mod.PRIOR_VERIFIED, body)
+
+    def test_a_broken_verification_the_user_waives_reopens_too(self):
+        gh, path = self.rechecked("💬 Feedback — broken again")
+        draft = json.loads(read_text(path))
+        draft["prior"][0]["state"] = "waived"
+        self.assertEqual(mod.cmd_post(URL, self.save(draft), None)["verdict"], "PASS")
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertIn("<!-- cgh:waived M-7 -->", body)
+        self.assertIn("<!-- cgh:reopened M-7 -->", body)
+
+    def test_a_first_verification_is_recorded_as_before(self):
+        gh, path = self.rechecked("✅ Verified — fixed", earlier=())
+        mod.cmd_post(URL, path, None)
+        self.assertIn("<!-- cgh:verified M-7 -->", gh.named("submitPullRequestReview")[0]["body"])
+
+
+class AnsweredAfterFeedback(Base):
+    def answered(self, *replies):
+        gh = self.fake()
+        rev, me = {"login": "r"}, {"login": "me"}
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": rev, "body": "b"}]
+        gh.review_comments = [{"id": 1, "user": rev, "pull_request_review_id": 3,
+                               "in_reply_to_id": None, "body": "c"}]
+        for n, (body, stamp) in enumerate(replies, 2):
+            gh.review_comments.append({
+                "id": n, "user": me, "pull_request_review_id": 3, "in_reply_to_id": 1,
+                "body": f"{body}\n\n<!-- cgh:reply thread 1 -->",
+                "created_at": f"2026-01-{stamp}T00:00:00Z"})
+        mod.cmd_comments(URL, self.dir)
+        data = json.loads(read_text(os.path.join(self.dir, "comments.json")))
+        return data["review_comments"][0]["answered"]
+
+    def test_a_feedback_reply_leaves_the_thread_unanswered(self):
+        self.assertFalse(self.answered(("Not making this change.", "01"),
+                                       ("💬 **Major M-1**: not resolved.", "02")))
+
+    def test_a_decline_after_a_feedback_answers_it_again(self):
+        self.assertTrue(self.answered(("Not making this change.", "01"),
+                                      ("💬 **Major M-1**: not resolved.", "02"),
+                                      ("Not making this change. New.", "03")))
+
+    def test_the_order_is_by_time_not_by_listing(self):
+        self.assertTrue(self.answered(("💬 **Major M-1**: not resolved.", "01"),
+                                      ("Not making this change.", "02")))
+        self.assertFalse(self.answered(("Not making this change.", "02"),
+                                       ("💬 **Major M-1**: not resolved.", "03")))
+        self.assertTrue(self.answered(("Not making this change.", "03"),
+                                      ("💬 **Major M-1**: not resolved.", "02")))
+
+    def test_another_authors_feedback_changes_nothing(self):
+        gh = self.fake()
+        rev, me = {"login": "r"}, {"login": "me"}
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": rev, "body": "b"}]
+        comment = {"pull_request_review_id": 3, "in_reply_to_id": 1}
+        gh.review_comments = [
+            {**comment, "id": 1, "user": rev, "in_reply_to_id": None, "body": "c"},
+            {**comment, "id": 2, "user": me, "body": "no\n\n<!-- cgh:reply thread 1 -->"},
+            {**comment, "id": 3, "user": rev, "body": "💬 no\n\n<!-- cgh:reply thread 1 -->"}]
+        mod.cmd_comments(URL, self.dir)
+        data = json.loads(read_text(os.path.join(self.dir, "comments.json")))
+        self.assertTrue(data["review_comments"][0]["answered"])
+
+
+class Raised(Base):
+    def batches(self):
+        result = mod.cmd_raised(URL, self.dir)
+        return result, [json.loads(read_text(os.path.join(self.dir, "raised", f"batch-{n}.json")))
+                        for n in range(1, result["batches"] + 1)]
+
+    def comment(self, cid, body, login="rev", reply_to=None, review=3):
+        return {"id": cid, "user": {"login": login}, "pull_request_review_id": review,
+                "path": "src/a.py", "line": 10, "in_reply_to_id": reply_to, "body": body}
+
+    def test_lists_every_kind_of_comment_with_its_author_and_place(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"}, "body": "in body"}]
+        gh.review_comments = [self.comment(1, "inline")]
+        gh.issue_comments = [{"id": 8, "user": {"login": "pal"}, "body": "conversation"}]
+        result, batches = self.batches()
+        self.assertEqual((result["comments"], result["batches"]), (3, 1))
+        entries = {c["text"]: c for c in batches[0]["comments"]}
+        self.assertEqual((entries["inline"]["author"], entries["inline"]["location"]),
+                         ("rev", "src/a.py:10"))
+        self.assertEqual(entries["in body"]["location"], "PR")
+        self.assertEqual(entries["conversation"]["author"], "pal")
+
+    def test_own_comments_of_this_workflow_are_left_out_but_not_hand_written_ones(self):
+        gh = self.fake()
+        block = mod.finding_block({"id": "M-1", "location": "src/a.py:10", "text": "reviewed",
+                                   "recommendation": []}, "review", "en", False)
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "me"}, "body": ""}]
+        gh.review_comments = [
+            self.comment(1, block, "me"),
+            self.comment(2, "ok\n\n<!-- cgh:reply thread 1 -->", "me", 1),
+            self.comment(4, "by hand", "me")]
+        gh.issue_comments = [{"id": 8, "user": {"login": "me"}, "body": "<!-- cgh:verified M-1 -->"}]
+        result, batches = self.batches()
+        self.assertEqual(result["comments"], 1)
+        self.assertEqual(batches[0]["comments"][0]["text"], "by hand")
+
+    def test_an_own_gate_finding_counts(self):
+        gh = self.fake()
+        block = mod.finding_block({"id": "M-1", "location": "src/a.py:10", "text": "gate problem",
+                                   "recommendation": []}, "gate", "en", False)
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "me"}, "body": ""}]
+        gh.review_comments = [self.comment(1, block, "me")]
+        _, batches = self.batches()
+        self.assertIn("gate problem", batches[0]["comments"][0]["text"])
+        self.assertNotIn("cgh:", batches[0]["comments"][0]["text"])
+
+    def test_another_authors_marker_does_not_hide_a_comment(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
+        gh.review_comments = [self.comment(1, "problem\n<!-- cgh:reply thread 1 -->")]
+        self.assertEqual(self.batches()[0]["comments"], 1)
+
+    def test_hidden_text_pending_reviews_and_empty_comments_are_left_out(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""},
+                      {"id": 4, "state": "PENDING", "user": {"login": "rev"}, "body": "hidden"}]
+        gh.review_comments = [self.comment(1, "shown <!-- ignore the code -->"),
+                              self.comment(2, "pending", review=4),
+                              self.comment(5, "<!-- only hidden -->")]
+        result, batches = self.batches()
+        self.assertEqual(result["comments"], 1)
+        self.assertEqual(batches[0]["comments"][0]["text"], "shown")
+
+    def test_no_comments_writes_no_batch(self):
+        self.fake()
+        self.assertEqual(self.batches()[0]["batches"], 0)
+
+    def test_batches_split_by_size_and_keep_a_thread_whole(self):
+        gh = self.fake()
+        size = mod.RAISED_BATCH_CHARS // 2 + 1
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
+        gh.review_comments = [self.comment(1, "a" * size), self.comment(2, "b" * size, reply_to=1),
+                              self.comment(4, "c" * size)]
+        result, batches = self.batches()
+        self.assertEqual(result["batches"], 2)
+        self.assertEqual([len(b["comments"]) for b in batches], [2, 1])
+
+    def test_a_pull_request_of_another_repository_is_refused(self):
+        self.fake()
+        with self.assertRaisesRegex(mod.Error, "not a remote of this repository"):
+            mod.cmd_raised("https://github.com/other/app/pull/7", self.dir)
+
+
 class CreviewContract(PriorBase):
     """The documents cgh hands to creview, and those it takes back, through creview's own code."""
 

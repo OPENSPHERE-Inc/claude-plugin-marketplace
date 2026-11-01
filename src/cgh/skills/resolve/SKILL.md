@@ -16,7 +16,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 1 — 投稿済みの指摘
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind review --document {document_path}` を実行する。`--trust` が指定されていれば追加する。自分の GitHub アカウントによる `/cgh:review` の指摘を見つけ、`open`（まだ検証されていないもの。検証の対象外である Info を除く）と `verified` を出力する。非ゼロ終了なら、そのエラーで中断する。`open` が空なら、確認するものがないことを `verified` の件数とともにユーザーに伝えて終了する。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind review --document {document_path}` を実行する。`--trust` が指定されていれば追加する。自分の GitHub アカウントによる `/cgh:review` の指摘を、検証の対象外である Info を除いて見つけ、`open`（まだ検証されていないもの）、`verified`（以前に検証済みで、検証が再度確認するもの）、`document` を出力する。非ゼロ終了なら、そのエラーで中断する。`document` が null なら、確認するものがないことをユーザーに伝えて終了する。
 
 ## Step 2 — 検証
 
@@ -27,7 +27,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 3 — 返信
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' {tmp_dir} {document_path} --lang {lang}` を実行する。`{tmp_dir}/replies.json` が書き出され、`replies`、`unverified`（結果が得られなかった指摘）、`pr_body_path` が出力される。`replies` が 0 なら、担当を起動せず Step 5 に進む。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' {tmp_dir} {document_path} --lang {lang}` を実行する。`{tmp_dir}/replies.json` が書き出され、`replies`、`unverified`（結果が得られなかった指摘）、`unchanged`（以前に検証済みで解決が保たれており、返信しない指摘）、`pr_body_path` が出力される。`replies` が 0 なら、担当を起動せず Step 5 に進む。
 
 返信は PR 本文の言語で投稿する。`Agent(subagent_type="cgh:comment-writer", prompt=...)` を起動する:
 
@@ -50,4 +50,4 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 5 — 報告
 
-`posted` と `urls`、Step 3 の `unverified` を報告する。その後終了する。
+Step 3 の `unverified` と `unchanged` の件数を報告し、Step 4 で投稿したときは `posted` と `urls` も報告する。その後終了する。

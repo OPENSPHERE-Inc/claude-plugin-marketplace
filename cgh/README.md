@@ -28,7 +28,12 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 ### `/cgh:review`
 
 Runs `/creview:start`, then `/creview:triage`, shows what it would post, and posts on your
-instruction. A later run does not report again the findings already posted and not yet verified.
+instruction. A later run does not report again the findings already posted.
+
+Triage leaves out a finding that a comment already on the pull request raises, whoever wrote it,
+with a reason such as "Already raised by another reviewer (@name)". The preview lists it under
+what is not posted, and you can still select it. A finding stays when the code shows that the
+comment is wrong about the problem's cause, location, or effect.
 
 - **Event**: Request Changes when a posted finding is Critical or Major, otherwise Comment.
   It makes no LGTM judgment.
@@ -66,7 +71,9 @@ The verdict goes in the review body, and findings are placed as in `/cgh:review`
 Run it again after fixes until it passes. A later run verifies the earlier gate findings at the
 current head with `/creview:resolve`, reports them in the review body, and reviews the whole
 pull request again. To accept an earlier finding without a fix, tell the skill to waive it:
-later runs do not report it again. An open item in the description cannot be verified from the code: update the description, then
+later runs do not report it again. Earlier findings already verified are checked again: one that
+still holds is left out of the review body, and one that no longer holds counts as unverified
+again. An open item in the description cannot be verified from the code: update the description, then
 waive it.
 
 ### `/cgh:respond`
@@ -92,7 +99,7 @@ It shows them and posts on your instruction.
 - A finding that was not addressed gets no reply. Neither does one whose comment the drafter
   could not identify: the skill lists those.
 - A comment that already has a reply from the skill does not get another one saying no change
-  was made.
+  was made, unless `/cgh:resolve` has since found the finding unresolved.
 - `/creview:respond` builds and tests the pull request's code. For a pull request you do not
   trust, see the warnings in the [creview README](../creview/README.md).
 
@@ -102,6 +109,15 @@ Verifies the findings `/cgh:review` posted under your account with `/creview:res
 replies, and posts on your instruction. Each reply names the commit checked at. When the code
 follows the fix the finding recommended, the reply leaves out the details. Info findings are
 not verified.
+
+Findings verified earlier are checked again on every run, since a later change can undo a fix. One
+that still holds gets no reply; one that no longer holds gets a reply saying so, and counts as
+unverified from then on.
+
+A decline stays until a fix or a newer decline replaces it, and each run checks its reason. When
+a run finds the reason flawed, `/cgh:respond` can answer that thread again, with a fix or with a
+new reason. This covers findings posted in a thread: a decline of a finding in a review body
+does not reach the check.
 
 ## Language
 
@@ -139,7 +155,8 @@ reads them. `--no-confirm` skips that chance. `/cgh:respond` also passes `--adr`
 The state lives on the pull request, so a later run needs nothing from an earlier one.
 
 - A posted finding carries a hidden marker with its ID and location, a verification or a waiver
-  one with the IDs it closes, and a reply one with the comment it answers. Only markers in your
+  one with the IDs it closes, a reply one with the comment it answers, and a reply that finds a
+  verification undone one with the IDs it reopens. Only markers in your
   own comments count.
 - `/cgh:gate` and `/cgh:resolve` read back only findings carrying a marker: comments you wrote
   by hand are not checked. Dismissing a review drops its findings.
@@ -158,7 +175,7 @@ The state lives on the pull request, so a later run needs nothing from an earlie
   you run it again: the findings' line numbers belong to the reviewed head.
 - `/cgh:gate` waits for GitHub to compute whether the pull request merges, and refuses to post
   when GitHub does not finish, or when the verdict has changed since the preview.
-- `/cgh:review`, `/cgh:gate`, and `/cgh:resolve` stop when earlier findings are not yet verified
+- `/cgh:review`, `/cgh:gate`, and `/cgh:resolve` stop when there are earlier findings to check
   and HEAD holds commits the pull request does not have, or uncommitted changes at its head: the
   result would describe code the pull request does not contain.
 - GitHub refuses Request Changes on your own pull request, so the skill sends Comment there. With

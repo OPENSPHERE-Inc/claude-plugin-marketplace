@@ -9,7 +9,7 @@ Draft the replies to the pull request's review comments, from what the review do
 Inputs:
 
 - `{{document_path}}` — findings compiled from the comments. Each has an ID, a location, a description, its authors, and metadata lines: `Triage`, `Estimate`, `Status`.
-- `{{comments_path}}` — the comments: `review_comments` (`id`, `in_reply_to`, `author`, `path`, `line`, `body`, `answered`), `reviews` (`id`, `author`, `state`, `body`, `answered`), `issue_comments` (`id`, `author`, `body`, `answered`). `answered` is true when an earlier reply of this workflow went to that comment or its thread.
+- `{{comments_path}}` — the comments: `review_comments` (`id`, `in_reply_to`, `author`, `path`, `line`, `body`, `answered`), `reviews` (`id`, `author`, `state`, `body`, `answered`), `issue_comments` (`id`, `author`, `body`, `answered`). `answered` is true when an earlier reply of this workflow went to that comment or its thread and the latest such reply does not report the finding unresolved.
 - `{{commits_path}}` — `commits`, the fix commits: `sha`, `subject`, `files`.
 - `{{pr_body_path}}` — the pull request's `title` and `body`.
 

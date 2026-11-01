@@ -20,9 +20,9 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 ## Step 1 — Earlier findings
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind gate --document {tmp_dir}-prior.md`, adding `--trust` when given. It prints `open`, the IDs of the earlier gate findings not yet verified, `document`, and `waived_document`, the file of the findings the user waived in earlier runs, or null. Set `{waived_document}` to that value. On a non-zero exit, abort with its error.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py prior '{pr_url}' {tmp_dir} --kind gate --document {tmp_dir}-prior.md`, adding `--trust` when given. It prints `open`, the IDs of the earlier gate findings not yet verified, `verified`, those verified earlier, which the verification checks again, `document`, the findings to check, or null, and `waived_document`, the file of the findings the user waived in earlier runs, or null. Set `{waived_document}` to that value. On a non-zero exit, abort with its error.
 
-When `open` is not empty, set `{prior_document}` to that `document` and run `creview:resolve` with it. Override for every verification sub-agent: `Write the verification text in {doc_lang}.` Otherwise `{prior_document}` is `(none)`.
+When `document` is not null, set `{prior_document}` to it and run `creview:resolve` with it. Override for every verification sub-agent: `Write the verification text in {doc_lang}.` Otherwise `{prior_document}` is `(none)`.
 
 ## Step 2 — Review and triage
 
@@ -40,7 +40,7 @@ When it reports findings, run `creview:triage` with `{document_path}`, adding `-
 
 ## Step 3 — Draft
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' {tmp_dir} {document_path} --kind gate --lang {lang}`, adding `--prior-doc {prior_document}` when it is not `(none)`. It writes `{tmp_dir}/draft.json`. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' {tmp_dir} {document_path} --kind gate --lang {lang}`, adding `--prior-doc {prior_document}` when it is not `(none)`. It writes `{tmp_dir}/draft.json` and prints `unchanged`, the findings verified earlier whose verification still holds, which the review body leaves out. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
 
 ## Step 4 — Confirm and post
 
@@ -50,4 +50,4 @@ The script computes the verdict, the event, and each finding's place from `{json
 
 ## Step 5 — Report
 
-Report `verdict`, `review_url`, the IDs in `fallbacks`, and `{prior_document}` when it is not `(none)`. When `recovered_from` is not null, add that error: the call failed but the review went out. When `own_pr` is true and the verdict is BLOCK, add that GitHub refuses Request Changes on your own pull request, so it went out as Comment with the verdict in the body. When the verdict is PASS and `own_pr` is false, add that a Request Changes you sent earlier stays on GitHub until it is dismissed, and that dismissing it takes that review's findings out of later runs. After BLOCK, say to run `/cgh:gate` again once the findings are addressed. Then finish.
+Report `verdict`, `review_url`, the IDs in `fallbacks`, the count of `unchanged`, and `{prior_document}` when it is not `(none)`. When `recovered_from` is not null, add that error: the call failed but the review went out. When `own_pr` is true and the verdict is BLOCK, add that GitHub refuses Request Changes on your own pull request, so it went out as Comment with the verdict in the body. When the verdict is PASS and `own_pr` is false, add that a Request Changes you sent earlier stays on GitHub until it is dismissed, and that dismissing it takes that review's findings out of later runs. After BLOCK, say to run `/cgh:gate` again once the findings are addressed. Then finish.

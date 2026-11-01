@@ -8,6 +8,7 @@ Usage:
         [--prior-doc <path>]
     python3 gh-review.py wording <pr_url> <json_path>
     python3 gh-review.py comments <pr_url> <tmp_dir>
+    python3 gh-review.py raised <pr_url> <tmp_dir>
     python3 gh-review.py fixes <pr_url> <tmp_dir> <document>
     python3 gh-review.py pushed <pr_url> <fix_commits_json>
     python3 gh-review.py replies <pr_url> <tmp_dir> <document> --lang en|ja
@@ -19,17 +20,18 @@ this clone, before it calls gh.
 
 prior: finds the findings the authenticated user posted with this script, from the
 markers in their comments, leaving out those of a dismissed review. Writes
-<tmp_dir>/prior.json with the findings of --kind not yet marked verified or waived, Info
-left out since creview's verification skips it, and, when there are any, <document>: a
-review document creview's verification reads, with a Source: pr-comments bullet and a
-Trust bullet: on at the pull request's head or with --trust, otherwise off. Stops when
-there are any and the working tree holds what the pull request does not: commits past
-its head, or uncommitted changes at its head. When findings of --kind are waived, writes
-them to <tmp_dir>/waived.md and prints its path as waived_document. In a finding's thread,
-the authenticated user's latest reply of this workflow, when it cites no commit, is a
-decline and goes into the document as a Won't Fix triage with its text as the reason. A
-reply by anyone else, or by that user without the thread's marker, goes into the finding's
-text as an unverified claim.
+<tmp_dir>/prior.json with the findings of --kind not waived, Info left out since creview's
+verification skips it, and, when there are any, <document>: a review document creview's
+verification reads, with a Source: pr-comments bullet and a Trust bullet: on at the pull
+request's head or with --trust, otherwise off. A finding marked verified stays in, with a
+Verification line, so that the verification checks it again. A later reopen marker undoes a
+verified one. Stops when there are any and the working tree holds what the pull request does
+not: commits past its head, or uncommitted changes at its head. When findings of --kind are
+waived, writes them to <tmp_dir>/waived.md and prints its path as waived_document. In a
+finding's thread, the authenticated user's latest reply of this workflow that reports neither a
+verification nor a feedback, when it cites no commit, is a decline and goes into the document
+as a Won't Fix triage with its text as the reason. A reply by anyone else, or by that user
+without the thread's marker, goes into the finding's text as an unverified claim.
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after
@@ -37,8 +39,9 @@ every ID already used on the pull request, with whether it is selected and where
 (inline: a line of the diff; file: a file of the diff; body: anywhere else). Selected by
 default: Will Fix with Maintain or Alternative, and Will Fix with Downgrade at Critical or
 Major, which stays a real problem. --prior-doc, which must be at the pull request's head too,
-adds the verification of earlier gate findings. It also writes <tmp_dir>/pr-body.json, the pull
-request's title and description.
+adds the verification of earlier gate findings. A finding <tmp_dir>/prior.json has as verified
+earlier is left out when that still holds, and printed in unchanged; when it no longer holds, the
+post reopens it. It also writes <tmp_dir>/pr-body.json, the pull request's title and description.
 
 wording: merges every wording-*.json next to <json_path> into it: comment_lang, the
 language comments go out in, with, per finding, summary (the recommendation for people,
@@ -49,8 +52,12 @@ edit to the file, and prints the selected findings and the earlier findings with
 that no wording has covered yet.
 
 comments: writes <tmp_dir>/comments.json, the pull request's comments with their IDs and
-answered, whether a reply of the authenticated user already marks them, and
-<tmp_dir>/pr-body.json.
+answered, whether a reply of the authenticated user marks them and the latest such reply does
+not report a feedback, and <tmp_dir>/pr-body.json.
+
+raised: writes <tmp_dir>/raised/batch-<n>.json, the comments already on the pull request by
+author and place, with HTML comments removed, split into batches with each thread whole. Leaves
+out what this script posted for the authenticated user, except gate findings.
 
 fixes: writes <tmp_dir>/fix-commits.json, the commits on the document's Branch bullet,
 or HEAD without one, past the document's head. Prints head_ref, the pull request's branch,
@@ -59,12 +66,15 @@ as null when its name holds a character unsafe to show in a command.
 pushed: says whether the pull request's head contains the newest of those commits.
 
 replies: writes <tmp_dir>/replies.json from the verification in <document> and the
-targets in <tmp_dir>/prior.json, and <tmp_dir>/pr-body.json.
+targets in <tmp_dir>/prior.json, and <tmp_dir>/pr-body.json. A finding verified earlier gets a
+reply only when the verification no longer holds, and that reply reopens it; otherwise it is
+printed in unchanged.
 
 preview: writes <json_path minus .json>-preview.md, what post would send in the preview's
 language, and -post.md, the same in the wording that goes out. The JSON file is
 draft.json, or a file with a "replies" list of {kind: thread|review|issue_comment|issue,
-target_id, finding_ids, body, post_body, selected (default true), verified}. For a draft,
+target_id, finding_ids, body, post_body, selected (default true), verified, reopened}. For a
+draft,
 wording_missing holds what wording would print as missing, an empty recommendation or not.
 For a gate draft, it first waits for GitHub to compute whether the pull request merges, and
 records the verdict it shows as previewed_verdict.
@@ -76,7 +86,8 @@ went out anyway counts as posted, one still pending is deleted, and with the sta
 unknown the review counts as posted, so that a rerun cannot send it twice. A reply to a
 review or an issue comment goes out as an issue comment that mentions its author. Replies sent
 are marked in the file, so a rerun skips them. --commits refuses a file with findings or a
-reply that marks a finding verified, and refuses to send anything until the pull request
+reply that marks a finding verified or reopened, and refuses to send anything until the pull
+request
 contains those commits.
 
 Prints a JSON object. Exits 1 with an error message on stderr on any failure.
@@ -135,10 +146,14 @@ FINDING_RE = re.compile(
     r"(?P<body>.*?)<!-- /cgh:finding (?P=id) -->", re.S)
 VERIFIED_RE = re.compile(rf"<!-- cgh:verified ({FINDING_IDS}) -->")
 WAIVED_RE = re.compile(rf"<!-- cgh:waived ({FINDING_IDS}) -->")
+REOPENED_RE = re.compile(rf"<!-- cgh:reopened ({FINDING_IDS}) -->")
+CGH_MARKER_RE = re.compile(r"<!-- /?cgh:")
 REPLY_RE = re.compile(r"<!-- cgh:reply (thread|review|issue_comment) ([0-9]+) -->")
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 COMMIT_RE = re.compile(r"\b[0-9a-f]{10,40}\b")
 REC_MARKER = "<!-- cgh:rec -->"
+PRIOR_VERIFIED = "✅ Verified — Verified at an earlier commit"
+FEEDBACK_ICON = "💬"
 COMMENT_LANG_RE = re.compile(r"[a-z]{2,3}(?:-[A-Za-z0-9]+)*")
 FINDING_WORDING = ("summary", "post_text", "post_summary", "post_note")
 SEVERITIES = {"C": "Critical", "M": "Major", "mi": "Minor", "I": "Info"}
@@ -150,6 +165,7 @@ PAGE_SIZE = 100
 MAX_PAGES = 100
 BODY_LIMIT = 65000
 CLAIM_LIMIT = 500
+RAISED_BATCH_CHARS = 40000
 MERGEABLE_TRIES = 5
 MERGEABLE_WAIT = 3
 PR_QUERY = """
@@ -582,15 +598,23 @@ def record_reply(finding, comment, viewer):
     answers = {match.groups() for match in REPLY_RE.finditer(body)}
     marked = ("thread", str(finding["target"]["id"])) in answers
     if login == viewer and marked:
-        # Replies of this workflow that fix or verify cite a commit; a decline cites none.
-        finding["declined"] = None if COMMIT_RE.search(text) else text
+        # A verification or a feedback judges a decline, so it stays. A fix cites a commit and a
+        # decline cites none.
+        if not VERIFIED_RE.search(body) and not text.startswith(FEEDBACK_ICON):
+            finding["declined"] = None if COMMIT_RE.search(text) else text
     elif text:
         finding["claims"].append({"author": login, "text": text[:CLAIM_LIMIT]})
 
 
+def by_time(entries, entry_of=lambda entry: entry):
+    return sorted(entries, key=lambda e: (
+        entry_of(e).get("created_at") or entry_of(e).get("submitted_at") or ""))
+
+
 def posted_findings(pr, viewer):
     """The viewer's findings and verified and waived IDs outside pending and dismissed reviews,
-    and every ID the viewer has used, dismissed reviews included.
+    and every ID the viewer has used, dismissed reviews included. A verified ID stays verified
+    unless a later comment reopens it.
     """
     reviews = rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/reviews")
     comments = rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/comments")
@@ -631,7 +655,7 @@ def posted_findings(pr, viewer):
     entries = [*((r, r.get("id")) for r in reviews),
                *((c, c.get("pull_request_review_id")) for c in comments),
                *((c, None) for c in issue_comments)]
-    for entry, review in entries:
+    for entry, review in by_time(entries, lambda pair: pair[0]):
         if not own(entry) or review in pending:
             continue
         body = entry.get("body") or ""
@@ -642,6 +666,9 @@ def posted_findings(pr, viewer):
                 used.update(ids)
                 if review not in dismissed:
                     marked.update(ids)
+        if review not in dismissed:
+            for match in REOPENED_RE.finditer(body):
+                verified.difference_update(match.group(1).split(","))
     return Posted(posted, verified, waived, used)
 
 
@@ -698,6 +725,8 @@ def write_prior_document(path, pr, view, merge_base, viewer, findings, state, tr
                       "**Finding:**", "", text, "", f"<!-- METADATA({f['id']}) -->"]
             if f["declined"]:
                 lines.append(f"- **Triage:** 🚫 Won't Fix — {document_text(f['declined'])}")
+            if f.get("verified"):
+                lines.append(f"- **Verification:** {PRIOR_VERIFIED}")
             lines += [f"<!-- /METADATA({f['id']}) -->", "", "---", ""]
     with open(path, "w", encoding="utf-8", newline="\n") as out:
         out.write("\n".join(lines))
@@ -724,8 +753,9 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
     view = view_pr(pr)
     posted = posted_findings(pr, view["viewer"])
     mine = [f for f in posted.findings.values() if f["kind"] == kind]
-    closed = posted.verified | posted.waived
-    findings = [f for f in mine if f["id"] not in closed and f["severity"] != "Info"]
+    findings = [f for f in mine if f["id"] not in posted.waived and f["severity"] != "Info"]
+    for f in findings:
+        f["verified"] = f["id"] in posted.verified
     waived = [f for f in mine if f["id"] in posted.waived - posted.verified]
     waived_document = None
     if waived:
@@ -747,7 +777,7 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
         written = document
     return {
         "url": pr.url, "number": pr.number, "head_sha": view["headRefOid"],
-        "open": [f["id"] for f in findings],
+        "open": [f["id"] for f in findings if not f["verified"]],
         "verified": [f["id"] for f in mine if f["id"] in posted.verified],
         "waived": [f["id"] for f in waived],
         "document": written, "waived_document": waived_document,
@@ -773,20 +803,33 @@ def checked_document(pr, document):
     return header, findings
 
 
-def prior_states(pr, prior_doc, head):
+def earlier_verified(tmp_dir):
+    path = os.path.join(tmp_dir, "prior.json")
+    if not os.path.exists(path):
+        return set()
+    return {f["id"] for f in read_json(path)["findings"] if f.get("verified")}
+
+
+def prior_states(pr, prior_doc, head, earlier):
     if not prior_doc:
-        return []
+        return [], []
     header, findings = checked_document(pr, prior_doc)
     if header.get("head_sha") != head:
         raise Error(f"{prior_doc} was verified at {header.get('head_sha')}, but the pull request "
                     f"is at {head}; run /cgh:gate again")
-    prior = []
+    prior, unchanged = [], []
     for f in findings:
         verification = f["metadata"].get("Verification", "")
-        state = "verified" if has_label(verification, "Verified") else "open"
-        prior.append({"id": f["id"], "severity": f["severity"], "state": state,
-                      "note": verification.partition(" — ")[2].strip()})
-    return prior
+        checked = verification != PRIOR_VERIFIED
+        verified = checked and has_label(verification, "Verified")
+        if verified and f["id"] in earlier:
+            unchanged.append(f["id"])
+            continue
+        prior.append({"id": f["id"], "severity": f["severity"],
+                      "state": "verified" if verified else "open",
+                      "note": verification.partition(" — ")[2].strip() if checked else "",
+                      "reopened": checked and not verified and f["id"] in earlier})
+    return prior, unchanged
 
 
 def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
@@ -797,7 +840,7 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
         raise Error(f"the pull request moved past the reviewed head {header.get('head_sha')} "
                     f"to {view['headRefOid']}; run the skill again")
     used = posted_findings(pr, view["viewer"]).used
-    prior = prior_states(pr, prior_doc, view["headRefOid"])
+    prior, unchanged = prior_states(pr, prior_doc, view["headRefOid"], earlier_verified(tmp_dir))
     numbers = next_numbers([*used, *(p["id"] for p in prior)])
     files = changed_files(pr)
     entries = []
@@ -822,7 +865,7 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
         "path": os.path.join(tmp_dir, "draft.json"), "total": len(entries),
         "selected": len(selected),
         "selected_ids": [e["id"] for e in selected],
-        "prior_ids": [p["id"] for p in prior],
+        "prior_ids": [p["id"] for p in prior], "unchanged": unchanged,
         "pr_body_path": write_pr_body(tmp_dir, view),
         "by_placement": {p: sum(e["placement"] == p for e in selected)
                          for p in ("inline", "file", "body")},
@@ -883,6 +926,9 @@ def review_body(draft, plan, body_findings, post):
         done = [p["id"] for p in draft["prior"] if p["state"] == state]
         if done:
             lines.append(f"<!-- cgh:{state} {','.join(done)} -->")
+    reopened = [p["id"] for p in draft["prior"] if p.get("reopened")]
+    if reopened:
+        lines.append(f"<!-- cgh:reopened {','.join(reopened)} -->")
     return "\n".join(lines).strip()
 
 
@@ -948,7 +994,10 @@ def validated_replies(data):
         entry.setdefault("posted", False)
         ids = entry.setdefault("finding_ids", [])
         verified = entry.setdefault("verified", [])
-        if not finding_ids_only(ids) or not finding_ids_only(verified) or set(verified) - set(ids):
+        reopened = entry.setdefault("reopened", [])
+        marked = [*verified, *reopened]
+        if not all(finding_ids_only(group) for group in (ids, verified, reopened)) or (
+                set(marked) - set(ids)):
             raise Error(f"malformed reply: {entry!r}")
     return replies
 
@@ -967,6 +1016,8 @@ def preview_replies(data, post):
         lines += [f"## {entry['kind']}{target}{state}", "", f"Findings: {ids}", ""]
         if entry["verified"]:
             lines += [f"Verified: {', '.join(entry['verified'])}", ""]
+        if entry["reopened"]:
+            lines += [f"Reopened: {', '.join(entry['reopened'])}", ""]
         lines += [safe_text(reply_text(entry, post)), ""]
     return "\n".join(lines), {"replies": sum(e["selected"] and not e["posted"] for e in replies),
                               "comment_lang": data.get("comment_lang")}
@@ -1165,6 +1216,8 @@ def send_reply(pr, entry, viewer):
     body = safe_text(reply_text(entry, True))
     if entry["verified"]:
         body += f"\n\n<!-- cgh:verified {','.join(entry['verified'])} -->"
+    if entry["reopened"]:
+        body += f"\n\n<!-- cgh:reopened {','.join(entry['reopened'])} -->"
     if entry["kind"] == "thread":
         comment = rest_get(pr, f"repos/{pr.repo}/pulls/comments/{entry['target_id']}")
         if not belongs(pr, comment.get("pull_request_url"), "pulls"):
@@ -1221,9 +1274,10 @@ def cmd_post(pr_url, path, commits_path):
     pr = checked_pr(pr_url)
     data = read_json(path)
     if commits_path:
-        if "findings" in data or any(e["verified"] for e in validated_replies(data)):
+        if "findings" in data or any(e["verified"] or e["reopened"]
+                                     for e in validated_replies(data)):
             raise Error(f"--commits sends only replies that mark nothing verified: {path} holds "
-                        "findings or a verified reply")
+                        "findings or a verified or reopening reply")
         if not pushed_state(pr, commits_path)["pushed"]:
             raise Error("the pull request does not contain the fix commits yet; push them first")
     return post_review(pr, path, data) if "findings" in data else post_replies(pr, path, data)
@@ -1241,9 +1295,15 @@ def cmd_comments(pr_url, tmp_dir):
     def author(entry):
         return (entry.get("user") or {}).get("login") or "ghost"
 
-    answered = {(match.group(1), int(match.group(2)))
-                for c in [*comments, *issue_comments] if author(c) == view["viewer"]
-                for match in REPLY_RE.finditer(c.get("body") or "")}
+    answered = set()
+    for c in by_time([*comments, *issue_comments]):
+        body = c.get("body") or ""
+        if author(c) != view["viewer"]:
+            continue
+        feedback = HTML_COMMENT_RE.sub("", body).strip().startswith(FEEDBACK_ICON)
+        for match in REPLY_RE.finditer(body):
+            key = (match.group(1), int(match.group(2)))
+            answered.discard(key) if feedback else answered.add(key)
     path = os.path.join(tmp_dir, "comments.json")
     write_json(path, {
         "review_comments": [
@@ -1261,6 +1321,59 @@ def cmd_comments(pr_url, tmp_dir):
             for c in issue_comments],
     })
     return {"path": path, "pr_body_path": write_pr_body(tmp_dir, view)}
+
+
+def raised_batches(units):
+    batches, size = [[]], 0
+    for unit in units:
+        length = sum(len(c["text"]) for c in unit)
+        if batches[-1] and size + length > RAISED_BATCH_CHARS:
+            batches.append([])
+            size = 0
+        batches[-1].extend(unit)
+        size += length
+    return batches if batches[0] else []
+
+
+def cmd_raised(pr_url, tmp_dir):
+    pr = checked_pr(pr_url)
+    viewer = view_pr(pr, require_open=False)["viewer"]
+    reviews = rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/reviews")
+    pending = {r.get("id") for r in reviews if r.get("state") == "PENDING"}
+
+    def entry(comment, location, **fields):
+        body = comment.get("body") or ""
+        author = (comment.get("user") or {}).get("login") or "ghost"
+        gate_finding = any(m.group("kind") == "gate" for m in FINDING_RE.finditer(body))
+        if author == viewer and CGH_MARKER_RE.search(body) and not gate_finding:
+            return None
+        text = HTML_COMMENT_RE.sub("", body).strip()
+        return {"author": author, "location": location, "text": text, **fields} if text else None
+
+    units, threads = [], {}
+    for review in reviews:
+        if review.get("id") not in pending:
+            units.append([entry(review, "PR")])
+    for comment in rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/comments"):
+        if comment.get("pull_request_review_id") in pending:
+            continue
+        line = comment.get("line") or comment.get("original_line")
+        location = f"{comment.get('path')}:{line}" if line else comment.get("path")
+        root = comment.get("in_reply_to_id") or comment.get("id")
+        unit = threads.setdefault(root, [])
+        if not unit:
+            units.append(unit)
+        unit.append(entry(comment, location, in_reply_to=comment.get("in_reply_to_id")))
+    for comment in rest_pages(pr, f"repos/{pr.repo}/issues/{pr.number}/comments"):
+        units.append([entry(comment, "PR")])
+    units = [[c for c in unit if c] for unit in units]
+    batches = raised_batches([unit for unit in units if unit])
+    directory = os.path.join(tmp_dir, "raised")
+    os.makedirs(directory, exist_ok=True)
+    for n, batch in enumerate(batches, 1):
+        write_json(os.path.join(directory, f"batch-{n}.json"), {"comments": batch})
+    return {"directory": directory, "batches": len(batches),
+            "comments": sum(len(batch) for batch in batches)}
 
 
 def cmd_fixes(pr_url, tmp_dir, document):
@@ -1294,17 +1407,23 @@ def cmd_replies(pr_url, tmp_dir, document, lang):
     short = header["head_sha"][:SHORT_SHA]
     prior = read_json(os.path.join(tmp_dir, "prior.json"))["findings"]
     targets = {f["id"]: f["target"] for f in prior}
+    earlier = {f["id"] for f in prior if f.get("verified")}
     replies, body_lines, body_ids, body_verified, unverified = [], [], [], [], []
+    body_reopened, unchanged = [], []
     for finding in findings:
         fid, verification = finding["id"], finding["metadata"].get("Verification", "")
         target = targets.get(fid)
         if not target:
             continue
-        if not verification:
+        if not verification or verification == PRIOR_VERIFIED:
             unverified.append(fid)
             continue
         note = verification.partition(" — ")[2].strip()
         verified = has_label(verification, "Verified")
+        if verified and fid in earlier:
+            unchanged.append(fid)
+            continue
+        reopened = [fid] if fid in earlier else []
         as_recommended = note.startswith("[as-recommended]")
         note = re.sub(r"^\[(?:as-recommended|differs)\]\s*", "", note)
         if verified:
@@ -1313,21 +1432,25 @@ def cmd_replies(pr_url, tmp_dir, document, lang):
                 text += f" {note}"
         else:
             result = labels["not_resolved"].format(sha=short)
-            text = f"💬 **{severity_of(fid)} {fid}**: {result} {note}"
+            text = f"{FEEDBACK_ICON} **{severity_of(fid)} {fid}**: {result} {note}"
         if target["kind"] == "thread":
             replies.append({"kind": "thread", "target_id": target["id"], "finding_ids": [fid],
-                            "body": text, "verified": [fid] if verified else []})
+                            "body": text, "verified": [fid] if verified else [],
+                            "reopened": reopened})
         else:
             body_lines.append(text)
             body_ids.append(fid)
+            body_reopened.extend(reopened)
             if verified:
                 body_verified.append(fid)
     if body_lines:
         replies.append({"kind": "issue", "target_id": None, "finding_ids": body_ids,
-                        "body": "\n\n".join(body_lines), "verified": body_verified})
+                        "body": "\n\n".join(body_lines), "verified": body_verified,
+                        "reopened": body_reopened})
     path = os.path.join(tmp_dir, "replies.json")
     write_json(path, {"replies": replies})
     return {"path": path, "replies": len(replies), "unverified": unverified,
+            "unchanged": unchanged,
             "pr_body_path": write_pr_body(tmp_dir, view_pr(pr, require_open=False))}
 
 
@@ -1351,6 +1474,7 @@ def parser():
     draft.add_argument("--prior-doc")
     command("wording", "pr_url", "path")
     command("comments", "pr_url", "tmp_dir")
+    command("raised", "pr_url", "tmp_dir")
     command("fixes", "pr_url", "tmp_dir", "document")
     command("pushed", "pr_url", "commits")
     replies = command("replies", "pr_url", "tmp_dir", "document")
@@ -1371,6 +1495,8 @@ def dispatch(args):
         return cmd_wording(args.pr_url, args.path)
     if args.command == "comments":
         return cmd_comments(args.pr_url, args.tmp_dir)
+    if args.command == "raised":
+        return cmd_raised(args.pr_url, args.tmp_dir)
     if args.command == "fixes":
         return cmd_fixes(args.pr_url, args.tmp_dir, args.document)
     if args.command == "pushed":
