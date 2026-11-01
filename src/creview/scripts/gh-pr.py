@@ -29,6 +29,9 @@ the PR to be open, and writes to <out_dir>:
                    dismissed, and, when known, whether its thread is resolved;
                    with --skip-resolved, the batches leave out the threads known
                    to be resolved
+Both files hold comments by anyone but the authenticated user with their HTML
+comments removed, and leave out a review body with nothing else in it; failing to
+read the authenticated user is an error.
 It prints a JSON object whose in_place is true when HEAD of the current working
 tree is the PR head, whose comment_batches is the number of batches, whose
 comments_omitted is true when more comments exist than MAX_PAGES pages hold, whose
@@ -145,6 +148,8 @@ MAX_PAGES = 100
 MAX_COMMENTS = 50
 BATCH_CHARS = 40000
 COMMENT_KINDS = ("issue_comments", "reviews", "review_comments")
+# As GitHub hides them: <!--> and <!---> are whole comments, and one never closed runs to the end.
+HTML_COMMENT_RE = re.compile(r"<!--(?:-?>|.*?(?:-->|\Z))", re.S)
 REVIEW_THREADS_QUERY = """
 query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
@@ -317,7 +322,32 @@ def resolved_threads(host, repo, number):
     return states, False
 
 
+def authenticated_user(host):
+    try:
+        user = json.loads(run(["gh", "api", "--hostname", host, "user"]))
+    except ValueError:
+        user = None
+    name = user.get("login") if isinstance(user, dict) else None
+    if not name or not isinstance(name, str):
+        raise Error(f"gh did not return the authenticated user of {host}")
+    return name
+
+
+def without_comments(text):
+    while True:
+        stripped = HTML_COMMENT_RE.sub("", text)
+        if stripped == text:
+            return text
+        text = stripped
+
+
+def visible_body(comment, viewer):
+    body = comment.get("body") or ""
+    return (body if login(comment.get("user")) == viewer else without_comments(body)).strip()
+
+
 def all_comments(host, repo, number):
+    viewer = authenticated_user(host)
     states, states_complete = resolved_threads(host, repo, number)
     reviews, complete = api_pages(f"repos/{repo}/pulls/{number}/reviews", host)
     pending = {r.get("id") for r in reviews if r.get("state") == "PENDING"}
@@ -332,20 +362,20 @@ def all_comments(host, repo, number):
          "outdated": c.get("line") is None and c.get("original_line") is not None,
          "review_dismissed": c.get("pull_request_review_id") in dismissed,
          "thread_resolved": states.get(c.get("in_reply_to_id") or c.get("id")),
-         "body": c.get("body") or ""}
+         "body": visible_body(c, viewer)}
         for c in review_comments
         if c.get("pull_request_review_id") not in pending
     ]
     return {
         "issue_comments": [
             {"id": c.get("id"), "author": login(c.get("user")),
-             "created_at": c.get("created_at"), "body": c.get("body") or ""}
+             "created_at": c.get("created_at"), "body": visible_body(c, viewer)}
             for c in issue_comments
         ],
         "reviews": [
             {"id": r.get("id"), "author": login(r.get("user")), "state": r.get("state"),
-             "submitted_at": r.get("submitted_at"), "body": r.get("body") or ""}
-            for r in reviews if r.get("body") and r.get("state") != "PENDING"
+             "submitted_at": r.get("submitted_at"), "body": visible_body(r, viewer)}
+            for r in reviews if visible_body(r, viewer) and r.get("state") != "PENDING"
         ],
         "review_comments": inline,
         "omitted": not (complete and issue_complete and comments_complete),

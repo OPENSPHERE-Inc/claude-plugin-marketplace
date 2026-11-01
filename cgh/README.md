@@ -8,7 +8,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 
 ## Requirements
 
-- The `creview` plugin, version 0.17.0 or later, which Claude Code installs with `cgh` as a
+- The `creview` plugin, version 0.18.0 or later, which Claude Code installs with `cgh` as a
   dependency, and what it needs for a pull request: an authenticated GitHub CLI (`gh`), Git 2.41
   or later, `python3` (3.9 or later) on the `PATH`, and a clone with the pull request's
   repository as a remote. The skills refuse a pull request of any other repository.

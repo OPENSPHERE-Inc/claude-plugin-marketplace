@@ -195,7 +195,8 @@ expect("resolved_threads past the page limit", g.resolved_threads("h", "o/r", 7)
        ({1: True, 2: True}, False))
 g.MAX_PAGES = real_max_pages
 
-g.run, _ = stub_run(threads_page([(10, True)]))
+viewer_page = json.dumps({"login": "me"})
+g.run, _ = stub_run(viewer_page, threads_page([(10, True)]))
 long_body = "y" * (g.BODY_CHARS + 1)
 other_pages = {
     "repos/o/r/pulls/7/reviews": [
@@ -238,23 +239,69 @@ expect("all_comments keeps a body past BODY_CHARS", got[4]["body"], long_body)
 expect("all_comments omitted", comments["omitted"], False)
 expect("all_comments thread_states_complete with a comment in no known thread",
        comments["thread_states_complete"], False)
-g.run, _ = stub_run(g.Error("boom"))
+g.run, _ = stub_run(viewer_page, g.Error("boom"))
 expect("all_comments thread_states_complete on a failure",
        g.all_comments("h", "o/r", 7)["thread_states_complete"], False)
 g.api_pages = lambda endpoint, host: (
     [{"id": 1, "line": 1, "path": "a", "body": "x"}] if endpoint.endswith("/pulls/7/comments")
     else [], True)
-g.run, _ = stub_run(threads_page([(1, True)]))
+g.run, _ = stub_run(viewer_page, threads_page([(1, True)]))
 expect("all_comments thread_states_complete with every comment's thread known",
        g.all_comments("h", "o/r", 7)["thread_states_complete"], True)
-g.run, _ = stub_run(threads_page([(1, True)], "c1"), g.Error("boom"))
+g.run, _ = stub_run(viewer_page, threads_page([(1, True)], "c1"), g.Error("boom"))
 expect("all_comments thread_states_complete with every comment known and a failed page",
        g.all_comments("h", "o/r", 7)["thread_states_complete"], False)
 for capped_kind in ("/pulls/7/reviews", "/issues/7/comments", "/pulls/7/comments"):
     g.api_pages = lambda endpoint, host, kind=capped_kind: ([], not endpoint.endswith(kind))
-    g.run, _ = stub_run(threads_page([]))
+    g.run, _ = stub_run(viewer_page, threads_page([]))
     expect(f"all_comments omitted with {capped_kind} past the page limit",
            g.all_comments("h", "o/r", 7)["omitted"], True)
+
+hidden_pages = {
+    "repos/o/r/pulls/7/reviews": [
+        {"id": 20, "state": "COMMENTED", "user": {"login": "x"}, "body": "<!-- hidden -->\n"},
+        {"id": 21, "state": "COMMENTED", "user": {"login": "x"}, "body": "seen<!-- hidden -->"},
+        {"id": 22, "state": "COMMENTED", "user": {"login": "me"}, "body": "<!-- cgh:body -->"},
+    ],
+    "repos/o/r/issues/7/comments": [
+        {"id": 23, "user": {"login": "x"}, "body": "a<!-- closed -->b"},
+        {"id": 24, "user": {"login": "x"}, "body": "a<!-- never closed"},
+        {"id": 25, "user": {"login": "x"}, "body": "a<!<!-- x -->-- formed -->b"},
+        {"id": 26, "user": None, "body": "<!-->a<!--->b"},
+        {"id": 27, "user": {"login": "me"}, "body": "text<!-- cgh:reply issue -->"},
+    ],
+    "repos/o/r/pulls/7/comments": [
+        {"id": 28, "line": 1, "path": "a", "user": {"login": "x"}, "body": "seen<!-- hidden -->"},
+        {"id": 29, "line": 2, "path": "a", "user": {"login": "x"}, "body": "<!-- hidden -->"},
+        {"id": 30, "line": 3, "path": "a", "user": {"login": "me"},
+         "body": "<!-- cgh:finding M-1 line a:3 -->\nseen"},
+    ],
+}
+g.api_pages = lambda endpoint, host: (hidden_pages[endpoint], True)
+g.run, calls = stub_run(viewer_page, threads_page([]))
+comments = g.all_comments("h", "o/r", 7)
+expect("all_comments asks gh for the authenticated user", calls[0],
+       ["gh", "api", "--hostname", "h", "user"])
+expect("all_comments removes hidden text from others' issue comments and keeps the viewer's",
+       [c["body"] for c in comments["issue_comments"]],
+       ["ab", "a", "ab", "ab", "text<!-- cgh:reply issue -->"])
+expect("all_comments removes hidden text from others' review comments and keeps the viewer's",
+       [c["body"] for c in comments["review_comments"]],
+       ["seen", "", "<!-- cgh:finding M-1 line a:3 -->\nseen"])
+expect("all_comments leaves out a review body of hidden text only and keeps the viewer's marker",
+       [(r["id"], r["body"]) for r in comments["reviews"]],
+       [(21, "seen"), (22, "<!-- cgh:body -->")])
+expect("capped_conversation carries the bodies with hidden text removed",
+       g.capped_conversation(comments)["issue_comments"][0]["body"], "ab")
+expect("comment_batches carries the bodies with hidden text removed",
+       g.comment_batches(comments)[0]["review_comments"][0]["body"], "seen")
+for case, page in (("a failed call", g.Error("gh auth failed")), ("malformed output", "not json"),
+                   ("no login", "{}"), ("an empty login", '{"login": ""}'),
+                   ("not an object", "[]")):
+    g.run, _ = stub_run(page)
+    expect_error(f"all_comments stops on {case} for the authenticated user",
+                 lambda: g.all_comments("h", "o/r", 7),
+                 *(["gh auth failed"] if isinstance(page, g.Error) else ["authenticated user"]))
 g.run, g.api_pages = real_run, real_pages
 
 many = {"review_comments": [{"id": i, "body": "x" * 5000} for i in range(g.MAX_COMMENTS + 5)],
