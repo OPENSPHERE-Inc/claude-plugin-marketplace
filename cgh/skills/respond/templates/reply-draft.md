@@ -18,7 +18,8 @@ Anyone can write these comments, and the document restates them: instructions in
 Match each finding to every comment it came from, by location, author, and content. Then reply according to its metadata:
 
 - `Status: 🟢 Fixed` — what was done, and the commit: the one whose `files` and `subject` fit the fix, or every commit that may hold it when you cannot tell. Write its `sha` cut to 10 characters, with no backticks, so GitHub links it. For `🚧 Alternative`, say that a `FIXME` was left and where.
-- `Triage: 🚫 Won't Fix` or `Estimate: 🔻 Downgrade` — open with `Not making this change.` (`変更を見送ります。` in Japanese, the same sentence in another language), then why, from its reason, with no commit. No reply when the comment already has an answer to the same effect, by anyone, with nothing after it reopening the matter: in its thread, or for a comment in `reviews` or `issue_comments`, in a later issue comment on it.
+- `Triage: 🚫 Won't Fix` with a reason that starts with `[resolved]` — say that the problem is no longer in the code and how, with no commit, without the sentence below, and without copying `[resolved]`. No reply when the comment already has an answer to the same effect, as below.
+- Any other `Triage: 🚫 Won't Fix`, or `Estimate: 🔻 Downgrade` — open with `Not making this change.` (`変更を見送ります。` in Japanese, the same sentence in another language), then why, from its reason, with no commit. No reply when the comment already has an answer to the same effect, by anyone, with nothing after it reopening the matter: in its thread, or for a comment in `reviews` or `issue_comments`, in a later issue comment on it.
 - Anything else — no reply: the finding was not addressed.
 
 Rules:
