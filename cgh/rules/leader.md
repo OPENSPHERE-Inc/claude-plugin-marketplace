@@ -38,7 +38,7 @@ Include `template_id` (Read from the template's frontmatter) in the return value
 ```
 
 The returned `template_id` must be `2224560e-edcd-4a41-b86b-c19c7e31d65a`; on mismatch, launch it again, and abort when it happens twice.
-3. Run `python3 {{plugin_root}}/scripts/gh-review.py ids '{pr_url}' '{tmp_dir}'`. It writes `{tmp_dir}/finding-ids.json`, which `collect`, `prior`, and `draft` read, and prints `path`. When its error names an `extract-{n}.json`, launch the writer of that batch once more and run it again. On a second failure or any other non-zero exit, abort with its error.
+3. Run `python3 {{plugin_root}}/scripts/gh-review.py ids '{pr_url}' '{tmp_dir}'`. It writes `{tmp_dir}/finding-ids.json`, which `collect`, `prior`, and `draft` read, and prints `path`. When its error names an `extract-{n}.json`, which it has removed if the file was malformed, launch the writer of that batch once more and run it again. On a second failure or any other non-zero exit, abort with its error.
 
 ## Posted findings
 
@@ -59,7 +59,7 @@ Include `template_id` (Read from the template's frontmatter) in the return value
 ```
 
 The returned `template_id` must be `3ab4949f-308c-4ca8-b856-0e6f91dfc72f`; on mismatch, launch it again, and abort when it happens twice.
-3. Run `python3 {{plugin_root}}/scripts/gh-review.py prior '{pr_url}' '{tmp_dir}' --kind {kind} --document '{prior_path}'`, adding `--trust` when given. It prints `open`, the IDs of the findings not yet verified, `verified`, those verified earlier, which the verification checks again, `document`, the findings to check, or null, `waived` and `waived_document`, the IDs and the file of the findings withdrawn, or null, and `demoted`, the IDs judged withdrawn with no later comment of yours behind them, which stay open. Show the user the IDs in `demoted` and, from `waived_document`, the IDs and text of the findings withdrawn. When its error names an `extract-{n}.json`, launch the writer of that batch once more and run it again. On a second failure or any other non-zero exit, abort with its error.
+3. Run `python3 {{plugin_root}}/scripts/gh-review.py prior '{pr_url}' '{tmp_dir}' --kind {kind} --document '{prior_path}'`, adding `--trust` when given. It prints `open`, the IDs of the findings not yet verified, `verified`, those verified earlier, which the verification checks again, `document`, the findings to check, or null, `waived` and `waived_document`, the IDs and the file of the findings judged withdrawn from your comments, with the code not checked, or null, `demoted`, the IDs judged withdrawn with no later comment of yours behind them, which stay open, and `unjudged`, the key and IDs of each comment with finding IDs and no judgment, which can be a finding of the other kind or a reply that raises nothing. Show the user the IDs in `demoted`, the entries in `unjudged`, and, from `waived_document`, the IDs, text, and basis of the findings judged withdrawn; when `document` is null, also give the path of `waived_document`, which outlasts `{tmp_dir}`. When its error names an `extract-{n}.json`, which it has removed if the file was malformed, launch the writer of that batch once more and run it again. On a second failure or any other non-zero exit, abort with its error.
 
 ## Comment wording
 

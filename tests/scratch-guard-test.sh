@@ -261,6 +261,7 @@ hidden_pages = {
         {"id": 20, "state": "COMMENTED", "user": {"login": "x"}, "body": "<!-- hidden -->\n"},
         {"id": 21, "state": "COMMENTED", "user": {"login": "x"}, "body": "seen<!-- hidden -->"},
         {"id": 22, "state": "COMMENTED", "user": {"login": "me"}, "body": "<!-- cgh:body -->"},
+        {"id": 31, "state": "COMMENTED", "user": {"login": "x"}, "body": "`<!-- code -->`"},
     ],
     "repos/o/r/issues/7/comments": [
         {"id": 23, "user": {"login": "x"}, "body": "a<!-- closed -->b"},
@@ -268,6 +269,11 @@ hidden_pages = {
         {"id": 25, "user": {"login": "x"}, "body": "a<!<!-- x -->-- formed -->b"},
         {"id": 26, "user": None, "body": "<!-->a<!--->b"},
         {"id": 27, "user": {"login": "me"}, "body": "text<!-- cgh:reply issue -->"},
+        {"id": 32, "user": {"login": "x"}, "body": "a\n <!-- at a line start, never closed\nb"},
+        {"id": 33, "user": {"login": "x"}, "body": "```\n<!-- fence -->\n```"},
+        {"id": 34, "user": {"login": "x"}, "body": "```suggestion\n<!-- line -->\n```\nb"},
+        {"id": 35, "user": {"login": "x"}, "body": "~~~\n<!-- never closed fence"},
+        {"id": 36, "user": {"login": "x"}, "body": "<!-- `code` inside -->a"},
     ],
     "repos/o/r/pulls/7/comments": [
         {"id": 28, "line": 1, "path": "a", "user": {"login": "x"}, "body": "seen<!-- hidden -->"},
@@ -281,11 +287,14 @@ g.run, calls = stub_run(threads_page([]))
 comments = g.all_comments("h", "o/r", 7)
 expect("all_comments calls gh only for the thread states", len(calls), 1)
 expect("all_comments removes hidden text from issue comments, the viewer's included",
-       [c["body"] for c in comments["issue_comments"]], ["ab", "a", "ab", "ab", "text"])
+       [c["body"] for c in comments["issue_comments"]],
+       ["ab", "a<!-- never closed", "ab", "ab", "text", "a", "```\n<!-- fence -->\n```",
+        "```suggestion\n<!-- line -->\n```\nb", "~~~\n<!-- never closed fence", "a"])
 expect("all_comments removes hidden text from review comments, the viewer's included",
        [c["body"] for c in comments["review_comments"]], ["seen", "", "seen"])
 expect("all_comments leaves out a review body of hidden text only, the viewer's included",
-       [(r["id"], r["body"]) for r in comments["reviews"]], [(21, "seen")])
+       [(r["id"], r["body"]) for r in comments["reviews"]],
+       [(21, "seen"), (31, "`<!-- code -->`")])
 expect("capped_conversation carries the bodies with hidden text removed",
        g.capped_conversation(comments)["issue_comments"][0]["body"], "ab")
 expect("comment_batches carries the bodies with hidden text removed",
@@ -1229,12 +1238,18 @@ expect("an id named but not on the finding's comments does not count", ids_of(do
 
 proc, doc = with_ids("own-info", {"comments": {"thread:5": ["I-3"]}, "used": ["I-3"]},
                      finding("Minor", "a.c:1", sources=["thread:5"]))
-expect("an own Info finding keeps its id", ids_of(doc), [("I-3", "a.c:1")])
+expect("a finding on a comment holding an Info id takes a new id of its severity", ids_of(doc),
+       [("mi-1", "a.c:1")])
 with open(doc, encoding="utf-8") as f:
     text = f.read()
-expect("an own Info finding goes under Info", text.index("## Info") < text.index("### I-3"), True)
-expect("the summary counts it", "- **Info:** 1\n" in text, True)
-expect("the total counts it", json.loads(proc.stdout)["findings_total"], 1)
+expect("that finding goes under Minor", text.index("## Minor") < text.index("### mi-1"), True)
+expect("the Info section stays empty", "- **Info:** 0\n" in text, True)
+expect("the counts add up", (json.loads(proc.stdout)["severity_counts"]["minor"],
+                             json.loads(proc.stdout)["findings_total"]), (1, 1))
+
+proc, doc = with_ids("own-info-used", {"comments": {"thread:5": ["I-3"]}, "used": ["I-3", "I-9"]},
+                     finding("Critical", "a.c:1", sources=["thread:5"], id="I-3"))
+expect("an Info id named does not lower a finding", ids_of(doc), [("C-1", "a.c:1")])
 
 proc, doc = run(setup("no-map", [finding("Minor", "a.c:1", sources=["thread:5"], id="mi-13")]))
 expect("without a map an id named does not count", ids_of(doc), [("mi-1", "a.c:1")])

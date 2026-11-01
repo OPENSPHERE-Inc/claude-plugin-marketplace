@@ -147,8 +147,17 @@ MAX_PAGES = 100
 MAX_COMMENTS = 50
 BATCH_CHARS = 40000
 COMMENT_KINDS = ("issue_comments", "reviews", "review_comments")
-# As GitHub hides them: <!--> and <!---> are whole comments, and one never closed runs to the end.
-HTML_COMMENT_RE = re.compile(r"<!--(?:-?>|.*?(?:-->|\Z))", re.S)
+# GitHub hides comments outside code: <!--> and <!---> are whole comments, and one never closed is
+# hidden to the end only when it starts a line. Scanning from the left keeps code from hiding what
+# a comment opened first, and a comment from hiding code; a code span ends at a blank line.
+HTML_COMMENT_RE = re.compile(
+    r"(?P<code>^ {0,3}(?P<fence>`{3,}(?=[^`\n]*$)|~{3,}).*?"
+    r"(?:^ {0,3}(?P=fence)[`~]*[ \t]*\r?$|\Z)"
+    r"|(?<![`\\])(?P<span>`+)(?!`)(?:(?!\n[ \t]*\r?\n).)+?(?<!`)(?P=span)(?!`))"
+    r"|<!--(?:-?>|.*?-->)"
+    r"|^ {0,3}<!--.*\Z",
+    re.S | re.M,
+)
 REVIEW_THREADS_QUERY = """
 query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
@@ -323,7 +332,7 @@ def resolved_threads(host, repo, number):
 
 def without_comments(text):
     while True:
-        stripped = HTML_COMMENT_RE.sub("", text)
+        stripped = HTML_COMMENT_RE.sub(lambda m: m.group("code") or "", text)
         if stripped == text:
             return text
         text = stripped

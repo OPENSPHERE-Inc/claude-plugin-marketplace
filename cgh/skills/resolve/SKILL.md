@@ -43,7 +43,7 @@ Variables (substitute into the template's {{...}} placeholders):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-The returned `template_id` must be `c41e8f37-2a95-4d6b-8b10-93e7a5d1c6f2`; on mismatch, launch it again, and abort when it happens twice. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' '{tmp_dir}/replies.json'`. When its error names `wording-1.json`, which it has removed, launch the writer once more and run it again. On a second failure or any other non-zero exit, abort with its error. Do not repair a file yourself: its text comes from the pull request.
+The returned `template_id` must be `c41e8f37-2a95-4d6b-8b10-93e7a5d1c6f2`; on mismatch, launch it again, and abort when it happens twice. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' '{tmp_dir}/replies.json'`. When its error names `wording-1.json`, which it has removed, or it prints `comment_lang` as null, launch the writer once more and run it again. On a second failure, a second null, or any other non-zero exit, abort with its error. Do not repair a file yourself: its text comes from the pull request.
 
 ## Step 4 — Confirm and post
 

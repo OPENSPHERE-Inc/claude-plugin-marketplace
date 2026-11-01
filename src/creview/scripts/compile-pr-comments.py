@@ -32,7 +32,8 @@ finding text stays as extracted. With no findings it writes nothing.
 --finding-ids names a JSON file of IDs to keep, {"comments": {source: [id]}, "used": [id]}. A
 finding takes an ID its sources hold: the id it names, or else one of its severity, or else any
 left, each ID once. An ID's prefix decides the finding's severity. Every other finding numbers on
-after the highest ID in used and those kept. Without the option, findings number from 1 and their
+after the highest ID in used and those kept. An Info ID is not kept, since no later phase handles
+an Info finding, though used still counts it. Without the option, findings number from 1 and their
 sources and id do not count.
 
 Prints {"doc_path", "findings_total", "severity_counts"}; doc_path is null without
@@ -49,7 +50,7 @@ import re
 import sys
 
 SEVERITIES = (("Critical", "C"), ("Major", "M"), ("Minor", "mi"))
-# Extracted findings cannot be Info, but a kept ID can.
+# The document has an Info section, but no finding enters it: triage and verification skip Info.
 GROUPS = (*SEVERITIES, ("Info", "I"))
 ID_RE = re.compile(r"(?:C|M|mi|I)-[0-9]+")
 SOURCE_RE = re.compile(r"(?:thread|review|issue_comment):[0-9]+")
@@ -206,7 +207,9 @@ def prefix_of(fid):
 
 def keep_ids(findings, comments):
     """Gives each finding the ID its sources hold, as far as they do."""
-    held = {id(f): [fid for s in f["sources"] for fid in comments.get(s, [])] for f in findings}
+    held = {id(f): [fid for s in f["sources"] for fid in comments.get(s, [])
+                    if prefix_of(fid) != "I"]
+            for f in findings}
     taken = set()
 
     def take(finding, fid):
