@@ -178,6 +178,9 @@ class FakeGitHub:
         self.review_state = "PENDING"
         self.git = {}
         self.remote_url = "https://github.com/acme/app.git"
+        self.remotes = None
+        self.fail_add = False
+        self.state_queue = []
         self.ssh_config = ""
         self.compare_status = {}
         self.mergeable = []
@@ -223,6 +226,13 @@ class FakeGitHub:
     def git_answer(self, cmd):
         key = cmd[3] if cmd[1] == "-c" else cmd[1]
         default = ""
+        if key == "remote" and self.remotes is not None:
+            if "get-url" not in cmd:
+                return "\n".join(self.remotes) + "\n"
+            url = self.remotes[cmd[-1]]
+            if isinstance(url, Exception):
+                raise url
+            return url + "\n"
         if key == "remote":
             default = self.remote_url if "get-url" in cmd else "origin\n"
         answer = self.git.get(key, default)
@@ -257,6 +267,11 @@ class FakeGitHub:
                     pull = self.view["data"]["repository"]["pullRequest"]
                     pull["mergeable"] = self.mergeable.pop(0)
                 return json.dumps(self.view)
+            if self.state_queue:
+                answer = self.state_queue.pop(0)
+                if isinstance(answer, Exception):
+                    raise answer
+                return answer
             if self.fail_state:
                 raise mod.Error("state refused")
             if self.state_answer is not None:
@@ -268,6 +283,8 @@ class FakeGitHub:
         self.mutations.append((query, variables))
         input_ = variables["input"]
         if "addPullRequestReview(" in query:
+            if self.fail_add:
+                raise mod.Error("add refused")
             return json.dumps({"data": {"addPullRequestReview": {
                 "pullRequestReview": {"id": "R_1"}}}})
         if "addPullRequestReviewThread" in query:
@@ -341,6 +358,16 @@ class Base(unittest.TestCase):
             json.dump(data, f, ensure_ascii=False)
         return path
 
+    def reply_file(self, *entries):
+        """A replies file that wording has been through."""
+        return self.save({"comment_lang": "en", "replies": list(entries)}, "r.json")
+
+    def worded_replies(self):
+        """replies.json as replies wrote it, after wording."""
+        path = os.path.join(self.dir, "replies.json")
+        self.save({**json.loads(read_text(path)), "comment_lang": "en"}, "replies.json")
+        return path
+
     def preview(self, path):
         result = mod.cmd_preview(URL, path)
         with open(result["preview_path"], encoding="utf-8") as f:
@@ -372,6 +399,21 @@ class Parsing(Base):
     def write_document(self, *lines):
         with open(self.doc, "w", encoding="utf-8") as f:
             f.write("\n".join([f"- **PR:** {URL} (head {HEAD}, base {BASE})", "", *lines, ""]))
+
+    def test_an_orphan_heading_in_a_finding_text_does_not_end_the_parse(self):
+        self.write_document(
+            "### M-1 — `a.py:1`", "", "quoted", "## Orphan Metadata", "more", "",
+            "<!-- METADATA(M-1) -->", "<!-- /METADATA(M-1) -->", "",
+            "### M-2 — `b.py:1`", "", "x", "", "<!-- METADATA(M-2) -->", "<!-- /METADATA(M-2) -->")
+        _, findings = mod.parse_document(self.doc)
+        self.assertEqual([f["id"] for f in findings], ["M-1", "M-2"])
+        self.assertIn("## Orphan Metadata", findings[0]["text"])
+
+    def test_an_orphan_section_outside_a_finding_ends_the_parse(self):
+        self.write_document(
+            "### M-1 — `a.py:1`", "", "x", "", "<!-- METADATA(M-1) -->", "<!-- /METADATA(M-1) -->",
+            "", "## Orphan Metadata", "", "### M-9 — `c.py:1`")
+        self.assertEqual([f["id"] for f in mod.parse_document(self.doc)[1]], ["M-1"])
 
     def test_malformed_heading_is_refused(self):
         for heading in ("### M-1 — `src/a`b.py:1`", "### M-1 — `src/a.py:1` [Bug] trailing"):
@@ -1094,7 +1136,7 @@ class ResolveReplies(Base):
             "id": i, "in_reply_to_id": None,
             "pull_request_url": "https://api.github.com/repos/acme/app/pulls/7",
             "user": {"login": "me"}} for i in (1, 2, 3)}
-        mod.cmd_post(URL, os.path.join(self.dir, "replies.json"), None)
+        mod.cmd_post(URL, self.worded_replies(), None)
         first = next(b for p, b in gh.posts if p.endswith("/comments/1/replies"))
         self.assertIn("**Major M-1**", first["body"])
         self.assertNotIn("<!--", first["body"])
@@ -1105,7 +1147,7 @@ class ResolveReplies(Base):
 
 class Replies(Base):
     def replies_file(self, entries):
-        return self.save({"replies": entries}, "replies.json")
+        return self.save({"comment_lang": "en", "replies": entries}, "replies.json")
 
     def test_reply_targets_the_thread_root(self):
         gh = self.fake()
@@ -1256,6 +1298,23 @@ class Replies(Base):
         self.assertEqual(gh.review_comments[-1]["body"], "**Major M-1**: a")
         self.assertEqual(mod.cmd_post(URL, path, None)["posted"], 1)
         self.assertEqual(len(gh.posts), 1)
+
+    def test_a_rerun_finds_a_landed_reply_whose_line_endings_differ(self):
+        entry = {"kind": "thread", "target_id": 1, "finding_ids": [], "body": "a\nb"}
+        gh, path = self.lost_or_refused("lost", entry)
+        gh.review_comments[-1]["body"] = "a\r\nb"
+        self.assertEqual(mod.cmd_post(URL, path, None)["posted"], 1)
+        self.assertEqual(len(gh.posts), 1)
+
+    def test_replies_with_no_wording_are_refused(self):
+        gh = self.fake()
+        entry = {"kind": "issue", "target_id": None, "finding_ids": [], "body": "a"}
+        path = self.save({"replies": [entry]}, "replies.json")
+        with self.assertRaisesRegex(mod.Error, "wording"):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.posts, [])
+        path = self.save({"replies": [{**entry, "selected": False}]}, "replies.json")
+        self.assertEqual(mod.cmd_post(URL, path, None)["posted"], 0)
 
     def test_a_reply_past_the_limit_is_not_attempted(self):
         self.addCleanup(setattr, mod, "BODY_LIMIT", mod.BODY_LIMIT)
@@ -1471,6 +1530,38 @@ class FindingIds(Base):
         gh.issue_comments = [{"id": 2, "user": {"login": "me"}, "body": "Issue."}]
         self.assertEqual(self.own()[1][0]["others"], [])
 
+    def own_outside_in_two_batches(self):
+        self.addCleanup(setattr, mod, "BATCH_CHARS", mod.BATCH_CHARS)
+        mod.BATCH_CHARS = 5
+        gh = self.fake()
+        gh.issue_comments = [{"id": 2, "user": {"login": "me"}, "body": "Finding."},
+                             {"id": 3, "user": {"login": "me"}, "body": "M-5: fixed."},
+                             {"id": 4, "user": {"login": "rev"}, "body": "Theirs."}]
+        return self.own()[1]
+
+    def test_a_batch_outside_threads_holds_the_viewers_comments_outside_threads(self):
+        batches = self.own_outside_in_two_batches()
+        self.assertEqual([[c["key"] for c in b["comments"]] for b in batches],
+                         [["issue_comment:2"], ["issue_comment:3"]])
+        self.assertEqual(batches[1]["own_outside"], [
+            {"key": "issue_comment:2", "text": "Finding."},
+            {"key": "issue_comment:3", "text": "M-5: fixed."}])
+
+    def test_a_batch_of_threads_only_holds_no_own_outside(self):
+        self.addCleanup(setattr, mod, "BATCH_CHARS", mod.BATCH_CHARS)
+        mod.BATCH_CHARS = 5
+        gh = self.fake()
+        gh.review_comments = [{"id": 1, "user": {"login": "me"}, "body": "Inline."}]
+        gh.issue_comments = [{"id": 2, "user": {"login": "me"}, "body": "Issue."}]
+        self.assertNotIn("own_outside", self.own()[1][0])
+
+    def test_ids_records_an_id_under_a_viewers_comment_of_another_batch(self):
+        self.own_outside_in_two_batches()
+        self.extract({"findings": [], "used": []}, 1)
+        self.extract({"findings": [{"key": "issue_comment:2", "ids": ["M-5"]}], "used": []}, 2)
+        self.assertEqual(self.ids()[1], {"comments": {"issue_comment:2": ["M-5"]},
+                                         "used": ["M-5"]})
+
     def test_ids_gathers_what_each_extract_names(self):
         self.everyone(self.fake())
         self.own()
@@ -1505,6 +1596,17 @@ class FindingIds(Base):
         self.extract({"findings": [{"key": "thread:1", "ids": ["nope"]}], "used": []}, 2)
         with self.assertRaisesRegex(mod.Error, r"extract-1\.json.*extract-2\.json"):
             mod.cmd_ids(URL, self.dir)
+
+    def test_a_malformed_extract_is_removed_and_its_batch_kept(self):
+        self.two_batches()
+        self.extract({"findings": [{"key": "thread:2", "ids": ["M-1"]}], "used": []}, 1)
+        self.extract({"findings": [], "used": []}, 2)
+        with self.assertRaises(mod.Error):
+            mod.cmd_ids(URL, self.dir)
+        own = os.path.join(self.dir, "own")
+        self.assertFalse(os.path.exists(os.path.join(own, "extract-1.json")))
+        self.assertTrue(os.path.exists(os.path.join(own, "batch-1.json")))
+        self.assertTrue(os.path.exists(os.path.join(own, "extract-2.json")))
 
     def test_a_malformed_extract_writes_nothing(self):
         self.everyone(self.fake())
@@ -1594,7 +1696,7 @@ class FindingIds(Base):
 class ReplyHeadings(Base):
     def posted(self, gh, entry):
         gh.objects.setdefault("repos/acme/app/pulls/comments/11", THREAD_11)
-        mod.cmd_post(URL, self.save({"replies": [entry]}, "r.json"), None)
+        mod.cmd_post(URL, self.reply_file(entry), None)
         return gh.posts[-1][1]["body"]
 
     def test_a_reply_shows_each_id_it_does_not_already_show(self):
@@ -1697,11 +1799,11 @@ class NoTags(Base):
                       "repos/acme/app/issues/comments/5": {"id": 5, "user": {"login": "rev"},
                                                            "issue_url": issue_url}}
         reply = {"finding_ids": ["M-1"], "verified": ["M-1"]}
-        path = self.save({"replies": [
+        path = self.reply_file(
             {"kind": "thread", "target_id": 11, "body": "a", **reply},
             {"kind": "review", "target_id": 4, "body": "b", **reply},
             {"kind": "issue_comment", "target_id": 5, "body": "c", **reply},
-            {"kind": "issue", "target_id": None, "body": "d"}]}, "replies.json")
+            {"kind": "issue", "target_id": None, "body": "d"})
         mod.cmd_post(URL, path, None)
         self.assertEqual(len(gh.posts), 4)
         self.assert_no_comment(*(body["body"] for _, body in gh.posts))
@@ -1710,8 +1812,8 @@ class NoTags(Base):
 class PostConfirmation(Base):
     def post_one(self, gh):
         gh.objects = {"repos/acme/app/pulls/comments/11": THREAD_11}
-        path = self.save({"replies": [{"kind": "thread", "target_id": 11, "finding_ids": [],
-                                       "body": "fixed"}]}, "r.json")
+        path = self.reply_file({"kind": "thread", "target_id": 11, "finding_ids": [],
+                                "body": "fixed"})
         return path, mod.cmd_post(URL, path, None)
 
     def test_a_reply_is_read_back(self):
@@ -1722,8 +1824,8 @@ class PostConfirmation(Base):
                       [c[:5] for c in gh.calls])
 
     def assert_refused(self, gh, pattern):
-        path = self.save({"replies": [{"kind": "thread", "target_id": 11, "finding_ids": [],
-                                       "body": "fixed"}]}, "r.json")
+        path = self.reply_file({"kind": "thread", "target_id": 11, "finding_ids": [],
+                                "body": "fixed"})
         gh.objects = {"repos/acme/app/pulls/comments/11": THREAD_11}
         with self.assertRaisesRegex(mod.Error, pattern):
             mod.cmd_post(URL, path, None)
@@ -1760,8 +1862,8 @@ class PostConfirmation(Base):
 
     def test_a_reply_outside_threads_is_read_back_from_issue_comments(self):
         gh = self.fake()
-        path = self.save({"replies": [{"kind": "issue", "target_id": None, "finding_ids": [],
-                                       "body": "fixed"}]}, "r.json")
+        path = self.reply_file({"kind": "issue", "target_id": None, "finding_ids": [],
+                                "body": "fixed"})
         self.assertEqual(mod.cmd_post(URL, path, None)["confirmed"], 1)
         self.assertIn("repos/acme/app/issues/comments/1001", [c[4] for c in gh.calls
                                                               if len(c) > 4])
@@ -1769,8 +1871,8 @@ class PostConfirmation(Base):
     def test_line_endings_do_not_count_as_another_body(self):
         gh = self.fake()
         gh.objects = {"repos/acme/app/pulls/comments/11": THREAD_11}
-        path = self.save({"replies": [{"kind": "thread", "target_id": 11, "finding_ids": [],
-                                       "body": "a\nb"}]}, "r.json")
+        path = self.reply_file({"kind": "thread", "target_id": 11, "finding_ids": [],
+                                "body": "a\nb"})
         real = gh.rest
 
         def rest(path):
@@ -1842,6 +1944,14 @@ class Fixes(Base):
             gh = self.fake(head_ref=name)
             gh.git = {"log": ""}
             self.assertIsNone(mod.cmd_fixes(URL, self.dir, self.doc)["head_ref"], name)
+
+
+    def test_a_head_ref_a_command_would_read_as_more_than_a_branch_is_not_passed_on(self):
+        for name, shown in (("--force", None), ("+main", None), ("@x", None), ("-x", None),
+                            ("feature/a+b@1", "feature/a+b@1"), ("_x", "_x")):
+            gh = self.fake(head_ref=name)
+            gh.git = {"log": ""}
+            self.assertEqual(mod.cmd_fixes(URL, self.dir, self.doc)["head_ref"], shown, name)
 
 
 class Comments(Base):
@@ -2038,6 +2148,56 @@ class PostedContext(PriorBase):
         self.assertIn("M-1", text)
         self.assertIn("text @bob", text)
         self.assertNotIn("M-2", text)
+        self.assertNotIn("accepted", text)
+        self.assertIn("judged withdrawn", text)
+
+    def test_a_withdrawn_finding_is_recorded_with_its_reason(self):
+        gh = self.finding()
+        self.reply(gh, "Fine as it is, dropping this.")
+        self.posted(gh, fid="M-2", review_id=2, comment_id=6)
+        state = {"state": "withdrawn", "reason": "me: dropping this", "location": "a<!--.py:1"}
+        result, prior, doc = self.prior(states={"M-1": state})
+        self.assertIn("me: dropping this", read_text(result["waived_document"]))
+        self.assertNotIn("<!--", read_text(result["waived_document"]))
+        self.assertEqual(os.path.dirname(result["waived_document"]), self.dir)
+        self.assertEqual([(w["id"], w["reason"]) for w in prior["waived"]],
+                         [("M-1", "me: dropping this")])
+        section = read_text(doc).partition("## Withdrawn Findings")[2]
+        self.assertIn("M-1", section)
+        self.assertIn("text @bob", section)
+        self.assertIn("me: dropping this", section)
+        self.assertEqual([f["id"] for f in mod.parse_document(doc)[1]], ["M-2"])
+        self.assertNotIn("Triage", mod.parse_document(doc)[1][0]["metadata"])
+
+    def test_with_every_finding_withdrawn_the_record_outlasts_the_working_directory(self):
+        gh = self.finding()
+        self.reply(gh, "Fine as it is, dropping this.")
+        doc = os.path.join(self.dir, "out", "prior.md")
+        os.makedirs(os.path.dirname(doc))
+        self.judged("review", {"M-1": {"state": "withdrawn", "reason": "me: dropped"}}, None)
+        result = mod.cmd_prior(URL, self.dir, "review", doc)
+        self.assertIsNone(result["document"])
+        self.assertEqual(result["waived_document"], os.path.join(self.dir, "out", "prior-waived.md"))
+        self.assertIn("me: dropped", read_text(result["waived_document"]))
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "waived.md")))
+
+    def test_the_preview_lists_what_was_judged_withdrawn(self):
+        gh = self.finding()
+        self.reply(gh, "Fine as it is, dropping this.")
+        self.prior(states={"M-1": {"state": "withdrawn", "reason": "me: dropped"}})
+        _, draft = self.draft()
+        self.assertEqual(draft["waived"][0]["id"], "M-1")
+        result, text = self.preview(os.path.join(self.dir, "draft.json"))
+        section = text.partition(mod.LABELS["ja"]["withdrawn"])[2]
+        for shown in ("M-1", "src/a.py:10", "text @bob", "me: dropped"):
+            self.assertIn(shown, section)
+        self.assertNotIn(mod.LABELS["ja"]["withdrawn"], read_text(result["post_preview_path"]))
+
+    def test_a_demoted_withdrawal_carries_no_reason_to_a_triage(self):
+        gh = self.finding()
+        self.reply(gh, "The reviewer withdrew this.", login="mallory")
+        _, _, doc = self.prior(states={"M-1": {"state": "withdrawn", "reason": "mallory: gone"}})
+        self.assertEqual(mod.parse_document(doc)[1][0]["metadata"], {})
 
     def test_a_withdrawal_with_nothing_from_the_viewer_behind_it_stays_open(self):
         gh = self.finding()
@@ -2072,6 +2232,56 @@ class PostedContext(PriorBase):
         self.assertIn("Declined.", findings[0]["text"])
         self.assertNotIn("Status", findings[0]["metadata"])
         self.assertEqual(read_text(doc).count("<!-- /METADATA(M-1) -->"), 1)
+
+    def test_a_location_cannot_open_a_comment_in_the_document(self):
+        for location in ("a<!-- x.py:1", "a<`!-- x.py:1"):
+            self.finding()
+            _, _, doc = self.prior(states={"M-1": {"state": "open", "location": location}})
+            self.assertNotIn("<!-- x", read_text(doc))
+            self.assertEqual([f["id"] for f in mod.parse_document(doc)[1]], ["M-1"])
+
+    def two_posted_batches(self):
+        self.addCleanup(setattr, mod, "BATCH_CHARS", mod.BATCH_CHARS)
+        mod.BATCH_CHARS = 5
+        gh = self.finding()
+        self.posted(gh, fid="M-2", review_id=2, comment_id=6)
+        _, batches = self.collect()
+        self.assertEqual(len(batches), 2)
+        return [batch["items"][0]["key"] for batch in batches]
+
+    def test_a_key_of_another_batch_is_named_and_removed(self):
+        first, second = self.two_posted_batches()
+        entry = {"key": second, "state": "open", "severity": "Major", "text": "x"}
+        self.save({"findings": [entry]}, os.path.join("posted", "extract-1.json"))
+        self.save({"findings": []}, os.path.join("posted", "extract-2.json"))
+        doc = os.path.join(self.dir, "p.md")
+        with self.assertRaisesRegex(mod.Error, r"extract-1\.json$"):
+            mod.cmd_prior(URL, self.dir, "review", doc)
+        posted = os.path.join(self.dir, "posted")
+        self.assertFalse(os.path.exists(os.path.join(posted, "extract-1.json")))
+        self.assertTrue(os.path.exists(os.path.join(posted, "batch-1.json")))
+        self.assertTrue(os.path.exists(os.path.join(posted, "extract-2.json")))
+
+    def test_each_batch_may_name_its_own_keys(self):
+        first, second = self.two_posted_batches()
+        for n, key in ((1, first), (2, second)):
+            entry = {"key": key, "state": "open", "severity": "Major", "text": "x"}
+            self.save({"findings": [entry]}, os.path.join("posted", f"extract-{n}.json"))
+        result = mod.cmd_prior(URL, self.dir, "review", os.path.join(self.dir, "p.md"))
+        self.assertEqual(sorted(result["open"]), ["M-1", "M-2"])
+
+    def test_a_comment_with_earlier_ids_and_no_judgment_is_unjudged(self):
+        self.finding()
+        key = f"thread:{self.ROOT}"
+        self.assertEqual(self.prior(hand={key: []})[0]["unjudged"],
+                         [{"key": key, "ids": ["M-1"]}])
+        self.assertEqual(self.prior()[0]["unjudged"], [])
+
+    def test_a_comment_with_no_earlier_id_and_no_judgment_is_not_unjudged(self):
+        gh = self.fake()
+        self.local(gh)
+        gh.issue_comments.append({"id": 8, "user": {"login": "me"}, "body": "Thanks."})
+        self.assertEqual(self.prior()[0]["unjudged"], [])
 
     def test_a_comment_the_judge_leaves_out_drops_out(self):
         self.finding()
@@ -2287,7 +2497,7 @@ class PostedContext(PriorBase):
         self.assertIn("**Major M-1**", replies[0]["body"])
         self.assertIn("> `src/a.py:3` No expiry", replies[0]["body"])
         self.assertIn("> Bad log", replies[0]["body"])
-        mod.cmd_post(URL, os.path.join(self.dir, "replies.json"), None)
+        mod.cmd_post(URL, self.worded_replies(), None)
         self.assertNotIn("<!--", gh.posts[-1][1]["body"])
         self.add_ids("review:9", "M-1")
         self.add_ids("issue_comment:8", "mi-1")
@@ -2296,6 +2506,22 @@ class PostedContext(PriorBase):
                          [("review:9", ["M-1"]), ("issue_comment:8", ["mi-1"])])
         result, _, _ = self.prior(hand=hand)
         self.assertEqual(sorted(result["open"]), ["M-1", "mi-1"])
+
+    def test_a_reply_in_a_thread_of_another_author_shows_the_first_comment(self):
+        gh = self.fake()
+        self.local(gh)
+        gh.reviews.append({"id": 1, "state": "COMMENTED", "user": {"login": "me"}, "body": ""})
+        gh.review_comments.append({
+            "id": self.ROOT, "user": {"login": "rev"}, "pull_request_review_id": 1,
+            "path": "src/a.py", "line": 10, "in_reply_to_id": None, "body": "It leaks."})
+        self.reply(gh, "Agreed.", comment_id=70)
+        _, batches = self.collect()
+        item = batches[0]["items"][0]
+        self.assertEqual((item["thread_root"]["author"], item["thread_root"]["text"]),
+                         ("rev", "It leaks."))
+        self.assertEqual(item["replies"], [])
+        items = json.loads(read_text(os.path.join(self.dir, "posted", "items.json")))["items"]
+        self.assertFalse(items[0]["backed"])
 
     def test_a_reply_in_a_thread_of_another_author_is_an_item(self):
         gh = self.fake()
@@ -2455,6 +2681,27 @@ class PostedContext(PriorBase):
                 self.reply(gh, body, login=login)
                 _, batches = self.collect()
                 self.assertEqual(batches[0]["items"][0]["replies"][0]["text"], shown, body)
+
+    def test_what_github_shows_reaches_the_judge(self):
+        for body, shown in (
+            ("Mid-line <!-- never closed stays", None),
+            ("Use `<!-- x -->` here", None),
+            ("``<!-- ` -->`` here", None),
+            ("```\n<!-- x -->\n```", None),
+            ("~~~html\r\n<!-- x\r\n~~~", None),
+            ("```suggestion\n<!-- kept -->\n```\n\nAfter", None),
+            ("```\n<!-- never closed fence", None),
+            ("<!-- ` --> a `<!-- b -->`", "a `<!-- b -->`"),
+            ("<!-- ```\nhidden\n``` -->Shown", "Shown"),
+            ("` open\n\n<!-- hidden -->\n\nclose `", "` open\n\n\n\nclose `"),
+            ("\\`<!-- hidden -->`", "\\``"),
+            ("Shown\n   <!-- line start never closed\nhidden", "Shown"),
+            ("Shown <!<!-- x -->-- formed --> too", "Shown  too"),
+        ):
+            self.assertEqual(mod.without_comments(body).strip(), shown or body, body)
+
+    def test_a_review_of_code_alone_keeps_its_body(self):
+        self.assertEqual(mod.visible_body({"body": "`<!-- x -->`"}), "`<!-- x -->`")
 
     def test_a_thread_finding_gets_no_conversation_in_a_review_run(self):
         gh = self.finding()
@@ -2919,6 +3166,80 @@ class PostFailure(Base):
             with self.assertRaisesRegex(mod.Error, "already"):
                 mod.cmd_post(URL, path, None)
 
+    def test_a_failed_add_says_what_to_do_and_deletes_nothing(self):
+        gh, path = self.posting(fail_add=True)
+        with self.assertRaisesRegex(mod.Error, "add refused.*pending review.*GitHub"):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.named("deletePullRequestReview"), [])
+
+    def interrupted(self):
+        """A draft whose run stopped after creating its pending review."""
+        gh = self.fake()
+        self.draft()
+        path = os.path.join(self.dir, "draft.json")
+        draft = json.loads(read_text(path))
+        draft["review_id"] = "R_1"
+        self.save(draft)
+        return gh, path
+
+    def test_a_failed_write_after_a_submit_does_not_send_it_again(self):
+        gh = self.fake()
+        self.draft()
+        path = os.path.join(self.dir, "draft.json")
+        real_write = mod.write_json
+
+        def write(target, data):
+            if data.get("posted"):
+                raise OSError("disk full")
+            real_write(target, data)
+
+        with mock.patch.object(mod, "write_json", write):
+            with self.assertRaisesRegex(OSError, "disk full"):
+                mod.cmd_post(URL, path, None)
+        self.assertEqual(json.loads(read_text(path))["review_id"], "R_1")
+        with self.assertRaisesRegex(mod.Error, "already.*pullrequestreview-1"):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(len(gh.named("submitPullRequestReview")), 1)
+        self.assertTrue(json.loads(read_text(path))["posted"])
+
+    def test_a_rerun_clears_the_pending_review_of_a_stopped_run(self):
+        gh, path = self.interrupted()
+        self.assertEqual(mod.cmd_post(URL, path, None)["event"], "REQUEST_CHANGES")
+        self.assertEqual(gh.named("deletePullRequestReview"), [{"pullRequestReviewId": "R_1"}])
+        self.assertEqual(len(gh.named("submitPullRequestReview")), 1)
+
+    def test_a_rerun_goes_on_when_the_review_is_gone(self):
+        for answer in ('{"data": {"node": null}}', mod.Rejected("no such node")):
+            gh, path = self.interrupted()
+            gh.state_queue = [answer]
+            mod.cmd_post(URL, path, None)
+            self.assertEqual(gh.named("deletePullRequestReview"), [])
+            self.assertEqual(len(gh.named("submitPullRequestReview")), 1)
+
+    def test_a_rerun_sends_nothing_when_the_state_cannot_be_read(self):
+        for attributes in ({"fail_state": True}, {"state_answer": "not json"},
+                           {"state_answer": '{"data": {"node": {}}}'}):
+            gh, path = self.interrupted()
+            for name, value in attributes.items():
+                setattr(gh, name, value)
+            with self.assertRaisesRegex(mod.Error, "unknown"):
+                mod.cmd_post(URL, path, None)
+            self.assertEqual(gh.mutations, [])
+            self.assertFalse(json.loads(read_text(path))["posted"])
+
+    def test_a_rerun_stops_when_the_pending_review_cannot_be_deleted(self):
+        gh, path = self.interrupted()
+        gh.fail_delete = True
+        with self.assertRaisesRegex(mod.Error, "could not be deleted.*GitHub"):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.named("addPullRequestReview"), [])
+
+    def test_a_pending_review_a_failure_deleted_is_not_read_again(self):
+        _, path = self.posting()
+        with self.assertRaisesRegex(mod.Error, "submit refused"):
+            mod.cmd_post(URL, path, None)
+        self.assertNotIn("review_id", json.loads(read_text(path)))
+
     def past_the_limit(self, selected):
         self.addCleanup(setattr, mod, "BODY_LIMIT", mod.BODY_LIMIT)
         gh = self.fake()
@@ -3262,8 +3583,23 @@ class Wording(Base):
 
     def test_comments_and_replies_write_the_description(self):
         self.fake()
+        written = os.path.join(self.dir, "pr-body.json")
         mod.cmd_comments(URL, self.dir)
-        self.assertIn("Description", read_text(os.path.join(self.dir, "pr-body.json")))
+        self.assertIn("Description", read_text(written))
+        os.remove(written)
+        self.save({"findings": []}, "prior.json")
+        result = mod.cmd_replies(URL, self.dir, self.doc, "en")
+        self.assertEqual(result["pr_body_path"], written)
+        self.assertEqual(json.loads(read_text(written)),
+                         {"title": "Title", "body": "Description"})
+
+    def test_the_description_reaches_no_one_with_its_html_comments(self):
+        gh = self.fake()
+        pull = gh.view["data"]["repository"]["pullRequest"]
+        pull["title"], pull["body"] = "T<!-- a -->", "B<!-- b -->`<!-- c -->`"
+        mod.cmd_comments(URL, self.dir)
+        self.assertEqual(json.loads(read_text(os.path.join(self.dir, "pr-body.json"))),
+                         {"title": "T", "body": "B`<!-- c -->`"})
 
 
 class Remote(Base):
@@ -3285,6 +3621,7 @@ class Remote(Base):
             lambda u: mod.cmd_replies(u, self.dir, self.doc, "en"),
             lambda u: mod.cmd_preview(u, path),
             lambda u: mod.cmd_post(u, path, None),
+            lambda u: mod.cmd_participants(u),
         ):
             gh = self.fake()
             with self.assertRaisesRegex(mod.Error, "not a remote of this repository"):
@@ -3300,6 +3637,20 @@ class Remote(Base):
         except mod.Error:
             return False
         return True
+
+    def test_a_fork_clone_with_the_repository_as_a_second_remote_is_accepted(self):
+        gh = self.fake()
+        gh.remotes = {"origin": "https://github.com/me/app.git",
+                      "upstream": "https://github.com/acme/app.git"}
+        self.assertEqual(mod.checked_pr(URL).repo, "acme/app")
+
+    def test_a_remote_whose_url_cannot_be_read_is_skipped(self):
+        gh = self.fake()
+        gh.remotes = {"broken": mod.Error("no url"), "upstream": "https://github.com/acme/app.git"}
+        self.assertEqual(mod.checked_pr(URL).repo, "acme/app")
+        gh.remotes = {"broken": mod.Error("no url"), "origin": "https://github.com/me/app.git"}
+        with self.assertRaisesRegex(mod.Error, "not a remote of this repository"):
+            mod.checked_pr(URL)
 
     def test_remote_forms(self):
         for remote, expected in (
@@ -3345,8 +3696,7 @@ class Remote(Base):
             "id": 1, "in_reply_to_id": None,
             "pull_request_url": "https://ghe.example.test/api/v3/repos/acme/app/pulls/7",
             "user": {"login": "rev"}}}
-        path = self.save({"replies": [{"kind": "thread", "target_id": 1, "body": "a"}]},
-                         "replies.json")
+        path = self.reply_file({"kind": "thread", "target_id": 1, "body": "a"})
         mod.cmd_comments(url, self.dir)
         mod.cmd_raised(url, self.dir)
         mod.cmd_post(url, path, None)

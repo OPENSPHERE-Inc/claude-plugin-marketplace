@@ -28,17 +28,17 @@ GitHub を変更するのは `{{plugin_root}}/scripts/gh-review.py post` 経由�
 2. バッチごとに `Agent(subagent_type="cgh:comment-writer", prompt=...)` を起動する。1 メッセージで最大 20 個まで:
 
 ```
-As your first action, you MUST Read `{{plugin_root}}/skills/resolve/templates/finding-ids-extract.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+最初の行動として `{{plugin_root}}/skills/resolve/templates/finding-ids-extract.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
 
-Variables (substitute into the template's {{...}} placeholders):
+変数（テンプレート中の {{...}} placeholder を置換）:
 - batch_path: {directory}/batch-{n}.json
 - output_path: {directory}/extract-{n}.json
 
-Include `template_id` (Read from the template's frontmatter) in the return value.
+戻り値に `template_id`（テンプレートの frontmatter から Read）を含める。
 ```
 
-返された `template_id` は `2224560e-edcd-4a41-b86b-c19c7e31d65a` でなければならない。不一致なら再度起動し、2 度起きたら中断する。
-3. `python3 {{plugin_root}}/scripts/gh-review.py ids '{pr_url}' '{tmp_dir}'` を実行する。`collect`、`prior`、`draft` が読む `{tmp_dir}/finding-ids.json` が書き出され、`path` が出力される。エラーが `extract-{n}.json` を名指すときは、そのバッチの担当をもう一度起動して再度実行する。2 度目の失敗か他の非ゼロ終了なら、そのエラーで中断する。
+返される `template_id` は `2224560e-edcd-4a41-b86b-c19c7e31d65a` でなければならない。不一致なら再度起動し、2 回続いたら中断する。
+3. `python3 {{plugin_root}}/scripts/gh-review.py ids '{pr_url}' '{tmp_dir}'` を実行する。`collect`、`prior`、`draft` が読む `{tmp_dir}/finding-ids.json` が書き出され、`path` が出力される。エラーが `extract-{n}.json` を名指すときは（不正なファイルは削除されている）、そのバッチの担当をもう一度起動して再度実行する。2 度目の失敗か他の非ゼロ終了なら、そのエラーで中断する。
 
 ## 投稿済みの指摘
 
@@ -59,7 +59,7 @@ SKILL が `{kind}` と `{prior_path}` を指定する。先に § 指摘 ID に�
 ```
 
 返される `template_id` は `3ab4949f-308c-4ca8-b856-0e6f91dfc72f` でなければならない。不一致なら再度起動し、2 回続いたら中断する。
-3. `python3 {{plugin_root}}/scripts/gh-review.py prior '{pr_url}' '{tmp_dir}' --kind {kind} --document '{prior_path}'` を実行する。`--trust` が指定されていれば追加する。`open`（まだ検証されていない指摘の ID）、`verified`（以前に検証済みで、検証が再度確認するもの）、`document`（確認する指摘の文書、なければ null）、`waived` と `waived_document`（取り下げられた指摘の ID とファイル、なければ null）、`demoted`（取り下げと判定されたがあなたの以後のコメントの裏付けがなく、未検証のまま残る ID）が出力される。`demoted` の ID と、`waived_document` から取り下げられた指摘の ID と本文をユーザーに示す。エラーが `extract-{n}.json` を名指すときは、そのバッチの担当をもう一度起動して再度実行する。2 度目の失敗か他の非ゼロ終了なら、そのエラーで中断する。
+3. `python3 {{plugin_root}}/scripts/gh-review.py prior '{pr_url}' '{tmp_dir}' --kind {kind} --document '{prior_path}'` を実行する。`--trust` が指定されていれば追加する。`open`（まだ検証されていない指摘の ID）、`verified`（以前に検証済みで、検証が再度確認するもの）、`document`（確認する指摘の文書、なければ null）、`waived` と `waived_document`（あなたのコメントから取り下げと判定され、コードは未確認の指摘の ID とファイル、なければ null）、`demoted`（取り下げと判定されたがあなたの以後のコメントの裏付けがなく、未検証のまま残る ID）、`unjudged`（指摘 ID を持つのに判定のないコメントの key と ID。別の種類の指摘や何も提起しない返信のこともある）が出力される。`demoted` の ID、`unjudged` の項目、`waived_document` から取り下げと判定された指摘の ID、本文、根拠をユーザーに示す。`document` が null のときは、`{tmp_dir}` の後も残る `waived_document` のパスも示す。エラーが `extract-{n}.json` を名指すときは（不正なファイルは削除されている）、そのバッチの担当をもう一度起動して再度実行する。2 度目の失敗か他の非ゼロ終了なら、そのエラーで中断する。
 
 ## コメントの文面
 
