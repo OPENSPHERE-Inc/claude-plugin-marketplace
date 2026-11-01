@@ -436,6 +436,23 @@ class Parsing(Base):
         self.assertEqual(mod.recommendation(by_id["mi-1"]), ["src/b.py:2 — FIXME を追加"])
         self.assertEqual(mod.recommendation(by_id["I-1"]), [])
 
+    def test_a_heading_quoted_in_a_finding_is_its_text(self):
+        for quoted in ("### M-9 — `x.py:1`", "### M-9 not a heading"):
+            self.write_document(
+                "### M-1 — `a.py:1`", "", "before", quoted, "after", "",
+                "<!-- METADATA(M-1) -->", "<!-- /METADATA(M-1) -->", "",
+                "### mi-2 — `b.py:2`", "", "next",
+                "<!-- METADATA(mi-2) -->", "<!-- /METADATA(mi-2) -->")
+            _, findings = mod.parse_document(self.doc)
+            self.assertEqual([f["id"] for f in findings], ["M-1", "mi-2"], quoted)
+            self.assertIn(quoted, findings[0]["text"])
+            self.assertIn("after", findings[0]["text"])
+
+    def test_a_heading_after_a_finding_with_no_metadata_starts_a_finding(self):
+        self.write_document("### M-1 — `a.py:1`", "", "text", "", "### mi-2 — `b.py:2`", "", "next")
+        _, findings = mod.parse_document(self.doc)
+        self.assertEqual([f["id"] for f in findings], ["M-1", "mi-2"])
+
     def test_rest_pages_reads_every_page(self):
         self.addCleanup(setattr, mod, "PAGE_SIZE", mod.PAGE_SIZE)
         mod.PAGE_SIZE = 2

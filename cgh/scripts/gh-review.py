@@ -35,9 +35,10 @@ text, and own_outside, that user's review bodies and issue comments, with key an
 
 ids: reads what each batch of own comes to from <tmp_dir>/own/extract-<n>.json,
 {"findings": [{"key", "ids"}], "used": [...]}, and names any file that is missing or malformed: a
-key must be in that batch's comments, others, or own_outside. It removes a malformed file, so that a writer run
-again can write it. Writes <tmp_dir>/finding-ids.json for collect, prior, draft, and creview's
-compile-pr-comments.py: comments, the finding IDs by key, and used, every ID in the extracts.
+key must be in that batch's comments, others, or own_outside. It removes a malformed file, so that
+a writer run again can write it. Writes <tmp_dir>/finding-ids.json for collect, prior, draft, and
+creview's compile-pr-comments.py: comments, the finding IDs by key, and used, every ID in the
+extracts.
 
 collect: writes <tmp_dir>/posted/batch-<n>.json and items.json. Each comment of the authenticated
 user with visible text, outside pending and dismissed reviews, is an item, except that a reply in
@@ -550,12 +551,11 @@ def split_location(location):
 def parse_document(path):
     try:
         with open(path, encoding="utf-8") as f:
-            lines = f.read().split("\n")
+            lines = [line.rstrip() for line in f.read().split("\n")]
     except OSError as e:
         raise Error(f"cannot read {path}: {e}") from None
     header, findings, current, state = {}, [], None, None
-    for line in lines:
-        line = line.rstrip()
+    for index, line in enumerate(lines):
         if not findings and current is None:
             bullet = PR_BULLET_RE.fullmatch(line)
             if bullet:
@@ -566,8 +566,10 @@ def parse_document(path):
                 header["branch"] = branch.group(1)
         if line.startswith("## Orphan") and state != "text":
             break
-        heading = HEADING_RE.fullmatch(line)
-        if not heading and FINDING_HEADING_RE.match(line):
+        # A finding's text runs to its metadata block, so a heading before the block is quoted.
+        quoted = state == "text" and f"<!-- METADATA({current['id']}) -->" in lines[index + 1:]
+        heading = None if quoted else HEADING_RE.fullmatch(line)
+        if not heading and not quoted and FINDING_HEADING_RE.match(line):
             raise Error(f"{path} has a malformed finding heading: {line}")
         opened = METADATA_OPEN_RE.fullmatch(line)
         if opened and (current is None or opened.group(1) != current["id"]):
