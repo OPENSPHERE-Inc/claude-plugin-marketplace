@@ -2,6 +2,8 @@
 """gh-review.py — read and post the GitHub reviews of the cgh skills.
 
 Usage:
+    python3 gh-review.py own <pr_url> <tmp_dir>
+    python3 gh-review.py ids <pr_url> <tmp_dir>
     python3 gh-review.py collect <pr_url> <tmp_dir> --kind review|gate
     python3 gh-review.py prior <pr_url> <tmp_dir> --kind review|gate --document <path>
         [--trust]
@@ -20,20 +22,34 @@ Usage:
 Every subcommand refuses a pull request whose repository on its host is not a remote of
 this clone, before it calls gh.
 
-The markers this script writes in comments are hints: what a comment means is judged from
-the conversation, by whoever reads the files this script writes. Only the authenticated
-user's comments keep theirs, since anyone can write a marker.
+Nothing this script writes on GitHub is hidden, and nothing it reads is taken from HTML comments:
+it removes them, for everyone, from all it hands on. What a comment means, finding IDs included, is
+judged from its visible text by whoever reads the files this script writes.
 
-collect: writes <tmp_dir>/posted/batch-<n>.json and items.json, the findings the authenticated
-user posted, outside pending and dismissed reviews, each with the replies in its thread. For
---kind review: the findings of /cgh:review and, with no ID, the user's other comments that are
-not replies of this workflow, replies in threads others started included, which may hold findings.
-Each of those has earlier_ids, the IDs its cgh:ids markers and, in its own thread, the headings of
-the user's replies gave it. For --kind gate: the findings of /cgh:gate. A batch also holds the
-conversation outside threads when it holds a finding with no thread, and always for --kind gate,
-which records its results in review bodies. items.json also records backed: whether the user wrote
-something beyond the finding that could withdraw it, or a cgh:waived marker with its ID. A batch
-also holds viewer and the pull request's author and assignees, by whom an answer is weighed.
+own: writes <tmp_dir>/own/batch-<n>.json and keys.json, {"batches": n}. A batch holds viewer, the
+authenticated user, and comments, each comment of that user with visible text, outside pending
+reviews and with dismissed reviews included, with its key (review:<id>, thread:<id of the thread's
+first comment>, or issue_comment:<id>), location, and text. A batch with a review body or an issue
+comment also holds others, other people's review bodies and issue comments, with key, author, and
+text.
+
+ids: reads what each batch of own comes to from <tmp_dir>/own/extract-<n>.json,
+{"findings": [{"key", "ids"}], "used": [...]}, and names any file that is missing or malformed: a
+key must be in that batch's comments or others. Writes <tmp_dir>/finding-ids.json for collect, prior,
+draft, and creview's compile-pr-comments.py: comments, the finding IDs by key, and used, every ID in
+the extracts.
+
+collect: writes <tmp_dir>/posted/batch-<n>.json and items.json. Each comment of the authenticated
+user with visible text, outside pending and dismissed reviews, is an item, except that a reply in
+one of that user's own threads stays a reply of that thread's item. Which of them hold findings
+of --kind is judged by whoever reads the batches. An item has key (review:<id>, thread:<own id>, or
+issue_comment:<id>), earlier_ids, the IDs finding-ids.json gives its comment or thread, location,
+text, the replies in its thread, and, when it is in a thread, review_opening, the opening of its
+review's visible body. A batch also holds viewer and the pull request's author and assignees, by
+whom an answer is weighed, and kind, and, when it holds an item with no thread or kind is gate, the
+conversation outside threads, with the key of each entry. items.json also records backed: whether
+the user replied in the item's thread, or wrote a review body or an issue comment after it other
+than the one holding it.
 
 prior: reads the judgment of each batch from <tmp_dir>/posted/extract-<n>.json, and names any
 file that is missing or malformed. Writes <tmp_dir>/prior.json with the findings not withdrawn,
@@ -41,15 +57,17 @@ Info left out since creview's verification skips it, and, when there are any, <d
 review document creview's verification reads, with a Source: pr-comments bullet and a Trust
 bullet: on at the pull request's head or with --trust, otherwise off. A finding judged verified
 has a Verification line, so that the verification checks it again; one with a reason not to
-change it has a Won't Fix triage. A finding with an ID the judgment left out stays open, and so
-does one judged withdrawn that is not backed, printed in demoted. Stops
-when there are any and the working tree holds what the pull request does not: commits past its
-head, or uncommitted changes at its head. Writes the withdrawn findings to <tmp_dir>/waived.md
-and prints its path as waived_document.
+change it has a Won't Fix triage. A comment the judgment left out holds no finding. A finding keeps
+the earlier ID the judgment names, its comment's only earlier ID when it is that comment's only
+finding, or else takes the next free number; an ID an earlier finding took counts as none. A
+finding judged withdrawn that is not backed stays open, printed in demoted. Stops when there are
+findings and the working tree holds what the pull request does not: commits past its head, or
+uncommitted changes at its head. Writes the withdrawn findings to <tmp_dir>/waived.md and prints
+its path as waived_document.
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after
-every ID the authenticated user already used on the pull request, with whether it is selected
+every ID finding-ids.json lists as used on the pull request, with whether it is selected
 and where it goes (inline: a line of the diff; file: a file of the diff; body: anywhere else).
 Selected by default: a Will Fix finding other than Info, unless Downgrade leaves it at Minor;
 Critical or Major with Downgrade stays a real problem. --prior-doc, which must be at the pull
@@ -70,18 +88,12 @@ error, with nothing merged and the other files kept, so that a writer run again 
 comments: writes <tmp_dir>/comments.json, the pull request's comments with their IDs, times,
 and viewer, the authenticated user, and <tmp_dir>/pr-body.json.
 
-raised: writes <tmp_dir>/raised/batch-<n>.json, the comments already on the pull request by
-author and place, with HTML comments removed, split into batches with each thread whole. Leaves
-out dismissed reviews and their comments, threads resolved on GitHub, and the replies this script
-posted.
+raised: writes <tmp_dir>/raised/batch-<n>.json, the comments with visible text already on the
+pull request by author and place, split into batches with each thread whole. Leaves out dismissed
+reviews and their comments, and threads resolved on GitHub.
 
 participants: prints viewer, the authenticated user, and author and assignees, the pull
 request's.
-
-ids: writes <tmp_dir>/finding-ids.json for creview's compile-pr-comments.py: comments, the IDs the
-authenticated user's comments give the comments they raise or answer, by item key, and used, every
-ID that user has used on the pull request. Nobody else's comments count, since their IDs can
-collide with the user's.
 
 fixes: writes <tmp_dir>/fix-commits.json, the commits on the document's Branch bullet,
 or HEAD without one, past the document's head. Prints head_ref, the pull request's branch,
@@ -92,17 +104,17 @@ pushed: says whether the pull request's head contains the newest of those commit
 replies: writes <tmp_dir>/replies.json from the verification in <document> and the
 targets in <tmp_dir>/prior.json, and <tmp_dir>/pr-body.json. A finding verified earlier gets a
 reply only when the verification no longer holds; otherwise it is printed in unchanged. A reply
-outside threads quotes each finding. A reply to a finding with no marker has origins, the IDs by
-item key, which post records in a cgh:ids marker so that collect gives them back.
+outside threads quotes each finding.
 
 preview: writes <json_path minus .json>-preview.md, what post would send in the preview's
 language, and -post.md, the same in the wording that goes out. The JSON file is
 draft.json, or a file with a "replies" list of {kind: thread|review|issue_comment|issue,
-target_id, finding_ids, body, post_body, selected (default true), verified, origins}. For a draft,
+target_id, finding_ids, body, post_body, selected (default true), verified}. For a draft,
 wording_missing holds what wording would print as missing, an empty recommendation or not.
 post_differs holds the IDs of what goes out in other wording than the preview's, a reply with no
 finding IDs by its kind and target. Findings not posted are listed with Critical and Major first,
-marked. A reply that post would send with a mention names its target in a Mentions line.
+marked. A reply shows a heading for each of its finding IDs its text does not hold, such as
+**Major M-1**, and one that post would send with a mention names its target in a Mentions line.
 For a gate draft, it first waits for GitHub to compute whether the pull request merges, and
 records the verdict it shows as previewed_verdict.
 
@@ -114,8 +126,7 @@ unknown the review counts as posted, so that a rerun cannot send it twice. A rep
 review or an issue comment goes out as an issue comment that mentions its author. Replies sent
 are marked in the file, so a rerun skips them. A reply is marked as attempted before it goes
 out, and a rerun sends an attempted one only when the user has no comment with the same body on
-the pull request. A reply records in a cgh:ids marker each of its finding IDs that its target does
-not carry yet, so that ids gives them back. --commits refuses a file with findings or a
+the pull request, in the same thread for a thread reply. --commits refuses a file with findings or a
 reply that marks a finding verified, and refuses to send anything until the pull request
 contains those commits.
 
@@ -136,7 +147,6 @@ import re
 import subprocess
 import sys
 import time
-import urllib.parse
 from collections import namedtuple
 
 # A remote URL names its host and ends with the owner and repository, in URL form
@@ -156,7 +166,6 @@ PR_BULLET_RE = re.compile(r"- \*\*PR:\*\* (\S+) \(head ([0-9a-f]+), base ([0-9a-
 BRANCH_BULLET_RE = re.compile(r"- \*\*Branch:\*\* ([\w./+@-]+)")
 BRANCH_NAME_RE = re.compile(r"[\w./+@-]+")
 FINDING_ID = r"(?:C|M|mi|I)-[0-9]+"
-FINDING_IDS = rf"{FINDING_ID}(?:,{FINDING_ID})*"
 FINDING_ID_RE = re.compile(FINDING_ID)
 HEADING_RE = re.compile(rf"### ({FINDING_ID})\s+[—-]\s+`?([^`]*?)`?(?:\s+\[.*\])?\s*")
 FINDING_HEADING_RE = re.compile(rf"###\s+{FINDING_ID}")
@@ -177,22 +186,8 @@ OUTSIDE_CODE_RE = re.compile(
     r"\\[^@]|`|<(?=[A-Za-z/!?])|\\?(?P<mention>(?<![A-Za-z0-9/@])@[A-Za-z0-9][\w/-]*)", re.S)
 # What starts a Markdown block at the beginning of a paragraph of a review document.
 BLOCK_START_RE = re.compile(r"#{1,6}(?:\s|$)|[-+*](?:\s|$)|>|`{3}|~{3}|<[A-Za-z/!?]")
-FINDING_RE = re.compile(
-    rf"<!-- cgh:finding (?P<id>{FINDING_ID}) (?P<kind>review|gate) (?P<loc>\S+) -->"
-    r"(?P<body>.*?)<!-- /cgh:finding (?P=id) -->", re.S)
-VERIFIED_RE = re.compile(rf"<!-- cgh:verified ({FINDING_IDS}) -->")
-WAIVED_RE = re.compile(rf"<!-- cgh:waived ({FINDING_IDS}) -->")
-# The heading a reply of this script gives a finding, which keeps the ID of one with no marker.
-REPLY_ID_RE = re.compile(rf"\*\*(?:Critical|Major|Minor|Info) ({FINDING_ID})\*\*")
-REPLY_RE = re.compile(r"<!-- cgh:reply (?:(?:thread|review|issue_comment) [0-9]+|issue) -->")
-ORIGIN_KEY = r"(?:review|issue_comment|thread):[0-9]+"
-ORIGIN_KEY_RE = re.compile(ORIGIN_KEY)
-ORIGIN = rf"{ORIGIN_KEY}={FINDING_IDS}"
-IDS_RE = re.compile(rf"<!-- cgh:ids ({ORIGIN}(?:;{ORIGIN})*) -->")
-BODY_MARKER = "<!-- cgh:body -->"
 # As GitHub hides them: <!--> and <!---> are whole comments, and one never closed runs to the end.
 HTML_COMMENT_RE = re.compile(r"<!--(?:-?>|.*?(?:-->|\Z))", re.S)
-REC_MARKER = "<!-- cgh:rec -->"
 PRIOR_VERIFIED = "✅ Verified — Verified at an earlier commit"
 POSTED_STATES = ("open", "declined", "verified", "withdrawn")
 COMMENT_LANG_RE = re.compile(r"[a-z]{2,3}(?:-[A-Za-z0-9]+)*")
@@ -208,6 +203,7 @@ MAX_PAGES = 100
 BODY_LIMIT = 65000
 CONTEXT_LIMIT = 1000
 QUOTE_LIMIT = 200
+OPENING_LIMIT = 300
 BATCH_CHARS = 40000
 # GraphQL error types that refuse the caller rather than what the call asked for.
 CALLER_ERRORS = {"RATE_LIMITED", "FORBIDDEN", "INSUFFICIENT_SCOPES"}
@@ -520,9 +516,9 @@ def write_pr_body(tmp_dir, view):
 
 def safe_text(text):
     # Posted text comes from reviewers that read pull request content: it must not hide anything in
-    # an HTML comment, such as a marker of this script. Quieting mentions is best effort, since
-    # CODE_RE can disagree with GitHub's rendering and matching it exactly is not worth the cost:
-    # the prompts that word the text ask for no mentions, and the user reads the preview.
+    # an HTML comment. Quieting mentions is best effort, since CODE_RE can disagree with GitHub's
+    # rendering and matching it exactly is not worth the cost: the prompts that word the text ask
+    # for no mentions, and the user reads the preview.
     text = text.replace("<!--", "&lt;!--")
     kept, last = [], 0
     for code in CODE_RE.finditer(text):
@@ -641,23 +637,20 @@ def default_selection(finding, labels):
     return True, None
 
 
-def finding_block(finding, kind, lang, with_location):
+def finding_block(finding, lang, with_location):
     labels = labels_for(lang)
     location = finding["location"]
     head = f"**{severity_of(finding['id'])} {finding['id']}**"
     if with_location and location != "PR":
         head += f" `{location.replace('`', '').replace('<!--', '&lt;!--')}`"
-    quoted = urllib.parse.quote(location, safe="/:._-()[]@+$~,")
-    parts = [f"<!-- cgh:finding {finding['id']} {kind} {quoted} -->", head, "",
-             safe_text(finding["text"])]
+    parts = [head, "", safe_text(finding["text"])]
     items = finding.get("recommendation") or []
     if items:
-        parts += ["", REC_MARKER, f"**{labels['recommendation']}**", ""]
+        parts += ["", f"**{labels['recommendation']}**", ""]
         if len(items) == 1:
             parts.append(safe_text(items[0]))
         else:
             parts += [f"{n}. {safe_text(item)}" for n, item in enumerate(items, 1)]
-    parts += ["", f"<!-- /cgh:finding {finding['id']} -->"]
     return "\n".join(parts)
 
 
@@ -667,14 +660,6 @@ def comment_view(finding, post):
     summary = (post and finding.get("post_summary")) or finding.get("summary")
     return {**finding, "text": text,
             "recommendation": [summary] if summary else finding.get("recommendation") or []}
-
-
-def read_block(body):
-    text, _, rec = body.partition(REC_MARKER)
-    lines = text.strip().split("\n")[1:]
-    items = [re.sub(r"^[0-9]+\.\s+", "", line) for line in rec.strip().split("\n")[1:]
-             if line.strip()]
-    return "\n".join(lines).strip(), items
 
 
 def comment_author(comment):
@@ -690,16 +675,16 @@ def without_comments(text):
         text = stripped
 
 
-def visible_body(comment, viewer):
-    """A comment as far as its text can be weighed: hidden text only from the viewer, whose
-    markers this script wrote.
-    """
-    body = comment.get("body") or ""
-    return (body if comment_author(comment) == viewer else without_comments(body)).strip()
+def visible_body(comment):
+    return without_comments(comment.get("body") or "").strip()
+
+
+def comment_time(entry):
+    return entry.get("created_at") or entry.get("submitted_at") or ""
 
 
 def by_time(entries):
-    return sorted(entries, key=lambda e: e.get("created_at") or e.get("submitted_at") or "")
+    return sorted(entries, key=comment_time)
 
 
 def batched(units, size_of):
@@ -725,94 +710,98 @@ def visible_comments(pr):
             issue_comments)
 
 
-def is_workflow_reply(body):
-    return bool(BODY_MARKER in body or REPLY_RE.search(body) or VERIFIED_RE.search(body)
-                or WAIVED_RE.search(body))
-
-
-def used_ids(pr, viewer):
-    """Every ID the viewer has used, dismissed reviews included."""
-    used = set()
-    for entry in (e for group in visible_comments(pr) for e in group):
-        if comment_author(entry) != viewer:
-            continue
-        body = entry.get("body") or ""
-        used.update(match.group("id") for match in FINDING_RE.finditer(body))
-        used.update(match.group(1) for match in REPLY_ID_RE.finditer(body))
-        for marker_re in (VERIFIED_RE, WAIVED_RE):
-            for match in marker_re.finditer(body):
-                used.update(match.group(1).split(","))
-        used.update(fid for ids in recorded_ids([body]).values() for fid in ids)
-    return used
-
-
-def own_finding_ids(pr, viewer):
-    """The IDs the viewer's comments give the comments they raise or answer, by item key."""
-    known = {}
-
-    def add(key, ids):
-        for fid in ids:
-            if fid not in known.setdefault(key, []):
-                known[key].append(fid)
-
+def cmd_own(pr_url, tmp_dir):
+    pr = checked_pr(pr_url)
+    viewer = view_pr(pr, require_open=False)["viewer"]
     reviews, comments, issue_comments = visible_comments(pr)
-    own = [e for group in (reviews, comments, issue_comments) for e in group
-           if comment_author(e) == viewer]
-    for review in reviews:
-        if comment_author(review) == viewer:
-            add(f"review:{review.get('id')}",
-                [m.group("id") for m in FINDING_RE.finditer(review.get("body") or "")])
-    for comment in comments:
-        if comment_author(comment) == viewer:
-            body = comment.get("body") or ""
-            add(f"thread:{comment.get('in_reply_to_id') or comment.get('id')}",
-                [m.group("id") for m in FINDING_RE.finditer(body)]
-                + [m.group(1) for m in REPLY_ID_RE.finditer(body)])
-    for key, ids in recorded_ids([e.get("body") or "" for e in own]).items():
-        add(key, ids)
-    return {key: ids for key, ids in known.items() if ids}
+    in_reviews = [(f"review:{r.get('id')}", r) for r in reviews]
+    in_threads = [(f"thread:{c.get('in_reply_to_id') or c.get('id')}", c) for c in comments]
+    in_issue = [(f"issue_comment:{c.get('id')}", c) for c in issue_comments]
+    own = [{"key": key, "location": comment_place(entry) if key.startswith("thread:") else "PR",
+            "text": visible_body(entry)}
+           for key, entry in [*in_reviews, *in_threads, *in_issue]
+           if comment_author(entry) == viewer and visible_body(entry)]
+    others = [{"key": key, "author": comment_author(entry), "text": visible_body(entry)}
+              for key, entry in [*in_reviews, *in_issue]
+              if comment_author(entry) != viewer and visible_body(entry)]
+    batches = batched(own, lambda c: len(c["text"]))
+    directory = os.path.join(tmp_dir, "own")
+    os.makedirs(directory, exist_ok=True)
+    write_json(os.path.join(directory, "keys.json"), {"batches": len(batches)})
+    for n, batch in enumerate(batches, 1):
+        data = {"viewer": viewer, "comments": batch}
+        if any(not c["key"].startswith("thread:") for c in batch):
+            data["others"] = others
+        write_json(os.path.join(directory, f"batch-{n}.json"), data)
+    return {"directory": directory, "batches": len(batches)}
+
+
+def read_own_extracts(directory, batches):
+    """The IDs by key and the IDs used in each batch's extract, naming any file that is missing or
+    malformed.
+    """
+    comments, used, bad = {}, set(), []
+    for n in range(1, batches + 1):
+        name = os.path.join(directory, f"extract-{n}.json")
+        try:
+            batch = read_json(os.path.join(directory, f"batch-{n}.json"))
+            keys = {c["key"] for group in ("comments", "others") for c in batch.get(group, [])}
+            extract = read_json(name)
+            if not finding_ids_only(extract["used"]):
+                raise ValueError(extract["used"])
+            used.update(extract["used"])
+            for entry in extract["findings"]:
+                if entry["key"] not in keys or not finding_ids_only(entry["ids"]):
+                    raise ValueError(entry)
+                used.update(entry["ids"])
+                if entry["ids"]:
+                    held = comments.setdefault(entry["key"], [])
+                    held.extend(fid for fid in entry["ids"] if fid not in held)
+        except (Error, OSError, AttributeError, KeyError, TypeError, ValueError):
+            bad.append(name)
+    if bad:
+        raise Error(f"missing or malformed: {', '.join(bad)}")
+    return comments, used
 
 
 def cmd_ids(pr_url, tmp_dir):
-    pr = checked_pr(pr_url)
-    viewer = view_pr(pr, require_open=False)["viewer"]
-    comments = own_finding_ids(pr, viewer)
+    checked_pr(pr_url)
+    directory = os.path.join(tmp_dir, "own")
+    try:
+        batches = read_json(os.path.join(directory, "keys.json"))["batches"]
+    except (Error, KeyError, TypeError):
+        raise Error(f"run own first: no comments listed in {directory}") from None
+    comments, used = read_own_extracts(directory, batches)
     path = os.path.join(tmp_dir, "finding-ids.json")
-    write_json(path, {"comments": comments, "used": sorted(used_ids(pr, viewer))})
+    write_json(path, {"comments": comments, "used": sorted(used)})
     return {"path": path, "comments": len(comments)}
+
+
+def known_ids(tmp_dir):
+    """The IDs by key and the IDs used, from what ids wrote."""
+    path = os.path.join(tmp_dir, "finding-ids.json")
+    try:
+        known = read_json(path)
+        comments, used = known["comments"], known["used"]
+        if not finding_ids_only(used) or not all(map(finding_ids_only, comments.values())):
+            raise ValueError(known)
+    except (Error, AttributeError, KeyError, TypeError, ValueError):
+        raise Error(f"run ids first: no finding IDs in {path}") from None
+    return comments, used
 
 
 def spoken(comment, viewer):
     return {"author": comment_author(comment), "own": comment_author(comment) == viewer,
             "created_at": comment.get("created_at") or comment.get("submitted_at"),
-            "text": visible_body(comment, viewer)}
+            "text": visible_body(comment)}
 
 
-def marked_item(match, target, key, replies):
-    text, items = read_block(match.group("body"))
-    return {"key": key, "id": match.group("id"), "severity": severity_of(match.group("id")),
-            "location": urllib.parse.unquote(match.group("loc")), "text": text,
-            "recommendation": items, "target": target, "replies": replies}
-
-
-def hand_item(target, key, location, text, replies, earlier_ids):
-    return {"key": key, "id": None, "severity": None, "location": location, "text": text,
-            "recommendation": [], "target": target, "replies": replies,
-            "earlier_ids": earlier_ids}
-
-
-def recorded_ids(bodies):
-    """The finding IDs the cgh:ids markers in these bodies record, by item key."""
-    recorded = {}
-    for body in bodies:
-        for marker in IDS_RE.finditer(body):
-            for origin in marker.group(1).split(";"):
-                key, _, ids = origin.partition("=")
-                known = recorded.setdefault(key, [])
-                for fid in ids.split(","):
-                    if fid not in known:
-                        known.append(fid)
-    return recorded
+def own_item(comment, target, key, location, replies, earlier_ids, holder):
+    """A comment of the viewer, with `holder` the key of the review or comment that holds it."""
+    return {"key": key, "id": None, "severity": None, "location": location,
+            "text": visible_body(comment), "recommendation": [], "target": target,
+            "replies": replies, "earlier_ids": earlier_ids, "holder": holder,
+            "created_at": comment_time(comment)}
 
 
 def comment_place(comment):
@@ -820,114 +809,77 @@ def comment_place(comment):
     return f"{comment.get('path')}:{line}" if line else comment.get("path")
 
 
-def is_backed(item, own_outside, waived):
-    """Whether the viewer wrote anything that could withdraw the item, beyond the item itself."""
-    if waived.intersection([item["id"]] if item["id"] else item["earlier_ids"]):
+def is_backed(item, own_outside):
+    """Whether the viewer wrote anything that could withdraw the item, beyond the item itself:
+    `own_outside` holds the key and time of each of the viewer's review bodies and issue comments.
+    """
+    if any(reply["own"] for reply in item["replies"]):
         return True
-    target = item["target"]
-    if target["kind"] == "thread":
-        return any(r["own"] and not is_workflow_reply(r["text"]) for r in item["replies"])
-    return any(source != (target["kind"], target["id"]) for source in own_outside)
+    return bool(item["created_at"]) and any(
+        key != item["holder"] and when > item["created_at"] for key, when in own_outside)
 
 
-def posted_items(pr, viewer, kind):
-    """The viewer's findings of `kind` with the replies in their threads, and the conversation
-    outside threads.
+def posted_items(pr, viewer, earlier):
+    """The viewer's comments with the replies in their threads, the conversation outside threads,
+    and `earlier`, the finding IDs by key, on each comment.
     """
     reviews, comments, issue_comments = visible_comments(pr)
     dismissed = {r.get("id") for r in reviews if r.get("state") == "DISMISSED"}
     live = [c for c in comments if c.get("pull_request_review_id") not in dismissed]
     standing = [r for r in reviews if r.get("id") not in dismissed]
-    roots = {c.get("id"): c for c in comments}
+    review_of = {r.get("id"): r for r in reviews}
     threads = {}
     for comment in by_time(c for c in live if c.get("in_reply_to_id")):
         threads.setdefault(comment["in_reply_to_id"], []).append(comment)
-    replies = {root: [spoken(c, viewer) for c in thread] for root, thread in threads.items()}
-    own_bodies = [e.get("body") or "" for e in [*standing, *live, *issue_comments]
-                  if comment_author(e) == viewer]
-    recorded = recorded_ids(own_bodies)
-    waived = {fid for body in own_bodies for m in WAIVED_RE.finditer(body)
-              for fid in m.group(1).split(",")}
+
+    def own(entry):
+        return comment_author(entry) == viewer and visible_body(entry)
+
+    own_roots = {c.get("id") for c in live if own(c) and not c.get("in_reply_to_id")}
     items = []
-
-    def add_marked(body, target, key_of, thread_replies):
-        for match in FINDING_RE.finditer(body):
-            if match.group("kind") == kind:
-                items.append(marked_item(match, target, key_of(match), thread_replies))
-
-    for review in reviews:
-        if comment_author(review) != viewer or review.get("id") in dismissed:
+    for review in filter(own, standing):
+        key = f"review:{review.get('id')}"
+        items.append(own_item(review, {"kind": "review", "id": review.get("id")}, key, "PR", [],
+                              earlier.get(key, []), key))
+    for comment in filter(own, live):
+        cid, root = comment.get("id"), comment.get("in_reply_to_id")
+        if root in own_roots:
             continue
-        rid, body = review.get("id"), review.get("body") or ""
-        target = {"kind": "review", "id": rid}
-        add_marked(body, target, lambda m, r=rid: f"review:{r}:{m.group('id')}", [])
-        rest = without_comments(FINDING_RE.sub("", body)).strip()
-        if kind == "review" and rest and not is_workflow_reply(body):
-            key = f"review:{rid}"
-            items.append(hand_item(target, key, "PR", rest, [], recorded.get(key, [])))
-    for comment in live:
-        if comment_author(comment) != viewer:
-            continue
-        cid, body = comment.get("id"), comment.get("body") or ""
-        target, key = {"kind": "thread", "id": cid}, f"thread:{cid}"
-        root = comment.get("in_reply_to_id")
-        if root:
-            if (kind == "review" and comment_author(roots.get(root, {})) != viewer
-                    and not is_workflow_reply(body)):
-                others = [spoken(c, viewer) for c in threads[root] if c is not comment]
-                items.append(hand_item(target, key, comment_place(comment),
-                                       without_comments(body).strip(), others,
-                                       recorded.get(key, [])))
-            continue
-        thread_replies = replies.get(cid, [])
-        if FINDING_RE.search(body):
-            add_marked(body, target, lambda m, c=cid: f"thread:{c}", thread_replies)
-        elif kind == "review":
-            earlier = [m.group(1) for r in thread_replies if r["own"]
-                       for m in REPLY_ID_RE.finditer(r["text"])]
-            earlier += [fid for fid in recorded.get(key, []) if fid not in earlier]
-            items.append(hand_item(target, key, comment_place(comment),
-                                   without_comments(body).strip(), thread_replies, earlier))
-    if kind == "review":
-        for comment in issue_comments:
-            body = comment.get("body") or ""
-            text = without_comments(body).strip()
-            if comment_author(comment) == viewer and text and not is_workflow_reply(body):
-                cid = comment.get("id")
-                key = f"issue_comment:{cid}"
-                items.append(hand_item({"kind": "issue_comment", "id": cid}, key, "PR", text, [],
-                                       recorded.get(key, [])))
-    outside = []
-    for entry in by_time([*reviews, *issue_comments]):
-        body = entry.get("body") or ""
-        if comment_author(entry) == viewer:
-            body = FINDING_RE.sub("", body)
-        said = spoken({**entry, "body": body}, viewer)
-        if said["text"]:
-            outside.append(said)
-    own_outside = [
-        (source, entry.get("id"))
-        for source, entries in (("review", standing), ("issue_comment", issue_comments))
-        for entry in entries
-        if comment_author(entry) == viewer and not is_workflow_reply(entry.get("body") or "")
-        and without_comments(FINDING_RE.sub("", entry.get("body") or "")).strip()]
+        rid = comment.get("pull_request_review_id")
+        replies = [spoken(c, viewer) for c in threads.get(root or cid, []) if c is not comment]
+        item = own_item(comment, {"kind": "thread", "id": cid}, f"thread:{cid}",
+                        comment_place(comment), replies, earlier.get(f"thread:{root or cid}", []),
+                        f"review:{rid}")
+        item["review_opening"] = visible_body(review_of.get(rid, {}))[:OPENING_LIMIT]
+        items.append(item)
+    for comment in filter(own, issue_comments):
+        cid, key = comment.get("id"), f"issue_comment:{comment.get('id')}"
+        items.append(own_item(comment, {"kind": "issue_comment", "id": cid}, key, "PR", [],
+                              earlier.get(key, []), key))
+    outside = [{"key": f"review:{r.get('id')}", **spoken(r, viewer)} for r in reviews]
+    outside += [{"key": f"issue_comment:{c.get('id')}", **spoken(c, viewer)}
+                for c in issue_comments]
+    own_outside = [(f"review:{r.get('id')}", comment_time(r)) for r in filter(own, standing)]
+    own_outside += [(f"issue_comment:{c.get('id')}", comment_time(c))
+                    for c in filter(own, issue_comments)]
     for item in items:
-        item["backed"] = is_backed(item, own_outside, waived)
-    return items, outside
+        item["backed"] = is_backed(item, own_outside)
+    return items, by_time(entry for entry in outside if entry["text"])
 
 
 def cmd_collect(pr_url, tmp_dir, kind):
     pr = checked_pr(pr_url)
+    earlier, _ = known_ids(tmp_dir)
     people = participants(view_pr(pr, require_open=False))
-    items, outside = posted_items(pr, people["viewer"], kind)
+    items, outside = posted_items(pr, people["viewer"], earlier)
     directory = os.path.join(tmp_dir, "posted")
     os.makedirs(directory, exist_ok=True)
     batches = batched(items, lambda i: len(i["text"]) + sum(len(r["text"]) for r in i["replies"]))
     write_json(os.path.join(directory, "items.json"), {"items": items, "batches": len(batches)})
+    shown = ("key", "earlier_ids", "location", "text", "replies", "review_opening")
     for n, batch in enumerate(batches, 1):
-        data = {**people, "items": [
-            {k: item[k] for k in ("key", "id", "earlier_ids", "location", "text", "replies")
-             if k in item} for item in batch]}
+        data = {**people, "kind": kind,
+                "items": [{k: item[k] for k in shown if k in item} for item in batch]}
         if kind == "gate" or any(item["target"]["kind"] != "thread" for item in batch):
             data["conversation"] = outside
         write_json(os.path.join(directory, f"batch-{n}.json"), data)
@@ -947,17 +899,16 @@ def read_judgments(directory, batches, items):
                 if entry["state"] not in POSTED_STATES:
                     raise ValueError(entry["state"])
                 if any(not isinstance(entry.get(field), (str, type(None)))
-                       for field in ("reason", "context", "location")):
+                       for field in ("reason", "context", "location", "recommendation")):
                     raise ValueError(entry)
                 siblings = judged.setdefault(entry["key"], [])
-                if not item["id"]:
-                    fid = entry.get("id")
-                    if (entry.get("severity") not in SEVERITIES.values()
-                            or not isinstance(entry.get("text"), str)
-                            or not entry["text"].strip()
-                            or (fid is not None and fid not in item["earlier_ids"])
-                            or (fid is not None and fid in [e.get("id") for e in siblings])):
-                        raise ValueError(entry)
+                fid = entry.get("id")
+                if (entry.get("severity") not in SEVERITIES.values()
+                        or not isinstance(entry.get("text"), str)
+                        or not entry["text"].strip()
+                        or (fid is not None and fid not in item["earlier_ids"])
+                        or (fid is not None and fid in [e.get("id") for e in siblings])):
+                    raise ValueError(entry)
                 siblings.append(entry)
         except (Error, OSError, KeyError, TypeError, ValueError):
             bad.append(name)
@@ -967,35 +918,35 @@ def read_judgments(directory, batches, items):
 
 
 def settled_findings(items, judged, used):
-    """The findings with their judgment. One with no marker takes the earlier ID the judgment
-    names, the only earlier ID when its comment holds one finding, or else the next free number.
-    An earlier ID keeps its severity, which its prefix carries.
+    """The findings with their judgment. Each takes the earlier ID the judgment names, the only
+    earlier ID when its comment holds one finding, or else the next free number. An ID an earlier
+    finding took counts as none. An ID gives the severity, which its prefix carries.
     """
     numbers = next_numbers(used)
     prefixes = {name: prefix for prefix, name in SEVERITIES.items()}
-    findings = []
+    findings, taken = [], set()
     for item in items:
         entries = judged.get(item["key"], [])
-        if item["id"]:
-            findings.append({**item, **{k: v for k, v in (entries or [{}])[0].items()
-                                        if k in ("state", "reason", "context")}})
-            continue
         earlier = item["earlier_ids"]
         for entry in entries:
             fid = entry.get("id")
-            if not fid and len(entries) == 1 and len(earlier) == 1:
+            if fid in taken:
+                fid = None
+            if not fid and len(entries) == 1 and len(earlier) == 1 and earlier[0] not in taken:
                 fid = earlier[0]
             if not fid:
                 prefix = prefixes[entry["severity"]]
                 numbers[prefix] = numbers.get(prefix, 0) + 1
                 fid = f"{prefix}-{numbers[prefix]}"
+            taken.add(fid)
+            recommended = (entry.get("recommendation") or "").strip()
             findings.append({
                 **item, "id": fid, "severity": severity_of(fid), "text": entry["text"],
                 "location": entry.get("location") or item["location"],
                 "state": entry["state"], "reason": entry.get("reason"),
-                "context": entry.get("context")})
+                "context": entry.get("context"),
+                "recommendation": [recommended] if recommended else []})
     for finding in findings:
-        finding.setdefault("state", "open")
         finding["verified"] = finding["state"] == "verified"
         if finding["state"] == "declined" and not finding.get("reason"):
             finding["state"] = "open"
@@ -1088,7 +1039,7 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
     except (Error, OSError):
         raise Error(f"run collect first: no findings collected in {directory}") from None
     judged = read_judgments(directory, collected["batches"], collected["items"])
-    settled = settled_findings(collected["items"], judged, used_ids(pr, view["viewer"]))
+    settled = settled_findings(collected["items"], judged, known_ids(tmp_dir)[1])
     demoted = [f for f in settled if f["state"] == "withdrawn" and not f["backed"]]
     for finding in demoted:
         finding["state"] = "open"
@@ -1175,7 +1126,7 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
     if view["headRefOid"] != header.get("head_sha"):
         raise Error(f"the pull request moved past the reviewed head {header.get('head_sha')} "
                     f"to {view['headRefOid']}; run the skill again")
-    used = used_ids(pr, view["viewer"])
+    _, used = known_ids(tmp_dir)
     prior, unchanged = prior_states(pr, prior_doc, view["headRefOid"], earlier_verified(tmp_dir))
     numbers = next_numbers([*used, *(p["id"] for p in prior)])
     files = changed_files(pr)
@@ -1257,12 +1208,7 @@ def review_body(draft, plan, body_findings, post):
     if body_findings:
         lines += [f"### {labels['out_of_diff']}", ""]
         for f in body_findings:
-            lines += [finding_block(comment_view(f, post), draft["kind"], lang, True), ""]
-    for state in ("verified", "waived"):
-        done = [p["id"] for p in draft["prior"] if p["state"] == state]
-        if done:
-            lines.append(f"<!-- cgh:{state} {','.join(done)} -->")
-    lines.append(BODY_MARKER)
+            lines += [finding_block(comment_view(f, post), lang, True), ""]
     return "\n".join(lines).strip()
 
 
@@ -1292,7 +1238,7 @@ def preview_review(draft, view, post):
         if by_place[place]:
             lines += [f"## {title}", ""]
             for f in by_place[place]:
-                block = finding_block(comment_view(f, post), draft["kind"], lang, place == "file")
+                block = finding_block(comment_view(f, post), lang, place == "file")
                 lines += [f"`{f['location']}`", "", block, ""]
     excluded = [f for f in draft["findings"] if not f["selected"]]
     if excluded and not post:
@@ -1332,16 +1278,19 @@ def validated_replies(data):
         verified = entry.setdefault("verified", [])
         if not finding_ids_only(ids) or not finding_ids_only(verified) or set(verified) - set(ids):
             raise Error(f"malformed reply: {entry!r}")
-        origins = entry.setdefault("origins", {})
-        if not isinstance(origins, dict) or not all(
-                isinstance(key, str) and ORIGIN_KEY_RE.fullmatch(key)
-                and value and finding_ids_only(value) for key, value in origins.items()):
-            raise Error(f"malformed reply: {entry!r}")
     return replies
 
 
 def reply_text(entry, post):
     return (post and entry.get("post_body")) or entry["body"]
+
+
+def shown_reply(entry, post):
+    """The reply's wording, made safe, with a heading for each finding ID it does not show."""
+    text = safe_text(reply_text(entry, post))
+    headings = [f"**{severity_of(fid)} {fid}**" for fid in dict.fromkeys(entry["finding_ids"])]
+    missing = [heading for heading in headings if heading not in text]
+    return f"{', '.join(missing)}: {text}" if missing else text
 
 
 def preview_replies(pr, data, viewer, post):
@@ -1358,7 +1307,7 @@ def preview_replies(pr, data, viewer, post):
         author = reply_author(pr, entry, viewer) if goes_out else None
         if author:
             lines += [f"Mentions: @{author}", ""]
-        lines += [safe_text(reply_text(entry, post)), ""]
+        lines += [shown_reply(entry, post), ""]
     return "\n".join(lines), {"replies": sum(e["selected"] and not e["posted"] for e in replies),
                               "comment_lang": data.get("comment_lang")}
 
@@ -1459,7 +1408,7 @@ def cmd_wording(pr_url, path):
 
 
 def add_thread(pr, review_id, finding, draft, as_file):
-    body = finding_block(comment_view(finding, True), draft["kind"], draft["comment_lang"], as_file)
+    body = finding_block(comment_view(finding, True), draft["comment_lang"], as_file)
     path, line = split_location(finding["location"])
     fields = {"pullRequestReviewId": review_id, "path": path,
               "body": checked_size(body, f"{finding['id']}")}
@@ -1602,22 +1551,9 @@ def reply_author(pr, entry, viewer):
     return login if login and login != viewer else None
 
 
-def record_new_ids(entry, key, known):
-    """Adds to the reply's origins the finding IDs its target does not carry yet. A reply already
-    attempted keeps its origins: a rerun finds whether it landed by its body.
-    """
-    recorded = {fid for ids in entry["origins"].values() for fid in ids}
-    new = [fid for fid in entry["finding_ids"]
-           if fid not in known.get(key, []) and fid not in recorded]
-    if new and not entry.get("attempted"):
-        entry["origins"][key] = new
-
-
-def reply_request(pr, entry, viewer, known):
+def reply_request(pr, entry, viewer):
     """Where a reply is sent, the comment it answers, the comments it joins there, and its body."""
-    body = safe_text(reply_text(entry, True))
-    if entry["verified"]:
-        body += f"\n\n<!-- cgh:verified {','.join(entry['verified'])} -->"
+    body = shown_reply(entry, True)
     if entry["kind"] == "thread":
         comment = rest_get(pr, f"repos/{pr.repo}/pulls/comments/{entry['target_id']}")
         if not belongs(pr, comment.get("pull_request_url"), "pulls"):
@@ -1631,21 +1567,17 @@ def reply_request(pr, entry, viewer, known):
             body = f"@{author} {body}"
         answered = entry["target_id"]
         collection = path = f"repos/{pr.repo}/issues/{pr.number}/comments"
-    label = entry["kind"] if answered is None else f"{entry['kind']} {answered}"
-    if answered is not None:
-        record_new_ids(entry, f"{entry['kind']}:{answered}", known)
-    body += f"\n\n<!-- cgh:reply {label} -->"
-    if entry["origins"]:
-        origins = ";".join(f"{key}={','.join(ids)}" for key, ids in entry["origins"].items())
-        body += f"\n<!-- cgh:ids {origins} -->"
     return path, answered, collection, checked_size(body, "a reply")
 
 
-def sent_reply(pr, collection, body, viewer):
-    """The URL of the viewer's comment with this body in the collection, or None."""
+def sent_reply(pr, entry, collection, answered, body, viewer):
+    """The URL of the viewer's comment with this body in the collection, in the answered thread for
+    a thread reply, or None.
+    """
     for comment in rest_pages(pr, collection):
         same = (comment.get("body") or "").strip() == body.strip()
-        if same and comment_author(comment) == viewer:
+        in_place = entry["kind"] != "thread" or comment.get("in_reply_to_id") == answered
+        if same and in_place and comment_author(comment) == viewer:
             return comment.get("html_url") or pr.url
     return None
 
@@ -1674,15 +1606,14 @@ def post_replies(pr, path, data):
     replies = validated_replies(data)
     viewer = view_pr(pr, require_open=False)["viewer"]
     urls = []
-    known = None
     for entry in replies:
         if not entry["selected"] or entry["posted"]:
             continue
-        if known is None:
-            known = own_finding_ids(pr, viewer)
-        target, answered, collection, body = reply_request(pr, entry, viewer, known)
+        target, answered, collection, body = reply_request(pr, entry, viewer)
         # GitHub can apply a post whose response fails.
-        url = sent_reply(pr, collection, body, viewer) if entry.get("attempted") else None
+        url = None
+        if entry.get("attempted"):
+            url = sent_reply(pr, entry, collection, answered, body, viewer)
         sent = None
         if not url:
             entry["attempted"] = True
@@ -1741,14 +1672,14 @@ def cmd_comments(pr_url, tmp_dir):
             {"id": c.get("id"), "in_reply_to": c.get("in_reply_to_id"),
              "author": comment_author(c), "path": c.get("path"),
              "line": c.get("line") or c.get("original_line"), "created_at": c.get("created_at"),
-             "body": visible_body(c, viewer)}
+             "body": visible_body(c)}
             for c in comments],
         "reviews": [{"id": r.get("id"), "author": comment_author(r), "state": r.get("state"),
-                     "submitted_at": r.get("submitted_at"), "body": visible_body(r, viewer)}
-                    for r in reviews if visible_body(r, viewer)],
+                     "submitted_at": r.get("submitted_at"), "body": visible_body(r)}
+                    for r in reviews if visible_body(r)],
         "issue_comments": [
             {"id": c.get("id"), "author": comment_author(c), "created_at": c.get("created_at"),
-             "body": visible_body(c, viewer)}
+             "body": visible_body(c)}
             for c in issue_comments],
     })
     return {"path": path, "pr_body_path": write_pr_body(tmp_dir, view)}
@@ -1773,17 +1704,12 @@ def resolved_roots(pr):
 
 def cmd_raised(pr_url, tmp_dir):
     pr = checked_pr(pr_url)
-    viewer = view_pr(pr, require_open=False)["viewer"]
     reviews, comments, issue_comments = visible_comments(pr)
     dismissed = {r.get("id") for r in reviews if r.get("state") == "DISMISSED"}
     resolved = resolved_roots(pr)
 
     def entry(comment, location, **fields):
-        body = comment.get("body") or ""
-        own = comment_author(comment) == viewer
-        if own and is_workflow_reply(body) and not FINDING_RE.search(body):
-            return None
-        text = without_comments(body).strip()
+        text = visible_body(comment)
         if not text:
             return None
         return {"author": comment_author(comment), "location": location, "text": text, **fields}
@@ -1850,11 +1776,6 @@ def quoted_finding(finding):
     return "\n\n> " + " ".join(parts) if parts else ""
 
 
-def origins_of(finding):
-    """Where the ID of a finding with no marker has to be recorded for collect to give it back."""
-    return {finding["key"]: [finding["id"]]} if "earlier_ids" in finding else {}
-
-
 def cmd_replies(pr_url, tmp_dir, document, lang):
     pr = checked_pr(pr_url)
     header, findings = checked_document(pr, document)
@@ -1864,7 +1785,7 @@ def cmd_replies(pr_url, tmp_dir, document, lang):
     posted = {f["id"]: f for f in prior}
     earlier = {f["id"] for f in prior if f.get("verified")}
     replies, body_lines, body_ids, body_verified, unverified = [], [], [], [], []
-    unchanged, body_origins = [], {}
+    unchanged = []
     for finding in findings:
         fid, verification = finding["id"], finding["metadata"].get("Verification", "")
         source = posted.get(fid)
@@ -1890,19 +1811,15 @@ def cmd_replies(pr_url, tmp_dir, document, lang):
             text = f"💬 **{severity_of(fid)} {fid}**: {result} {note}"
         if target["kind"] == "thread":
             replies.append({"kind": "thread", "target_id": target["id"], "finding_ids": [fid],
-                            "body": text, "verified": [fid] if verified else [],
-                            "origins": origins_of(source)})
+                            "body": text, "verified": [fid] if verified else []})
         else:
             body_lines.append(text + quoted_finding(source))
             body_ids.append(fid)
             if verified:
                 body_verified.append(fid)
-            for key, ids in origins_of(source).items():
-                body_origins.setdefault(key, []).extend(ids)
     if body_lines:
         replies.append({"kind": "issue", "target_id": None, "finding_ids": body_ids,
-                        "body": "\n\n".join(body_lines), "verified": body_verified,
-                        "origins": body_origins})
+                        "body": "\n\n".join(body_lines), "verified": body_verified})
     path = os.path.join(tmp_dir, "replies.json")
     write_json(path, {"replies": replies})
     return {"path": path, "replies": len(replies), "unverified": unverified,
@@ -1920,6 +1837,8 @@ def parser():
             sub.add_argument(arg)
         return sub
 
+    command("own", "pr_url", "tmp_dir")
+    command("ids", "pr_url", "tmp_dir")
     collect = command("collect", "pr_url", "tmp_dir")
     collect.add_argument("--kind", required=True, choices=("review", "gate"))
     prior = command("prior", "pr_url", "tmp_dir")
@@ -1934,7 +1853,6 @@ def parser():
     command("comments", "pr_url", "tmp_dir")
     command("raised", "pr_url", "tmp_dir")
     command("participants", "pr_url")
-    command("ids", "pr_url", "tmp_dir")
     command("fixes", "pr_url", "tmp_dir", "document")
     command("pushed", "pr_url", "commits")
     replies = command("replies", "pr_url", "tmp_dir", "document")
@@ -1946,6 +1864,10 @@ def parser():
 
 
 def dispatch(args):
+    if args.command == "own":
+        return cmd_own(args.pr_url, args.tmp_dir)
+    if args.command == "ids":
+        return cmd_ids(args.pr_url, args.tmp_dir)
     if args.command == "collect":
         return cmd_collect(args.pr_url, args.tmp_dir, args.kind)
     if args.command == "prior":
@@ -1961,8 +1883,6 @@ def dispatch(args):
         return cmd_raised(args.pr_url, args.tmp_dir)
     if args.command == "participants":
         return cmd_participants(args.pr_url)
-    if args.command == "ids":
-        return cmd_ids(args.pr_url, args.tmp_dir)
     if args.command == "fixes":
         return cmd_fixes(args.pr_url, args.tmp_dir, args.document)
     if args.command == "pushed":

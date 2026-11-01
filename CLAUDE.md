@@ -80,7 +80,7 @@ claude-plugin-marketplace/
 ├── cgh/                          # Plugin: GitHub pull request workflow on top of creview (active, English)
 │   ├── .claude-plugin/plugin.json  # declares the dependency on creview
 │   ├── README.md / README_ja.md
-│   ├── skills/                   # review (+ templates/comment-wording.md, raised-extract.md), gate, resolve (+ templates/reply-translate.md, posted-extract.md), respond (+ templates/reply-draft.md)
+│   ├── skills/                   # review (+ templates/comment-wording.md, raised-extract.md), gate, resolve (+ templates/reply-translate.md, posted-extract.md, finding-ids-extract.md), respond (+ templates/reply-draft.md)
 │   ├── agents/                   # reply-drafter.md, comment-writer.md
 │   ├── rules/                    # leader.md, gate-focus.md
 │   └── scripts/                  # gh-review.py, del-tmp.sh, lib/scratch-guard.py
@@ -296,21 +296,23 @@ the verdict, and where each finding goes; the creview skills it runs read throug
 A bundled `comment-writer` or `reply-drafter`, which have Read and Write only, summarize
 recommendations and translate what goes out into the language of the pull request's description;
 the preview stays in the user's language, and when what goes out differs, the user is shown that
-as well. Each posted finding carries a hidden marker
-(`<!-- cgh:finding {id} {kind} {location} -->`), a verification carries
-`<!-- cgh:verified {ids} -->`, a waiver `<!-- cgh:waived {ids} -->`, a review body the script
-wrote `<!-- cgh:body -->`, and a reply `<!-- cgh:reply {kind} {id} -->`, or
-`<!-- cgh:reply issue -->`, with no ID, when it gathers results outside threads. A reply about a
-finding with no marker also records its ID by the comment it came from in
-`<!-- cgh:ids {key}={ids};... -->`. The markers are hints, not the state: a pull request is worked
-on by several people and AI, with or without these skills, so where a finding stands is judged
-from the conversation and the code. Only the authenticated user's comments keep their markers
-in what the script writes, since anyone can write one.
+as well. Nothing cgh posts carries a hidden marker, and nothing reads one: a pull request is worked
+on by several people and AI, with or without these skills, so nothing guarantees that a marker
+survives, stays unedited, or is not forged. `gh-review.py` and `gh-pr.py` remove HTML comments from
+every comment they hand on, so what a finding is, its ID, and where it stands are judged from visible
+text and the code. `safe_text` keeps posted text from hiding anything or mentioning anyone by
+accident. The `<!-- METADATA(id) -->` markers belong to the local review document and never go to
+GitHub.
+
+Every cgh skill runs `rules/leader.md` § Finding IDs: `gh-review.py own` writes the authenticated
+user's comments in batches, a `comment-writer` reads the IDs they use, and `gh-review.py ids` writes
+`{tmp_dir}/finding-ids.json` from that, for `collect`, `prior`, `draft`, and `/creview:triage
+--finding-ids`.
 
 `/cgh:resolve` and `/cgh:gate` run `rules/leader.md` § Posted findings. `gh-review.py collect`
-writes the user's findings with their conversation, in batches: for `/cgh:resolve` its comments by
-hand too, and for a finding with no thread the conversation outside threads. A `comment-writer`
-judges each finding's state from that, and `gh-review.py prior` turns the judgment into a review
+writes the user's comments with their conversation, in batches, and for a comment with no thread,
+or under `/cgh:gate`, the conversation outside threads. A `comment-writer` picks the findings of the
+kind asked for and judges each one's state from that, and `gh-review.py prior` turns the judgment into a review
 document for `/creview:resolve`: a decline as a `Won't Fix` triage, a finding verified earlier with
 a `Verification` line so that it is checked again, with the comment targets in
 `{tmp_dir}/prior.json`. `gh-review.py replies` and `draft` report a finding verified earlier only
@@ -319,10 +321,10 @@ what comments by anyone already raise, and an override has the triage sub-agent 
 `/cgh:respond` handles the comments of anyone through the PR mode of `/creview:triage`, whose
 triage sub-agent an override tells to judge what is already dealt with, and its drafter judges
 from the conversation whether a comment needs a reply. Posted findings number on from the
-authenticated user's earlier ones, so an ID stays unique among that user's findings on a pull
-request. `/cgh:respond` passes `/creview:triage` the file `gh-review.py ids` writes, through
-`--finding-ids`, so that its document keeps the IDs of that user's comments and gives any other
-finding a new ID, which the posted reply records in `cgh:ids`. `post` reads back what it sent.
+IDs read from the authenticated user's comments. `/cgh:respond` passes `/creview:triage` the file
+`gh-review.py ids` writes, through `--finding-ids`, so that its document keeps the IDs of that user's
+comments and gives any other finding a new ID, which the posted reply shows in a heading the script
+adds. `post` reads back what it sent.
 
 ### Sub-agent launch contract
 

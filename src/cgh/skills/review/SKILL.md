@@ -40,7 +40,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 2 — ドラフト
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind review --lang {lang}` を実行する。`{tmp_dir}/draft.json` が書き出される。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
+§ 指摘 ID に従う。その後、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind review --lang {lang}` を実行する。`{tmp_dir}/draft.json` が書き出される。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
 
 ## Step 3 — 確認と投稿
 

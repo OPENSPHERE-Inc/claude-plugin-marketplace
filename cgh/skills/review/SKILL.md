@@ -40,7 +40,7 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 ## Step 2 — Draft
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind review --lang {lang}`. It writes `{tmp_dir}/draft.json`. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
+Follow § Finding IDs. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind review --lang {lang}`. It writes `{tmp_dir}/draft.json`. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
 
 ## Step 3 — Confirm and post
 

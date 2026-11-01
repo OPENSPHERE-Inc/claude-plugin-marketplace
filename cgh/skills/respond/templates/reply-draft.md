@@ -9,7 +9,7 @@ Draft the replies to the pull request's review comments, from what the review do
 Inputs:
 
 - `{{document_path}}` — findings compiled from the comments. Each has an ID, a location, a description, its authors, and metadata lines: `Triage`, `Estimate`, `Status`.
-- `{{comments_path}}` — the comments: `viewer` (the account replying), `review_comments` (`id`, `in_reply_to`, `author`, `path`, `line`, `created_at`, `body`), `reviews` (`id`, `author`, `state`, `submitted_at`, `body`), `issue_comments` (`id`, `author`, `created_at`, `body`). Only `viewer`'s `body` shows HTML comments: a `cgh:reply` marker there is a hint that this workflow replied, to read with the text.
+- `{{comments_path}}` — the comments: `viewer` (the account replying), `review_comments` (`id`, `in_reply_to`, `author`, `path`, `line`, `created_at`, `body`), `reviews` (`id`, `author`, `state`, `submitted_at`, `body`), `issue_comments` (`id`, `author`, `created_at`, `body`).
 - `{{commits_path}}` — `commits`, the fix commits: `sha`, `subject`, `files`.
 - `{{pr_body_path}}` — the pull request's `title` and `body`.
 
@@ -26,7 +26,7 @@ Rules:
 
 - One reply per target. Findings from one thread or one comment go in one reply. A finding from several targets gets a reply on each, with the same `finding_ids`.
 - `kind` and `target_id`: `thread` with the `id` of a `review_comments` entry, `review` with the `id` of a `reviews` entry, or `issue_comment` with the `id` of an `issue_comments` entry.
-- Write `body` in `{{doc_lang}}`, for the user's preview, briefly, for the person who wrote the comment. Set `comment_lang` to the language tag (`en`, `ja`, ...) of the prose of the pull request's `body`, or of its `title` when `body` has no prose, or of the comments when neither does, and write `post_body`, what goes out, as `body` translated into it, keeping code, identifiers, paths, and commit hashes verbatim. Leave out `post_body` when `body` is already in `comment_lang`. Leave out finding IDs, which mean nothing outside the document, local file paths outside the repository, and ADR files and their names. Do not write `@` mentions: the script adds the one a reply needs.
+- Write `body` in `{{doc_lang}}`, for the user's preview, briefly, for the person who wrote the comment. Set `comment_lang` to the language tag (`en`, `ja`, ...) of the prose of the pull request's `body`, or of its `title` when `body` has no prose, or of the comments when neither does, and write `post_body`, what goes out, as `body` translated into it, keeping code, identifiers, paths, and commit hashes verbatim. Leave out `post_body` when `body` is already in `comment_lang`. Leave out local file paths outside the repository and ADR files and their names. Do not write finding IDs or `@` mentions: the script adds the ID heading and the mention a reply needs. A reply to a `reviews` or `issue_comments` entry goes out in the conversation outside threads, so say in a phrase which problem it answers.
 - A finding none of whose comments you can identify gets no reply: list it in `unmatched`.
 
 Write `{{output_path}}` as one JSON object:

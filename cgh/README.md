@@ -173,22 +173,23 @@ The state lives on the pull request, so a later run needs nothing from an earlie
 - Where a finding stands is judged from the conversation and the code, since people and AI work
   on a pull request with or without these skills. A reply by hand counts as much as one from a
   skill.
-- A posted finding carries a hidden marker with its ID and location, a verification or a waiver
-  one with the IDs it closes, and a reply one with the comment it answers. These are hints for
-  that judgment, and only those in your own comments are read.
+- Comments carry no hidden markers, since nothing guarantees that one survives, stays unedited,
+  or is not forged on a pull request worked on by several people and AI. Sub-agents judge from
+  visible text only: HTML comments in anyone's comment are removed before they read it.
 - `/cgh:review` looks at every comment and `/cgh:respond` handles every comment, whoever wrote it.
   `/cgh:resolve` checks only your own findings, and `/cgh:gate` only its own. Dismissing a review
   drops its findings from those checks.
 - A thread marked resolved on GitHub counts as dealt with in `/cgh:respond`, and the skill reports
   how many it left out.
-- Finding IDs number on from your earlier ones, so an ID stays unique among your findings on a
-  pull request. The review document of `/cgh:review` numbers its own way, so an ID posted from it
+- A sub-agent reads which finding IDs your comments use, in context, from their visible text. New
+  IDs number on from those, so an ID stays unique among your findings on a pull request, as far as
+  that reading is right. The review document of `/cgh:review` numbers its own way, so an ID posted from it
   can differ from the ID in that document.
 - `/cgh:respond` keeps these IDs.
   - Your own findings have the same ID in its review document, its preview, and its report.
   - A finding by anyone else takes a new ID, since IDs others write can collide with yours. The
-    reply that answers it records the ID, and later runs reuse it. Until then, the ID can change
-    from run to run.
+    reply that answers it shows the ID, and later runs reuse it. Until then, the ID can change from
+    run to run.
 - `post` reads back what it sent and reports the URL of anything that reads back differently.
 
 ## Limitations
@@ -210,6 +211,9 @@ The state lives on the pull request, so a later run needs nothing from an earlie
   on GitHub until it is dismissed, and dismissing it takes that review's findings out of later
   runs.
 - GitHub allows one pending review per user on a pull request. Submit or discard yours first.
+- Reading finding IDs and judging where findings stand take sub-agents on every run, cost tokens,
+  and can vary between runs. An ID removed from a comment's text, or misread, can make a finding
+  take a new ID.
 - Text in the comments comes from reviewers that read the pull request. A script quotes `@`
   mentions in it and escapes HTML comments, but this does not catch every mention, so read the
   preview before you post it.

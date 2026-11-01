@@ -20,11 +20,31 @@ Change GitHub only through `{{plugin_root}}/scripts/gh-review.py post`. Never ru
 
 When a `gh-review.py` command exits non-zero and neither this rule nor the SKILL says otherwise, abort with its error.
 
+## Finding IDs
+
+Comments show finding IDs only as visible text, which anyone can edit or leave out, so a sub-agent reads them in context.
+
+1. Run `python3 {{plugin_root}}/scripts/gh-review.py own '{pr_url}' '{tmp_dir}'`. It writes your GitHub account's comments to `{directory}/batch-{n}.json`, `{n}` from 1, and prints `directory` and `batches`.
+2. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)` for each batch, at most 20 in one message:
+
+```
+As your first action, you MUST Read `{{plugin_root}}/skills/resolve/templates/finding-ids-extract.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+Variables (substitute into the template's {{...}} placeholders):
+- batch_path: {directory}/batch-{n}.json
+- output_path: {directory}/extract-{n}.json
+
+Include `template_id` (Read from the template's frontmatter) in the return value.
+```
+
+The returned `template_id` must be `2224560e-edcd-4a41-b86b-c19c7e31d65a`; on mismatch, launch it again, and abort when it happens twice.
+3. Run `python3 {{plugin_root}}/scripts/gh-review.py ids '{pr_url}' '{tmp_dir}'`. It writes `{tmp_dir}/finding-ids.json`, which `collect`, `prior`, and `draft` read, and prints `path`. When its error names an `extract-{n}.json`, launch the writer of that batch once more and run it again. On a second failure or any other non-zero exit, abort with its error.
+
 ## Posted findings
 
-The SKILL names `{kind}` and `{prior_path}`.
+The SKILL names `{kind}` and `{prior_path}`. Follow § Finding IDs first.
 
-1. Run `python3 {{plugin_root}}/scripts/gh-review.py collect '{pr_url}' '{tmp_dir}' --kind {kind}`. It writes the findings posted under your GitHub account, with their conversation, to `{directory}/batch-{n}.json`, `{n}` from 1, and prints `directory` and `batches`. On a non-zero exit, abort with its error.
+1. Run `python3 {{plugin_root}}/scripts/gh-review.py collect '{pr_url}' '{tmp_dir}' --kind {kind}`. It writes your GitHub account's comments, with their conversation, to `{directory}/batch-{n}.json`, `{n}` from 1, and prints `directory` and `batches`. On a non-zero exit, abort with its error.
 2. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)` for each batch, at most 20 in one message:
 
 ```
@@ -39,7 +59,7 @@ Include `template_id` (Read from the template's frontmatter) in the return value
 ```
 
 The returned `template_id` must be `3ab4949f-308c-4ca8-b856-0e6f91dfc72f`; on mismatch, launch it again, and abort when it happens twice.
-3. Run `python3 {{plugin_root}}/scripts/gh-review.py prior '{pr_url}' '{tmp_dir}' --kind {kind} --document '{prior_path}'`, adding `--trust` when given. It prints `open`, the IDs of the findings not yet verified, `verified`, those verified earlier, which the verification checks again, `document`, the findings to check, or null, `waived` and `waived_document`, the IDs and the file of the findings withdrawn, or null, and `demoted`, the IDs judged withdrawn with no reply or waiver of yours behind them, which stay open. Show the user the IDs in `demoted` and, from `waived_document`, the IDs and text of the findings withdrawn. When its error names an `extract-{n}.json`, launch the writer of that batch once more and run it again. On a second failure or any other non-zero exit, abort with its error.
+3. Run `python3 {{plugin_root}}/scripts/gh-review.py prior '{pr_url}' '{tmp_dir}' --kind {kind} --document '{prior_path}'`, adding `--trust` when given. It prints `open`, the IDs of the findings not yet verified, `verified`, those verified earlier, which the verification checks again, `document`, the findings to check, or null, `waived` and `waived_document`, the IDs and the file of the findings withdrawn, or null, and `demoted`, the IDs judged withdrawn with no later comment of yours behind them, which stay open. Show the user the IDs in `demoted` and, from `waived_document`, the IDs and text of the findings withdrawn. When its error names an `extract-{n}.json`, launch the writer of that batch once more and run it again. On a second failure or any other non-zero exit, abort with its error.
 
 ## Comment wording
 
