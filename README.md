@@ -42,7 +42,7 @@ installs with it.
 | `/cgh:review` | Review a pull request and, on your instruction, post the findings as a Request Changes or Comment review. |
 | `/cgh:gate` | Judge whether a self-reviewed pull request can merge as it stands and, on your instruction, post PASS or BLOCK. Run it again until it passes. |
 | `/cgh:respond` | Triage a pull request's reviews, fix them on your confirmation (`--no-confirm` skips it) and, after you push and instruct it, reply with what was done and the commit. |
-| `/cgh:resolve` | Verify the findings `/cgh:review` posted and, on your instruction, reply with the result and the commit. |
+| `/cgh:resolve` | Verify the findings you raised, posted by `/cgh:review` or written by hand, and, on your instruction, reply with the result and the commit. |
 
 ## Reviewer / fixer agents
 
