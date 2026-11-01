@@ -214,6 +214,7 @@ The state lives on the pull request, so a later run needs nothing from an earlie
 - Reading finding IDs and judging where findings stand take sub-agents on every run, cost tokens,
   and can vary between runs. An ID removed from a comment's text, or misread, can make a finding
   take a new ID.
-- Text in the comments comes from reviewers that read the pull request, and goes out as written:
-  a `@` mention in it notifies that person, and an HTML comment in it is hidden on GitHub. Read the
-  preview before you post it.
+- Text in the comments comes from reviewers that read the pull request. A sub-agent removes `@`
+  mentions outside code before posting, which is not certain to catch every one, and the rest goes
+  out as written: a `@` mention left in it notifies that person, and an HTML comment in it is
+  hidden on GitHub. Read the preview before you post it.

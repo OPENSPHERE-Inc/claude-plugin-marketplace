@@ -14,6 +14,6 @@ Write one Markdown bullet per distinct problem, in {{doc_lang}}, keeping code, i
 
 `- @author at location: the problem, as the comment states it`
 
-State a problem as the comment does, right or wrong: whether it holds is judged later. List no comment that raises no problem, such as praise, a question, a status report, a review's summary or verdict, or a reply that only answers its thread or reports what was done. With no problem at all, write `(none)`.
+State a problem as the comment does, right or wrong: whether it holds is judged later. List no comment that raises no problem, such as praise, a question, a status report, a review's summary or verdict, or a reply that only answers its thread or reports what was done, and no problem its author withdraws in a later reply in the thread: only that author's reply withdraws it, not someone else's objection. With no problem at all, write `(none)`.
 
 Return value: `{"path": "{{output_path}}", "problems": <int>, "template_id": "<template_id from this template>"}`
