@@ -19,7 +19,7 @@ template_id: d7fe93d3-9f15-432c-af0b-f0511f8c0779
 
 別個の問題ごとに Markdown の箇条書きを 1 つ、{{doc_lang}} で書く。コード、識別子、パスはそのまま保つ:
 
-`- @author at location: コメントが述べるとおりの問題。 Answers: 誰が何を述べたかを 1 行で、なければ none。 Conclusion: agreed | promised | declined: 理由 | none。 Tracked: 参照先 | none`
+`- @author at location: コメントが述べるとおりの問題。 Answers: 誰が何を述べたかを 1 行で、なければ none。 Conclusion: agreed | promised | declined: 理由 | none。 Tracked: 参照先、挙げた人 @login (author | assignee | viewer) | none`
 
 問題は正誤を問わずコメントが述べるとおりに書く: 成り立つかどうかは後で判定する。
 

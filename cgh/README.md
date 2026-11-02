@@ -91,10 +91,11 @@ posted comment shows which, next to its severity:
 
 - Work left undone with no issue, an unsettled discussion, and a change the review could not read
   always block. An unchecked item in the description is typically Minor and blocking.
-- Broken code and regressions block, unless all of these hold: it occurs only under a special
-  condition normal use does not reach or in a very short window, it is not a security problem, and
-  deferring it is evident from the description or from a decline by the assignees or, with none,
-  the author.
+- A security problem blocks unless the author or an assignee deferred it explicitly, in the
+  description, by naming a tracking issue, or, for a decider, by a decline.
+- Other broken code and regressions block, unless both of these hold: it occurs only under a
+  special condition normal use does not reach or in a very short window, and deferring it is
+  evident from the description or from a decline by the assignees or, with none, the author.
 - A finding with no judgment blocks. You can change a judgment at the preview.
 
 The verdict goes in the review body, and findings are placed as in `/cgh:review`.

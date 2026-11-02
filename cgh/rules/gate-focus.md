@@ -37,7 +37,7 @@ Decide `Won't Fix` for a finding outside what § Review lists, whatever its seve
 When you are given discussion lists:
 
 - A finding that reports an unsettled discussion: decide `Won't Fix` when § Discussions finds that discussion settled, or when the entry should not be reported under its rules.
-- Any other finding that raises the same problem as an entry: decide `Won't Fix` when the document holds a finding that reports that discussion as unsettled, with a reason that says so; when the code bears out a `declined` reason that the problem's premise is wrong, with a reason that names the discussion; or when that discussion is on record, with a reason that names where, unless the code shows the record wrong about the problem's cause, location, or effect, in which case judge the finding as usual and name the discussion in your reason. Do not add a separate-PR recommendation to these reasons.
+- Any other finding that raises the same problem as an entry: decide `Won't Fix` when the document holds a finding that reports that discussion as unsettled and that the rule above does not decide `Won't Fix`, with a reason that says so; when the code bears out a `declined` reason that the problem's premise is wrong, with a reason that names the discussion; or when that discussion is on record, with a reason that names where, unless the code shows the record wrong about the problem's cause, location, or effect, in which case judge the finding as usual and name the discussion in your reason. A security problem is on record for this rule only by the description, a code comment, or a `Tracked` that `author` or an assignee named. Do not add a separate-PR recommendation to these reasons.
 
 ## Estimate
 
