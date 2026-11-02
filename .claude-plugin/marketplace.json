@@ -43,6 +43,20 @@
         "design",
         "qa"
       ]
+    },
+    {
+      "name": "cgh",
+      "source": "./cgh",
+      "description": "GitHub pull request workflow on top of creview: post a triaged review, run a merge gate until it passes, answer posted reviews with fixes, and verify the fixes of your own review. Nothing is posted without the user's instruction, and the plugin never approves or merges. Requires the creview plugin and an authenticated GitHub CLI (gh).",
+      "homepage": "https://github.com/OPENSPHERE-Inc/claude-plugin-marketplace",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "pull-request",
+        "code-review",
+        "merge-gate",
+        "workflow"
+      ]
     }
   ]
 }

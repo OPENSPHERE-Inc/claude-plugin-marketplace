@@ -29,6 +29,8 @@ the PR to be open, and writes to <out_dir>:
                    dismissed, and, when known, whether its thread is resolved;
                    with --skip-resolved, the batches leave out the threads known
                    to be resolved
+Both files hold every comment with its HTML comments removed, and leave out a
+review body with nothing else in it.
 It prints a JSON object whose in_place is true when HEAD of the current working
 tree is the PR head, whose comment_batches is the number of batches, whose
 comments_omitted is true when more comments exist than MAX_PAGES pages hold, whose
@@ -145,6 +147,18 @@ MAX_PAGES = 100
 MAX_COMMENTS = 50
 BATCH_CHARS = 40000
 COMMENT_KINDS = ("issue_comments", "reviews", "review_comments")
+# GitHub hides comments outside code: <!--> and <!---> are whole comments; a comment that starts a
+# line crosses blank lines and, never closed, hides the rest; one opened mid-line ends at a blank
+# line. Scanning from the left keeps code from hiding what a comment opened first, and a comment
+# from hiding code; a code span ends at a blank line.
+HTML_COMMENT_RE = re.compile(
+    r"(?P<code>^ {0,3}(?P<fence>`{3,}(?=[^`\n]*$)|~{3,}).*?"
+    r"(?:^ {0,3}(?P=fence)[`~]*[ \t]*\r?$|\Z)"
+    r"|(?<![`\\])(?P<span>`+)(?!`)(?:(?!\n[ \t]*\r?\n).)+?(?<!`)(?P=span)(?!`))"
+    r"|^ {0,3}<!--(?:-?>|.*?-->|.*\Z)"
+    r"|<!--(?:-?>|(?:(?!\n[ \t]*\r?\n).)*?-->)",
+    re.S | re.M,
+)
 REVIEW_THREADS_QUERY = """
 query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
@@ -317,6 +331,18 @@ def resolved_threads(host, repo, number):
     return states, False
 
 
+def without_comments(text):
+    while True:
+        stripped = HTML_COMMENT_RE.sub(lambda m: m.group("code") or "", text)
+        if stripped == text:
+            return text
+        text = stripped
+
+
+def visible_body(comment):
+    return without_comments(comment.get("body") or "").strip()
+
+
 def all_comments(host, repo, number):
     states, states_complete = resolved_threads(host, repo, number)
     reviews, complete = api_pages(f"repos/{repo}/pulls/{number}/reviews", host)
@@ -332,20 +358,20 @@ def all_comments(host, repo, number):
          "outdated": c.get("line") is None and c.get("original_line") is not None,
          "review_dismissed": c.get("pull_request_review_id") in dismissed,
          "thread_resolved": states.get(c.get("in_reply_to_id") or c.get("id")),
-         "body": c.get("body") or ""}
+         "body": visible_body(c)}
         for c in review_comments
         if c.get("pull_request_review_id") not in pending
     ]
     return {
         "issue_comments": [
-            {"author": login(c.get("user")), "created_at": c.get("created_at"),
-             "body": c.get("body") or ""}
+            {"id": c.get("id"), "author": login(c.get("user")),
+             "created_at": c.get("created_at"), "body": visible_body(c)}
             for c in issue_comments
         ],
         "reviews": [
-            {"author": login(r.get("user")), "state": r.get("state"),
-             "submitted_at": r.get("submitted_at"), "body": r.get("body") or ""}
-            for r in reviews if r.get("body") and r.get("state") != "PENDING"
+            {"id": r.get("id"), "author": login(r.get("user")), "state": r.get("state"),
+             "submitted_at": r.get("submitted_at"), "body": visible_body(r)}
+            for r in reviews if visible_body(r) and r.get("state") != "PENDING"
         ],
         "review_comments": inline,
         "omitted": not (complete and issue_complete and comments_complete),

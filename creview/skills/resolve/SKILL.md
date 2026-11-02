@@ -20,7 +20,7 @@ The user specifies a path to the review document (markdown), or a GitHub pull re
 
 ## PR mode
 
-In PR mode, follow `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, `{skill}` = `resolve`, and `{fetch_option}` empty, since this skill verifies whether a thread marked resolved on GitHub really is.
+In PR mode, follow `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md`, with its `plugin_root` variable = `${CLAUDE_PLUGIN_ROOT}`, `{skill}` = `resolve`, `{compile_option}` empty, and `{fetch_option}` empty, since this skill verifies whether a thread marked resolved on GitHub really is.
 
 ## Worktree
 

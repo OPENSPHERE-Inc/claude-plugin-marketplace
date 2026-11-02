@@ -5,12 +5,16 @@ from a pull request's comments.
 Usage:
     python3 compile-pr-comments.py <tmp_dir> <document_path> --pr-url <url> --head <sha>
         --merge-base <sha> --branch <branch|(none)> --trust <on|off> --lang <en|ja>
+        [--finding-ids <path>]
 
 Reads, for each <tmp_dir>/pr-comments/batch-<n>.json, the file extract-<n>.jsonl next
 to it:
     {"findings": [{"severity": "Critical" | "Major" | "Minor",
                    "categories": ["..."], "location": "path:line" | "path" | "PR",
-                   "authors": ["..."], "description": "..."}]}
+                   "authors": ["..."], "description": "...",
+                   "sources": ["thread:<id>" | "review:<id>" | "issue_comment:<id>"],
+                   "id": "..."}]}
+sources and id are optional.
 
 Writes <document_path> in the format of /creview:start's review document, with
 findings in severity, path, and line order, empty metadata markers, and the PR,
@@ -24,6 +28,13 @@ directory, or that holds a character other than a letter, a digit, a backslash, 
 of . _ - + @ / ( ) [ ] $ %, becomes PR. It merges no findings, so the same finding from
 two batches stays as two. --lang selects the language of the labels the script writes;
 finding text stays as extracted. With no findings it writes nothing.
+
+--finding-ids names a JSON file of IDs to keep, {"comments": {source: [id]}, "used": [id]}. A
+finding takes an ID its sources hold: the id it names, or else one of its severity, or else any
+left, each ID once. An ID's prefix decides the finding's severity. Every other finding numbers on
+after the highest ID in used and those kept. An Info ID is not kept, since no later phase handles
+an Info finding, though used still counts it. Without the option, findings number from 1 and their
+sources and id do not count.
 
 Prints {"doc_path", "findings_total", "severity_counts"}; doc_path is null without
 findings. A missing or malformed extract file exits 1, naming every such file on
@@ -39,6 +50,10 @@ import re
 import sys
 
 SEVERITIES = (("Critical", "C"), ("Major", "M"), ("Minor", "mi"))
+# The document has an Info section, but no finding enters it: triage and verification skip Info.
+GROUPS = (*SEVERITIES, ("Info", "I"))
+ID_RE = re.compile(r"(?:C|M|mi|I)-[0-9]+")
+SOURCE_RE = re.compile(r"(?:thread|review|issue_comment):[0-9]+")
 # What starts a Markdown block at the beginning of a paragraph. Inline markup such as `code`
 # or **bold** is left out: a backslash before it would break it.
 BLOCK_START_RE = re.compile(
@@ -137,7 +152,8 @@ def read_finding(entry):
     categories = [re.sub(r"[/\[\]]", " ", c).strip()
                   for c in names(entry.get("categories", []), "categories")]
     return {"severity": entry["severity"], "categories": [c for c in categories if c],
-            "location": location, "authors": authors, "description": text}
+            "location": location, "authors": authors, "description": text,
+            "sources": names(entry.get("sources", []), "sources"), "named_id": entry.get("id")}
 
 
 def read_extract(path):
@@ -171,6 +187,61 @@ def read_extracts(tmp_dir):
     return findings
 
 
+def read_known_ids(path):
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    comments = data.get("comments") if isinstance(data, dict) else None
+    used = data.get("used") if isinstance(data, dict) else None
+    if not isinstance(comments, dict) or not isinstance(used, list):
+        raise Invalid(f"{path} has no comments and used")
+    held = [fid for ids in comments.values() for fid in (ids if isinstance(ids, list) else [None])]
+    if (not all(SOURCE_RE.fullmatch(key) for key in comments)
+            or not all(isinstance(fid, str) and ID_RE.fullmatch(fid) for fid in [*held, *used])):
+        raise Invalid(f"{path} holds a malformed source or ID")
+    return comments, used
+
+
+def prefix_of(fid):
+    return fid.rpartition("-")[0]
+
+
+def keep_ids(findings, comments):
+    """Gives each finding the ID its sources hold, as far as they do."""
+    held = {id(f): [fid for s in f["sources"] for fid in comments.get(s, [])
+                    if prefix_of(fid) != "I"]
+            for f in findings}
+    taken = set()
+
+    def take(finding, fid):
+        finding["id"] = fid
+        finding["severity"] = next(name for name, prefix in GROUPS if prefix == prefix_of(fid))
+        taken.add(fid)
+
+    def fits(finding):
+        wanted = next(prefix for name, prefix in GROUPS if name == finding["severity"])
+        return lambda fid: prefix_of(fid) == wanted
+
+    for finding in findings:
+        if finding["named_id"] in held[id(finding)] and finding["named_id"] not in taken:
+            take(finding, finding["named_id"])
+    for matches in (fits, lambda finding: lambda fid: True):
+        for finding in findings:
+            if "id" not in finding:
+                free = [fid for fid in held[id(finding)]
+                        if fid not in taken and matches(finding)(fid)]
+                if free:
+                    take(finding, free[0])
+    return taken
+
+
+def highest_numbers(ids):
+    highest = {}
+    for fid in ids:
+        prefix, _, number = fid.rpartition("-")
+        highest[prefix] = max(highest.get(prefix, 0), int(number))
+    return highest
+
+
 def location_key(finding):
     location = finding["location"]
     if location == "PR":
@@ -179,7 +250,7 @@ def location_key(finding):
     return (1, m.group(1), int(m.group(2))) if m else (1, location, 0)
 
 
-def render(findings, args):
+def render(findings, args, numbers):
     labels = LABELS[args.lang]
     authors = list(dict.fromkeys(a for f in findings for a in f["authors"]))
     pr_ref = f"{args.pr_url} (head {args.head}, base {args.merge_base})"
@@ -194,14 +265,17 @@ def render(findings, args):
               f"- **{labels['reviewers']}:** {', '.join(authors)}", ""]
 
     counts = {}
-    for severity, prefix in SEVERITIES:
+    for severity, prefix in GROUPS:
         group = sorted((f for f in findings if f["severity"] == severity), key=location_key)
         counts[severity] = len(group)
         lines += [f"## {severity}", ""]
         if not group:
             lines += [labels["no_findings"], "", "---", ""]
-        for n, finding in enumerate(group, 1):
-            fid = f"{prefix}-{n}"
+        for finding in group:
+            fid = finding.get("id")
+            if not fid:
+                numbers[prefix] = numbers.get(prefix, 0) + 1
+                fid = f"{prefix}-{numbers[prefix]}"
             bracket = f" [{'/'.join(finding['categories'])}]" if finding["categories"] else ""
             lines += [
                 f"### {fid} — `{finding['location']}`{bracket}", "",
@@ -211,10 +285,9 @@ def render(findings, args):
                 f"<!-- METADATA({fid}) -->", f"<!-- /METADATA({fid}) -->", "",
                 "---", "",
             ]
-    lines += ["## Info", "", labels["no_findings"], "", "---", "",
-              f"## {labels['summary']}", ""]
-    lines += [f"- **{severity}:** {counts[severity]}" for severity, _ in SEVERITIES]
-    lines += ["- **Info:** 0", f"- **{labels['total']}:** "
+    lines += [f"## {labels['summary']}", ""]
+    lines += [f"- **{severity}:** {counts[severity]}" for severity, _ in GROUPS]
+    lines += [f"- **{labels['total']}:** "
               + labels["total_value"].format(findings=len(findings), reviewers=len(authors)), ""]
     return "\n".join(lines), counts
 
@@ -247,13 +320,18 @@ def main():
     parser.add_argument("--branch", required=True, type=branch_arg)
     parser.add_argument("--trust", required=True, choices=("on", "off"))
     parser.add_argument("--lang", required=True, choices=sorted(LABELS))
+    parser.add_argument("--finding-ids")
     args = parser.parse_args()
 
     try:
         findings = read_extracts(args.tmp_dir)
+        numbers = {}
+        if args.finding_ids:
+            comments, used = read_known_ids(args.finding_ids)
+            numbers = highest_numbers([*used, *keep_ids(findings, comments)])
         counts = dict.fromkeys((name for name, _ in SEVERITIES), 0)
         if findings:
-            text, counts = render(findings, args)
+            text, counts = render(findings, args, numbers)
             with open(args.document_path, "w", encoding="utf-8", newline="\n") as f:
                 f.write(text)
     except (OSError, ValueError, Invalid) as e:

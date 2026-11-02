@@ -33,9 +33,13 @@ same() {
 same cdev/scripts/lib/scratch-guard.py src/cdev/scripts/lib/scratch-guard.py
 same cdev/scripts/lib/scratch-guard.py creview/scripts/lib/scratch-guard.py
 same cdev/scripts/lib/scratch-guard.py src/creview/scripts/lib/scratch-guard.py
+same cdev/scripts/lib/scratch-guard.py cgh/scripts/lib/scratch-guard.py
+same cdev/scripts/lib/scratch-guard.py src/cgh/scripts/lib/scratch-guard.py
 same cdev/scripts/del-tmp.sh src/cdev/scripts/del-tmp.sh
 same cdev/scripts/del-tmp.sh creview/scripts/del-tmp.sh
 same cdev/scripts/del-tmp.sh src/creview/scripts/del-tmp.sh
+same cdev/scripts/del-tmp.sh cgh/scripts/del-tmp.sh
+same cdev/scripts/del-tmp.sh src/cgh/scripts/del-tmp.sh
 same cdev/scripts/check-jsonl.py src/cdev/scripts/check-jsonl.py
 same cdev/scripts/check-jsonl.py creview/scripts/check-jsonl.py
 same cdev/scripts/check-jsonl.py src/creview/scripts/check-jsonl.py
@@ -43,6 +47,7 @@ same cdev/scripts/fetch-diff.sh src/cdev/scripts/fetch-diff.sh
 same creview/scripts/fetch-diff.sh src/creview/scripts/fetch-diff.sh
 same creview/scripts/gh-pr.py src/creview/scripts/gh-pr.py
 same creview/scripts/compile-pr-comments.py src/creview/scripts/compile-pr-comments.py
+same cgh/scripts/gh-review.py src/cgh/scripts/gh-review.py
 for d in src/cdev creview src/creview cprompt src/cprompt; do
     same cdev/scripts/worktree.sh "${d}/scripts/worktree.sh"
 done
@@ -62,6 +67,9 @@ for d in cdev creview src/cdev src/creview; do
 done
 for d in cprompt src/cprompt; do
     mode_check "${d}/scripts/worktree.sh"
+done
+for d in cgh src/cgh; do
+    mode_check "${d}/scripts/del-tmp.sh"
 done
 
 # --- syntax --------------------------------------------------------------------
@@ -198,7 +206,7 @@ other_pages = {
         {"id": 4, "state": "DISMISSED", "user": {"login": "x"}, "submitted_at": "t3", "body": ""},
     ],
     "repos/o/r/issues/7/comments": [
-        {"user": {"login": "y"}, "created_at": "t2", "body": long_body},
+        {"id": 8, "user": {"login": "y"}, "created_at": "t2", "body": long_body},
     ],
 }
 g.api_pages = lambda endpoint, host: ([
@@ -215,9 +223,10 @@ got = comments["review_comments"]
 expect("all_comments leaves out a pending review's comments", [c["id"] for c in got],
        [10, 11, 12, 13, 14, 16])
 expect("all_comments keeps a submitted review with a body", comments["reviews"],
-       [{"author": "x", "state": "APPROVED", "submitted_at": "t1", "body": long_body}])
+       [{"id": 3, "author": "x", "state": "APPROVED", "submitted_at": "t1",
+         "body": long_body}])
 expect("all_comments converts issue comments", comments["issue_comments"],
-       [{"author": "y", "created_at": "t2", "body": long_body}])
+       [{"id": 8, "author": "y", "created_at": "t2", "body": long_body}])
 expect("all_comments thread_resolved", [c["thread_resolved"] for c in got],
        [True, True, None, None, None, None])
 expect("all_comments outdated", [c["outdated"] for c in got],
@@ -246,6 +255,51 @@ for capped_kind in ("/pulls/7/reviews", "/issues/7/comments", "/pulls/7/comments
     g.run, _ = stub_run(threads_page([]))
     expect(f"all_comments omitted with {capped_kind} past the page limit",
            g.all_comments("h", "o/r", 7)["omitted"], True)
+
+hidden_pages = {
+    "repos/o/r/pulls/7/reviews": [
+        {"id": 20, "state": "COMMENTED", "user": {"login": "x"}, "body": "<!-- hidden -->\n"},
+        {"id": 21, "state": "COMMENTED", "user": {"login": "x"}, "body": "seen<!-- hidden -->"},
+        {"id": 22, "state": "COMMENTED", "user": {"login": "me"}, "body": "<!-- cgh:body -->"},
+        {"id": 31, "state": "COMMENTED", "user": {"login": "x"}, "body": "`<!-- code -->`"},
+    ],
+    "repos/o/r/issues/7/comments": [
+        {"id": 23, "user": {"login": "x"}, "body": "a<!-- closed -->b"},
+        {"id": 24, "user": {"login": "x"}, "body": "a<!-- never closed"},
+        {"id": 25, "user": {"login": "x"}, "body": "a<!<!-- x -->-- formed -->b"},
+        {"id": 26, "user": None, "body": "<!-->a<!--->b"},
+        {"id": 27, "user": {"login": "me"}, "body": "text<!-- cgh:reply issue -->"},
+        {"id": 32, "user": {"login": "x"}, "body": "a\n <!-- at a line start, never closed\nb"},
+        {"id": 33, "user": {"login": "x"}, "body": "```\n<!-- fence -->\n```"},
+        {"id": 34, "user": {"login": "x"}, "body": "```suggestion\n<!-- line -->\n```\nb"},
+        {"id": 35, "user": {"login": "x"}, "body": "~~~\n<!-- never closed fence"},
+        {"id": 36, "user": {"login": "x"}, "body": "<!-- `code` inside -->a"},
+        {"id": 37, "user": {"login": "x"}, "body": "a\n <!-- closed -->\nb"},
+    ],
+    "repos/o/r/pulls/7/comments": [
+        {"id": 28, "line": 1, "path": "a", "user": {"login": "x"}, "body": "seen<!-- hidden -->"},
+        {"id": 29, "line": 2, "path": "a", "user": {"login": "x"}, "body": "<!-- hidden -->"},
+        {"id": 30, "line": 3, "path": "a", "user": {"login": "me"},
+         "body": "<!-- cgh:finding M-1 line a:3 -->\nseen"},
+    ],
+}
+g.api_pages = lambda endpoint, host: (hidden_pages[endpoint], True)
+g.run, calls = stub_run(threads_page([]))
+comments = g.all_comments("h", "o/r", 7)
+expect("all_comments calls gh only for the thread states", len(calls), 1)
+expect("all_comments removes hidden text from issue comments, the viewer's included",
+       [c["body"] for c in comments["issue_comments"]],
+       ["ab", "a<!-- never closed", "ab", "ab", "text", "a", "```\n<!-- fence -->\n```",
+        "```suggestion\n<!-- line -->\n```\nb", "~~~\n<!-- never closed fence", "a", "a\n\nb"])
+expect("all_comments removes hidden text from review comments, the viewer's included",
+       [c["body"] for c in comments["review_comments"]], ["seen", "", "seen"])
+expect("all_comments leaves out a review body of hidden text only, the viewer's included",
+       [(r["id"], r["body"]) for r in comments["reviews"]],
+       [(21, "seen"), (31, "`<!-- code -->`")])
+expect("capped_conversation carries the bodies with hidden text removed",
+       g.capped_conversation(comments)["issue_comments"][0]["body"], "ab")
+expect("comment_batches carries the bodies with hidden text removed",
+       g.comment_batches(comments)[0]["review_comments"][0]["body"], "seen")
 g.run, g.api_pages = real_run, real_pages
 
 many = {"review_comments": [{"id": i, "body": "x" * 5000} for i in range(g.MAX_COMMENTS + 5)],
@@ -1135,6 +1189,81 @@ with open(doc, encoding="utf-8") as f:
     body = f.read()
 for text, want in ESCAPES:
     expect(f"description {text!r}", f"\n{want}\n" in body, True)
+
+
+
+def with_ids(name, known, *findings):
+    tmp = setup(name, list(findings))
+    path = os.path.join(tmp, "ids.json")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(known if isinstance(known, str) else json.dumps(known))
+    return run(tmp, "--branch", "(none)", "--trust", "off", "--lang", "en", "--finding-ids", path)
+
+
+def ids_of(doc):
+    with open(doc, encoding="utf-8") as f:
+        return re.findall(r"^### (\S+) — `([^`]+)`", f.read(), re.M)
+
+
+proc, doc = with_ids("kept", {"comments": {"thread:5": ["mi-13"], "thread:6": ["M-4"]},
+                              "used": ["mi-13", "M-4", "mi-20", "C-2"]},
+                     finding("Minor", "a.c:1", sources=["thread:5"]),
+                     finding("Minor", "b.c:1", sources=["thread:8"]),
+                     finding("Minor", "c.c:1"),
+                     finding("Critical", "d.c:1", sources=["thread:9"]),
+                     finding("Minor", "e.c:1", sources=["thread:6"]))
+expect("kept ids exit", proc.returncode, 0)
+expect("an own finding keeps its id and the others number on after every used id", ids_of(doc), [
+    ("C-3", "d.c:1"), ("M-4", "e.c:1"), ("mi-13", "a.c:1"), ("mi-21", "b.c:1"), ("mi-22", "c.c:1"),
+])
+with open(doc, encoding="utf-8") as f:
+    text = f.read()
+expect("a kept id has its markers", "<!-- METADATA(mi-13) -->\n<!-- /METADATA(mi-13) -->" in text, True)
+
+proc, doc = with_ids("own-several", {"comments": {"review:4": ["M-1", "mi-2", "mi-3"]},
+                                 "used": ["M-1", "mi-2", "mi-3"]},
+                     finding("Major", "z.c:1", sources=["review:4"], id="mi-3"),
+                     finding("Minor", "y.c:1", sources=["review:4"]),
+                     finding("Major", "x.c:1", sources=["review:4"]),
+                     finding("Major", "w.c:1", sources=["review:4"]))
+expect("a comment's ids go by the id named, then by severity, once each", ids_of(doc), [
+    ("M-2", "w.c:1"), ("M-1", "x.c:1"), ("mi-2", "y.c:1"), ("mi-3", "z.c:1"),
+])
+
+proc, doc = with_ids("foreign", {"comments": {"thread:5": ["mi-13"]}, "used": ["mi-13"]},
+                     finding("Minor", "a.c:1", sources=["thread:7"], id="mi-13"),
+                     finding("Minor", "b.c:1", id="C-9", sources=["thread:5"]))
+expect("an id named but not on the finding's comments does not count", ids_of(doc), [
+    ("mi-14", "a.c:1"), ("mi-13", "b.c:1"),
+])
+
+proc, doc = with_ids("own-info", {"comments": {"thread:5": ["I-3"]}, "used": ["I-3"]},
+                     finding("Minor", "a.c:1", sources=["thread:5"]))
+expect("a finding on a comment holding an Info id takes a new id of its severity", ids_of(doc),
+       [("mi-1", "a.c:1")])
+with open(doc, encoding="utf-8") as f:
+    text = f.read()
+expect("that finding goes under Minor", text.index("## Minor") < text.index("### mi-1"), True)
+expect("the Info section stays empty", "- **Info:** 0\n" in text, True)
+expect("the counts add up", (json.loads(proc.stdout)["severity_counts"]["minor"],
+                             json.loads(proc.stdout)["findings_total"]), (1, 1))
+
+proc, doc = with_ids("own-info-used", {"comments": {"thread:5": ["I-3"]}, "used": ["I-3", "I-9"]},
+                     finding("Critical", "a.c:1", sources=["thread:5"], id="I-3"))
+expect("an Info id named does not lower a finding", ids_of(doc), [("C-1", "a.c:1")])
+
+proc, doc = run(setup("no-map", [finding("Minor", "a.c:1", sources=["thread:5"], id="mi-13")]))
+expect("without a map an id named does not count", ids_of(doc), [("mi-1", "a.c:1")])
+
+for name, known in (("not-json", "{"), ("not-object", "[]"),
+                    ("bad-key", {"comments": {"thread:5\n## x": ["M-1"]}, "used": []}),
+                    ("bad-id", {"comments": {"thread:5": ["X-1"]}, "used": []}),
+                    ("bad-used", {"comments": {}, "used": ["x"]})):
+    proc, doc = with_ids("map-" + name, known, finding())
+    expect(f"a malformed map fails: {name}", (proc.returncode, os.path.exists(doc)), (1, False))
+
+bad = setup("bad-sources", [finding(sources="thread:5")])
+expect("sources must be a list", run(bad)[0].returncode, 1)
 
 proc, doc = run(setup("english", [finding()]))
 expect("English run exit", proc.returncode, 0)
