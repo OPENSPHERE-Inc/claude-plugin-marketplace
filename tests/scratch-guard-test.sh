@@ -812,6 +812,15 @@ rc=0; bash "${RM}" --dry .claude/tmp/ 2>/dev/null || rc=$?
 check "del-tmp --dry bare root rejected" 1 "${rc}"
 rc=0; bash "${RM}" --dry "${SANDBOX}/outside/victim.txt" 2>/dev/null || rc=$?
 check "del-tmp --dry outside rejected" 1 "${rc}"
+MSYS=winsymlinks:nativestrict ln -s ../../../outside .claude/tmp/dry-esc 2>/dev/null || true
+if [[ -L .claude/tmp/dry-esc ]]; then
+    rc=0; bash "${RM}" --dry .claude/tmp/dry-esc 2>/dev/null || rc=$?
+    check "del-tmp --dry symlink entry rejected" 1 "${rc}"
+    [[ -L .claude/tmp/dry-esc ]] || { note "FAIL: del-tmp --dry removed the symlink entry"; fail=1; }
+    rm -f .claude/tmp/dry-esc
+else
+    note "SKIP: del-tmp --dry symlink entry case (real symlinks unavailable on this platform)"
+fi
 rm -rf .claude/tmp/e2e/dry
 
 # --- fetch-diff.sh (cdev) end-to-end ----------------------------------------------
