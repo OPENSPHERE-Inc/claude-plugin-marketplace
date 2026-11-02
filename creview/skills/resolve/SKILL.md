@@ -138,7 +138,7 @@ Before creating `{tmp_dir}`, if `git rev-parse --show-prefix` prints a non-empty
 
 The leader (you) does not Read the diff content. Verification is insufficient without the diff, so the leader fetches the diff to a file and passes it to the verification sub-agent.
 
-1. Create `{tmp_dir}` with `mkdir -p {tmp_dir}/verifications`. In PR mode, then compile the document (§ PR mode). When the skill is invoked directly, then locate the document's code (§ Worktree).
+1. Before creating `{tmp_dir}`, run `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`, which refuses a symlinked `.claude`; on a non-zero exit, show its error and terminate the skill. Create `{tmp_dir}` with `mkdir -p {tmp_dir}/verifications`. In PR mode, then compile the document (§ PR mode). When the skill is invoked directly, then locate the document's code (§ Worktree).
 2. Determine the base branch (§ Input).
 3. Fetch the diff to `{tmp_dir}/diff.txt` with the script; on a non-zero exit, abort with its error:
    ```

@@ -6,7 +6,9 @@ The SKILL names the `{skill}` value and the `plugin_root` variable.
 
 If `git rev-parse --show-prefix` prints a non-empty value, show an error that the skill requires a session started at the repository root and terminate the skill. Without a pull request URL in the arguments, show an error and terminate the skill.
 
-Fix once: `{timestamp}` (`YYYYMMDD-HHMMSS`); `{tmp_dir}`, the absolute path of `.claude/tmp/cgh-{skill}-{timestamp}`, created with `mkdir -p '{tmp_dir}'`; `{document_path}`, the absolute path of `.claude/tmp/cgh-{skill}-{timestamp}.md`; `{doc_lang}`, the language the user is writing in the chat; `{lang}`, `ja` when that is Japanese, otherwise `en`.
+Fix once: `{timestamp}` (`YYYYMMDD-HHMMSS`); `{tmp_dir}`, the absolute path of `.claude/tmp/cgh-{skill}-{timestamp}`; `{document_path}`, the absolute path of `.claude/tmp/cgh-{skill}-{timestamp}.md`; `{doc_lang}`, the language the user is writing in the chat; `{lang}`, `ja` when that is Japanese, otherwise `en`.
+
+Before creating `{tmp_dir}`, run `{{plugin_root}}/scripts/del-tmp.sh '{tmp_dir}'`, which refuses a symlinked `.claude`; on a non-zero exit, show its error and terminate the skill. Create it with `mkdir -p '{tmp_dir}'`.
 
 ## Running a creview skill
 

@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 SCRATCH_ROOT = Path(".claude/tmp")
+SYMLINK_RULE = ".claude, .claude/tmp, and .claude/worktrees must not be symlinks"
 
 
 def fail(message):
@@ -173,7 +174,9 @@ def guard(mode, raw):
         # Resolve physical (symlink-free) paths so a symlinked component
         # cannot escape scratch_root.
         if scratch_root.is_symlink():
-            return fail(f"{SCRATCH_ROOT.as_posix()} itself is a symlink: {raw}")
+            return fail(f"{SCRATCH_ROOT.as_posix()} itself is a symlink: {raw} ({SYMLINK_RULE})")
+        if scratch_root.parent.is_symlink():
+            return fail(f"{SCRATCH_ROOT.parent.as_posix()} is a symlink: {raw} ({SYMLINK_RULE})")
         try:
             # Non-strict: scratch_root may not exist yet (rc=3 lets the
             # caller create it).

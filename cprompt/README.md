@@ -25,7 +25,8 @@ Options:
   when the target has uncommitted changes.
 - `--worktree[=branch]` (default off) — work in a separate git worktree under
   `.claude/worktrees/` so the main working tree stays untouched; enables
-  `--commit`. The worktree checks out `branch` — an existing local branch as
+  `--commit`. `.claude` and `.claude/worktrees` must not be symbolic links. The
+  worktree checks out `branch` — an existing local branch as
   is, or a new one created from the current HEAD; without `=branch`, a new
   branch `cprompt-edit-{timestamp}` is created. The branch checked out in the
   main working tree cannot be used. The worktree starts from committed state —

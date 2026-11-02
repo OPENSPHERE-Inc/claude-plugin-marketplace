@@ -69,6 +69,10 @@ teammate 間の `SendMessage` を使用します。セッションは単一の�
 必要とします。両者が共有する `.claude/tmp/` 封じ込めチェックは
 `scripts/lib/scratch-guard.py` に実装されています。
 
+プロジェクトの `.claude`、`.claude/tmp`、`.claude/worktrees` はシンボリックリンクにできません。
+リンク先がプロジェクト内でも、同梱スクリプトがエラーで拒否します。作業ツリー間で
+設定を共有する場合は、`~/.claude/` に置いてください。
+
 ## オプション
 
 - `--review-rounds N`（既定 5、最大 10）— セルごとの review ⇄ triage の最大反復回数。
