@@ -71,7 +71,9 @@ waived, in a section of <document> no parser reads as a finding, and in the file
 waived_document, <tmp_dir>/waived.md, or with no <document>, <document minus .md>-waived.md, which
 outlasts <tmp_dir>. Of the comments with earlier IDs and no judgment, prints in unjudged the key and
 IDs of those the extracts do not skip, in other_kind the count skipped as another kind, and in
-no_problem the key, IDs, and why of those skipped as raising nothing.
+no_problem the key, IDs, and why of those skipped as raising nothing. Also writes
+<tmp_dir>/pr-body.json, the pull request's title and description, and prints its path in
+pr_body_path.
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after
@@ -1117,6 +1119,7 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
         write_waived_document(waived_document, pr, waived)
     return {
         "url": pr.url, "number": pr.number, "head_sha": view["headRefOid"],
+        "pr_body_path": write_pr_body(tmp_dir, view),
         "open": [f["id"] for f in findings if not f["verified"]],
         "verified": [f["id"] for f in findings if f["verified"]],
         "waived": [f["id"] for f in waived], "demoted": [f["id"] for f in demoted],

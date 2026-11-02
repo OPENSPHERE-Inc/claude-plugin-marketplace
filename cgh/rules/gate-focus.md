@@ -23,4 +23,4 @@ Decide `Won't Fix` for a finding outside what § Review lists, whatever its seve
 
 ## Estimate
 
-Cost is no reason to Downgrade here: a finding in § Review stays, because merging leaves it in place. For a fix too large for this pull request, choose Alternative and plan to record it in an issue and name that issue in the `FIXME`: a `FIXME` with no issue is residue itself. For a residue at the location `PR`, plan to update the description or record the item in an issue.
+Cost is no reason to Downgrade here: a finding in § Review stays, because merging leaves it in place. For a fix too large for this pull request, choose Alternative and plan to record it in an issue and name that issue in the `FIXME`: a `FIXME` with no issue is residue itself. For a residue at the location `PR`, plan to take the item out of the description, or to record it in an issue and name that issue in the description.

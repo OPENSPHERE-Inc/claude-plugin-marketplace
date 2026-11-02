@@ -59,7 +59,7 @@ SKILL が `{kind}` と `{prior_path}` を指定する。先に § 指摘 ID に�
 ```
 
 返される `template_id` は `3ab4949f-308c-4ca8-b856-0e6f91dfc72f` でなければならない。不一致なら再度起動し、2 回続いたら中断する。
-3. `python3 {{plugin_root}}/scripts/gh-review.py prior '{pr_url}' '{tmp_dir}' --kind {kind} --document '{prior_path}'` を実行する。`--trust` が指定されていれば追加する。`open`（まだ検証されていない指摘の ID）、`verified`（以前に検証済みで、検証が再度確認するもの）、`document`（確認する指摘の文書、なければ null）、`waived` と `waived_document`（あなたのコメントから取り下げと判定され、コードは未確認の指摘の ID とファイル、なければ null）、`demoted`（取り下げと判定されたがあなたの以後のコメントの裏付けがなく、未検証のまま残る ID）、`unjudged`（指摘 ID を持つのに判定が理由なく省いたコメントの key と ID）、`other_kind`（別の種類のコメントの件数）、`no_problem`（問題を指摘しないと判定したコメントの key、ID、理由）が出力される。`demoted` の ID、`unjudged` と `no_problem` の項目、`other_kind` の件数、`waived_document` から取り下げと判定された指摘の ID、本文、根拠をユーザーに示す。`document` が null のときは、`{tmp_dir}` の後も残る `waived_document` のパスも示す。エラーが `extract-{n}.json` を名指すときは（不正なファイルは削除されている）、そのバッチの担当をもう一度起動して再度実行する。2 度目の失敗か他の非ゼロ終了なら、そのエラーで中断する。
+3. `python3 {{plugin_root}}/scripts/gh-review.py prior '{pr_url}' '{tmp_dir}' --kind {kind} --document '{prior_path}'` を実行する。`--trust` が指定されていれば追加する。`open`（まだ検証されていない指摘の ID）、`verified`（以前に検証済みで、検証が再度確認するもの）、`document`（確認する指摘の文書、なければ null）、`waived` と `waived_document`（あなたのコメントから取り下げと判定され、コードは未確認の指摘の ID とファイル、なければ null）、`demoted`（取り下げと判定されたがあなたの以後のコメントの裏付けがなく、未検証のまま残る ID）、`unjudged`（指摘 ID を持つのに判定が理由なく省いたコメントの key と ID）、`other_kind`（別の種類のコメントの件数）、`no_problem`（問題を指摘しないと判定したコメントの key、ID、理由）、`pr_body_path`（プルリクエストのタイトルと説明。保持する）が出力される。`demoted` の ID、`unjudged` と `no_problem` の項目、`other_kind` の件数、`waived_document` から取り下げと判定された指摘の ID、本文、根拠をユーザーに示す。`document` が null のときは、`{tmp_dir}` の後も残る `waived_document` のパスも示す。エラーが `extract-{n}.json` を名指すときは（不正なファイルは削除されている）、そのバッチの担当をもう一度起動して再度実行する。2 度目の失敗か他の非ゼロ終了なら、そのエラーで中断する。
 
 ## コメントの文面
 

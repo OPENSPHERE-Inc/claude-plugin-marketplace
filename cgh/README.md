@@ -75,8 +75,8 @@ current head with `/creview:resolve`, reports them in the review body, and revie
 pull request again. To accept an earlier finding without a fix, tell the skill to waive it:
 later runs do not report it again. Earlier findings already verified are checked again: one that
 still holds is left out of the review body, and one that no longer holds counts as unverified
-again. An open item in the description cannot be verified from the code: update the description,
-then waive it.
+again. An open item in the description is verified from the description: it is resolved once the item is
+gone or names an issue or a pull request.
 
 ### `/cgh:respond`
 

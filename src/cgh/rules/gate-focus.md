@@ -23,4 +23,4 @@
 
 ## Estimate
 
-ここではコストは Downgrade の理由にならない: § Review に該当する指摘は、マージすればそのまま残るので維持する。このプルリクエストには大きすぎる修正は Alternative を選び、issue に記録してその issue を `FIXME` に書く計画にする: issue のない `FIXME` はそれ自体が残余である。場所が `PR` の残余は、PR 本文の更新か issue への記録を計画にする。
+ここではコストは Downgrade の理由にならない: § Review に該当する指摘は、マージすればそのまま残るので維持する。このプルリクエストには大きすぎる修正は Alternative を選び、issue に記録してその issue を `FIXME` に書く計画にする: issue のない `FIXME` はそれ自体が残余である。場所が `PR` の残余は、項目を PR 本文から除くか、issue に記録してその issue を PR 本文に書く計画にする。

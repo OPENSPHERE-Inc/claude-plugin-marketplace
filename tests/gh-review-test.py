@@ -2305,6 +2305,11 @@ class PostedContext(PriorBase):
             json.dump(data, f)
         return mod.cmd_prior(URL, self.dir, "review", os.path.join(self.dir, "prior.md"), False)
 
+    def test_prior_writes_the_description_for_the_verification(self):
+        result = self.prior_with_skipped([{"reason": "other_kind"}])
+        self.assertEqual(result["pr_body_path"], os.path.join(self.dir, "pr-body.json"))
+        self.assertEqual(sorted(json.loads(read_text(result["pr_body_path"]))), ["body", "title"])
+
     def test_a_comment_of_the_other_kind_only_counts(self):
         result = self.prior_with_skipped([{"reason": "other_kind"}])
         self.assertEqual(result["unjudged"], [])
