@@ -8,7 +8,7 @@ If `git rev-parse --show-prefix` prints a non-empty value, show an error that th
 
 Fix once: `{timestamp}` (`YYYYMMDD-HHMMSS`); `{tmp_dir}`, the absolute path of `.claude/tmp/cgh-{skill}-{timestamp}`; `{document_path}`, the absolute path of `.claude/tmp/cgh-{skill}-{timestamp}.md`; `{doc_lang}`, the language the user is writing in the chat; `{lang}`, `ja` when that is Japanese, otherwise `en`.
 
-Before creating `{tmp_dir}`, run `{{plugin_root}}/scripts/del-tmp.sh '{tmp_dir}'`, which refuses a symlinked `.claude`; on a non-zero exit, show its error and terminate the skill. Create it with `mkdir -p '{tmp_dir}'`.
+Before creating `{tmp_dir}`, run `{{plugin_root}}/scripts/del-tmp.sh --dry '{tmp_dir}'`, which refuses a symlinked `.claude`; on a non-zero exit, show its error and terminate the skill. Create it with `mkdir -p '{tmp_dir}'`.
 
 ## Running a creview skill
 

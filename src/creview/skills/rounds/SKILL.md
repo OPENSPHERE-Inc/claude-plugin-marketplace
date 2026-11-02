@@ -120,7 +120,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 1. オプションを解析する。
 2. `git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。
-3. `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh .claude/tmp/creview-rounds-{YYYYMMDD-HHMMSS}`（開始時刻）を実行する。シンボリックリンクの `.claude` または `.claude/tmp` はこれで拒否される。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。出力ディレクトリではなくこのパスを渡す: del-tmp.sh は `.claude/tmp/` の外のパスを拒否し、存在するディレクトリを削除する。
+3. `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry .claude/tmp/creview-rounds-{YYYYMMDD-HHMMSS}`（開始時刻）を実行する。シンボリックリンクの `.claude` または `.claude/tmp` はこれで拒否される。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。出力ディレクトリではなくこのパスを渡す: del-tmp.sh は `.claude/tmp/` の外のパスを拒否する。
 4. `--worktree` 指定時は § ワークツリー のセットアップを実行する。
 5. すべてのサブエージェントが受け取る作業対象 `{target_dir}` を確定する: `--worktree` 指定時は `{worktree_path}`、それ以外は `git rev-parse --show-toplevel` の出力。
 6. 現在のブランチ名を取得する。

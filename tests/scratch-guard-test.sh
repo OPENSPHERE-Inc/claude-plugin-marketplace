@@ -749,7 +749,7 @@ else
 fi
 
 # a symlinked .claude is rejected; skill leaders get this check before their mkdir -p by running
-# del-tmp.sh, and worktree.sh and gh-pr.py check .claude/worktrees on their own
+# del-tmp.sh --dry, and worktree.sh and gh-pr.py check .claude/worktrees on their own
 LINKED="${SANDBOX}/linked-claude"
 mkdir -p "${LINKED}"
 MSYS=winsymlinks:nativestrict ln -s ../outside "${LINKED}/.claude" 2>/dev/null || true
@@ -758,6 +758,8 @@ if [[ -L "${LINKED}/.claude" ]]; then
     check "guard symlinked .claude with no .claude/tmp" 1 "${rc}"
     rc=0; (cd "${LINKED}" && bash "${RM}" .claude/tmp/new) >/dev/null 2>&1 || rc=$?
     check "del-tmp symlinked .claude with an uncreated target" 1 "${rc}"
+    rc=0; (cd "${LINKED}" && bash "${RM}" --dry .claude/tmp/new) >/dev/null 2>&1 || rc=$?
+    check "del-tmp --dry symlinked .claude" 1 "${rc}"
     [[ ! -e "${SANDBOX}/outside/tmp" ]] \
         || { note "FAIL: del-tmp created .claude/tmp through the symlink"; fail=1; }
     mkdir -p "${SANDBOX}/outside/tmp"
@@ -793,6 +795,24 @@ if [[ -L .claude/tmp/esc ]]; then
     [[ -e "${SANDBOX}/outside/victim.txt" ]] \
         || { note "FAIL: del-tmp followed the symlink and deleted its target"; fail=1; }
 fi
+mkdir -p .claude/tmp/e2e/dry/dir .claude/tmp/e2e/dry/other
+: > .claude/tmp/e2e/dry/dir/f
+rc=0; bash "${RM}" --dry .claude/tmp/e2e/dry/dir 2>/dev/null || rc=$?
+check "del-tmp --dry existing target" 0 "${rc}"
+[[ -e .claude/tmp/e2e/dry/dir/f ]] || { note "FAIL: del-tmp --dry deleted the target"; fail=1; }
+rc=0; bash "${RM}" .claude/tmp/e2e/dry/dir --dry .claude/tmp/e2e/dry/other 2>/dev/null || rc=$?
+check "del-tmp --dry between paths" 0 "${rc}"
+[[ -e .claude/tmp/e2e/dry/dir/f && -d .claude/tmp/e2e/dry/other ]] \
+    || { note "FAIL: del-tmp deleted a path listed around --dry"; fail=1; }
+rc=0; bash "${RM}" --dry 2>/dev/null || rc=$?
+check "del-tmp --dry with no path" 2 "${rc}"
+rc=0; bash "${RM}" --dry .claude/tmp/gone/x 2>/dev/null || rc=$?
+check "del-tmp --dry missing parent" 0 "${rc}"
+rc=0; bash "${RM}" --dry .claude/tmp/ 2>/dev/null || rc=$?
+check "del-tmp --dry bare root rejected" 1 "${rc}"
+rc=0; bash "${RM}" --dry "${SANDBOX}/outside/victim.txt" 2>/dev/null || rc=$?
+check "del-tmp --dry outside rejected" 1 "${rc}"
+rm -rf .claude/tmp/e2e/dry
 
 # --- fetch-diff.sh (cdev) end-to-end ----------------------------------------------
 git init -q .

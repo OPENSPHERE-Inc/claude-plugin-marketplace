@@ -145,8 +145,9 @@ enforce domain correctness. When no specialist matches a domain, the reviewer fa
   `build-format-detection.md`, `comment.md`, `review.md`, `document.md`, `divergence.md`
   (divergence patterns the design must not introduce).
 - `scripts/` — `fetch-diff.sh` (snapshots the pre-coding tree, then captures the QA diff since
-  coding start), `del-tmp.sh` (deletes the run's working directory under `.claude/tmp/`),
-  `check-jsonl.py` (teammates validate the `.jsonl` they wrote with it), and
+  coding start), `del-tmp.sh` (deletes the run's working directory under `.claude/tmp/`; with
+  `--dry`, it only runs the containment check, which the skill does before creating that
+  directory), `check-jsonl.py` (teammates validate the `.jsonl` they wrote with it), and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by both; requires
   `python3` — see Requirements), and `worktree.sh` (creates and removes the `--worktree`
   worktree). The skill invokes them via
