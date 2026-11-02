@@ -1291,6 +1291,37 @@ class Prior(PriorBase):
         self.later_review(gh, "<!--\n- 💬 **M-1** · non-blocking: x\n-->")
         self.assertIs(self.prior_blocking(), True)
 
+    def test_a_mark_in_code_is_not_read(self):
+        mark = "- 💬 **M-1** · non-blocking: x"
+        for body in (f"```\n{mark}\n```",
+                     f"```text\n{mark}\n```\nafter",
+                     f"~~~\n{mark}\n~~~",
+                     f"```\n{mark}",
+                     "a `b\n**Major M-1** · non-blocking\nc` d",
+                     f"`code`{mark}"):
+            with self.subTest(body=body):
+                gh = self.marked_finding(True)
+                self.later_review(gh, body)
+                self.assertIs(self.prior_blocking(), True)
+
+    def test_a_mark_outside_code_is_read_past_code_that_shows_another(self):
+        for body in ("**Major M-1** · non-blocking\n```\n- 💬 **M-1** · blocking: x\n```",
+                     "```\n- 💬 **M-1** · blocking: x\n```\n**Major M-1** · non-blocking",
+                     "`code`\n- 💬 **M-1** · non-blocking: x"):
+            with self.subTest(body=body):
+                gh = self.marked_finding(True)
+                self.later_review(gh, body)
+                self.assertIs(self.prior_blocking(), False)
+
+    def test_stray_backticks_in_notes_do_not_hide_the_result_lines_between_them(self):
+        draft = {"lang": "en", "head_sha": HEAD, "findings": [], "prior": [
+            {"id": f"M-{n}", "state": "open", "blocking": True, "note": note}
+            for n, note in enumerate(("uses `a", "still `b", "ok"), 1)]}
+        plan = {"verdict": "BLOCK", "conflict": False, "selected": []}
+        body = mod.review_body(draft, plan, [], False)
+        self.assertEqual(mod.blocking_marks([{"body": body}]),
+                         {"M-1": True, "M-2": True, "M-3": True})
+
     def test_what_the_script_writes_is_what_it_reads_back(self):
         for lang in mod.LABELS:
             for blocking in (True, False):
@@ -2973,6 +3004,7 @@ class PostedContext(PriorBase):
             ("<!-- ` --> a `<!-- b -->`", "a `<!-- b -->`"),
             ("<!-- ```\nhidden\n``` -->Shown", "Shown"),
             ("` open\n\n<!-- hidden -->\n\nclose `", "` open\n\n\n\nclose `"),
+            ("` open\n- <!-- hidden -->\nclose `", "` open\n- \nclose `"),
             ("\\`<!-- hidden -->`", "\\``"),
             ("Shown\n   <!-- line start never closed\nhidden", "Shown"),
             (" <!-- c -->\nvisible after", "visible after"),

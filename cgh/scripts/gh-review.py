@@ -210,11 +210,11 @@ BLOCK_START_RE = re.compile(r"#{1,6}(?:\s|$)|[-+*](?:\s|$)|>|`{3}|~{3}|<[A-Za-z/
 # GitHub hides comments outside code: <!--> and <!---> are whole comments; a comment that starts a
 # line crosses blank lines and, never closed, hides the rest; one opened mid-line ends at a blank
 # line. Scanning from the left keeps code from hiding what a comment opened first, and a comment
-# from hiding code; a code span ends at a blank line.
+# from hiding code; a code span ends at a blank line or a list item.
 HTML_COMMENT_RE = re.compile(
     r"(?P<code>^ {0,3}(?P<fence>`{3,}(?=[^`\n]*$)|~{3,}).*?"
     r"(?:^ {0,3}(?P=fence)[`~]*[ \t]*\r?$|\Z)"
-    r"|(?<![`\\])(?P<span>`+)(?!`)(?:(?!\n[ \t]*\r?\n).)+?(?<!`)(?P=span)(?!`))"
+    r"|(?<![`\\])(?P<span>`+)(?!`)(?:(?!\n[ \t]*\r?\n|\n {0,3}[-+*][ \t]).)+?(?<!`)(?P=span)(?!`))"
     r"|^ {0,3}<!--(?:-?>|.*?-->|.*\Z)"
     r"|<!--(?:-?>|(?:(?!\n[ \t]*\r?\n).)*?-->)",
     re.S | re.M,
@@ -868,10 +868,13 @@ def is_backed(item, own_outside):
 
 
 def blocking_marks(comments):
-    """Whether the comments, oldest first, last show each finding ID as blocking."""
+    """Whether the comments, oldest first, last show each finding ID as blocking, outside code."""
     marks = {}
     for comment in comments:
-        for fid, word in BLOCKING_MARK_RE.findall(visible_body(comment)):
+        # Only code still matches in visible text; the placeholder keeps what follows a code span
+        # off the start of a line.
+        text = HTML_COMMENT_RE.sub("`", visible_body(comment))
+        for fid, word in BLOCKING_MARK_RE.findall(text):
             marks[fid] = BLOCKING_WORDS[word]
     return marks
 
