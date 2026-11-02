@@ -99,7 +99,7 @@ It shows them and posts on your instruction.
 - The skill refuses to send replies until the pull request contains the fix commits. A rebase
   changes their hashes, so push them as they are. If you rebased or squashed them, say so, and
   the skill collects the commits again.
-- A finding that was not addressed gets no reply. Neither does one whose comment the drafter
+- A finding that was not addressed gets no reply. Neither does one whose comment the skill
   could not identify: the skill lists those.
 - Findings come from comments by anyone, people and AI alike, such as CodeRabbit or Copilot, and
   triage judges from the conversation and the code whether each is already dealt with: the code
@@ -214,7 +214,7 @@ The state lives on the pull request, so a later run needs nothing from an earlie
 - Reading finding IDs and judging where findings stand take sub-agents on every run, cost tokens,
   and can vary between runs. An ID removed from a comment's text, or misread, can make a finding
   take a new ID.
-- Text in the comments comes from reviewers that read the pull request. A sub-agent removes `@`
+- Text in the comments comes from reviewers that read the pull request. The skill removes `@`
   mentions outside code before posting, which is not certain to catch every one, and the rest goes
   out as written: a `@` mention left in it notifies that person, and an HTML comment in it is
   hidden on GitHub. Read the preview before you post it.

@@ -42,30 +42,14 @@ When the user says so, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py p
 ## Step 3 — Draft the replies
 
 1. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py comments '{pr_url}' '{tmp_dir}'`. It prints `pr_body_path`.
-2. Launch `Agent(subagent_type="cgh:reply-drafter", prompt=...)`, foreground, with this prompt:
-
-```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/reply-draft.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
-
-Variables (substitute into the template's {{...}} placeholders):
-- document_path: {document_path}
-- comments_path: {tmp_dir}/comments.json
-- commits_path: {tmp_dir}/fix-commits.json
-- pr_body_path: {pr_body_path}
-- output_path: {tmp_dir}/replies.json
-- doc_lang: {doc_lang}
-
-Include `template_id` (Read from the template's frontmatter) in the return value.
-```
-
-The returned `template_id` must be `6f0b2c84-93d1-4e7a-b5c6-1a8e7d42f903`; on mismatch, launch it again, and abort when it happens twice. Return value: `{path, replies, unmatched, template_id}`.
+2. Read `{document_path}`, `{tmp_dir}/comments.json`, `{tmp_dir}/fix-commits.json`, `{pr_body_path}`, and `${CLAUDE_PLUGIN_ROOT}/rules/wording.md`, and write `{tmp_dir}/replies.json` as its § Drafted replies says.
 
 ## Step 4 — Confirm and post
 
-When the drafter returned `replies` 0, continue at Step 5. Otherwise show its `unmatched` with the preview.
+When there are no replies, continue at Step 5. Otherwise show `unmatched` and `unaddressed` with the preview.
 
-Follow § Confirm and post with `{json_path}` = `{tmp_dir}/replies.json`, passing `post` the option `--commits '{tmp_dir}/fix-commits.json'`: it refuses to send anything until the pull request contains the commits. When `preview` exits non-zero because `{json_path}` is missing or malformed, or prints `comment_lang` as null, which `post` refuses and this skill has no wording step to fill, launch the drafter of Step 3 once more with `output_path` = `{tmp_dir}/replies-2.json`, unused because the drafter cannot overwrite a file it has not Read. Set `{json_path}` to that path and start this step over; the return value of this launch replaces the earlier one here and in Step 5. Abort on a second failure or a second null. Do not repair the file yourself: its text comes from the pull request.
+Follow § Confirm and post with `{json_path}` = `{tmp_dir}/replies.json`, passing `post` the option `--commits '{tmp_dir}/fix-commits.json'`: it refuses to send anything until the pull request contains the commits. When `preview` exits non-zero because `{json_path}` is missing or malformed, or prints `comment_lang` as null, write the file again and run it again; abort on a second failure.
 
 ## Step 5 — Report
 
-Report `posted` and `urls` when Step 4 posted, `unmatched` from Step 3 when it ran (findings whose comment the drafter could not identify), what Step 1 held, and, from `{document_path}`, the ID, location, authors, and reason of each `🚫 Won't Fix` finding. Then finish.
+Report `posted` and `urls` when Step 4 posted, `unmatched` from Step 3 when it ran (findings whose comment could not be identified), `unaddressed` (findings that still need action by hand), what Step 1 held, and, from `{document_path}`, the ID, location, authors, and reason of each `🚫 Won't Fix` finding. Then finish.

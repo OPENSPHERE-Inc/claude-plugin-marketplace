@@ -1398,7 +1398,7 @@ class Replies(Base):
                                   {"kind": "review", "target_id": 5, "posted": True, **reply}])
         self.assertNotIn("Mentions:", self.preview(path)[1])
 
-    def test_commits_path_refuses_what_a_drafter_cannot_send(self):
+    def test_commits_path_refuses_what_a_reply_cannot_send(self):
         gh = self.fake()
         commits = self.save({"commits": []}, "fix-commits.json")
         thread = {"kind": "thread", "target_id": 1, "finding_ids": ["M-1"], "body": "a"}
@@ -1972,7 +1972,7 @@ class Fixes(Base):
 
 
 class Comments(Base):
-    def test_writes_ids_for_the_drafter(self):
+    def test_writes_ids_for_the_replies(self):
         gh = self.fake()
         gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "r"}, "body": "b"},
                       {"id": 4, "state": "PENDING", "user": {"login": "r"}, "body": "hidden"},
@@ -3753,9 +3753,9 @@ class Remote(Base):
 class ReplyTemplate(unittest.TestCase):
     def test_a_declined_finding_opens_with_the_fixed_phrase(self):
         self.assertIn("`Not making this change.`", read_text(os.path.join(
-            ROOT, "cgh", "skills", "respond", "templates", "reply-draft.md")))
+            ROOT, "cgh", "rules", "wording.md")))
         self.assertIn("`変更を見送ります。`", read_text(os.path.join(
-            ROOT, "src", "cgh", "skills", "respond", "templates", "reply-draft.md")))
+            ROOT, "src", "cgh", "rules", "wording.md")))
 
 
 class Cli(unittest.TestCase):

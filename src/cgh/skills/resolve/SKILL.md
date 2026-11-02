@@ -30,20 +30,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' '{tmp_dir}' '{document_path}' --lang {lang}` を実行する。`{tmp_dir}/replies.json` が書き出され、`replies`、`unverified`（結果が得られなかった指摘）、`unchanged`（以前に検証済みで解決が保たれており、返信しない指摘）、`pr_body_path` が出力される。`replies` が 0 なら、担当を起動せず Step 5 に進む。
 
-返信は PR 本文の言語で投稿する。`Agent(subagent_type="cgh:comment-writer", prompt=...)` を起動する:
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/reply-translate.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- replies_path: {tmp_dir}/replies.json
-- pr_body_path: {pr_body_path}
-- output_path: {tmp_dir}/wording-1.json
-
-戻り値に `template_id`（テンプレートの frontmatter から Read）を含める。
-```
-
-返される `template_id` は `c41e8f37-2a95-4d6b-8b10-93e7a5d1c6f2` でなければならない。不一致なら再度起動し、2 回続いたら中断する。その後、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' '{tmp_dir}/replies.json'` を実行する。エラーが `wording-1.json` を名指すとき（そのファイルは削除されている）か、`comment_lang` が null と出力されたときは、担当をもう一度起動して再度実行する。2 度目の失敗、2 度目の null、他の非ゼロ終了のいずれかなら、そのエラーで中断する。ファイルを自分で修復しない: その文面はプルリクエストに由来する。
+返信は PR 本文の言語で投稿する。`{tmp_dir}/replies.json`、`{pr_body_path}`、`${CLAUDE_PLUGIN_ROOT}/rules/wording.md` を Read し、その § 翻訳する返信 のとおり `{tmp_dir}/wording-1.json` を書く。その後、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' '{tmp_dir}/replies.json'` を実行する。エラーが `wording-1.json` を名指すとき（そのファイルは削除されている）か、`comment_lang` が null と出力されたときは、ファイルを書き直して再度実行する。2 度目の失敗、2 度目の null、他の非ゼロ終了のいずれかなら、そのエラーで中断する。
 
 ## Step 4 — 確認と投稿
 

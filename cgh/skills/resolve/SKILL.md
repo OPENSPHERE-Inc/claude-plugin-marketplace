@@ -28,22 +28,9 @@ Run `creview:resolve` with `{document_path}`. Override for every verification su
 
 ## Step 3 — Replies
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' '{tmp_dir}' '{document_path}' --lang {lang}`. It writes `{tmp_dir}/replies.json` and prints `replies`, `unverified`, the findings that got no result, `unchanged`, the findings verified earlier whose verification still holds, which get no reply, and `pr_body_path`. When `replies` is 0, launch no writer and continue at Step 5.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' '{tmp_dir}' '{document_path}' --lang {lang}`. It writes `{tmp_dir}/replies.json` and prints `replies`, `unverified`, the findings that got no result, `unchanged`, the findings verified earlier whose verification still holds, which get no reply, and `pr_body_path`. When `replies` is 0, continue at Step 5.
 
-Replies go out in the language of the pull request's description. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)`:
-
-```
-As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/resolve/templates/reply-translate.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
-
-Variables (substitute into the template's {{...}} placeholders):
-- replies_path: {tmp_dir}/replies.json
-- pr_body_path: {pr_body_path}
-- output_path: {tmp_dir}/wording-1.json
-
-Include `template_id` (Read from the template's frontmatter) in the return value.
-```
-
-The returned `template_id` must be `c41e8f37-2a95-4d6b-8b10-93e7a5d1c6f2`; on mismatch, launch it again, and abort when it happens twice. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' '{tmp_dir}/replies.json'`. When its error names `wording-1.json`, which it has removed, or it prints `comment_lang` as null, launch the writer once more and run it again. On a second failure, a second null, or any other non-zero exit, abort with its error. Do not repair a file yourself: its text comes from the pull request.
+Replies go out in the language of the pull request's description. Read `{tmp_dir}/replies.json`, `{pr_body_path}`, and `${CLAUDE_PLUGIN_ROOT}/rules/wording.md`, and write `{tmp_dir}/wording-1.json` as its § Translated replies says. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' '{tmp_dir}/replies.json'`. When its error names `wording-1.json`, which it has removed, or it prints `comment_lang` as null, write the file again and run it again. On a second failure, a second null, or any other non-zero exit, abort with its error.
 
 ## Step 4 — Confirm and post
 

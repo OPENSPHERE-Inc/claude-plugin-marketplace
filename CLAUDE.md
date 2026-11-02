@@ -80,9 +80,9 @@ claude-plugin-marketplace/
 ├── cgh/                          # Plugin: GitHub pull request workflow on top of creview (active, English)
 │   ├── .claude-plugin/plugin.json  # declares the dependency on creview
 │   ├── README.md / README_ja.md
-│   ├── skills/                   # review (+ templates/comment-wording.md, raised-extract.md), gate, resolve (+ templates/reply-translate.md, posted-extract.md, finding-ids-extract.md), respond (+ templates/reply-draft.md)
-│   ├── agents/                   # reply-drafter.md, comment-writer.md
-│   ├── rules/                    # leader.md, gate-focus.md
+│   ├── skills/                   # review (+ templates/raised-extract.md), gate, resolve (+ templates/posted-extract.md, finding-ids-extract.md), respond
+│   ├── agents/                   # comment-writer.md
+│   ├── rules/                    # leader.md, gate-focus.md, wording.md
 │   └── scripts/                  # gh-review.py, del-tmp.sh, lib/scratch-guard.py
 │
 ├── src/                          # Japanese master, mirrors each plugin's tree 1:1 (minus .claude-plugin/README)
@@ -293,9 +293,10 @@ overrides that point at `rules/gate-focus.md`, so creview itself stays unaware o
 leader's own reads and writes on GitHub all go through `scripts/gh-review.py`, which refuses a
 pull request of a repository that is not a remote of the clone and also computes the event,
 the verdict, and where each finding goes; the creview skills it runs read through `gh-pr.py`.
-A bundled `comment-writer` or `reply-drafter`, which have Read and Write only, summarize
-recommendations and translate what goes out into the language of the pull request's description;
-the preview stays in the user's language, and when what goes out differs, the user is shown that
+The leader itself writes what goes out, following `rules/wording.md`, since it knows what the user
+decided in the conversation: summaries, replies, and their translation into the language of the pull
+request's description. A bundled `comment-writer`, which has Read and Write only, makes the judgments
+that are not posted. The preview stays in the user's language, and when what goes out differs, the user is shown that
 as well. Nothing cgh posts carries a hidden marker, and nothing reads one: a pull request is worked
 on by several people and AI, with or without these skills, so nothing guarantees that a marker
 survives, stays unedited, or is not forged. `gh-review.py` and `gh-pr.py` remove HTML comments from
@@ -319,7 +320,7 @@ a `Verification` line so that it is checked again, with the comment targets in
 when it no longer holds. `/cgh:review` collects with `gh-review.py raised`, before the review,
 what comments by anyone already raise, and an override has the triage sub-agent leave those out.
 `/cgh:respond` handles the comments of anyone through the PR mode of `/creview:triage`, whose
-triage sub-agent an override tells to judge what is already dealt with, and its drafter judges
+triage sub-agent an override tells to judge what is already dealt with, and the leader judges
 from the conversation whether a comment needs a reply. Posted findings number on from the
 IDs read from the authenticated user's comments. `/cgh:respond` passes `/creview:triage` the file
 `gh-review.py ids` writes, through `--finding-ids`, so that its document keeps the IDs of that user's
@@ -365,10 +366,10 @@ output paths it is given, judged by prefix with no `..`, where `\` and `/` count
 same separator and a drive letter's case is ignored; paths in a task are passed as given,
 never re-rooted by a leader.
 
-The launches of cgh's `reply-drafter` and `comment-writer` are the exception: they pass only
+The launches of cgh's `comment-writer` are the exception: they pass only
 the variables their templates name, as absolute paths, with no `plugin_root`, `main_root`,
 `target_dir`, or Round-specific overrides, since those templates read no bundled rule and the
-agents have Read and Write only. A cgh launch that goes beyond that passes all three.
+agent has Read and Write only. A cgh launch that goes beyond that passes all three.
 
 ---
 
@@ -411,8 +412,8 @@ agents have Read and Write only. A cgh launch that goes beyond that passes all t
    `templates/*.md` as needed; mirror it under `src/<plugin>/skills/<name>/` in Japanese.
 2. Use `${CLAUDE_PLUGIN_ROOT}/...` in the SKILL body / `allowed-tools`; use
    `{{plugin_root}}/...` inside templates and the bundled rules they point to, and pass
-   `plugin_root`, `main_root`, and `target_dir` in every launch prompt (cgh's `reply-drafter`
-   and `comment-writer` excepted; see Sub-agent launch contract) — `main_root` is the
+   `plugin_root`, `main_root`, and `target_dir` in every launch prompt (cgh's
+   `comment-writer` excepted; see Sub-agent launch contract) — `main_root` is the
    main working tree's root under `--worktree` or the value an upper flow passed, and
    `(none)` otherwise; `target_dir` is the work target (see Sub-agent launch contract).
 3. Resolve reviewers/fixers via the destination project's `.claude/agents/` with a

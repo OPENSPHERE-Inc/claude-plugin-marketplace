@@ -42,30 +42,14 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 ## Step 3 — 返信のドラフト
 
 1. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py comments '{pr_url}' '{tmp_dir}'` を実行する。`pr_body_path` が出力される。
-2. `Agent(subagent_type="cgh:reply-drafter", prompt=...)` をフォアグラウンドで次のプロンプトで起動する:
-
-```
-最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/reply-draft.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
-
-変数（テンプレート中の {{...}} placeholder を置換）:
-- document_path: {document_path}
-- comments_path: {tmp_dir}/comments.json
-- commits_path: {tmp_dir}/fix-commits.json
-- pr_body_path: {pr_body_path}
-- output_path: {tmp_dir}/replies.json
-- doc_lang: {doc_lang}
-
-戻り値に `template_id`（テンプレートの frontmatter から Read）を含める。
-```
-
-返される `template_id` は `6f0b2c84-93d1-4e7a-b5c6-1a8e7d42f903` でなければならない。不一致なら再度起動し、2 回続いたら中断する。戻り値: `{path, replies, unmatched, template_id}`。
+2. `{document_path}`、`{tmp_dir}/comments.json`、`{tmp_dir}/fix-commits.json`、`{pr_body_path}`、`${CLAUDE_PLUGIN_ROOT}/rules/wording.md` を Read し、その § 起草する返信 のとおり `{tmp_dir}/replies.json` を書く。
 
 ## Step 4 — 確認と投稿
 
-ドラフト担当が返した `replies` が 0 なら Step 5 に進む。それ以外は、その `unmatched` をプレビューとともに示す。
+返信がなければ Step 5 に進む。それ以外は `unmatched` と `unaddressed` をプレビューとともに示す。
 
-`{json_path}` = `{tmp_dir}/replies.json` で § 確認と投稿 に従い、`post` にオプション `--commits '{tmp_dir}/fix-commits.json'` を渡す: プルリクエストがコミットを含むまで何も送らない。`{json_path}` の欠落または不正で `preview` が非ゼロ終了したとき、または `comment_lang` に null を出力したとき（`post` が拒否し、このスキルにはそれを埋める wording の段階がない）は、Step 3 のドラフト担当を `output_path` = `{tmp_dir}/replies-2.json` でもう一度起動する。ドラフト担当は Read していないファイルを上書きできないので、未使用のパスにする。`{json_path}` をそのパスにしてこのステップをやり直す。この起動の戻り値は、ここと Step 5 で先の戻り値に置き換わる。2 回目の失敗または 2 回目の null で中断する。ファイルを自分で修復しない: その文面はプルリクエストに由来する。
+`{json_path}` = `{tmp_dir}/replies.json` で § 確認と投稿 に従い、`post` にオプション `--commits '{tmp_dir}/fix-commits.json'` を渡す: プルリクエストがコミットを含むまで何も送らない。`{json_path}` の欠落または不正で `preview` が非ゼロ終了したとき、または `comment_lang` に null を出力したときは、ファイルを書き直して再度実行する。2 回目の失敗で中断する。
 
 ## Step 5 — 報告
 
-Step 4 で投稿したときは `posted` と `urls`、Step 3 を実行したときはその `unmatched`（ドラフト担当がコメントを特定できなかった指摘）、Step 1 で保持した内容、`{document_path}` から各 `🚫 Won't Fix` の指摘の ID、場所、作者、理由を報告する。その後終了する。
+Step 4 で投稿したときは `posted` と `urls`、Step 3 を実行したときはその `unmatched`（コメントを特定できなかった指摘）、`unaddressed`（まだ手作業での対応が必要な指摘）、Step 1 で保持した内容、`{document_path}` から各 `🚫 Won't Fix` の指摘の ID、場所、作者、理由を報告する。その後終了する。
