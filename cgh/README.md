@@ -17,7 +17,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 - A session started at the repository root.
 - A project whose `.claude`, `.claude/tmp`, and `.claude/worktrees` are not symbolic links, even
   ones pointing inside the project: the bundled scripts refuse them with an error. To share
-  configuration across working trees, link entries inside `.claude` instead.
+  configuration across working trees, keep it in `~/.claude/` instead.
 
 ## Skills
 

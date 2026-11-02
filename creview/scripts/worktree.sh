@@ -28,8 +28,8 @@ case "${MODE}" in
         # git would add the worktree at a symlink's target, outside the repository.
         for LINK in "${MAIN_ROOT}/.claude" "${MAIN_ROOT}/.claude/worktrees"; do
             if [[ -L "${LINK}" ]]; then
-                echo "Error: ${LINK} is a symlink: .claude and .claude/worktrees must not be" \
-                    "symlinks; link entries inside .claude instead" >&2
+                echo "Error: ${LINK} is a symlink: .claude, .claude/tmp, and" \
+                    ".claude/worktrees must not be symlinks" >&2
                 exit 1
             fi
         done

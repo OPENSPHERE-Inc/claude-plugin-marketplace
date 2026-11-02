@@ -74,7 +74,7 @@ the `PATH`: their shared `.claude/tmp/` containment check is implemented in
 `.claude`, `.claude/tmp`, and `.claude/worktrees` in the project must not be symbolic links, even
 ones pointing inside the project: the bundled scripts refuse them with an error. To share
 configuration across working
-trees, link entries inside `.claude` instead.
+trees, keep it in `~/.claude/` instead.
 
 ## Options
 

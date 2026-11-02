@@ -783,8 +783,8 @@ def worktrees_dir(main_root):
     # git would add a worktree at a symlink's target, outside the repository.
     for path in (f"{main_root}/.claude", f"{main_root}/.claude/worktrees"):
         if os.path.islink(path):
-            raise Error(f"{path} is a symlink: .claude and .claude/worktrees must not be "
-                        "symlinks; link entries inside .claude instead")
+            raise Error(f"{path} is a symlink: .claude, .claude/tmp, and .claude/worktrees "
+                        "must not be symlinks")
     return f"{main_root}/.claude/worktrees"
 
 

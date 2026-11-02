@@ -20,7 +20,7 @@ with an error.
 
 `.claude`, `.claude/tmp`, and `.claude/worktrees` in the project must not be symbolic
 links, even ones pointing inside the project: the bundled scripts refuse them with an error. To
-share configuration across working trees, link entries inside `.claude` instead.
+share configuration across working trees, keep it in `~/.claude/` instead.
 
 `review-respond` was split into two skills. Run `/creview:triage <doc>`
 first; review the persisted decisions in the document; then run
