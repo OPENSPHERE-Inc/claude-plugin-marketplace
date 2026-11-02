@@ -3072,6 +3072,59 @@ class Raised(Base):
         self.assertEqual(result["comments"], 1)
         self.assertEqual(batches[0]["comments"][0]["text"], "open")
 
+    def discussion_batches(self):
+        result = mod.cmd_raised(URL, self.dir, discussion=True)
+        return result, [json.loads(read_text(os.path.join(self.dir, "raised", f"batch-{n}.json")))
+                        for n in range(1, result["batches"] + 1)]
+
+    def test_a_discussion_keeps_resolved_threads(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
+        gh.review_comments = [self.comment(1, "first"), self.comment(4, "open")]
+        gh.threads = [(True, 1), (False, 4)]
+        result, batches = self.discussion_batches()
+        self.assertEqual(result["comments"], 2)
+        self.assertEqual([c["text"] for c in batches[0]["comments"]], ["first", "open"])
+
+    def test_a_discussion_shows_who_decides_and_the_review_each_comment_is_in(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "me"},
+                       "submitted_at": "2026-01-01T00:00:00Z", "body": "## Merge gate: BLOCK"}]
+        gh.review_comments = [dict(self.comment(1, "inline", "me"),
+                                   created_at="2026-01-01T00:00:00Z")]
+        result, batches = self.discussion_batches()
+        batch = batches[0]
+        self.assertEqual(batch["viewer"], "me")
+        self.assertIn("author", batch)
+        self.assertIn("assignees", batch)
+        inline = next(c for c in batch["comments"] if c["text"] == "inline")
+        self.assertEqual(inline["review_opening"], "## Merge gate: BLOCK")
+        self.assertEqual(inline["created_at"], "2026-01-01T00:00:00Z")
+
+    def test_every_discussion_batch_holds_the_conversation_outside_threads_in_order(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"},
+                       "submitted_at": "2026-01-02T00:00:00Z", "body": "later"},
+                      {"id": 4, "state": "DISMISSED", "user": {"login": "rev"},
+                       "submitted_at": "2026-01-01T00:00:00Z", "body": "dismissed"}]
+        gh.review_comments = [self.comment(c, "x" * 30000) for c in (1, 2)]
+        gh.issue_comments = [{"id": 8, "user": {"login": "pal"}, "body": "earlier",
+                              "created_at": "2026-01-01T00:00:00Z"},
+                             {"id": 9, "user": {"login": "pal"}, "body": "<!-- hidden -->"}]
+        result, batches = self.discussion_batches()
+        self.assertGreater(result["batches"], 1)
+        for batch in batches:
+            self.assertEqual([c["text"] for c in batch["conversation"]], ["earlier", "later"])
+
+    def test_a_plain_listing_adds_nothing_of_a_discussion(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
+        gh.review_comments = [self.comment(1, "inline")]
+        _, batches = self.batches()
+        self.assertEqual(list(batches[0]), ["comments"])
+        self.assertEqual(sorted(batches[0]["comments"][0]),
+                         ["author", "in_reply_to", "location", "text"])
+
     def test_no_comments_writes_no_batch(self):
         self.fake()
         self.assertEqual(self.batches()[0]["batches"], 0)
@@ -3815,7 +3868,8 @@ class Cli(unittest.TestCase):
              (URL, "t", "d", "review", "en", None)),
             (["wording", URL, "j"], "cmd_wording", (URL, "j")),
             (["comments", URL, "t"], "cmd_comments", (URL, "t")),
-            (["raised", URL, "t"], "cmd_raised", (URL, "t")),
+            (["raised", URL, "t"], "cmd_raised", (URL, "t", False)),
+            (["raised", URL, "t", "--discussion"], "cmd_raised", (URL, "t", True)),
             (["participants", URL], "cmd_participants", (URL,)),
             (["own", URL, "t"], "cmd_own", (URL, "t")),
             (["ids", URL, "t"], "cmd_ids", (URL, "t")),

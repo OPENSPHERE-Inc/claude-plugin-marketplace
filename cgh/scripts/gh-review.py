@@ -11,7 +11,7 @@ Usage:
         [--prior-doc <path>]
     python3 gh-review.py wording <pr_url> <json_path>
     python3 gh-review.py comments <pr_url> <tmp_dir>
-    python3 gh-review.py raised <pr_url> <tmp_dir>
+    python3 gh-review.py raised <pr_url> <tmp_dir> [--discussion]
     python3 gh-review.py participants <pr_url>
     python3 gh-review.py fixes <pr_url> <tmp_dir> <document>
     python3 gh-review.py pushed <pr_url> <fix_commits_json>
@@ -101,7 +101,10 @@ and viewer, the authenticated user, and <tmp_dir>/pr-body.json.
 
 raised: writes <tmp_dir>/raised/batch-<n>.json, the comments with visible text already on the
 pull request by author and place, split into batches with each thread whole. Leaves out dismissed
-reviews and their comments, and threads resolved on GitHub.
+reviews and their comments, and threads resolved on GitHub. With --discussion, it keeps those
+threads, each comment has created_at and, in a thread, review_opening, and a batch also holds
+viewer, author, assignees, and conversation, the review bodies and issue comments outside
+dismissed reviews, oldest first, in the form of a reply.
 
 participants: prints viewer, the authenticated user, and author and assignees, the pull
 request's.
@@ -1810,16 +1813,19 @@ def resolved_roots(pr):
     return roots
 
 
-def cmd_raised(pr_url, tmp_dir):
+def cmd_raised(pr_url, tmp_dir, discussion=False):
     pr = checked_pr(pr_url)
     reviews, comments, issue_comments = visible_comments(pr)
     dismissed = {r.get("id") for r in reviews if r.get("state") == "DISMISSED"}
-    resolved = resolved_roots(pr)
+    resolved = set() if discussion else resolved_roots(pr)
+    review_of = {r.get("id"): r for r in reviews}
 
     def entry(comment, location, **fields):
         text = visible_body(comment)
         if not text:
             return None
+        if discussion:
+            fields["created_at"] = comment_time(comment)
         return {"author": comment_author(comment), "location": location, "text": text, **fields}
 
     units = [[entry(review, "PR")] for review in reviews if review.get("id") not in dismissed]
@@ -1831,17 +1837,26 @@ def cmd_raised(pr_url, tmp_dir):
         if root not in threads:
             threads[root] = []
             units.append(threads[root])
+        opening = {"review_opening": visible_body(
+            review_of.get(comment.get("pull_request_review_id"), {}))[:OPENING_LIMIT]
+        } if discussion else {}
         threads[root].append(entry(comment, comment_place(comment),
-                                   in_reply_to=comment.get("in_reply_to_id")))
+                                   in_reply_to=comment.get("in_reply_to_id"), **opening))
     units += [[entry(comment, "PR")] for comment in issue_comments]
     units = [[c for c in unit if c] for unit in units]
     batches = batched([unit for unit in units if unit],
                       lambda unit: sum(len(c["text"]) for c in unit))
+    shared = {}
+    if discussion:
+        people = participants(view_pr(pr, require_open=False))
+        outside = [r for r in reviews if r.get("id") not in dismissed] + issue_comments
+        spoken_outside = [spoken(c, people["viewer"]) for c in outside]
+        shared = {**people, "conversation": by_time(c for c in spoken_outside if c["text"])}
     directory = os.path.join(tmp_dir, "raised")
     os.makedirs(directory, exist_ok=True)
     for n, batch in enumerate(batches, 1):
         write_json(os.path.join(directory, f"batch-{n}.json"),
-                   {"comments": [c for unit in batch for c in unit]})
+                   {**shared, "comments": [c for unit in batch for c in unit]})
     return {"directory": directory, "batches": len(batches),
             "comments": sum(len(unit) for batch in batches for unit in batch)}
 
@@ -1959,7 +1974,8 @@ def parser():
     draft.add_argument("--prior-doc")
     command("wording", "pr_url", "path")
     command("comments", "pr_url", "tmp_dir")
-    command("raised", "pr_url", "tmp_dir")
+    raised = command("raised", "pr_url", "tmp_dir")
+    raised.add_argument("--discussion", action="store_true")
     command("participants", "pr_url")
     command("fixes", "pr_url", "tmp_dir", "document")
     command("pushed", "pr_url", "commits")
@@ -1988,7 +2004,7 @@ def dispatch(args):
     if args.command == "comments":
         return cmd_comments(args.pr_url, args.tmp_dir)
     if args.command == "raised":
-        return cmd_raised(args.pr_url, args.tmp_dir)
+        return cmd_raised(args.pr_url, args.tmp_dir, args.discussion)
     if args.command == "participants":
         return cmd_participants(args.pr_url)
     if args.command == "fixes":

@@ -64,8 +64,18 @@ regressions of existing behavior, changes the review could not read, and work le
 no issue recording it: a `TODO` in the code, an open item in the description, or a follow-up the
 description or a code comment promises. Nice-to-have tests, refactoring, and style are not
 findings. A residue that names an issue or a pull request counts as recorded. A conversation
-comment neither creates a residue nor records one. The focus is in
-[rules/gate-focus.md](rules/gate-focus.md).
+comment does not record one. The focus is in [rules/gate-focus.md](rules/gate-focus.md).
+
+It also reads every comment on the pull request, including threads marked resolved on GitHub. What
+a discussion concludes has to end up in the code, in the description, or in an issue or ticket
+that the description or a code comment names. A comment alone records nothing.
+
+- A problem discussed and recorded this way is not raised again, unless the code shows the record
+  wrong about it.
+- A discussion with no such ending is raised as an unsettled discussion, at Major, in place of the
+  problem itself. A line in the description can settle it.
+- An agreed change or a promised follow-up counts whatever the topic. A declined or unanswered
+  comment counts only when its problem is one the gate looks for and holds in the code.
 
 - **BLOCK** (Request Changes): a posted finding or an earlier gate finding still unverified is
   Critical or Major, or the pull request has merge conflicts.
@@ -180,8 +190,9 @@ The state lives on the pull request, so a later run needs nothing from an earlie
   or is not forged on a pull request worked on by several people and AI. Sub-agents judge from
   visible text only: HTML comments in anyone's comment are removed before they read it.
 - `/cgh:review` looks at every comment and `/cgh:respond` handles every comment, whoever wrote it.
-  `/cgh:resolve` checks only your own findings, and `/cgh:gate` only its own. Dismissing a review
-  drops its findings from those checks.
+  `/cgh:resolve` checks only your own findings, and `/cgh:gate` only its own, while it reads every
+  comment for discussions. Dismissing a review drops its findings from those checks and from those
+  discussions.
 - A thread marked resolved on GitHub counts as dealt with in `/cgh:respond`, and the skill reports
   how many it left out.
 - A sub-agent reads which finding IDs your comments use, in context, from their visible text. New
