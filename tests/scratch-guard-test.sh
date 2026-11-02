@@ -748,13 +748,18 @@ else
     note "SKIP: symlink escape cases (real symlinks unavailable on this platform)"
 fi
 
-# a symlinked .claude must be rejected before the caller creates .claude/tmp through it
+# a symlinked .claude is rejected; skill leaders get this check before their mkdir -p by running
+# del-tmp.sh, and the .claude/worktrees paths do not go through the guard
 LINKED="${SANDBOX}/linked-claude"
 mkdir -p "${LINKED}"
 MSYS=winsymlinks:nativestrict ln -s ../outside "${LINKED}/.claude" 2>/dev/null || true
 if [[ -L "${LINKED}/.claude" ]]; then
     rc=0; (cd "${LINKED}" && run_guard -p .claude/tmp/new/x) >/dev/null 2>&1 || rc=$?
     check "guard symlinked .claude with no .claude/tmp" 1 "${rc}"
+    rc=0; (cd "${LINKED}" && bash "${RM}" .claude/tmp/new) >/dev/null 2>&1 || rc=$?
+    check "del-tmp symlinked .claude with an uncreated target" 1 "${rc}"
+    [[ ! -e "${SANDBOX}/outside/tmp" ]] \
+        || { note "FAIL: del-tmp created .claude/tmp through the symlink"; fail=1; }
     mkdir -p "${SANDBOX}/outside/tmp"
     rc=0; (cd "${LINKED}" && run_guard -w .claude/tmp/x) >/dev/null 2>&1 || rc=$?
     check "guard symlinked .claude with .claude/tmp" 1 "${rc}"
@@ -773,6 +778,11 @@ rc=0; bash "${RM}" .claude/tmp/ 2>/dev/null || rc=$?
 check "del-tmp bare root rejected" 1 "${rc}"
 rc=0; bash "${RM}" .claude/tmp/gone/x 2>/dev/null || rc=$?
 check "del-tmp missing parent skipped" 0 "${rc}"
+rc=0; bash "${RM}" .claude/tmp/e2e/uncreated 2>/dev/null || rc=$?
+check "del-tmp uncreated target passes" 0 "${rc}"
+mkdir -p "${SANDBOX}/no-claude"
+rc=0; (cd "${SANDBOX}/no-claude" && bash "${RM}" .claude/tmp/uncreated) 2>/dev/null || rc=$?
+check "del-tmp with no .claude passes" 0 "${rc}"
 rc=0; bash "${RM}" "${SANDBOX}/outside/victim.txt" 2>/dev/null || rc=$?
 check "del-tmp outside rejected" 1 "${rc}"
 [[ -e "${SANDBOX}/outside/victim.txt" ]] || { note "FAIL: del-tmp deleted outside file"; fail=1; }
@@ -982,6 +992,38 @@ MSYS=winsymlinks:nativestrict ln -s ../../../outside "${MAIN}/.claude/tmp/esc" 2
 if [[ -L "${MAIN}/.claude/tmp/esc" ]]; then
     t 1 -w "${MAIN}/.claude/tmp/esc/sub/out.txt"
     rm "${MAIN}/.claude/tmp/esc"
+fi
+# a symlinked .claude of another working tree, which the guard reaches by absolute path
+LINKED_WT="$(cd "${SANDBOX}" && pwd -P)/linked-wt"
+if git worktree add -q --detach "${LINKED_WT}" >/dev/null 2>&1; then
+    # Git Bash follows symlinks when it rewrites a POSIX path for native Python; git's spelling
+    # reaches the guard as written.
+    LINKED_WT="$(git -C "${LINKED_WT}" rev-parse --show-toplevel)"
+    t 3 -p "${LINKED_WT}/.claude/tmp/new/x"
+    MSYS=winsymlinks:nativestrict ln -s ../outside "${LINKED_WT}/.claude" 2>/dev/null || true
+    if [[ -L "${LINKED_WT}/.claude" ]]; then
+        t 1 -p "${LINKED_WT}/.claude/tmp/new/x"
+        rc=0; bash "${FD}" snapshot "${LINKED_WT}/.claude/tmp/new/out" 2>/dev/null || rc=$?
+        check "fetch-diff OUT under another tree's symlinked .claude" 1 "${rc}"
+        rc=0; bash "${CFD}" HEAD "${LINKED_WT}/.claude/tmp/new/out" 2>/dev/null || rc=$?
+        check "creview fetch-diff OUT under another tree's symlinked .claude" 1 "${rc}"
+        [[ ! -e "${SANDBOX}/outside/tmp" ]] \
+            || { note "FAIL: fetch-diff created tmp/ through another tree's .claude"; fail=1; }
+        mkdir -p "${SANDBOX}/outside/tmp"
+        : > "${SANDBOX}/outside/tmp/keep"
+        t 1 -w "${LINKED_WT}/.claude/tmp/x"
+        rc=0; bash "${RM}" "${LINKED_WT}/.claude/tmp/keep" 2>/dev/null || rc=$?
+        check "del-tmp target under another tree's symlinked .claude" 1 "${rc}"
+        [[ -e "${SANDBOX}/outside/tmp/keep" ]] \
+            || { note "FAIL: del-tmp deleted a file through another tree's .claude"; fail=1; }
+        rm -rf "${SANDBOX}/outside/tmp"
+        rm "${LINKED_WT}/.claude"
+    else
+        note "SKIP: another tree's symlinked .claude cases (symlink creation failed)"
+    fi
+    git worktree remove -f "${LINKED_WT}"
+else
+    note "FAIL: git worktree add for the symlinked .claude case"; fail=1
 fi
 mkdir -p "${MAIN}/.claude/tmp/wt-e2e/dir"
 rc=0; bash "${RM}" "${MAIN}/.claude/tmp/wt-e2e/dir" 2>/dev/null || rc=$?
