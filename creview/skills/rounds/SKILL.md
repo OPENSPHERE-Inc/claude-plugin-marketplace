@@ -120,11 +120,12 @@ Final step
 
 1. Parse options.
 2. If `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill.
-3. Under `--worktree`, run the setup in § Worktree.
-4. Fix `{target_dir}`, the work target every sub-agent receives: `{worktree_path}` under `--worktree`, otherwise the output of `git rev-parse --show-toplevel`.
-5. Get the current branch name.
-6. Verify the output directory exists; if not, create it.
-7. Set the round counter to 1 and `{prev_round_rev}` to `(none)`.
+3. Run `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh .claude/tmp/creview-rounds-{YYYYMMDD-HHMMSS}` (the start time), which refuses a symlinked `.claude` or `.claude/tmp`; on a non-zero exit, show its error and terminate the skill. Pass this path rather than the output directory: del-tmp.sh refuses a path outside `.claude/tmp/` and deletes a directory that exists.
+4. Under `--worktree`, run the setup in § Worktree.
+5. Fix `{target_dir}`, the work target every sub-agent receives: `{worktree_path}` under `--worktree`, otherwise the output of `git rev-parse --show-toplevel`.
+6. Get the current branch name.
+7. Verify the output directory exists; if not, create it.
+8. Set the round counter to 1 and `{prev_round_rev}` to `(none)`.
 
 ## Step 2 — Round loop
 
