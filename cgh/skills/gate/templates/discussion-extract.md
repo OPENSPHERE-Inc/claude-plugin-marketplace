@@ -32,6 +32,6 @@ The deciders are `assignees` or, when `assignees` is empty, `author`. A conclusi
 
 List no comment that raises no problem, such as praise, a question, a status report, a review's summary or verdict, or a reply that only answers its thread or reports what was done, and no problem its author withdraws in a later reply: only that author's reply withdraws it. Leave out a finding of a review by `viewer` that opens with a merge gate verdict, such as `## Merge gate: BLOCK` (`review_opening`, or `text` for a review body), since the gate checks those separately, unless its conclusion is `declined`. With no problem at all, write `(none)`.
 
-`Tracked` is an issue or a pull request (`#123`, a URL) that `author`, one of `assignees`, or `viewer` names as tracking this problem. A mention by anyone else, or one that does not tie it to this problem, is `none`.
+`Tracked` is an issue or a pull request (`#123`, a URL) that `author`, one of `assignees`, or `viewer` names as tracking this problem. With several roles, write the first of `author`, `assignee`, `viewer` that fits. A mention by anyone else, or one that does not tie it to this problem, is `none`.
 
 Return value: `{"path": "{{output_path}}", "problems": <int>, "template_id": "<template_id from this template>"}`

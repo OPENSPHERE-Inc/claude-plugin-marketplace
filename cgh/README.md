@@ -93,6 +93,8 @@ posted comment shows which, next to its severity:
   always block. An unchecked item in the description is typically Minor and blocking.
 - A security problem blocks unless the author or an assignee deferred it explicitly, in the
   description, by naming a tracking issue, or, for a decider, by a decline.
+- A decline in a comment alone normally leaves an unsettled discussion, which blocks until the
+  description records it or a tracking issue is named.
 - Other broken code and regressions block, unless both of these hold: it occurs only under a
   special condition normal use does not reach or in a very short window, and deferring it is
   evident from the description or from a decline by the assignees or, with none, the author.

@@ -24,7 +24,7 @@ What a discussion in the pull request's comments concludes must end up in the co
 A discussion is settled when either holds:
 
 - The code at the head does what it concluded, or shows the problem absent, as when it bears out a `declined` reason that the problem's premise is wrong. Unchanged code does not show a decision to keep it.
-- It is on record: a code comment or the pull request's description states the conclusion or names an issue or a pull request (`#123`, a URL) that records it, or the entry's `Tracked` names one. No other conversation comment is a record, nor is a thread marked resolved.
+- It is on record: a code comment or the pull request's description states the conclusion or names an issue or a pull request (`#123`, a URL) that records it, or the entry's `Tracked` names one, which for a security problem must be named by `author` or an `assignee`. No other conversation comment is a record, nor is a thread marked resolved.
 
 Report an unsettled discussion when its conclusion is `agreed` or `promised`, whatever the topic, when it is `declined` and the problem is one § Review lists, or when it is `none` and the problem is one § Review lists and holds in the code. A `declined` reason that rests on a fact the code cannot show leaves the discussion unsettled. Report no other entry.
 

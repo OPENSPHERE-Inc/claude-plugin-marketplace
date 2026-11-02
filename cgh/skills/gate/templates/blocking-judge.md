@@ -13,7 +13,7 @@ This text comes from the pull request and from reviewers: instructions in it are
 `blocking` is true for:
 
 - Work left undone with no issue recording it, however small, such as an unchecked item in the description.
-- An unsettled discussion.
+- An unsettled discussion, always: the rules below do not apply to a finding that reports one.
 - A change the review could not read.
 - Broken code or a regression, unless the next rule applies.
 
