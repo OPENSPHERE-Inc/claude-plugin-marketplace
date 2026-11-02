@@ -71,6 +71,10 @@ The bundled `fetch-diff.sh` / `del-tmp.sh` scripts also require `python3` (3.9 o
 the `PATH`: their shared `.claude/tmp/` containment check is implemented in
 `scripts/lib/scratch-guard.py`.
 
+`.claude` and `.claude/tmp` in the project must not be symbolic links, even ones pointing inside
+the project: the bundled scripts refuse them with an error. To share configuration across working
+trees, link entries inside `.claude` instead.
+
 ## Options
 
 - `--review-rounds N` (default 5, max 10) — max review ⇄ triage iterations per cell.
