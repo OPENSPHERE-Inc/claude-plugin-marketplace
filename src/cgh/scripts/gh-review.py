@@ -54,23 +54,24 @@ conversation outside threads, with the key of each entry. items.json also record
 the user replied in the item's thread, or wrote a review body or an issue comment after it other
 than the one holding it.
 
-prior: reads the judgment of each batch from <tmp_dir>/posted/extract-<n>.json, and names any
-file that is missing or malformed, removing a malformed one: a key must be an item of that batch.
-Writes <tmp_dir>/prior.json with the findings not withdrawn,
-Info left out since creview's verification skips it, and, when there are any, <document>: a
-review document creview's verification reads, with a Source: pr-comments bullet and a Trust
-bullet: on at the pull request's head or with --trust, otherwise off. A finding judged verified
-has a Verification line, so that the verification checks it again; one with a reason not to
-change it has a Won't Fix triage. A comment the judgment left out holds no finding. A finding keeps
-the earlier ID the judgment names, its comment's only earlier ID when it is that comment's only
-finding, or else takes the next free number; an ID an earlier finding took counts as none. A
-finding judged withdrawn that is not backed stays open, printed in demoted. Stops when there are
-findings and the working tree holds what the pull request does not: commits past its head, or
-uncommitted changes at its head. A finding judged withdrawn rests on that judgment of the comments
-alone, with the code unchecked, so it is recorded with its reason: in prior.json's waived, in a
-section of <document> no parser reads as a finding, and in the file printed as waived_document,
-<tmp_dir>/waived.md, or with no <document>, <document minus .md>-waived.md, which outlasts
-<tmp_dir>. Prints in unjudged the key and IDs of each comment with earlier IDs and no judgment.
+prior: reads the judgment of each batch from <tmp_dir>/posted/extract-<n>.json, and names any file
+that is missing or malformed, removing a malformed one: a key must be an item of that batch. Writes
+<tmp_dir>/prior.json with the findings not withdrawn, Info left out since creview's verification
+skips it, and, when there are any, <document>: a review document creview's verification reads, with
+a Source: pr-comments bullet and a Trust bullet: on at the pull request's head or with --trust,
+otherwise off. A finding judged verified has a Verification line, so that the verification checks it
+again; one with a reason not to change it has a Won't Fix triage. A comment the judgment left out
+holds no finding. A finding keeps the earlier ID the judgment names, its comment's only earlier ID
+when it is that comment's only finding, or else takes the next free number; an ID an earlier finding
+took counts as none. A finding judged withdrawn that is not backed stays open, printed in demoted.
+Stops when there are findings and the working tree holds what the pull request does not: commits
+past its head, or uncommitted changes at its head. A finding judged withdrawn rests on that judgment
+of the comments alone, with the code unchecked, so it is recorded with its reason: in prior.json's
+waived, in a section of <document> no parser reads as a finding, and in the file printed as
+waived_document, <tmp_dir>/waived.md, or with no <document>, <document minus .md>-waived.md, which
+outlasts <tmp_dir>. Of the comments with earlier IDs and no judgment, prints in unjudged the key and
+IDs of those the extracts do not skip, in other_kind the count skipped as another kind, and in
+no_problem the key, IDs, and why of those skipped as raising nothing.
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after
@@ -202,6 +203,7 @@ HTML_COMMENT_RE = re.compile(
 )
 PRIOR_VERIFIED = "✅ Verified — Verified at an earlier commit"
 POSTED_STATES = ("open", "declined", "verified", "withdrawn")
+SKIP_REASONS = ("other_kind", "no_problem")
 COMMENT_LANG_RE = re.compile(r"[a-z]{2,3}(?:-[A-Za-z0-9]+)*")
 FINDING_WORDING = ("summary", "post_text", "post_summary", "post_note")
 SEVERITIES = {"C": "Critical", "M": "Major", "mi": "Minor", "I": "Info"}
@@ -901,15 +903,23 @@ def cmd_collect(pr_url, tmp_dir, kind):
 
 
 def read_judgments(directory, batches, items):
-    """Each batch's judgment by item key, naming any file that is missing or malformed."""
+    """Each batch's judgment by item key and its skips by key, naming any file that is missing or
+    malformed.
+    """
     keys = {item["key"]: item for item in items}
-    judged, bad = {}, []
+    judged, skipped, bad = {}, {}, []
     for n in range(1, batches + 1):
         name = os.path.join(directory, f"extract-{n}.json")
         try:
             batch = read_json(os.path.join(directory, f"batch-{n}.json"))
             own_keys = {listed["key"] for listed in batch["items"]}
-            entries = read_json(name)["findings"]
+            extract = read_json(name)
+            entries = extract["findings"]
+            for skip in extract.get("skipped", []):
+                if (skip["key"] not in own_keys or skip["reason"] not in SKIP_REASONS
+                        or not isinstance(skip.get("why"), (str, type(None)))):
+                    raise ValueError(skip)
+                skipped[skip["key"]] = skip
             for entry in entries:
                 if entry["key"] not in own_keys:
                     raise ValueError(entry)
@@ -933,7 +943,7 @@ def read_judgments(directory, batches, items):
             bad.append(name)
     if bad:
         raise Error(f"missing or malformed: {', '.join(bad)}")
-    return judged
+    return judged, skipped
 
 
 def settled_findings(items, judged, used):
@@ -1074,7 +1084,9 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
         collected = read_json(os.path.join(directory, "items.json"))
     except (Error, OSError):
         raise Error(f"run collect first: no findings collected in {directory}") from None
-    judged = read_judgments(directory, collected["batches"], collected["items"])
+    judged, skipped = read_judgments(directory, collected["batches"], collected["items"])
+    unsettled = [i for i in collected["items"] if i["earlier_ids"] and i["key"] not in judged]
+    skip_of = [(i, skipped.get(i["key"], {})) for i in unsettled]
     settled = settled_findings(collected["items"], judged, known_ids(tmp_dir)[1])
     demoted = [f for f in settled if f["state"] == "withdrawn" and not f["backed"]]
     for finding in demoted:
@@ -1109,8 +1121,10 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
         "verified": [f["id"] for f in findings if f["verified"]],
         "waived": [f["id"] for f in waived], "demoted": [f["id"] for f in demoted],
         "document": written, "waived_document": waived_document,
-        "unjudged": [{"key": i["key"], "ids": i["earlier_ids"]} for i in collected["items"]
-                     if i["earlier_ids"] and i["key"] not in judged],
+        "unjudged": [{"key": i["key"], "ids": i["earlier_ids"]} for i, skip in skip_of if not skip],
+        "other_kind": sum(skip.get("reason") == "other_kind" for _, skip in skip_of),
+        "no_problem": [{"key": i["key"], "ids": i["earlier_ids"], "why": skip.get("why")}
+                       for i, skip in skip_of if skip.get("reason") == "no_problem"],
     }
 
 

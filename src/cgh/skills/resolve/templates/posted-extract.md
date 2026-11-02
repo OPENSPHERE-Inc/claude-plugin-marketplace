@@ -37,8 +37,10 @@ template_id: 3ab4949f-308c-4ca8-b856-0e6f91dfc72f
 
 検証者が知っておくべきことが回答にあれば、誰が何を述べたかを `context` に {{doc_lang}} で 1 行で書く。すべてのエントリに、`severity`（`Critical`、`Major`、`Minor`、`Info`。コメントが述べる影響から決める）と、問題を {{doc_lang}} で 1 行に言い直した `text` も必要で、コメントが修正を推奨しているならその修正を 1 行にした `recommendation` も書き、項目の `location` が `PR` かコメントに複数の指摘があり、コメントが場所を挙げているなら `location`（`path:line` または `path`）も書く。
 
+`earlier_ids` があるのにエントリを作らない項目はそれぞれ `skipped` に挙げる: 別の `kind` の指摘なら `reason` を `other_kind` とし、問題を指摘しないものなら `no_problem` として、`why` を {{doc_lang}} で 1 行書く。
+
 `{{output_path}}` を 1 つの JSON オブジェクトとして書き込む:
 
-`{"findings": [{"key": "thread:123", "id": "M-1", "state": "declined", "severity": "Major", "text": "...", "recommendation": "...", "reason": "...", "context": "..."}, {"key": "review:456", "id": "M-3", "state": "open", "severity": "Major", "text": "...", "location": "a.py:1"}]}`
+`{"findings": [{"key": "thread:123", "id": "M-1", "state": "declined", "severity": "Major", "text": "...", "recommendation": "...", "reason": "...", "context": "..."}, {"key": "review:456", "id": "M-3", "state": "open", "severity": "Major", "text": "...", "location": "a.py:1"}], "skipped": [{"key": "thread:789", "reason": "other_kind"}, {"key": "thread:790", "reason": "no_problem", "why": "..."}]}`
 
 戻り値: `{"path": "{{output_path}}", "template_id": "<このテンプレートの template_id>"}`

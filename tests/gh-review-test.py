@@ -2294,6 +2294,37 @@ class PostedContext(PriorBase):
                          [{"key": key, "ids": ["M-1"]}])
         self.assertEqual(self.prior()[0]["unjudged"], [])
 
+    def prior_with_skipped(self, skipped):
+        self.finding()
+        key = f"thread:{self.ROOT}"
+        self.judged("review", None, {key: []})
+        path = os.path.join(self.dir, "posted", "extract-1.json")
+        data = json.loads(read_text(path))
+        data["skipped"] = [{**entry, "key": entry.get("key", key)} for entry in skipped]
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        return mod.cmd_prior(URL, self.dir, "review", os.path.join(self.dir, "prior.md"), False)
+
+    def test_a_comment_of_the_other_kind_only_counts(self):
+        result = self.prior_with_skipped([{"reason": "other_kind"}])
+        self.assertEqual(result["unjudged"], [])
+        self.assertEqual(result["other_kind"], 1)
+        self.assertEqual(result["no_problem"], [])
+
+    def test_a_comment_that_raises_nothing_is_listed_with_why(self):
+        result = self.prior_with_skipped([{"reason": "no_problem", "why": "A status report."}])
+        self.assertEqual(result["unjudged"], [])
+        self.assertEqual(result["other_kind"], 0)
+        self.assertEqual(result["no_problem"], [{"key": f"thread:{self.ROOT}", "ids": ["M-1"],
+                                                 "why": "A status report."}])
+
+    def test_a_malformed_skip_names_the_extract_and_removes_it(self):
+        for skipped in ([{"reason": "other"}], [{"reason": "other_kind", "key": "thread:999"}],
+                        [{"reason": "no_problem", "why": 3}]):
+            with self.assertRaisesRegex(mod.Error, "extract-1.json"):
+                self.prior_with_skipped(skipped)
+            self.assertFalse(os.path.exists(os.path.join(self.dir, "posted", "extract-1.json")))
+
     def test_a_comment_with_no_earlier_id_and_no_judgment_is_not_unjudged(self):
         gh = self.fake()
         self.local(gh)

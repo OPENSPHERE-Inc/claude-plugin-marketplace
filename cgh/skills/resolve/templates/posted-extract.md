@@ -37,8 +37,10 @@ Each entry's `state`:
 
 Add `context` when the answers hold something a verifier should know: who said what, in one line, in {{doc_lang}}. Every entry also needs `severity` (`Critical`, `Major`, `Minor`, or `Info`, from the consequence the comment describes) and `text`, the problem restated on one line in {{doc_lang}}, and, when the comment recommends a fix, `recommendation`, that fix on one line, and, when the item's `location` is `PR` or the comment holds several findings, `location` (`path:line` or `path`) when the comment names a place.
 
+List in `skipped` each item with `earlier_ids` that gets no entry: `reason` `other_kind` for findings of the other `kind`, or `no_problem`, with `why` on one line in {{doc_lang}}, when it raises nothing.
+
 Write `{{output_path}}` as one JSON object:
 
-`{"findings": [{"key": "thread:123", "id": "M-1", "state": "declined", "severity": "Major", "text": "...", "recommendation": "...", "reason": "...", "context": "..."}, {"key": "review:456", "id": "M-3", "state": "open", "severity": "Major", "text": "...", "location": "a.py:1"}]}`
+`{"findings": [{"key": "thread:123", "id": "M-1", "state": "declined", "severity": "Major", "text": "...", "recommendation": "...", "reason": "...", "context": "..."}, {"key": "review:456", "id": "M-3", "state": "open", "severity": "Major", "text": "...", "location": "a.py:1"}], "skipped": [{"key": "thread:789", "reason": "other_kind"}, {"key": "thread:790", "reason": "no_problem", "why": "..."}]}`
 
 Return value: `{"path": "{{output_path}}", "template_id": "<template_id from this template>"}`
