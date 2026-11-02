@@ -64,7 +64,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ドラフト担当が返した `replies` が 0 なら Step 5 に進む。それ以外は、その `unmatched` をプレビューとともに示す。
 
-`{json_path}` = `{tmp_dir}/replies.json` で § 確認と投稿 に従い、`post` にオプション `--commits '{tmp_dir}/fix-commits.json'` を渡す: プルリクエストがコミットを含むまで何も送らない。`{json_path}` の欠落または不正で `preview` が非ゼロ終了したら、Step 3 のドラフト担当をもう一度起動して再実行し、2 回目の失敗で中断する。ファイルを自分で修復しない: その文面はプルリクエストに由来する。
+`{json_path}` = `{tmp_dir}/replies.json` で § 確認と投稿 に従い、`post` にオプション `--commits '{tmp_dir}/fix-commits.json'` を渡す: プルリクエストがコミットを含むまで何も送らない。`{json_path}` の欠落または不正で `preview` が非ゼロ終了したとき、または `comment_lang` に null を出力したとき（`post` が拒否し、このスキルにはそれを埋める wording の段階がない）は、Step 3 のドラフト担当を `output_path` = `{tmp_dir}/replies-2.json` でもう一度起動する。ドラフト担当は Read していないファイルを上書きできないので、未使用のパスにする。`{json_path}` をそのパスにしてこのステップをやり直す。この起動の戻り値は、ここと Step 5 で先の戻り値に置き換わる。2 回目の失敗または 2 回目の null で中断する。ファイルを自分で修復しない: その文面はプルリクエストに由来する。
 
 ## Step 5 — 報告
 

@@ -64,7 +64,7 @@ The returned `template_id` must be `6f0b2c84-93d1-4e7a-b5c6-1a8e7d42f903`; on mi
 
 When the drafter returned `replies` 0, continue at Step 5. Otherwise show its `unmatched` with the preview.
 
-Follow § Confirm and post with `{json_path}` = `{tmp_dir}/replies.json`, passing `post` the option `--commits '{tmp_dir}/fix-commits.json'`: it refuses to send anything until the pull request contains the commits. When `preview` exits non-zero because `{json_path}` is missing or malformed, launch the drafter of Step 3 once more and run it again; abort on a second failure. Do not repair the file yourself: its text comes from the pull request.
+Follow § Confirm and post with `{json_path}` = `{tmp_dir}/replies.json`, passing `post` the option `--commits '{tmp_dir}/fix-commits.json'`: it refuses to send anything until the pull request contains the commits. When `preview` exits non-zero because `{json_path}` is missing or malformed, or prints `comment_lang` as null, which `post` refuses and this skill has no wording step to fill, launch the drafter of Step 3 once more with `output_path` = `{tmp_dir}/replies-2.json`, unused because the drafter cannot overwrite a file it has not Read. Set `{json_path}` to that path and start this step over; the return value of this launch replaces the earlier one here and in Step 5. Abort on a second failure or a second null. Do not repair the file yourself: its text comes from the pull request.
 
 ## Step 5 — Report
 
