@@ -124,7 +124,7 @@ It shows them and posts on your instruction.
     confirmation is the last check before the fixes, so do not use it on a pull request you do
     not trust.
 - A reply to a finding from a review body or an issue comment goes out as an issue comment that
-  mentions its author.
+  mentions its author, unless the author is a bot.
 - The skill refuses to send replies until the pull request contains the fix commits. A rebase
   changes their hashes, so push them as they are. If you rebased or squashed them, say so, and
   the skill collects the commits again.

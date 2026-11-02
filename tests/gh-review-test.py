@@ -1458,14 +1458,33 @@ class Replies(Base):
     def test_review_body_reply_mentions_the_reviewer(self):
         gh = self.fake()
         gh.objects = {"repos/acme/app/pulls/7/reviews/4": {
-            "id": 4, "user": {"login": "coderabbitai[bot]"}}}
+            "id": 4, "user": {"login": "pal", "type": "User"}}}
         path = self.replies_file([{"kind": "review", "target_id": 4, "finding_ids": ["M-1"],
                                    "body": "fixed, thanks @other"}])
         mod.cmd_post(URL, path, None)
         self.assertEqual(gh.posts[0][0], "repos/acme/app/issues/7/comments")
         body = gh.posts[0][1]["body"]
-        self.assertTrue(body.startswith("@coderabbitai "))
+        self.assertTrue(body.startswith("@pal "))
         self.assertIn("thanks @other", body)
+
+    def test_a_reply_to_a_bot_mentions_nobody(self):
+        for user in ({"login": "copilot-pull-request-reviewer[bot]", "type": "Bot"},
+                     {"login": "coderabbitai[bot]"},
+                     {"login": "Copilot", "type": "Bot"}):
+            gh = self.fake()
+            issue_url = "https://api.github.com/repos/acme/app/issues/7"
+            gh.objects = {
+                "repos/acme/app/pulls/7/reviews/4": {"id": 4, "user": user},
+                "repos/acme/app/issues/comments/5": {
+                    "id": 5, "user": user, "issue_url": issue_url},
+            }
+            path = self.replies_file([
+                {"kind": "review", "target_id": 4, "finding_ids": ["M-1"], "body": "fixed"},
+                {"kind": "issue_comment", "target_id": 5, "finding_ids": ["M-2"], "body": "fixed"},
+            ])
+            mod.cmd_post(URL, path, None)
+            bodies = [post[1]["body"] for post in gh.posts]
+            self.assertEqual(bodies, ["**Major M-1**: fixed", "**Major M-2**: fixed"])
 
     def test_issue_comment_reply_checks_its_pull_request(self):
         gh = self.fake()
@@ -1642,7 +1661,7 @@ class Replies(Base):
             {"kind": "thread", "target_id": 1, **reply},
         ])
         result, preview = self.preview(path)
-        expected = ["Mentions: @coderabbitai", "Mentions: @pal"]
+        expected = ["Mentions: @pal"]
         self.assertEqual(re.findall(r"^Mentions: .*$", preview, re.M), expected)
         self.assertEqual(re.findall(r"^Mentions: .*$", read_text(result["post_preview_path"]), re.M),
                          expected)

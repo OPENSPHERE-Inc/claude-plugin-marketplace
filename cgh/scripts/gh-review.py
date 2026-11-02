@@ -153,7 +153,8 @@ unknown the review counts as posted, so that a rerun cannot send it twice. The d
 review once it is created. A rerun of a draft that still holds one reads its state first: one that
 went out counts as posted, one pending is deleted, one gone is forgotten, and with the state unknown
 nothing goes out. Unsent replies need comment_lang, which wording records. A reply to a
-review or an issue comment goes out as an issue comment that mentions its author. Replies sent
+review or an issue comment goes out as an issue comment that mentions its author, unless the
+author is a bot. Replies sent
 are marked in the file, so a rerun skips them. A reply is marked as attempted before it goes
 out, and a rerun sends an attempted one only when the user has no comment with the same body on
 the pull request, in the same thread for a thread reply. --commits refuses a file with findings or a
@@ -1742,8 +1743,11 @@ def reply_author(pr, entry, viewer):
             raise not_on_pr(pr, entry["target_id"])
     else:
         return None
-    login = (target.get("user") or {}).get("login") or ""
-    login = login[:-len("[bot]")] if login.endswith("[bot]") else login
+    user = target.get("user") or {}
+    login = user.get("login") or ""
+    # A mention can make a bot act, and a bot's login names no account that is sure to be its own.
+    if user.get("type") == "Bot" or login.endswith("[bot]"):
+        return None
     return login if login and login != viewer else None
 
 
