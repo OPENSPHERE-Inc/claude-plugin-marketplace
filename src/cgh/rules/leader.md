@@ -6,7 +6,9 @@ SKILL が `{skill}` の値と `plugin_root` 変数を指定する。
 
 `git rev-parse --show-prefix` が空でない値を出力したら、リポジトリルートで開始したセッションが必要である旨のエラーを表示してスキルを終了する。引数にプルリクエスト URL がなければ、エラーを表示してスキルを終了する。
 
-次を一度だけ確定する: `{timestamp}`（`YYYYMMDD-HHMMSS`）、`.claude/tmp/cgh-{skill}-{timestamp}` の絶対パスである `{tmp_dir}`（`mkdir -p '{tmp_dir}'` で作成）、`.claude/tmp/cgh-{skill}-{timestamp}.md` の絶対パスである `{document_path}`、ユーザーがチャットで使っている言語である `{doc_lang}`、それが日本語なら `ja`、それ以外なら `en` となる `{lang}`。
+次を一度だけ確定する: `{timestamp}`（`YYYYMMDD-HHMMSS`）、`.claude/tmp/cgh-{skill}-{timestamp}` の絶対パスである `{tmp_dir}`、`.claude/tmp/cgh-{skill}-{timestamp}.md` の絶対パスである `{document_path}`、ユーザーがチャットで使っている言語である `{doc_lang}`、それが日本語なら `ja`、それ以外なら `en` となる `{lang}`。
+
+`{tmp_dir}` を作成する前に、シンボリックリンクの `.claude` を拒否する `{{plugin_root}}/scripts/del-tmp.sh '{tmp_dir}'` を実行し、非ゼロ終了の場合はそのエラーを表示してスキルを終了する。`mkdir -p '{tmp_dir}'` で作成する。
 
 ## creview スキルの実行
 

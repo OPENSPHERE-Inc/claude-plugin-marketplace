@@ -25,6 +25,8 @@ case "${MODE}" in
             exit 1
         fi
         MAIN_ROOT="$(git rev-parse --show-toplevel)"
+        # FIXME: a symlinked .claude places the worktree at the link's target; refuse it before
+        # `git worktree add`.
         WT_PATH="${MAIN_ROOT}/.claude/worktrees/${BRANCH//\//-}"
         if [[ -e "${WT_PATH}" ]]; then
             echo "Error: worktree path already exists: ${WT_PATH}" >&2

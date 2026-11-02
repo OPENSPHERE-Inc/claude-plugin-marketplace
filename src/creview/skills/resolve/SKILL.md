@@ -138,7 +138,7 @@ events.jsonl は `compile-review.py` が `verifications/*.jsonl` の `memo_value
 
 リーダー（あなた）は差分内容を Read しない。差分なしでは検証が不十分になるため、リーダーが差分をファイルに取得し、検証サブエージェントに渡す。
 
-1. `mkdir -p {tmp_dir}/verifications` で `{tmp_dir}` を作成する。PR モードでは、続けてドキュメントを編纂する（§ PR モード）。スキルを直接起動した場合は、続けてドキュメントのコードの場所を決める（§ ワークツリー）。
+1. `{tmp_dir}` を作成する前に、シンボリックリンクの `.claude` を拒否する `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` を実行し、非ゼロ終了の場合はそのエラーを表示してスキルを終了する。`mkdir -p {tmp_dir}/verifications` で `{tmp_dir}` を作成する。PR モードでは、続けてドキュメントを編纂する（§ PR モード）。スキルを直接起動した場合は、続けてドキュメントのコードの場所を決める（§ ワークツリー）。
 2. ベースブランチを特定する（§ 入力）。
 3. 差分をスクリプトで `{tmp_dir}/diff.txt` に取得する。非ゼロ終了の場合は、そのエラーで中止する:
    ```

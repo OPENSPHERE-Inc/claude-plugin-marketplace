@@ -104,7 +104,7 @@ To abort: show the error, run the teardown when it is due (§ Worktree), remove 
 
 Use the **Write tool** for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g. `Won't`) break the outer quoting.
 
-At the start of Step 1, the leader (you) creates `{tmp_dir}` with `mkdir -p {tmp_dir}/statuses` and passes `{tmp_dir}` to each sub-agent.
+At the start of Step 1, before creating `{tmp_dir}`, the leader (you) runs `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`, which refuses a symlinked `.claude`; on a non-zero exit, show its error and terminate the skill. The leader then creates `{tmp_dir}` with `mkdir -p {tmp_dir}/statuses` and passes `{tmp_dir}` to each sub-agent.
 
 ## Step 1 — Select fix targets (delegate to the select-fix-targets sub-agent)
 
