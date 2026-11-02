@@ -65,11 +65,25 @@ When it reports findings, run `creview:triage` with `{document_path}`, adding `-
 
 ## Step 3 — Draft
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}`, adding `--prior-doc '{prior_document}'` when it is not `(none)`. It writes `{tmp_dir}/draft.json` and prints `unchanged`, the findings verified earlier whose verification still holds, which the review body leaves out. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
+When Step 2 ran `creview:triage`, judge which findings block. Severity does not decide this. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)`:
+
+```
+As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/gate/templates/blocking-judge.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+Variables (substitute into the template's {{...}} placeholders):
+- document_path: {document_path}
+- output_path: {tmp_dir}/blocking.json
+
+Include `template_id` (Read from the template's frontmatter) in the return value.
+```
+
+The returned `template_id` must be `d76407d5-7ea4-4a7a-89e2-cffbb00f1d38`; on mismatch, launch it again, and abort when it happens twice.
+
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}`, adding `--prior-doc '{prior_document}'` when it is not `(none)`, and `--blocking '{tmp_dir}/blocking.json'` when you judged. It writes `{tmp_dir}/draft.json` and prints `unchanged`, the findings verified earlier whose verification still holds, which the review body leaves out, and `blocking_unjudged`, the selected findings the judgment left out, which count as blocking: tell the user their IDs. When its error names `blocking.json`, which it has removed if the file was malformed, launch the writer once more and run it again. On a second failure, abort with its error. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
 
 ## Step 4 — Confirm and post
 
-Follow § Confirm and post with `{json_path}` = `{tmp_dir}/draft.json`. When the user waives an earlier finding, set its `state` under `prior` to `waived`: later runs neither check nor report it. When you show the preview and an earlier finding stays not verified because the code cannot settle it, tell the user that they can waive it now if it is dealt with.
+Follow § Confirm and post with `{json_path}` = `{tmp_dir}/draft.json`. When the user waives an earlier finding, set its `state` under `prior` to `waived`: later runs neither check nor report it. When the user changes whether a finding or an earlier finding blocks, set its `blocking` to match. When you show the preview and an earlier finding stays not verified because the code cannot settle it, tell the user that they can waive it now if it is dealt with.
 
 The script computes the verdict, the event, and each finding's place from `{json_path}`: do not choose them yourself.
 

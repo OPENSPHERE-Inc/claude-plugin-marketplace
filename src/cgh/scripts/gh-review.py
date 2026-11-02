@@ -8,7 +8,7 @@ Usage:
     python3 gh-review.py prior <pr_url> <tmp_dir> --kind review|gate --document <path>
         [--trust]
     python3 gh-review.py draft <pr_url> <tmp_dir> <document> --kind review|gate --lang en|ja
-        [--prior-doc <path>]
+        [--prior-doc <path>] [--blocking <path>]
     python3 gh-review.py wording <pr_url> <json_path>
     python3 gh-review.py comments <pr_url> <tmp_dir>
     python3 gh-review.py raised <pr_url> <tmp_dir> [--discussion]
@@ -85,7 +85,13 @@ request's head too,
 adds the verification of earlier gate findings. A finding <tmp_dir>/prior.json has as verified
 earlier is left out when that still holds, and printed in unchanged. The findings it has as waived
 go into the draft's waived, which the preview lists and nothing posts. It also writes
-<tmp_dir>/pr-body.json, the pull request's title and description.
+<tmp_dir>/pr-body.json, the pull request's title and description. Under --kind gate, each finding
+also has blocking, whether it stops the merge, which severity does not decide. --blocking reads the
+judgment, {"findings": [{"id", "blocking"}]} by the document's IDs, and a file it cannot read is
+removed and named in the error, so that a writer run again can write it. A selected finding it does
+not name counts as blocking, and is printed in blocking_unjudged. A blocking finding stays selected
+through a Downgrade. An earlier finding has blocking from prior.json, or, with none, from its
+severity: Critical and Major block.
 
 wording: merges every wording-*.json next to <json_path> into it: comment_lang, the
 language comments go out in, with, per finding, summary (the recommendation for people,
@@ -134,7 +140,9 @@ records the verdict it shows as previewed_verdict.
 
 post: sends it. A review needs its wording and its head unchanged, is sent as one pending
 review, and cannot be sent twice. A gate draft also needs its verdict to match
-previewed_verdict. When a call fails, the review's state decides: one that
+previewed_verdict, and gives BLOCK when a selected finding or an earlier finding still open is
+blocking, or the pull request has merge conflicts. When a call fails, the review's state decides:
+one that
 went out anyway counts as posted, one still pending is deleted, and with the state
 unknown the review counts as posted, so that a rerun cannot send it twice. The draft records the
 review once it is created. A rerun of a draft that still holds one reads its state first: one that
@@ -212,7 +220,7 @@ SKIP_REASONS = ("other_kind", "no_problem")
 COMMENT_LANG_RE = re.compile(r"[a-z]{2,3}(?:-[A-Za-z0-9]+)*")
 FINDING_WORDING = ("summary", "post_text", "post_summary", "post_note")
 SEVERITIES = {"C": "Critical", "M": "Major", "mi": "Minor", "I": "Info"}
-BLOCKING = ("Critical", "Major")
+SERIOUS = ("Critical", "Major")
 ATTENTION = "⚠️"
 SCRATCH_EXCLUDES = [":(top,exclude).claude/tmp", ":(top,exclude).claude/worktrees"]
 REPLY_KINDS = ("thread", "review", "issue_comment", "issue")
@@ -283,6 +291,8 @@ LABELS = {
     "en": {
         "recommendation": "Recommendation",
         "findings": "Findings",
+        "blocking": "blocking",
+        "non_blocking": "non-blocking",
         "out_of_diff": "Findings outside the diff",
         "gate": "Merge gate",
         "conflict": "The pull request has merge conflicts.",
@@ -305,6 +315,8 @@ LABELS = {
     "ja": {
         "recommendation": "推奨",
         "findings": "指摘",
+        "blocking": "ブロッキング",
+        "non_blocking": "非ブロッキング",
         "out_of_diff": "差分外の指摘",
         "gate": "マージゲート",
         "conflict": "プルリクエストにマージコンフリクトがあります。",
@@ -628,7 +640,7 @@ def recommendation(finding):
     return []
 
 
-def default_selection(finding, labels):
+def default_selection(finding, labels, blocking=False):
     """Whether a finding goes out by default and, when not, why."""
     meta = finding["metadata"]
     triage, estimate = meta.get("Triage", ""), meta.get("Estimate", "")
@@ -636,15 +648,21 @@ def default_selection(finding, labels):
         return False, "Info"
     if not has_label(triage, "Will Fix"):
         return False, triage.rsplit(" — ", 1)[-1].strip() or labels["not_triaged"]
-    if has_label(estimate, "Downgrade") and finding["severity"] not in BLOCKING:
+    if has_label(estimate, "Downgrade") and finding["severity"] not in SERIOUS and not blocking:
         return False, estimate.rsplit(" — ", 1)[-1].strip()
     return True, None
+
+
+def blocking_mark(blocking, labels):
+    return f" · {labels['blocking' if blocking else 'non_blocking']}"
 
 
 def finding_block(finding, lang, with_location):
     labels = labels_for(lang)
     location = finding["location"]
     head = f"**{severity_of(finding['id'])} {finding['id']}**"
+    if "blocking" in finding:
+        head += blocking_mark(finding["blocking"], labels)
     if with_location and location != "PR":
         head += f" `{location.replace('`', '')}`"
     parts = [head, "", finding["text"]]
@@ -934,6 +952,8 @@ def read_judgments(directory, batches, items):
                 if any(not isinstance(entry.get(field), (str, type(None)))
                        for field in ("reason", "context", "location", "recommendation")):
                     raise ValueError(entry)
+                if not isinstance(entry.get("blocking"), (bool, type(None))):
+                    raise ValueError(entry)
                 siblings = judged.setdefault(entry["key"], [])
                 fid = entry.get("id")
                 if (entry.get("severity") not in SEVERITIES.values()
@@ -978,7 +998,7 @@ def settled_findings(items, judged, used):
                 **item, "id": fid, "severity": severity_of(fid), "text": entry["text"],
                 "location": entry.get("location") or item["location"],
                 "state": entry["state"], "reason": entry.get("reason"),
-                "context": entry.get("context"),
+                "context": entry.get("context"), "blocking": entry.get("blocking"),
                 "recommendation": [recommended] if recommended else []})
     for finding in findings:
         finding["verified"] = finding["state"] == "verified"
@@ -1165,7 +1185,27 @@ def earlier_waived(tmp_dir):
     return read_json(path).get("waived", []) if os.path.exists(path) else []
 
 
-def prior_states(pr, prior_doc, head, earlier):
+def earlier_blocking(tmp_dir):
+    path = os.path.join(tmp_dir, "prior.json")
+    if not os.path.exists(path):
+        return {}
+    return {f["id"]: f.get("blocking") for f in read_json(path)["findings"]}
+
+
+def read_blocking(path, ids):
+    """The blocking judgment by finding ID."""
+    try:
+        entries = read_json(path)["findings"]
+        judged = {entry["id"]: entry["blocking"] for entry in entries}
+        if not all(isinstance(value, bool) for value in judged.values()) or set(judged) - ids:
+            raise ValueError(judged)
+    except (Error, KeyError, TypeError, ValueError):
+        discard(path)
+        raise Error(f"missing or malformed: {path}") from None
+    return judged
+
+
+def prior_states(pr, prior_doc, head, earlier, blocking):
     if not prior_doc:
         return [], []
     header, findings = checked_document(pr, prior_doc)
@@ -1180,13 +1220,15 @@ def prior_states(pr, prior_doc, head, earlier):
         if verified and f["id"] in earlier:
             unchanged.append(f["id"])
             continue
+        marked = blocking.get(f["id"])
         prior.append({"id": f["id"], "severity": f["severity"],
+                      "blocking": f["severity"] in SERIOUS if marked is None else marked,
                       "state": "verified" if verified else "open",
                       "note": verification.partition(" — ")[2].strip() if checked else ""})
     return prior, unchanged
 
 
-def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
+def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=None):
     pr = checked_pr(pr_url)
     header, findings = checked_document(pr, document)
     view = view_pr(pr)
@@ -1194,16 +1236,21 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
         raise Error(f"the pull request moved past the reviewed head {header.get('head_sha')} "
                     f"to {view['headRefOid']}; run the skill again")
     _, used = known_ids(tmp_dir)
-    prior, unchanged = prior_states(pr, prior_doc, view["headRefOid"], earlier_verified(tmp_dir))
+    prior, unchanged = prior_states(pr, prior_doc, view["headRefOid"], earlier_verified(tmp_dir),
+                                    earlier_blocking(tmp_dir))
+    judged = read_blocking(blocking_path, {f["id"] for f in findings}) if blocking_path else {}
     numbers = next_numbers([*used, *(p["id"] for p in prior)])
     files = changed_files(pr)
     entries = []
     labels = labels_for(lang)
+    gate = kind == "gate"
     for finding in findings:
         prefix, _, n = finding["id"].rpartition("-")
         base = numbers.get(prefix, 0)
-        selected, reason = default_selection(finding, labels)
+        blocking = {"blocking": judged.get(finding["id"], True)} if gate else {}
+        selected, reason = default_selection(finding, labels, blocking.get("blocking", False))
         entries.append({
+            **blocking,
             "id": f"{prefix}-{base + int(n)}", "doc_id": finding["id"],
             "severity": finding["severity"], "location": finding["location"],
             "placement": placement(finding["location"], files), "selected": selected,
@@ -1219,6 +1266,8 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
         "path": os.path.join(tmp_dir, "draft.json"), "total": len(entries),
         "selected": len(selected),
         "selected_ids": [e["id"] for e in selected],
+        "blocking_unjudged": [e["id"] for e in selected
+                              if gate and e["doc_id"] not in judged],
         "prior_ids": [p["id"] for p in prior], "unchanged": unchanged,
         "pr_body_path": write_pr_body(tmp_dir, view),
         "by_placement": {p: sum(e["placement"] == p for e in selected)
@@ -1228,15 +1277,17 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc):
 
 def review_plan(draft, view):
     selected = [f for f in draft["findings"] if f["selected"]]
-    open_prior = [p for p in draft["prior"]
-                  if p["state"] == "open" and p["severity"] in BLOCKING]
-    conflict = draft["kind"] == "gate" and view.get("mergeable") == "CONFLICTING"
-    blocking = any(f["severity"] in BLOCKING for f in selected)
     verdict = None
+    conflict = draft["kind"] == "gate" and view.get("mergeable") == "CONFLICTING"
     if draft["kind"] == "gate":
+        open_prior = [p for p in draft["prior"] if p["state"] == "open" and p["blocking"]]
+        blocking = any(f["blocking"] for f in selected)
         verdict = "BLOCK" if blocking or open_prior or conflict else "PASS"
+        wanted = "REQUEST_CHANGES" if verdict == "BLOCK" else "COMMENT"
+    else:
+        wanted = ("REQUEST_CHANGES" if any(f["severity"] in SERIOUS for f in selected)
+                  else "COMMENT")
     own_pr = (view.get("author") or {}).get("login") == view["viewer"]
-    wanted = "REQUEST_CHANGES" if blocking or verdict == "BLOCK" else "COMMENT"
     return {
         "event": "COMMENT" if own_pr else wanted, "wanted": wanted, "verdict": verdict,
         "own_pr": own_pr, "conflict": conflict, "selected": selected,
@@ -1270,7 +1321,8 @@ def review_body(draft, plan, body_findings, post):
             icon = {"verified": "✅", "waived": "➖"}.get(p["state"], "💬")
             note = {"waived": labels["waived"]}.get(p["state"])
             note = note or (post and p.get("post_note")) or p["note"]
-            lines.append(f"- {icon} **{p['id']}**: {note or labels['not_verified']}")
+            mark = "" if p["blocking"] else blocking_mark(False, labels)
+            lines.append(f"- {icon} **{p['id']}**{mark}: {note or labels['not_verified']}")
         lines.append("")
     if body_findings:
         lines += [f"### {labels['out_of_diff']}", ""]
@@ -1313,7 +1365,7 @@ def preview_review(draft, view, post):
         for blocking in (True, False):
             mark = f"{ATTENTION} " if blocking else ""
             lines += [f"- {mark}**{f['id']}** `{f['location']}`: {f['excluded_reason'] or ''}"
-                      for f in excluded if (f["severity"] in BLOCKING) == blocking]
+                      for f in excluded if (f["severity"] in SERIOUS) == blocking]
     if draft.get("waived") and not post:
         lines += ["", f"## {labels['withdrawn']}", ""]
         lines += [withdrawn_line(f) for f in draft["waived"]]
@@ -1972,6 +2024,7 @@ def parser():
     draft.add_argument("--kind", required=True, choices=("review", "gate"))
     draft.add_argument("--lang", required=True, choices=sorted(LABELS))
     draft.add_argument("--prior-doc")
+    draft.add_argument("--blocking")
     command("wording", "pr_url", "path")
     command("comments", "pr_url", "tmp_dir")
     raised = command("raised", "pr_url", "tmp_dir")
@@ -1998,7 +2051,7 @@ def dispatch(args):
         return cmd_prior(args.pr_url, args.tmp_dir, args.kind, args.document, args.trust)
     if args.command == "draft":
         return cmd_draft(args.pr_url, args.tmp_dir, args.document, args.kind, args.lang,
-                         args.prior_doc)
+                         args.prior_doc, args.blocking)
     if args.command == "wording":
         return cmd_wording(args.pr_url, args.path)
     if args.command == "comments":

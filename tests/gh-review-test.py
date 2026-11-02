@@ -338,8 +338,8 @@ class Base(unittest.TestCase):
         mod.run = gh
         return gh
 
-    def draft(self, kind="review", lang="ja", prior_doc=None):
-        result = mod.cmd_draft(URL, self.dir, self.doc, kind, lang, prior_doc)
+    def draft(self, kind="review", lang="ja", prior_doc=None, blocking=None):
+        result = mod.cmd_draft(URL, self.dir, self.doc, kind, lang, prior_doc, blocking)
         with open(os.path.join(self.dir, "draft.json"), encoding="utf-8") as f:
             draft = json.load(f)
         draft["comment_lang"] = lang
@@ -721,14 +721,21 @@ def prior_doc_text(entries):
 
 
 class Gate(Base):
-    def gate_draft(self, entries=None, selected=(), **view_args):
+    def judged(self, **blocking):
+        path = os.path.join(self.dir, "blocking.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"findings": [{"id": fid.replace("_", "-"), "blocking": value}
+                                    for fid, value in blocking.items()]}, f)
+        return path
+
+    def gate_draft(self, entries=None, selected=(), judged=None, **view_args):
         gh = self.fake(**view_args)
         prior = None
         if entries is not None:
             prior = os.path.join(self.dir, "prior.md")
             with open(prior, "w", encoding="utf-8") as f:
                 f.write(prior_doc_text(entries))
-        _, draft = self.draft("gate", "en", prior)
+        _, draft = self.draft("gate", "en", prior, judged)
         for f in draft["findings"]:
             f["selected"] = f["doc_id"] in selected
         path = self.save(draft)
@@ -767,8 +774,97 @@ class Gate(Base):
         body = gh.named("submitPullRequestReview")[0]["body"]
         self.assertEqual(body, f"## Merge gate: PASS\n\n{HEAD[:mod.SHORT_SHA]}")
 
-    def test_minor_does_not_block(self):
-        _, path = self.gate_draft(selected=("mi-1",))
+    def test_a_minor_judged_blocking_blocks(self):
+        _, path = self.gate_draft(selected=("mi-1",), judged=self.judged(mi_1=True))
+        result = mod.cmd_post(URL, path, None)
+        self.assertEqual((result["verdict"], result["event"]), ("BLOCK", "REQUEST_CHANGES"))
+
+    def test_a_major_judged_non_blocking_passes(self):
+        _, path = self.gate_draft(selected=("M-1",), judged=self.judged(M_1=False))
+        result = mod.cmd_post(URL, path, None)
+        self.assertEqual((result["verdict"], result["event"]), ("PASS", "COMMENT"))
+
+    def test_a_minor_judged_non_blocking_passes(self):
+        _, path = self.gate_draft(selected=("mi-1",), judged=self.judged(mi_1=False))
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "PASS")
+
+    def test_a_finding_with_no_judgment_blocks_and_is_named(self):
+        self.fake()
+        result, draft = self.draft("gate", "en", None, self.judged(M_1=False))
+        by_doc = {f["doc_id"]: f for f in draft["findings"]}
+        self.assertFalse(by_doc["M-1"]["blocking"])
+        self.assertTrue(by_doc["mi-1"]["blocking"])
+        self.assertNotIn(by_doc["M-1"]["id"], result["blocking_unjudged"])
+        self.assertIn(by_doc["mi-1"]["id"], result["blocking_unjudged"])
+
+    def test_a_downgraded_minor_stays_selected_when_it_blocks(self):
+        self.fake()
+        _, draft = self.draft("gate", "en", None, self.judged(mi_1=True, mi_2=True))
+        by_doc = {f["doc_id"]: f for f in draft["findings"]}
+        self.assertTrue(by_doc["mi-2"]["selected"])
+
+    def test_a_downgraded_minor_is_left_out_when_it_does_not_block(self):
+        self.fake()
+        _, draft = self.draft("gate", "en", None, self.judged(mi_2=False))
+        by_doc = {f["doc_id"]: f for f in draft["findings"]}
+        self.assertFalse(by_doc["mi-2"]["selected"])
+
+    def test_a_malformed_judgment_is_removed_and_named(self):
+        self.fake()
+        for bad in ('{"findings": [{"id": "M-1", "blocking": "yes"}]}',
+                    '{"findings": [{"id": "M-99", "blocking": true}]}',
+                    '{"findings": [{"blocking": true}]}', "[]", "not json"):
+            path = os.path.join(self.dir, "blocking.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(bad)
+            with self.assertRaisesRegex(mod.Error, "blocking.json"):
+                mod.cmd_draft(URL, self.dir, self.doc, "gate", "en", None, path)
+            self.assertFalse(os.path.exists(path))
+
+    def test_a_missing_judgment_file_is_named(self):
+        self.fake()
+        path = os.path.join(self.dir, "blocking.json")
+        with self.assertRaisesRegex(mod.Error, "blocking.json"):
+            mod.cmd_draft(URL, self.dir, self.doc, "gate", "en", None, path)
+
+    def test_the_comment_shows_whether_a_finding_blocks(self):
+        gh, path = self.gate_draft(selected=("M-1", "mi-1"),
+                                   judged=self.judged(M_1=False, mi_1=True))
+        mod.cmd_post(URL, path, None)
+        sent = json.dumps(gh.mutations, ensure_ascii=False)
+        self.assertIn("non-blocking", sent)
+        self.assertRegex(sent, r"\*\*Minor mi-\d+\*\* · blocking")
+
+    def test_a_review_draft_says_nothing_of_blocking(self):
+        gh = self.fake()
+        _, draft = self.draft("review", "en")
+        self.assertTrue(all("blocking" not in f for f in draft["findings"]))
+        self.assertFalse(any("blocking" in json.dumps(c) for c in gh.mutations))
+
+    def prior_with(self, fid, blocking):
+        entry = {"id": fid}
+        if blocking is not None:
+            entry["blocking"] = blocking
+        with open(os.path.join(self.dir, "prior.json"), "w", encoding="utf-8") as f:
+            json.dump({"findings": [entry], "waived": []}, f)
+        return self.gate_draft([(fid, "💬 Feedback — still there")])
+
+    def test_an_open_earlier_minor_marked_blocking_blocks(self):
+        _, path = self.prior_with("mi-7", True)
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "BLOCK")
+
+    def test_an_open_earlier_major_marked_non_blocking_passes(self):
+        gh, path = self.prior_with("M-7", False)
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "PASS")
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertIn("**M-7** · non-blocking", body)
+
+    def test_an_earlier_finding_with_no_mark_falls_back_on_its_severity(self):
+        _, path = self.prior_with("M-7", None)
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "BLOCK")
+
+    def test_an_earlier_minor_with_no_mark_does_not_block(self):
+        _, path = self.prior_with("mi-7", None)
         self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "PASS")
 
     def test_conflict_blocks(self):
@@ -3863,9 +3959,11 @@ class Cli(unittest.TestCase):
             (["prior", URL, "t", "--kind", "gate", "--document", "d", "--trust"], "cmd_prior",
              (URL, "t", "gate", "d", True)),
             (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--prior-doc", "p"],
-             "cmd_draft", (URL, "t", "d", "gate", "ja", "p")),
+             "cmd_draft", (URL, "t", "d", "gate", "ja", "p", None)),
+            (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--blocking", "b"],
+             "cmd_draft", (URL, "t", "d", "gate", "ja", None, "b")),
             (["draft", URL, "t", "d", "--kind", "review", "--lang", "en"], "cmd_draft",
-             (URL, "t", "d", "review", "en", None)),
+             (URL, "t", "d", "review", "en", None, None)),
             (["wording", URL, "j"], "cmd_wording", (URL, "j")),
             (["comments", URL, "t"], "cmd_comments", (URL, "t")),
             (["raised", URL, "t"], "cmd_raised", (URL, "t", False)),

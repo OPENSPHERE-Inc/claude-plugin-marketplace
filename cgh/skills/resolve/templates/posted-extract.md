@@ -37,6 +37,8 @@ Each entry's `state`:
 
 Add `context` when the answers hold something a verifier should know: who said what, in one line, in {{doc_lang}}. When a decider or `viewer` names an issue or a pull request that tracks the finding, say that with the reference. Every entry also needs `severity` (`Critical`, `Major`, `Minor`, or `Info`, from the consequence the comment describes) and `text`, the problem restated on one line in {{doc_lang}}, and, when the comment recommends a fix, `recommendation`, that fix on one line, and, when the item's `location` is `PR` or the comment holds several findings, `location` (`path:line` or `path`) when the comment names a place.
 
+For `kind` `gate`, also set `blocking` on an entry when the comment states it, as in `**Minor M-1** · blocking`: true for blocking, false for non-blocking. Leave it out when the comment states neither.
+
 List in `skipped` each item with `earlier_ids` that gets no entry: `reason` `other_kind` for findings of the other `kind`, or `no_problem`, with `why` on one line in {{doc_lang}}, when it raises nothing.
 
 Write `{{output_path}}` as one JSON object:

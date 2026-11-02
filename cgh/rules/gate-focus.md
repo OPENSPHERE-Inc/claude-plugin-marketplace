@@ -15,7 +15,7 @@ Report a residue in the description that has no changed line with the location `
 
 Do not report anything else: tests that would merely be good to have, refactoring, naming, style, comment wording, design preferences, or performance with no concrete harm.
 
-Severity: Critical or Major for what must stop the merge, with untracked residue and unreviewed changes at Major; Minor for a real problem that need not stop it. Do not use Info.
+Severity states only how bad the consequence is: whether a finding stops the merge is judged separately, so do not raise a severity for that. Rate untracked residue by what the undone work leaves broken, Minor when it breaks nothing, as with an unchecked item in the description. An unreviewed change, whose consequence is unknown, is Major. Do not use Info.
 
 ## Discussions
 
@@ -28,7 +28,7 @@ A discussion is settled when either holds:
 
 Report an unsettled discussion when its conclusion is `agreed` or `promised`, whatever the topic, when it is `declined` and the problem is one § Review lists, or when it is `none` and the problem is one § Review lists and holds in the code. A `declined` reason that rests on a fact the code cannot show leaves the discussion unsettled. Report no other entry.
 
-Report it at Major, at the comment's `path:line` when that is a changed line and otherwise with the location `PR`. Say that it is an unsettled discussion, and state the problem, who raised it and where, the answers, and that it must be reflected in the code, recorded in the description, or tracked in an issue.
+Rate it by the consequence of the problem it raised, and report it at the comment's `path:line` when that is a changed line and otherwise with the location `PR`. Say that it is an unsettled discussion, and state the problem, who raised it and where, the answers, and that it must be reflected in the code, recorded in the description, or tracked in an issue.
 
 ## Triage
 

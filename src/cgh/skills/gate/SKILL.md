@@ -65,11 +65,25 @@ PR description レビュアーへのオーバーライド（`batches` が 0 よ�
 
 ## Step 3 — ドラフト
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc '{prior_document}'` を追加する。`{tmp_dir}/draft.json` が書き出され、`unchanged`（以前に検証済みで解決が保たれており、レビュー本文に載せない指摘）が出力される。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
+Step 2 で `creview:triage` を実行したら、どの指摘がブロックするかを判定する。重大度はこれを決めない。`Agent(subagent_type="cgh:comment-writer", prompt=...)` を起動する:
+
+```
+As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/gate/templates/blocking-judge.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+Variables (substitute into the template's {{...}} placeholders):
+- document_path: {document_path}
+- output_path: {tmp_dir}/blocking.json
+
+Include `template_id` (Read from the template's frontmatter) in the return value.
+```
+
+返された `template_id` は `d76407d5-7ea4-4a7a-89e2-cffbb00f1d38` でなければならない。不一致なら起動し直し、2 回起きたら中止する。
+
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc '{prior_document}'` を、判定したなら `--blocking '{tmp_dir}/blocking.json'` を追加する。`{tmp_dir}/draft.json` が書き出され、`unchanged`（以前に検証済みで解決が保たれており、レビュー本文に載せない指摘）と、`blocking_unjudged`（判定から漏れた選択済みの指摘で、ブロッキングとして数える）が出力される: その ID をユーザーに伝える。エラーが `blocking.json` を挙げるとき（不正なファイルなら削除されている）は、書き手をもう一度起動して再実行する。2 回目の失敗では、そのエラーで中止する。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
 
 ## Step 4 — 確認と投稿
 
-`{json_path}` = `{tmp_dir}/draft.json` で § 確認と投稿 に従う。ユーザーが前回までの指摘を取り下げたら、`prior` 配下のその `state` を `waived` にする: 以後の実行では確認も報告もしない。プレビューを示すとき、コードから判定できないために未検証のままの前回までの指摘があれば、対応済みならその場で取り下げを指示できることをユーザーに伝える。
+`{json_path}` = `{tmp_dir}/draft.json` で § 確認と投稿 に従う。ユーザーが前回までの指摘を取り下げたら、`prior` 配下のその `state` を `waived` にする: 以後の実行では確認も報告もしない。ユーザーが指摘や前回までの指摘のブロッキングを変更したら、その `blocking` を合わせる。プレビューを示すとき、コードから判定できないために未検証のままの前回までの指摘があれば、対応済みならその場で取り下げを指示できることをユーザーに伝える。
 
 判定、イベント、各指摘の投稿先はスクリプトが `{json_path}` から算出する: 自分で選ばない。
 

@@ -74,15 +74,26 @@ Any other comment records nothing.
 - A problem discussed and recorded this way is not raised again, unless the code shows the record
   wrong about it. Neither is one declined because its premise is wrong, when the code bears that
   out.
-- A discussion with no such ending is raised as an unsettled discussion, at Major, in place of the
-  problem itself. A line in the description or a comment naming the tracking issue settles it.
+- A discussion with no such ending is raised as an unsettled discussion in place of the problem
+  itself, and it blocks. A line in the description or a comment naming the tracking issue settles
+  it.
 - An agreed change or a promised follow-up counts whatever the topic. A declined comment counts
   when its problem is one the gate looks for, unless the code shows it absent. An unanswered one
   counts only when its problem is one the gate looks for and holds in the code.
 
 - **BLOCK** (Request Changes): a posted finding or an earlier gate finding still unverified is
-  Critical or Major, or the pull request has merge conflicts.
+  blocking, or the pull request has merge conflicts.
 - **PASS** (Comment): otherwise. PASS is not an approval.
+
+Severity and blocking are separate. Critical, Major, and Minor say only how bad a problem's
+consequence is. After triage, each finding is judged blocking or non-blocking on its own, and each
+posted comment shows which, next to its severity:
+
+- Work left undone with no issue, an unsettled discussion, and a change the review could not read
+  always block. An unchecked item in the description is typically Minor and blocking.
+- Broken code and regressions block, unless the harm stays small and recoverable once merged and
+  the merge makes nothing harder to fix.
+- A finding with no judgment blocks. You can change a judgment at the preview.
 
 The verdict goes in the review body, and findings are placed as in `/cgh:review`.
 
