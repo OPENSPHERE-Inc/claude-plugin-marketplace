@@ -73,6 +73,8 @@ As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/gate/templates
 
 Variables (substitute into the template's {{...}} placeholders):
 - document_path: {document_path}
+- pr_body_path: {pr_body_path}
+- discussion_paths: {discussion_paths}, or (none) when `batches` is 0
 - output_path: {tmp_dir}/blocking.json
 
 Include `template_id` (Read from the template's frontmatter) in the return value.
