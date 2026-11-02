@@ -325,8 +325,8 @@ reviewer reports what `rules/gate-focus.md` § Discussions finds unsettled, and 
 triage sub-agent leave out a finding that restates a discussion recorded or so reported. Severity
 says only how bad a problem's consequence is, and the gate's verdict rests on `blocking`, which is
 separate: a `comment-writer` judges each Will Fix finding after triage, `gh-review.py draft
---blocking` reads that, each posted comment shows the result in its visible text, and
-`posted-extract.md` reads it back from there on a later run.
+--blocking` reads that, each posted comment and result line shows the result in its visible text,
+and `gh-review.py collect` reads it back on a later run, from the user's own comments only.
 `/cgh:respond` handles the comments of anyone through the PR mode of `/creview:triage`, whose
 triage sub-agent an override tells to judge what is already dealt with, and the leader judges
 from the conversation whether a comment needs a reply. Posted findings number on from the

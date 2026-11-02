@@ -33,13 +33,14 @@ null なら `{prior_document}` は `(none)` とする。
 
 ## Step 2 — レビューとトリアージ
 
-プルリクエスト上の議論を読む。`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}' --discussion` を実行する。自分と他の全員のコメントを、GitHub で resolved になったスレッドも含めて `{directory}/batch-{n}.json`（`{n}` は 1 から）に書き、`directory` と `batches` を出力する。非ゼロ終了なら、そのエラーで中止する。各バッチについて `Agent(subagent_type="cgh:comment-writer", prompt=...)` を、1 メッセージに最大 20 個まで起動する:
+プルリクエスト上の議論を読む。`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}' --discussion` を実行する。自分と他の全員のコメントを、GitHub で resolved になったスレッドも含めて `{directory}/batch-{n}.json`（`{n}` は 1 から）に、スレッド外のコメントを 1 つのファイルに書き、`directory`、`batches`、そのファイルの `conversation_path` を出力する。非ゼロ終了なら、そのエラーで中止する。各バッチについて `Agent(subagent_type="cgh:comment-writer", prompt=...)` を、1 メッセージに最大 20 個まで起動する:
 
 ```
 As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/gate/templates/discussion-extract.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
 
 Variables (substitute into the template's {{...}} placeholders):
 - batch_path: {directory}/batch-{n}.json
+- conversation_path: {conversation_path}
 - output_path: {directory}/discussion-{n}.md
 - doc_lang: {doc_lang}
 
@@ -79,7 +80,7 @@ Include `template_id` (Read from the template's frontmatter) in the return value
 
 返された `template_id` は `d76407d5-7ea4-4a7a-89e2-cffbb00f1d38` でなければならない。不一致なら起動し直し、2 回起きたら中止する。
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc '{prior_document}'` を、判定したなら `--blocking '{tmp_dir}/blocking.json'` を追加する。`{tmp_dir}/draft.json` が書き出され、`unchanged`（以前に検証済みで解決が保たれており、レビュー本文に載せない指摘）と、`blocking_unjudged`（判定から漏れた選択済みの指摘で、ブロッキングとして数える）が出力される: その ID をユーザーに伝える。エラーが `blocking.json` を挙げるとき（不正なファイルなら削除されている）は、書き手をもう一度起動して再実行する。2 回目の失敗では、そのエラーで中止する。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc '{prior_document}'` を、判定したなら `--blocking '{tmp_dir}/blocking.json'` を追加する。`{tmp_dir}/draft.json` が書き出され、`unchanged`（以前に検証済みで解決が保たれており、レビュー本文に載せない指摘）、`blocking_unjudged`（判定から漏れた選択済みの指摘で、ブロッキングとして数える）、`blocking_fallback`（プルリクエスト上にブロッキングの表示がなく、重大度で決まった未解決の前回までの指摘）が出力される: その ID をユーザーに伝える。エラーが `blocking.json` を挙げるとき（不正なファイルなら削除されている）は、書き手をもう一度起動して再実行する。2 回目の失敗では、そのエラーで中止する。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
 
 ## Step 4 — 確認と投稿
 

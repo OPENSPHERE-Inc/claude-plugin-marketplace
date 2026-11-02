@@ -37,8 +37,6 @@ template_id: 3ab4949f-308c-4ca8-b856-0e6f91dfc72f
 
 検証者が知っておくべきことが回答にあれば、誰が何を述べたかを `context` に {{doc_lang}} で 1 行で書く。決定者か `viewer` がその指摘を追跡する issue やプルリクエストを挙げたときは、参照先とともにその旨を書く。すべてのエントリに、`severity`（`Critical`、`Major`、`Minor`、`Info`。コメントが述べる影響から決める）と、問題を {{doc_lang}} で 1 行に言い直した `text` も必要で、コメントが修正を推奨しているならその修正を 1 行にした `recommendation` も書き、項目の `location` が `PR` かコメントに複数の指摘があり、コメントが場所を挙げているなら `location`（`path:line` または `path`）も書く。
 
-`kind` が `gate` のときは、`**Minor M-1** · blocking` のようにコメントが述べていれば、エントリに `blocking` も設定する: ブロッキングなら true、非ブロッキングなら false。どちらも述べていなければ省く。
-
 `earlier_ids` があるのにエントリを作らない項目はそれぞれ `skipped` に挙げる: 別の `kind` の指摘なら `reason` を `other_kind` とし、問題を指摘しないものなら `no_problem` として、`why` を {{doc_lang}} で 1 行書く。
 
 `{{output_path}}` を 1 つの JSON オブジェクトとして書き込む:

@@ -33,13 +33,14 @@ Otherwise `{prior_document}` is `(none)`.
 
 ## Step 2 — Review and triage
 
-Read the discussions on the pull request. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}' --discussion`. It writes the comments, yours and everyone else's, threads marked resolved on GitHub included, to `{directory}/batch-{n}.json`, `{n}` from 1, and prints `directory` and `batches`. On a non-zero exit, abort with its error. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)` for each batch, at most 20 in one message:
+Read the discussions on the pull request. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}' --discussion`. It writes the comments, yours and everyone else's, threads marked resolved on GitHub included, to `{directory}/batch-{n}.json`, `{n}` from 1, and the comments outside threads to one file, and prints `directory`, `batches`, and that file's `conversation_path`. On a non-zero exit, abort with its error. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)` for each batch, at most 20 in one message:
 
 ```
 As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/gate/templates/discussion-extract.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
 
 Variables (substitute into the template's {{...}} placeholders):
 - batch_path: {directory}/batch-{n}.json
+- conversation_path: {conversation_path}
 - output_path: {directory}/discussion-{n}.md
 - doc_lang: {doc_lang}
 
@@ -79,7 +80,7 @@ Include `template_id` (Read from the template's frontmatter) in the return value
 
 The returned `template_id` must be `d76407d5-7ea4-4a7a-89e2-cffbb00f1d38`; on mismatch, launch it again, and abort when it happens twice.
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}`, adding `--prior-doc '{prior_document}'` when it is not `(none)`, and `--blocking '{tmp_dir}/blocking.json'` when you judged. It writes `{tmp_dir}/draft.json` and prints `unchanged`, the findings verified earlier whose verification still holds, which the review body leaves out, and `blocking_unjudged`, the selected findings the judgment left out, which count as blocking: tell the user their IDs. When its error names `blocking.json`, which it has removed if the file was malformed, launch the writer once more and run it again. On a second failure, abort with its error. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}`, adding `--prior-doc '{prior_document}'` when it is not `(none)`, and `--blocking '{tmp_dir}/blocking.json'` when you judged. It writes `{tmp_dir}/draft.json` and prints `unchanged`, the findings verified earlier whose verification still holds, which the review body leaves out, `blocking_unjudged`, the selected findings the judgment left out, which count as blocking, and `blocking_fallback`, the earlier findings still open with no blocking mark on the pull request, which their severity decided: tell the user their IDs. When its error names `blocking.json`, which it has removed if the file was malformed, launch the writer once more and run it again. On a second failure, abort with its error. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
 
 ## Step 4 — Confirm and post
 
