@@ -1,6 +1,6 @@
 ---
 name: discussion-extract
-description: Instruction template for the sub-agent in /cgh:gate Step 2 that lists the problems a batch of a pull request's comments raises, with their answers and conclusion
+description: Instruction template for the sub-agent in /cgh:gate Step 1 that lists the problems a batch of a pull request's comments raises, with their answers and conclusion
 template_id: d7fe93d3-9f15-432c-af0b-f0511f8c0779
 ---
 
@@ -32,6 +32,6 @@ The deciders are `assignees` or, when `assignees` is empty, `author`. A conclusi
 
 List no comment that raises no problem, such as praise, a question, a status report, a review's summary or verdict, or a reply that only answers its thread or reports what was done, and no problem its author withdraws in a later reply: only that author's reply withdraws it. Leave out a finding of a review by `viewer` that opens with a merge gate verdict, such as `## Merge gate: BLOCK` (`review_opening`, or `text` for a review body), since the gate checks those separately, unless its conclusion is `declined`. With no problem at all, write `(none)`.
 
-`Tracked` is an issue or a pull request (`#123`, a URL) that a decider or `viewer` names as tracking this problem. A mention by anyone else, or one that does not tie it to this problem, is `none`.
+`Tracked` is an issue or a pull request (`#123`, a URL) that `author`, one of `assignees`, or `viewer` names as tracking this problem. A mention by anyone else, or one that does not tie it to this problem, is `none`.
 
 Return value: `{"path": "{{output_path}}", "problems": <int>, "template_id": "<template_id from this template>"}`
