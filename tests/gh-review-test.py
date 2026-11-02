@@ -2713,6 +2713,11 @@ class PostedContext(PriorBase):
             ("` open\n\n<!-- hidden -->\n\nclose `", "` open\n\n\n\nclose `"),
             ("\\`<!-- hidden -->`", "\\``"),
             ("Shown\n   <!-- line start never closed\nhidden", "Shown"),
+            (" <!-- c -->\nvisible after", "visible after"),
+            ("- item\n  <!-- c -->\n  more\n\nvisible", "- item\n\n  more\n\nvisible"),
+            ("   <!-- a\n\nb --> tail", "tail"),
+            ("text <!-- a\n\npara visible\n--> tail", None),
+            ("text <!-- a\nb --> tail", "text  tail"),
             ("Shown <!<!-- x -->-- formed --> too", "Shown  too"),
         ):
             self.assertEqual(mod.without_comments(body).strip(), shown or body, body)

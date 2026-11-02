@@ -188,15 +188,16 @@ LOCATION_RE = re.compile(r"(.+?):([0-9]+)(?:[-–,].*)?")
 HUNK_RE = re.compile(r"@@ -[0-9]+(?:,[0-9]+)? \+([0-9]+)(?:,[0-9]+)? @@")
 # What starts a Markdown block at the beginning of a paragraph of a review document.
 BLOCK_START_RE = re.compile(r"#{1,6}(?:\s|$)|[-+*](?:\s|$)|>|`{3}|~{3}|<[A-Za-z/!?]")
-# GitHub hides comments outside code: <!--> and <!---> are whole comments, and one never closed is
-# hidden to the end only when it starts a line. Scanning from the left keeps code from hiding what
-# a comment opened first, and a comment from hiding code; a code span ends at a blank line.
+# GitHub hides comments outside code: <!--> and <!---> are whole comments; a comment that starts a
+# line crosses blank lines and, never closed, hides the rest; one opened mid-line ends at a blank
+# line. Scanning from the left keeps code from hiding what a comment opened first, and a comment
+# from hiding code; a code span ends at a blank line.
 HTML_COMMENT_RE = re.compile(
     r"(?P<code>^ {0,3}(?P<fence>`{3,}(?=[^`\n]*$)|~{3,}).*?"
     r"(?:^ {0,3}(?P=fence)[`~]*[ \t]*\r?$|\Z)"
     r"|(?<![`\\])(?P<span>`+)(?!`)(?:(?!\n[ \t]*\r?\n).)+?(?<!`)(?P=span)(?!`))"
-    r"|<!--(?:-?>|.*?-->)"
-    r"|^ {0,3}<!--.*\Z",
+    r"|^ {0,3}<!--(?:-?>|.*?-->|.*\Z)"
+    r"|<!--(?:-?>|(?:(?!\n[ \t]*\r?\n).)*?-->)",
     re.S | re.M,
 )
 PRIOR_VERIFIED = "✅ Verified — Verified at an earlier commit"

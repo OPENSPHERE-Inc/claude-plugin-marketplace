@@ -274,6 +274,7 @@ hidden_pages = {
         {"id": 34, "user": {"login": "x"}, "body": "```suggestion\n<!-- line -->\n```\nb"},
         {"id": 35, "user": {"login": "x"}, "body": "~~~\n<!-- never closed fence"},
         {"id": 36, "user": {"login": "x"}, "body": "<!-- `code` inside -->a"},
+        {"id": 37, "user": {"login": "x"}, "body": "a\n <!-- closed -->\nb"},
     ],
     "repos/o/r/pulls/7/comments": [
         {"id": 28, "line": 1, "path": "a", "user": {"login": "x"}, "body": "seen<!-- hidden -->"},
@@ -289,7 +290,7 @@ expect("all_comments calls gh only for the thread states", len(calls), 1)
 expect("all_comments removes hidden text from issue comments, the viewer's included",
        [c["body"] for c in comments["issue_comments"]],
        ["ab", "a<!-- never closed", "ab", "ab", "text", "a", "```\n<!-- fence -->\n```",
-        "```suggestion\n<!-- line -->\n```\nb", "~~~\n<!-- never closed fence", "a"])
+        "```suggestion\n<!-- line -->\n```\nb", "~~~\n<!-- never closed fence", "a", "a\n\nb"])
 expect("all_comments removes hidden text from review comments, the viewer's included",
        [c["body"] for c in comments["review_comments"]], ["seen", "", "seen"])
 expect("all_comments leaves out a review body of hidden text only, the viewer's included",
