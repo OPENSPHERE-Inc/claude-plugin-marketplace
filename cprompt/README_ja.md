@@ -24,7 +24,8 @@ Claude Code 向けの AI 向けプロンプト（agent / skill / rule / command 
   ignore するファイルはコミットしない。対象に未コミットの変更があれば開始しない。
 - `--worktree[=branch]`（既定 off）— `.claude/worktrees/` 配下の別の git
   ワークツリーで作業し、メイン作業ツリーには触れない。`--commit` も有効に
-  なる。ワークツリーは `branch` をチェックアウトする — 既存のローカル
+  なる。`.claude` と `.claude/worktrees` はシンボリックリンクにできない。
+  ワークツリーは `branch` をチェックアウトする — 既存のローカル
   ブランチはそのまま、存在しない場合は現在の HEAD から新規作成する。
   `=branch` を省略すると新しいブランチ `cprompt-edit-{timestamp}` を作成
   する。メイン作業ツリーでチェックアウト中のブランチは指定できない。

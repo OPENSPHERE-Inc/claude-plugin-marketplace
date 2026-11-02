@@ -15,9 +15,9 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 - A pull request that is open when the skill starts. When it is merged after you push,
   `/cgh:respond` can still post its replies.
 - A session started at the repository root.
-- A project whose `.claude` and `.claude/tmp` are not symbolic links, even ones pointing inside
-  the project: the bundled scripts refuse them with an error. To share configuration across
-  working trees, link entries inside `.claude` instead.
+- A project whose `.claude`, `.claude/tmp`, and `.claude/worktrees` are not symbolic links, even
+  ones pointing inside the project: the bundled scripts refuse them with an error. To share
+  configuration across working trees, link entries inside `.claude` instead.
 
 ## Skills
 

@@ -69,7 +69,7 @@ teammate 間の `SendMessage` を使用します。セッションは単一の�
 必要とします。両者が共有する `.claude/tmp/` 封じ込めチェックは
 `scripts/lib/scratch-guard.py` に実装されています。
 
-プロジェクトの `.claude` と `.claude/tmp` はシンボリックリンクにできません。
+プロジェクトの `.claude`、`.claude/tmp`、`.claude/worktrees` はシンボリックリンクにできません。
 リンク先がプロジェクト内でも、同梱スクリプトがエラーで拒否します。作業ツリー間で
 設定を共有する場合は、`.claude` の中の項目をリンクしてください。
 

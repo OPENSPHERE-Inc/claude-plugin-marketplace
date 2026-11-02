@@ -749,7 +749,7 @@ else
 fi
 
 # a symlinked .claude is rejected; skill leaders get this check before their mkdir -p by running
-# del-tmp.sh, and the .claude/worktrees paths do not go through the guard
+# del-tmp.sh, and worktree.sh and gh-pr.py check .claude/worktrees on their own
 LINKED="${SANDBOX}/linked-claude"
 mkdir -p "${LINKED}"
 MSYS=winsymlinks:nativestrict ln -s ../outside "${LINKED}/.claude" 2>/dev/null || true
@@ -993,6 +993,37 @@ if [[ -L "${MAIN}/.claude/tmp/esc" ]]; then
     t 1 -w "${MAIN}/.claude/tmp/esc/sub/out.txt"
     rm "${MAIN}/.claude/tmp/esc"
 fi
+refuses_linked_worktrees() {
+    local before rc=0
+    before="$(ls -A "${SANDBOX}/outside")"
+    (cd "${LINKED_WT}" && bash "${WT}" create feat/linked) >/dev/null 2>&1 || rc=$?
+    check "worktree create under a symlinked $1" 1 "${rc}"
+    (cd "${LINKED_WT}" && python3 -I -B - "${GHPR}" "$1" <<'PY') || fail=1
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("gh_pr", sys.argv[1])
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+failed = False
+for name, add in (("add_checkout", lambda: g.add_checkout(1, True, lambda path, env: None)),
+                  ("branch_worktree", lambda: g.branch_worktree("HEAD"))):
+    try:
+        add()
+        print(f"FAIL: gh-pr.py {name} accepted a symlinked {sys.argv[2]}")
+        failed = True
+    except g.Error as e:
+        if "is a symlink" not in str(e):
+            print(f"FAIL: gh-pr.py {name} under a symlinked {sys.argv[2]}: {e}")
+            failed = True
+sys.exit(1 if failed else 0)
+PY
+    [[ "$(ls -A "${SANDBOX}/outside")" == "${before}" ]] \
+        || { note "FAIL: a worktree was added through a symlinked $1"; fail=1; }
+    git show-ref --verify --quiet refs/heads/feat/linked \
+        && { note "FAIL: worktree create left a branch under a symlinked $1"; fail=1; }
+    return 0
+}
 # a symlinked .claude of another working tree, which the guard reaches by absolute path
 LINKED_WT="$(cd "${SANDBOX}" && pwd -P)/linked-wt"
 if git worktree add -q --detach "${LINKED_WT}" >/dev/null 2>&1; then
@@ -1017,7 +1048,12 @@ if git worktree add -q --detach "${LINKED_WT}" >/dev/null 2>&1; then
         [[ -e "${SANDBOX}/outside/tmp/keep" ]] \
             || { note "FAIL: del-tmp deleted a file through another tree's .claude"; fail=1; }
         rm -rf "${SANDBOX}/outside/tmp"
+        refuses_linked_worktrees .claude
         rm "${LINKED_WT}/.claude"
+        mkdir "${LINKED_WT}/.claude"
+        MSYS=winsymlinks:nativestrict ln -s ../../outside "${LINKED_WT}/.claude/worktrees"
+        refuses_linked_worktrees .claude/worktrees
+        rm -r "${LINKED_WT}/.claude"
     else
         note "SKIP: another tree's symlinked .claude cases (symlink creation failed)"
     fi

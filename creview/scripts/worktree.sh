@@ -6,7 +6,7 @@
 # create: adds a worktree at <toplevel>/.claude/worktrees/<branch, "/" → "-">
 #   checking out <branch>: an existing local branch as is, a missing one created
 #   from HEAD. Prints three lines: main_root=<toplevel>, worktree_path=<path>,
-#   branch=<branch>.
+#   branch=<branch>. A symlinked .claude or .claude/worktrees is an error.
 # remove: removes a worktree that has no uncommitted changes; the branch is kept.
 #   A dirty worktree is left in place and the script exits non-zero.
 #   Gitignored files do not count as changes and are deleted with the worktree.
@@ -25,8 +25,14 @@ case "${MODE}" in
             exit 1
         fi
         MAIN_ROOT="$(git rev-parse --show-toplevel)"
-        # FIXME: a symlinked .claude places the worktree at the link's target; refuse it before
-        # `git worktree add`.
+        # git would add the worktree at a symlink's target, outside the repository.
+        for LINK in "${MAIN_ROOT}/.claude" "${MAIN_ROOT}/.claude/worktrees"; do
+            if [[ -L "${LINK}" ]]; then
+                echo "Error: ${LINK} is a symlink: .claude and .claude/worktrees must not be" \
+                    "symlinks; link entries inside .claude instead" >&2
+                exit 1
+            fi
+        done
         WT_PATH="${MAIN_ROOT}/.claude/worktrees/${BRANCH//\//-}"
         if [[ -e "${WT_PATH}" ]]; then
             echo "Error: worktree path already exists: ${WT_PATH}" >&2

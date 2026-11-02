@@ -41,7 +41,8 @@ An in-place working tree with uncommitted changes to tracked files (outside
 .claude/tmp and .claude/worktrees) is an error.
 
 checkout: adds a detached worktree under .claude/worktrees/ of the current
-working tree, checks the PR head out in it with git hooks and the configured
+working tree (a symlinked .claude or .claude/worktrees is an error), checks the
+PR head out in it with git hooks and the configured
 filter drivers disabled, Git LFS smudging skipped, and symbolic links checked
 out as plain files marked skip-worktree (so that git under core.symlinks=true
 sees no type change in them), confirms its HEAD is the head fetch recorded, and
@@ -778,10 +779,19 @@ def attach_branch(path, branch, head_sha, env):
     run(["git", "checkout", "--quiet", *([] if tip else ["-b"]), branch], cwd=path, env=env)
 
 
+def worktrees_dir(main_root):
+    # git would add a worktree at a symlink's target, outside the repository.
+    for path in (f"{main_root}/.claude", f"{main_root}/.claude/worktrees"):
+        if os.path.islink(path):
+            raise Error(f"{path} is a symlink: .claude and .claude/worktrees must not be "
+                        "symlinks; link entries inside .claude instead")
+    return f"{main_root}/.claude/worktrees"
+
+
 def add_checkout(number, trust, populate, branch=None):
     # populate(path, env) fills the worktree git adds with --no-checkout.
     main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
-    path = f"{main_root}/.claude/worktrees/creview-pr-{number}-{time.strftime('%Y%m%d-%H%M%S')}"
+    path = f"{worktrees_dir(main_root)}/creview-pr-{number}-{time.strftime('%Y%m%d-%H%M%S')}"
     if os.path.lexists(path):
         raise Error(f"worktree path already exists: {path}")
     target = ["--", path, branch] if branch else ["--detach", "--", path, "HEAD"]
@@ -834,7 +844,7 @@ def checkout_branch(number, branch, trust):
 
 def branch_worktree(branch):
     main_root = run(["git", "rev-parse", "--show-toplevel"]).strip()
-    path = f"{main_root}/.claude/worktrees/creview-branch-{time.strftime('%Y%m%d-%H%M%S')}"
+    path = f"{worktrees_dir(main_root)}/creview-branch-{time.strftime('%Y%m%d-%H%M%S')}"
     if os.path.lexists(path):
         raise Error(f"worktree path already exists: {path}")
     try:

@@ -18,8 +18,8 @@ Every command requires a session started at the repository root, with or
 without `--worktree`; started from a subdirectory of the repository, it stops
 with an error.
 
-`.claude` and `.claude/tmp` in the project must not be symbolic links, even ones
-pointing inside the project: the bundled scripts refuse them with an error. To
+`.claude`, `.claude/tmp`, and `.claude/worktrees` in the project must not be symbolic
+links, even ones pointing inside the project: the bundled scripts refuse them with an error. To
 share configuration across working trees, link entries inside `.claude` instead.
 
 `review-respond` was split into two skills. Run `/creview:triage <doc>`
