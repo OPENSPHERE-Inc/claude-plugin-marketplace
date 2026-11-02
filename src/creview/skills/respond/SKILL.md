@@ -104,7 +104,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 書き出しには **Write ツール**を使う。Bash の cat heredoc は値内のアポストロフィ（例: `Won't`）でクォーティングが破綻するため使用不可。
 
-ステップ 1 開始時に、`{tmp_dir}` を作成する前にリーダー（あなた）がシンボリックリンクの `.claude` を拒否する `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` を実行し、非ゼロ終了の場合はそのエラーを表示してスキルを終了する。続いてリーダーが `mkdir -p {tmp_dir}/statuses` で `{tmp_dir}` を作成し、各サブエージェントに `{tmp_dir}` を渡す。
+ステップ 1 開始時に、`{tmp_dir}` を作成する前にリーダー（あなた）がシンボリックリンクの `.claude` を拒否する `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry {tmp_dir}` を実行し、非ゼロ終了の場合はそのエラーを表示してスキルを終了する。続いてリーダーが `mkdir -p {tmp_dir}/statuses` で `{tmp_dir}` を作成し、各サブエージェントに `{tmp_dir}` を渡す。
 
 ## ステップ 1 — 修正対象の選別（select-fix-targets サブエージェントへ委譲）
 
