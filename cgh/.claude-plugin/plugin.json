@@ -17,6 +17,6 @@
     "workflow"
   ],
   "dependencies": [
-    { "name": "creview", "version": ">=0.18.0" }
+    { "name": "creview", "version": ">=0.18.1" }
   ]
 }
