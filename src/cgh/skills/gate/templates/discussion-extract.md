@@ -16,7 +16,7 @@ template_id: d7fe93d3-9f15-432c-af0b-f0511f8c0779
 
 別個の問題ごとに Markdown の箇条書きを 1 つ、{{doc_lang}} で書く。コード、識別子、パスはそのまま保つ:
 
-`- @author at location: コメントが述べるとおりの問題。 Answers: 誰が何を述べたかを 1 行で、なければ none。 Conclusion: agreed | promised | declined: 理由 | none`
+`- @author at location: コメントが述べるとおりの問題。 Answers: 誰が何を述べたかを 1 行で、なければ none。 Conclusion: agreed | promised | declined: 理由 | none。 Tracked: 参照先 | none`
 
 問題は正誤を問わずコメントが述べるとおりに書く: 成り立つかどうかは後で判定する。
 
@@ -28,5 +28,7 @@ template_id: d7fe93d3-9f15-432c-af0b-f0511f8c0779
 - `none` — そのような回答がない。返信なし、質問、議論が継続中など。スレッドの resolved 表示は何も示さない。
 
 称賛、質問、状況報告、レビューの要約や判定、スレッドに答えるか対応を報告するだけの返信など、問題を指摘しないコメントは挙げず、問題を挙げた本人が後の返信で撤回した問題も挙げない: 撤回と見なすのはその本人の返信だけである。`viewer` のレビューのうち、`## Merge gate: BLOCK` のようにマージゲートの判定で始まるもの（`review_opening`、レビュー本文は `text`）の指摘は、ゲートが別途確認するので除く。ただし結論が `declined` なら挙げる。問題が 1 つもなければ `(none)` と書く。
+
+`Tracked` は、決定者か `viewer` がこの問題を追跡するものとして挙げた issue やプルリクエスト（`#123`、URL）である。他の人が挙げたものや、この問題に結び付けていないものは `none` とする。
 
 戻り値: `{"path": "{{output_path}}", "problems": <int>, "template_id": "<このテンプレートの template_id>"}`

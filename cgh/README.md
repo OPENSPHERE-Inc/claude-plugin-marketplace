@@ -67,15 +67,18 @@ findings. A residue that names an issue or a pull request counts as recorded. A 
 comment does not record one. The focus is in [rules/gate-focus.md](rules/gate-focus.md).
 
 It also reads every comment on the pull request, including threads marked resolved on GitHub. What
-a discussion concludes has to end up in the code, in the description, or in an issue or ticket
-that the description or a code comment names. A comment alone records nothing.
+a discussion concludes has to end up in the code or the description, or be tracked in an issue or
+ticket that the description, a code comment, or a comment by the author, an assignee, or you names.
+Any other comment records nothing.
 
 - A problem discussed and recorded this way is not raised again, unless the code shows the record
-  wrong about it.
+  wrong about it. Neither is one declined because its premise is wrong, when the code bears that
+  out.
 - A discussion with no such ending is raised as an unsettled discussion, at Major, in place of the
-  problem itself. A line in the description can settle it.
-- An agreed change or a promised follow-up counts whatever the topic. A declined or unanswered
-  comment counts only when its problem is one the gate looks for and holds in the code.
+  problem itself. A line in the description or a comment naming the tracking issue settles it.
+- An agreed change or a promised follow-up counts whatever the topic. A declined comment counts
+  when its problem is one the gate looks for, unless the code shows it absent. An unanswered one
+  counts only when its problem is one the gate looks for and holds in the code.
 
 - **BLOCK** (Request Changes): a posted finding or an earlier gate finding still unverified is
   Critical or Major, or the pull request has merge conflicts.

@@ -23,12 +23,12 @@ What a discussion in the pull request's comments concludes must end up in the co
 
 A discussion is settled when either holds:
 
-- The code at the head does what it concluded, or shows the problem absent. Unchanged code does not show a decision to keep it.
-- A code comment or the pull request's description states the conclusion, or names an issue or a pull request (`#123`, a URL) that records it. Neither a conversation comment nor a thread marked resolved does.
+- The code at the head does what it concluded, or shows the problem absent, as when it bears out a `declined` reason that the problem's premise is wrong. Unchanged code does not show a decision to keep it.
+- It is on record: a code comment or the pull request's description states the conclusion or names an issue or a pull request (`#123`, a URL) that records it, or the entry's `Tracked` names one. No other conversation comment is a record, nor is a thread marked resolved.
 
-Report an unsettled discussion when its conclusion is `agreed` or `promised`, whatever the topic, or when it is `declined` or `none` and the problem is one § Review lists and holds in the code. Report no other entry.
+Report an unsettled discussion when its conclusion is `agreed` or `promised`, whatever the topic, when it is `declined` and the problem is one § Review lists, or when it is `none` and the problem is one § Review lists and holds in the code. A `declined` reason that rests on a fact the code cannot show leaves the discussion unsettled. Report no other entry.
 
-Report it at Major, at the comment's `path:line` when that is a changed line and otherwise with the location `PR`. Say that it is an unsettled discussion, and state the problem, who raised it and where, the answers, and that it must be reflected in the code or recorded in the description or in an issue the description names.
+Report it at Major, at the comment's `path:line` when that is a changed line and otherwise with the location `PR`. Say that it is an unsettled discussion, and state the problem, who raised it and where, the answers, and that it must be reflected in the code, recorded in the description, or tracked in an issue.
 
 ## Triage
 
@@ -37,8 +37,8 @@ Decide `Won't Fix` for a finding outside what § Review lists, whatever its seve
 When you are given discussion lists:
 
 - A finding that reports an unsettled discussion: decide `Won't Fix` when § Discussions finds that discussion settled, or when the entry should not be reported under its rules.
-- Any other finding that raises the same problem as an entry: decide `Won't Fix` when a code comment or the description records the conclusion, with a reason that names where, or when the document holds a finding that reports that discussion as unsettled, with a reason that says so. When the code shows the conclusion or the entry wrong about the problem's cause, location, or effect, judge the finding as usual and name the discussion in your reason.
+- Any other finding that raises the same problem as an entry: decide `Won't Fix` when the document holds a finding that reports that discussion as unsettled, with a reason that says so; when the code bears out a `declined` reason that the problem's premise is wrong, with a reason that names the discussion; or when that discussion is on record, with a reason that names where, unless the code shows the record wrong about the problem's cause, location, or effect, in which case judge the finding as usual and name the discussion in your reason. Do not add a separate-PR recommendation to these reasons.
 
 ## Estimate
 
-Cost is no reason to Downgrade here: a finding in § Review stays, because merging leaves it in place. For a fix too large for this pull request, choose Alternative and plan to record it in an issue and name that issue in the `FIXME`: a `FIXME` with no issue is residue itself. For a residue at the location `PR`, plan to take the item out of the description, or to record it in an issue and name that issue in the description. For an unsettled discussion, plan to do what it concluded, or to record the conclusion in the description or in an issue the description names.
+Cost is no reason to Downgrade here: a finding in § Review stays, because merging leaves it in place. For a fix too large for this pull request, choose Alternative and plan to record it in an issue and name that issue in the `FIXME`: a `FIXME` with no issue is residue itself. For a residue at the location `PR`, plan to take the item out of the description, or to record it in an issue and name that issue in the description. For an unsettled discussion, plan to do what it concluded, or to record the conclusion in the description or in an issue.
