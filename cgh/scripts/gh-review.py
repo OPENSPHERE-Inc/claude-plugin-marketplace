@@ -52,12 +52,14 @@ assignees, by
 whom an answer is weighed, and kind, and, when it holds an item with no thread or kind is gate, the
 conversation outside threads, with the key of each entry. items.json also records backed: whether
 the user replied in the item's thread, or wrote a review body or an issue comment after it other
-than the one holding it.
+than the one holding it, and marks, by finding ID, whether the user's comments outside dismissed
+reviews last showed it as blocking, in the form this script posts at the start of a line.
 
 prior: reads the judgment of each batch from <tmp_dir>/posted/extract-<n>.json, and names any file
 that is missing or malformed, removing a malformed one: a key must be an item of that batch. Writes
-<tmp_dir>/prior.json with the findings not withdrawn, Info left out since creview's verification
-skips it, and, when there are any, <document>: a review document creview's verification reads, with
+<tmp_dir>/prior.json with the findings not withdrawn, each with blocking from marks or null, Info
+left out since creview's verification skips it, and, when there are any, <document>: a review
+document creview's verification reads, with
 a Source: pr-comments bullet and a Trust bullet: on at the pull request's head or with --trust,
 otherwise off. A finding judged verified has a Verification line, so that the verification checks it
 again; one with a reason not to change it has a Won't Fix triage. A comment the judgment left out
@@ -86,12 +88,13 @@ adds the verification of earlier gate findings. A finding <tmp_dir>/prior.json h
 earlier is left out when that still holds, and printed in unchanged. The findings it has as waived
 go into the draft's waived, which the preview lists and nothing posts. It also writes
 <tmp_dir>/pr-body.json, the pull request's title and description. Under --kind gate, each finding
-also has blocking, whether it stops the merge, which severity does not decide. --blocking reads the
-judgment, {"findings": [{"id", "blocking"}]} by the document's IDs, and a file it cannot read is
-removed and named in the error, so that a writer run again can write it. A selected finding it does
-not name counts as blocking, and is printed in blocking_unjudged. A blocking finding stays selected
-through a Downgrade. An earlier finding has blocking from prior.json, or, with none, from its
-severity: Critical and Major block.
+also has blocking, whether it stops the merge, which severity does not decide. --blocking, which
+must be <tmp_dir>/blocking.json, reads the judgment, {"findings": [{"id", "blocking"}]} by the
+document's IDs, and a file it cannot read is removed and named in the error, so that a writer run
+again can write it. A selected finding it does not name counts as blocking, and is printed in
+blocking_unjudged. A blocking finding stays selected through a Downgrade. An earlier finding has
+blocking from prior.json, the latest mark in the user's own comments, or, with none, from its
+severity: Critical and Major block. One still open with no mark is printed in blocking_fallback.
 
 wording: merges every wording-*.json next to <json_path> into it: comment_lang, the
 language comments go out in, with, per finding, summary (the recommendation for people,
@@ -107,10 +110,12 @@ and viewer, the authenticated user, and <tmp_dir>/pr-body.json.
 
 raised: writes <tmp_dir>/raised/batch-<n>.json, the comments with visible text already on the
 pull request by author and place, split into batches with each thread whole. Leaves out dismissed
-reviews and their comments, and threads resolved on GitHub. With --discussion, it keeps those
-threads, each comment has created_at and, in a thread, review_opening, and a batch also holds
-viewer, author, assignees, and conversation, the review bodies and issue comments outside
-dismissed reviews, oldest first, in the form of a reply.
+reviews, their comments, the replies in threads those comments start, and threads resolved on
+GitHub. With --discussion, it keeps the resolved threads, each comment has created_at and, in a
+thread, review_opening, a comment with no line at the head has only its path as its location, a
+batch also holds viewer, author, and assignees, and <tmp_dir>/raised/conversation.json, printed as
+conversation_path, holds conversation, the review bodies and issue comments outside dismissed
+reviews, oldest first, in the form of a reply. Without it, conversation_path is null.
 
 participants: prints viewer, the authenticated user, and author and assignees, the pull
 request's.
@@ -337,6 +342,14 @@ LABELS = {
         "withdrawn": "コメントから取り下げと判定された指摘（コードは未確認）",
     },
 }
+BLOCKING_WORDS = {labels[name]: name == "blocking" for labels in LABELS.values()
+                  for name in ("blocking", "non_blocking")}
+# What finding_block and the result lines of review_body write at the start of a line.
+BLOCKING_MARK_RE = re.compile(
+    rf"^(?:\*\*(?:{'|'.join(SEVERITIES.values())}) |- [✅💬➖] \*\*)({FINDING_ID})\*\* · "
+    rf"({'|'.join(map(re.escape, BLOCKING_WORDS))})(?=[\s:]|\Z)",
+    re.M,
+)
 
 PullRequest = namedtuple("PullRequest", "host repo owner name number url")
 
@@ -854,9 +867,18 @@ def is_backed(item, own_outside):
         key != item["holder"] and when > item["created_at"] for key, when in own_outside)
 
 
+def blocking_marks(comments):
+    """Whether the comments, oldest first, last show each finding ID as blocking."""
+    marks = {}
+    for comment in comments:
+        for fid, word in BLOCKING_MARK_RE.findall(visible_body(comment)):
+            marks[fid] = BLOCKING_WORDS[word]
+    return marks
+
+
 def posted_items(pr, viewer, earlier):
-    """The viewer's comments with the replies in their threads, the conversation outside threads,
-    and `earlier`, the finding IDs by key, on each comment.
+    """The viewer's comments with the replies in their threads and `earlier`, the finding IDs by
+    key, on each comment, the conversation outside threads, and the marks in those comments.
     """
     reviews, comments, issue_comments = visible_comments(pr)
     dismissed = {r.get("id") for r in reviews if r.get("state") == "DISMISSED"}
@@ -902,19 +924,21 @@ def posted_items(pr, viewer, earlier):
                     for c in filter(own, issue_comments)]
     for item in items:
         item["backed"] = is_backed(item, own_outside)
-    return items, by_time(entry for entry in outside if entry["text"])
+    marks = blocking_marks(by_time(filter(own, [*standing, *live, *issue_comments])))
+    return items, by_time(entry for entry in outside if entry["text"]), marks
 
 
 def cmd_collect(pr_url, tmp_dir, kind):
     pr = checked_pr(pr_url)
     earlier, _ = known_ids(tmp_dir)
     people = participants(view_pr(pr, require_open=False))
-    items, outside = posted_items(pr, people["viewer"], earlier)
+    items, outside, marks = posted_items(pr, people["viewer"], earlier)
     directory = os.path.join(tmp_dir, "posted")
     os.makedirs(directory, exist_ok=True)
     batches = batched(items, lambda i: (len(i["text"]) + sum(len(r["text"]) for r in i["replies"])
                                         + len(i.get("thread_root", {}).get("text", ""))))
-    write_json(os.path.join(directory, "items.json"), {"items": items, "batches": len(batches)})
+    write_json(os.path.join(directory, "items.json"),
+               {"items": items, "batches": len(batches), "marks": marks})
     shown = ("key", "earlier_ids", "location", "text", "replies", "review_opening", "thread_root")
     for n, batch in enumerate(batches, 1):
         data = {**people, "kind": kind,
@@ -952,8 +976,6 @@ def read_judgments(directory, batches, items):
                 if any(not isinstance(entry.get(field), (str, type(None)))
                        for field in ("reason", "context", "location", "recommendation")):
                     raise ValueError(entry)
-                if not isinstance(entry.get("blocking"), (bool, type(None))):
-                    raise ValueError(entry)
                 siblings = judged.setdefault(entry["key"], [])
                 fid = entry.get("id")
                 if (entry.get("severity") not in SEVERITIES.values()
@@ -971,10 +993,11 @@ def read_judgments(directory, batches, items):
     return judged, skipped
 
 
-def settled_findings(items, judged, used):
+def settled_findings(items, judged, used, marks):
     """The findings with their judgment. Each takes the earlier ID the judgment names, the only
     earlier ID when its comment holds one finding, or else the next free number. An ID an earlier
-    finding took counts as none. An ID gives the severity, which its prefix carries.
+    finding took counts as none. An ID gives the severity, which its prefix carries, and the
+    blocking mark.
     """
     numbers = next_numbers(used)
     prefixes = {name: prefix for prefix, name in SEVERITIES.items()}
@@ -998,7 +1021,7 @@ def settled_findings(items, judged, used):
                 **item, "id": fid, "severity": severity_of(fid), "text": entry["text"],
                 "location": entry.get("location") or item["location"],
                 "state": entry["state"], "reason": entry.get("reason"),
-                "context": entry.get("context"), "blocking": entry.get("blocking"),
+                "context": entry.get("context"), "blocking": marks.get(fid),
                 "recommendation": [recommended] if recommended else []})
     for finding in findings:
         finding["verified"] = finding["state"] == "verified"
@@ -1112,7 +1135,8 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
     judged, skipped = read_judgments(directory, collected["batches"], collected["items"])
     unsettled = [i for i in collected["items"] if i["earlier_ids"] and i["key"] not in judged]
     skip_of = [(i, skipped.get(i["key"], {})) for i in unsettled]
-    settled = settled_findings(collected["items"], judged, known_ids(tmp_dir)[1])
+    settled = settled_findings(collected["items"], judged, known_ids(tmp_dir)[1],
+                               collected.get("marks", {}))
     demoted = [f for f in settled if f["state"] == "withdrawn" and not f["backed"]]
     for finding in demoted:
         finding["state"] = "open"
@@ -1192,12 +1216,16 @@ def earlier_blocking(tmp_dir):
     return {f["id"]: f.get("blocking") for f in read_json(path)["findings"]}
 
 
-def read_blocking(path, ids):
+def read_blocking(path, ids, tmp_dir):
     """The blocking judgment by finding ID."""
+    expected = os.path.join(tmp_dir, "blocking.json")
+    if os.path.normcase(os.path.abspath(path)) != os.path.normcase(os.path.abspath(expected)):
+        raise Error(f"--blocking must be {expected}, not {path}")
     try:
         entries = read_json(path)["findings"]
         judged = {entry["id"]: entry["blocking"] for entry in entries}
-        if not all(isinstance(value, bool) for value in judged.values()) or set(judged) - ids:
+        if (not all(isinstance(value, bool) for value in judged.values()) or set(judged) - ids
+                or len(judged) != len(entries)):
             raise ValueError(judged)
     except (Error, KeyError, TypeError, ValueError):
         discard(path)
@@ -1236,9 +1264,11 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
         raise Error(f"the pull request moved past the reviewed head {header.get('head_sha')} "
                     f"to {view['headRefOid']}; run the skill again")
     _, used = known_ids(tmp_dir)
+    marks = earlier_blocking(tmp_dir)
     prior, unchanged = prior_states(pr, prior_doc, view["headRefOid"], earlier_verified(tmp_dir),
-                                    earlier_blocking(tmp_dir))
-    judged = read_blocking(blocking_path, {f["id"] for f in findings}) if blocking_path else {}
+                                    marks)
+    judged = (read_blocking(blocking_path, {f["id"] for f in findings}, tmp_dir)
+              if blocking_path else {})
     numbers = next_numbers([*used, *(p["id"] for p in prior)])
     files = changed_files(pr)
     entries = []
@@ -1268,6 +1298,8 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
         "selected_ids": [e["id"] for e in selected],
         "blocking_unjudged": [e["id"] for e in selected
                               if gate and e["doc_id"] not in judged],
+        "blocking_fallback": [p["id"] for p in prior
+                              if p["state"] == "open" and marks.get(p["id"]) is None],
         "prior_ids": [p["id"] for p in prior], "unchanged": unchanged,
         "pr_body_path": write_pr_body(tmp_dir, view),
         "by_placement": {p: sum(e["placement"] == p for e in selected)
@@ -1321,7 +1353,7 @@ def review_body(draft, plan, body_findings, post):
             icon = {"verified": "✅", "waived": "➖"}.get(p["state"], "💬")
             note = {"waived": labels["waived"]}.get(p["state"])
             note = note or (post and p.get("post_note")) or p["note"]
-            mark = "" if p["blocking"] else blocking_mark(False, labels)
+            mark = blocking_mark(p["blocking"], labels)
             lines.append(f"- {icon} **{p['id']}**{mark}: {note or labels['not_verified']}")
         lines.append("")
     if body_findings:
@@ -1871,6 +1903,7 @@ def cmd_raised(pr_url, tmp_dir, discussion=False):
     dismissed = {r.get("id") for r in reviews if r.get("state") == "DISMISSED"}
     resolved = set() if discussion else resolved_roots(pr)
     review_of = {r.get("id"): r for r in reviews}
+    review_id_of = {c.get("id"): c.get("pull_request_review_id") for c in comments}
 
     def entry(comment, location, **fields):
         text = visible_body(comment)
@@ -1884,7 +1917,8 @@ def cmd_raised(pr_url, tmp_dir, discussion=False):
     threads = {}
     for comment in comments:
         root = comment.get("in_reply_to_id") or comment.get("id")
-        if comment.get("pull_request_review_id") in dismissed or root in resolved:
+        if (comment.get("pull_request_review_id") in dismissed
+                or review_id_of.get(root) in dismissed or root in resolved):
             continue
         if root not in threads:
             threads[root] = []
@@ -1892,25 +1926,31 @@ def cmd_raised(pr_url, tmp_dir, discussion=False):
         opening = {"review_opening": visible_body(
             review_of.get(comment.get("pull_request_review_id"), {}))[:OPENING_LIMIT]
         } if discussion else {}
-        threads[root].append(entry(comment, comment_place(comment),
+        place = comment.get("path") if discussion and not comment.get("line") \
+            else comment_place(comment)
+        threads[root].append(entry(comment, place,
                                    in_reply_to=comment.get("in_reply_to_id"), **opening))
     units += [[entry(comment, "PR")] for comment in issue_comments]
     units = [[c for c in unit if c] for unit in units]
     batches = batched([unit for unit in units if unit],
-                      lambda unit: sum(len(c["text"]) for c in unit))
-    shared = {}
-    if discussion:
-        people = participants(view_pr(pr, require_open=False))
-        outside = [r for r in reviews if r.get("id") not in dismissed] + issue_comments
-        spoken_outside = [spoken(c, people["viewer"]) for c in outside]
-        shared = {**people, "conversation": by_time(c for c in spoken_outside if c["text"])}
+                      lambda unit: sum(len(c["text"]) + len(c.get("review_opening", ""))
+                                       for c in unit))
     directory = os.path.join(tmp_dir, "raised")
     os.makedirs(directory, exist_ok=True)
+    shared, conversation_path = {}, None
+    if discussion:
+        shared = participants(view_pr(pr, require_open=False))
+        outside = [r for r in reviews if r.get("id") not in dismissed] + issue_comments
+        spoken_outside = [spoken(c, shared["viewer"]) for c in outside]
+        conversation_path = os.path.join(directory, "conversation.json")
+        write_json(conversation_path,
+                   {"conversation": by_time(c for c in spoken_outside if c["text"])})
     for n, batch in enumerate(batches, 1):
         write_json(os.path.join(directory, f"batch-{n}.json"),
                    {**shared, "comments": [c for unit in batch for c in unit]})
     return {"directory": directory, "batches": len(batches),
-            "comments": sum(len(unit) for batch in batches for unit in batch)}
+            "comments": sum(len(unit) for batch in batches for unit in batch),
+            "conversation_path": conversation_path}
 
 
 def cmd_participants(pr_url):
