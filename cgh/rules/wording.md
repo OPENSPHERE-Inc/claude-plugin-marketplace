@@ -17,11 +17,11 @@ For each selected finding:
 
 For each entry of `prior` with a `note`, `post_note`: that `note` in `comment_lang`.
 
-For `/cgh:gate`, `overview`: two to four sentences in `{doc_lang}` that open the review body under the verdict, so that whoever reads the review grasps this gate run before its findings. Say what it checked at this head — the change, by what it does, and the earlier findings it checked again and the discussions it weighed, if any — and what remains: what stops the merge, in gist, and what is left without stopping it, such as non-blocking findings or earlier findings the code cannot settle, or that nothing remains. Draw on the draft's selected findings with their `blocking`, its `prior`, the review document, and the discussion lists, if any. Leave out how the gate ran, such as reviewers, agents, raw finding counts, deduplication, or triage, and the verdict and finding counts the body already states. `post_overview`: `overview` in `comment_lang`.
+For `/cgh:gate`, `overview`: two to four sentences in `{doc_lang}` that open the review body under the verdict, so that whoever reads the review grasps this gate run before its findings. Say what it checked at this head — the change, by what it does, and the earlier findings it checked again and the discussions it weighed, if any — and what remains of the findings: what stops the merge, in gist, and what is left without stopping it, such as non-blocking findings or earlier findings the code cannot settle, or that no finding remains. Take what remains only from the draft's selected findings with their `blocking` and from its `prior`: a finding that is not selected does not go out. Draw on the review document and the discussion lists, if any, only for the change and the discussions weighed. Leave out merge conflicts, which a line under the verdict states, since whether there are any is known only at the preview. Leave out how the gate ran, such as reviewers, agents, raw finding counts, deduplication, or triage, and the verdict and finding counts the body already states. `post_overview`: `overview` in `comment_lang`.
 
 Leave out a `post_` field when its text is already in `comment_lang` with no `@` outside code. List every id, even with no other field: an id missing from the file counts as not done.
 
-Write `{tmp_dir}/wording-{n}.json`:
+Write `{tmp_dir}/wording-{n}.json`, with `overview` and `post_overview` only for `/cgh:gate` and left out for `/cgh:review`:
 
 `{"comment_lang": "en", "overview": "...", "post_overview": "...", "findings": [{"id": "M-1", "summary": "...", "post_text": "...", "post_summary": "...", "post_categories": "..."}, {"id": "M-7", "post_note": "..."}]}`
 
