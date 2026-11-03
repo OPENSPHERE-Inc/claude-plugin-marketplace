@@ -35,7 +35,7 @@ template_id: 3ab4949f-308c-4ca8-b856-0e6f91dfc72f
 - `verified` — `viewer` が解決を確認し、その後にそれを覆すものがない。確認したのが見送りなら、その理由を `reason` に入れる。
 - `withdrawn` — `viewer` が取り下げたか、修正なしで受け入れた。`viewer` が決定者でもあるとき、理由を添えて変更しないという回答は `declined` とし、明示的な取り下げか受け入れだけを `withdrawn` とする。`reason` に、根拠のコメントを書いた人のログイン名とその内容を {{doc_lang}} で入れる。
 
-検証者が知っておくべきことが回答にあれば、誰が何を述べたかを `context` に {{doc_lang}} で 1 行で書く。`author`、`assignees`、`viewer` のいずれかがその指摘を追跡する issue やプルリクエストを挙げたときは、`context` を `Tracked: {reference}` で始め、続けて誰が述べたかと、その役割（`author`、`assignee`、`viewer` のうち当てはまる最初のもの）を書く。それ以外のときは `Tracked:` で始めない。すべてのエントリに、`severity`（`Critical`、`Major`、`Minor`、`Info`。コメントが述べる影響から決める）と、問題を {{doc_lang}} で 1 行に言い直した `text` も必要で、コメントが修正を推奨しているならその修正を 1 行にした `recommendation` も書き、項目の `location` が `PR` かコメントに複数の指摘があり、コメントが場所を挙げているなら `location`（`path:line` または `path`）も書く。コメントが議論の未完結を報告しているときは、言語によらず `text` を文字どおり `Unsettled discussion:` で始め、その後に問題を言い直す。
+検証者が知っておくべきことが回答にあれば、誰が何を述べたかを `context` に {{doc_lang}} で 1 行で書く。`author`、`assignees`、`viewer` のいずれかがその指摘を追跡する issue やプルリクエストを挙げたときは、`context` を `Tracked: {reference}` で始め、続けて誰が述べたかと、その役割（`author`、`assignee`、`viewer` のうち当てはまる最初のもの）を書く。複数の人が参照を挙げたときは、`author`、`assignee`、`viewer` のうち当てはまる最初の人の参照とその人を書く。それ以外のときは `Tracked:` で始めない。すべてのエントリに、`severity`（`Critical`、`Major`、`Minor`、`Info`。コメントが述べる影響から決める）と、問題を {{doc_lang}} で 1 行に言い直した `text` も必要で、コメントが修正を推奨しているならその修正を 1 行にした `recommendation` も書き、項目の `location` が `PR` かコメントに複数の指摘があり、コメントが場所を挙げているなら `location`（`path:line` または `path`）も書く。コメントが議論の未完結を報告しているときは、言語によらず `text` を文字どおり `Unsettled discussion:` で始め、その後に問題を言い直す。
 
 `earlier_ids` があるのにエントリを作らない項目はそれぞれ `skipped` に挙げる: 別の `kind` の指摘なら `reason` を `other_kind` とし、問題を指摘しないものなら `no_problem` として、`why` を {{doc_lang}} で 1 行書く。
 
