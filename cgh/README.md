@@ -64,12 +64,44 @@ regressions of existing behavior, changes the review could not read, and work le
 no issue recording it: a `TODO` in the code, an open item in the description, or a follow-up the
 description or a code comment promises. Nice-to-have tests, refactoring, and style are not
 findings. A residue that names an issue or a pull request counts as recorded. A conversation
-comment neither creates a residue nor records one. The focus is in
-[rules/gate-focus.md](rules/gate-focus.md).
+comment does not record one. The focus is in [rules/gate-focus.md](rules/gate-focus.md).
+
+It also reads every comment on the pull request, including threads marked resolved on GitHub. What
+a discussion concludes has to end up in the code or the description, or be tracked in an issue or
+ticket that the description, a code comment, or a comment by the author, an assignee, or you names.
+For a security problem, only a tracking issue named by the author or an assignee counts. Any other
+comment records nothing.
+
+- A problem discussed and recorded this way is not raised again, unless the code shows the record
+  wrong about it. Neither is one declined because its premise is wrong, when the code bears that
+  out.
+- A discussion with no such ending is raised as an unsettled discussion in place of the problem
+  itself, and it blocks. A line in the description or a comment naming the tracking issue settles
+  it, for a security problem only a comment by the author or an assignee.
+- An agreed change or a promised follow-up counts whatever the topic. A declined comment counts
+  when its problem is one the gate looks for, unless the code shows it absent. An unanswered one
+  counts only when its problem is one the gate looks for and holds in the code.
 
 - **BLOCK** (Request Changes): a posted finding or an earlier gate finding still unverified is
-  Critical or Major, or the pull request has merge conflicts.
+  blocking, or the pull request has merge conflicts.
 - **PASS** (Comment): otherwise. PASS is not an approval.
+
+Severity and blocking are separate. Critical, Major, and Minor say only how bad a problem's
+consequence is. After triage, each finding is judged blocking or non-blocking on its own, and each
+posted comment shows which, next to its severity:
+
+- Work left undone with no issue, an unsettled discussion, and a change the review could not read
+  always block. An unchecked item in the description is typically Minor and blocking.
+- A security problem blocks unless the author or an assignee deferred it explicitly, in the
+  description, by naming a tracking issue, or, for a decider, by a decline.
+- A decline in a comment alone normally leaves an unsettled discussion, which blocks until the
+  description records it or a tracking issue is named.
+- Other broken code and regressions block, unless both of these hold: it occurs only under a
+  special condition normal use does not reach or in a very short window, and deferring it is
+  evident from the description or from a decline by the assignees or, with none, the author.
+- A problem in documentation for people, such as a README, does not block, even a security
+  problem. AI-facing prompts, code, and the description are not documentation here.
+- A finding with no judgment blocks. You can change a judgment at the preview.
 
 The verdict goes in the review body, and findings are placed as in `/cgh:review`.
 
@@ -98,7 +130,7 @@ It shows them and posts on your instruction.
     confirmation is the last check before the fixes, so do not use it on a pull request you do
     not trust.
 - A reply to a finding from a review body or an issue comment goes out as an issue comment that
-  mentions its author.
+  mentions its author, unless the author is a bot.
 - The skill refuses to send replies until the pull request contains the fix commits. A rebase
   changes their hashes, so push them as they are. If you rebased or squashed them, say so, and
   the skill collects the commits again.
@@ -180,8 +212,9 @@ The state lives on the pull request, so a later run needs nothing from an earlie
   or is not forged on a pull request worked on by several people and AI. Sub-agents judge from
   visible text only: HTML comments in anyone's comment are removed before they read it.
 - `/cgh:review` looks at every comment and `/cgh:respond` handles every comment, whoever wrote it.
-  `/cgh:resolve` checks only your own findings, and `/cgh:gate` only its own. Dismissing a review
-  drops its findings from those checks.
+  `/cgh:resolve` checks only your own findings, and `/cgh:gate` only its own, while it reads every
+  comment for discussions. Dismissing a review drops its findings from those checks and from those
+  discussions.
 - A thread marked resolved on GitHub counts as dealt with in `/cgh:respond`, and the skill reports
   how many it left out.
 - A sub-agent reads which finding IDs your comments use, in context, from their visible text. New

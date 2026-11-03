@@ -80,7 +80,7 @@ claude-plugin-marketplace/
 ├── cgh/                          # Plugin: GitHub pull request workflow on top of creview (active, English)
 │   ├── .claude-plugin/plugin.json  # declares the dependency on creview
 │   ├── README.md / README_ja.md
-│   ├── skills/                   # review (+ templates/raised-extract.md), gate, resolve (+ templates/posted-extract.md, finding-ids-extract.md), respond
+│   ├── skills/                   # review (+ templates/raised-extract.md), gate (+ templates/discussion-extract.md, blocking-judge.md), resolve (+ templates/posted-extract.md, finding-ids-extract.md), respond
 │   ├── agents/                   # comment-writer.md
 │   ├── rules/                    # leader.md, gate-focus.md, wording.md
 │   └── scripts/                  # gh-review.py, del-tmp.sh, lib/scratch-guard.py
@@ -319,6 +319,14 @@ a `Verification` line so that it is checked again, with the comment targets in
 `{tmp_dir}/prior.json`. `gh-review.py replies` and `draft` report a finding verified earlier only
 when it no longer holds. `/cgh:review` collects with `gh-review.py raised`, before the review,
 what comments by anyone already raise, and an override has the triage sub-agent leave those out.
+`/cgh:gate` collects with `gh-review.py raised --discussion`, which keeps threads resolved on
+GitHub: a `comment-writer` lists each problem with its answers and conclusion, the PR description
+reviewer reports what `rules/gate-focus.md` § Discussions finds unsettled, and an override has the
+triage sub-agent leave out a finding that restates a discussion recorded or so reported. Severity
+says only how bad a problem's consequence is, and the gate's verdict rests on `blocking`, which is
+separate: a `comment-writer` judges each Will Fix finding after triage, `gh-review.py draft
+--blocking` reads that, each posted comment and result line shows the result in its visible text,
+and `gh-review.py collect` reads it back on a later run, from the user's own comments only.
 `/cgh:respond` handles the comments of anyone through the PR mode of `/creview:triage`, whose
 triage sub-agent an override tells to judge what is already dealt with, and the leader judges
 from the conversation whether a comment needs a reply. Posted findings number on from the

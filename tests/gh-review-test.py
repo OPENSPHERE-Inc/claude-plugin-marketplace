@@ -338,8 +338,8 @@ class Base(unittest.TestCase):
         mod.run = gh
         return gh
 
-    def draft(self, kind="review", lang="ja", prior_doc=None):
-        result = mod.cmd_draft(URL, self.dir, self.doc, kind, lang, prior_doc)
+    def draft(self, kind="review", lang="ja", prior_doc=None, blocking=None):
+        result = mod.cmd_draft(URL, self.dir, self.doc, kind, lang, prior_doc, blocking)
         with open(os.path.join(self.dir, "draft.json"), encoding="utf-8") as f:
             draft = json.load(f)
         draft["comment_lang"] = lang
@@ -721,14 +721,21 @@ def prior_doc_text(entries):
 
 
 class Gate(Base):
-    def gate_draft(self, entries=None, selected=(), **view_args):
+    def judged(self, **blocking):
+        path = os.path.join(self.dir, "blocking.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"findings": [{"id": fid.replace("_", "-"), "blocking": value}
+                                    for fid, value in blocking.items()]}, f)
+        return path
+
+    def gate_draft(self, entries=None, selected=(), judged=None, **view_args):
         gh = self.fake(**view_args)
         prior = None
         if entries is not None:
             prior = os.path.join(self.dir, "prior.md")
             with open(prior, "w", encoding="utf-8") as f:
                 f.write(prior_doc_text(entries))
-        _, draft = self.draft("gate", "en", prior)
+        _, draft = self.draft("gate", "en", prior, judged)
         for f in draft["findings"]:
             f["selected"] = f["doc_id"] in selected
         path = self.save(draft)
@@ -767,9 +774,130 @@ class Gate(Base):
         body = gh.named("submitPullRequestReview")[0]["body"]
         self.assertEqual(body, f"## Merge gate: PASS\n\n{HEAD[:mod.SHORT_SHA]}")
 
-    def test_minor_does_not_block(self):
-        _, path = self.gate_draft(selected=("mi-1",))
+    def test_a_minor_judged_blocking_blocks(self):
+        _, path = self.gate_draft(selected=("mi-1",), judged=self.judged(mi_1=True))
+        result = mod.cmd_post(URL, path, None)
+        self.assertEqual((result["verdict"], result["event"]), ("BLOCK", "REQUEST_CHANGES"))
+
+    def test_a_major_judged_non_blocking_passes(self):
+        _, path = self.gate_draft(selected=("M-1",), judged=self.judged(M_1=False))
+        result = mod.cmd_post(URL, path, None)
+        self.assertEqual((result["verdict"], result["event"]), ("PASS", "COMMENT"))
+
+    def test_a_minor_judged_non_blocking_passes(self):
+        _, path = self.gate_draft(selected=("mi-1",), judged=self.judged(mi_1=False))
         self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "PASS")
+
+    def test_a_finding_with_no_judgment_blocks_and_is_named(self):
+        self.fake()
+        result, draft = self.draft("gate", "en", None, self.judged(M_1=False))
+        by_doc = {f["doc_id"]: f for f in draft["findings"]}
+        self.assertFalse(by_doc["M-1"]["blocking"])
+        self.assertTrue(by_doc["mi-1"]["blocking"])
+        self.assertNotIn(by_doc["M-1"]["id"], result["blocking_unjudged"])
+        self.assertIn(by_doc["mi-1"]["id"], result["blocking_unjudged"])
+
+    def test_a_downgraded_minor_stays_selected_when_it_blocks(self):
+        self.fake()
+        _, draft = self.draft("gate", "en", None, self.judged(mi_1=True, mi_2=True))
+        by_doc = {f["doc_id"]: f for f in draft["findings"]}
+        self.assertTrue(by_doc["mi-2"]["selected"])
+
+    def test_a_downgraded_minor_is_left_out_when_it_does_not_block(self):
+        self.fake()
+        _, draft = self.draft("gate", "en", None, self.judged(mi_2=False))
+        by_doc = {f["doc_id"]: f for f in draft["findings"]}
+        self.assertFalse(by_doc["mi-2"]["selected"])
+
+    def test_a_malformed_judgment_is_removed_and_named(self):
+        self.fake()
+        for bad in ('{"findings": [{"id": "M-1", "blocking": "yes"}]}',
+                    '{"findings": [{"id": "M-99", "blocking": true}]}',
+                    '{"findings": [{"blocking": true}]}',
+                    '{"findings": [{"id": "M-1", "blocking": true},'
+                    ' {"id": "M-1", "blocking": false}]}', "[]", "not json"):
+            path = os.path.join(self.dir, "blocking.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(bad)
+            with self.assertRaisesRegex(mod.Error, "blocking.json"):
+                mod.cmd_draft(URL, self.dir, self.doc, "gate", "en", None, path)
+            self.assertFalse(os.path.exists(path))
+
+    def test_a_missing_judgment_file_is_named(self):
+        self.fake()
+        path = os.path.join(self.dir, "blocking.json")
+        with self.assertRaisesRegex(mod.Error, "blocking.json"):
+            mod.cmd_draft(URL, self.dir, self.doc, "gate", "en", None, path)
+
+    def test_a_judgment_file_elsewhere_is_refused_and_kept(self):
+        self.fake()
+        for name in ("other.json", os.path.join("sub", "blocking.json")):
+            path = os.path.join(self.dir, name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("not json")
+            with self.assertRaisesRegex(mod.Error, "--blocking"):
+                mod.cmd_draft(URL, self.dir, self.doc, "gate", "en", None, path)
+            self.assertTrue(os.path.exists(path))
+
+    def test_the_comment_shows_whether_a_finding_blocks(self):
+        gh, path = self.gate_draft(selected=("M-1", "mi-1"),
+                                   judged=self.judged(M_1=False, mi_1=True))
+        mod.cmd_post(URL, path, None)
+        sent = json.dumps(gh.mutations, ensure_ascii=False)
+        self.assertIn("non-blocking", sent)
+        self.assertRegex(sent, r"\*\*Minor mi-\d+\*\* · blocking")
+
+    def test_a_review_draft_says_nothing_of_blocking(self):
+        gh = self.fake()
+        _, draft = self.draft("review", "en")
+        self.assertTrue(all("blocking" not in f for f in draft["findings"]))
+        mod.cmd_post(URL, os.path.join(self.dir, "draft.json"), None)
+        self.assertTrue(gh.mutations)
+        self.assertFalse(any("blocking" in json.dumps(c) for c in gh.mutations))
+
+    def prior_with(self, fid, blocking):
+        entry = {"id": fid}
+        if blocking is not None:
+            entry["blocking"] = blocking
+        with open(os.path.join(self.dir, "prior.json"), "w", encoding="utf-8") as f:
+            json.dump({"findings": [entry], "waived": []}, f)
+        return self.gate_draft([(fid, "💬 Feedback — still there")])
+
+    def test_an_open_earlier_minor_marked_blocking_blocks(self):
+        gh, path = self.prior_with("mi-7", True)
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "BLOCK")
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertIn("**mi-7** · blocking", body)
+
+    def test_an_open_earlier_major_marked_non_blocking_passes(self):
+        gh, path = self.prior_with("M-7", False)
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "PASS")
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertIn("**M-7** · non-blocking", body)
+
+    def test_an_earlier_finding_with_no_mark_falls_back_on_its_severity(self):
+        _, path = self.prior_with("M-7", None)
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "BLOCK")
+
+    def test_an_earlier_minor_with_no_mark_does_not_block(self):
+        _, path = self.prior_with("mi-7", None)
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "PASS")
+
+    def test_only_an_open_earlier_finding_with_no_mark_is_named_as_a_fallback(self):
+        self.fake()
+        self.save({"findings": [{"id": "mi-7"}, {"id": "mi-8", "blocking": True}, {"id": "mi-9"}],
+                   "waived": []}, "prior.json")
+        prior = os.path.join(self.dir, "prior.md")
+        with open(prior, "w", encoding="utf-8") as f:
+            f.write(prior_doc_text([("mi-7", "💬 Feedback — x"), ("mi-8", "💬 Feedback — x"),
+                                    ("mi-9", "✅ Verified — fixed")]))
+        result, _ = self.draft("gate", "en", prior)
+        self.assertEqual(result["blocking_fallback"], ["mi-7"])
+
+    def test_no_earlier_finding_names_no_fallback(self):
+        self.fake()
+        self.assertEqual(self.draft("gate", "en")[0]["blocking_fallback"], [])
 
     def test_conflict_blocks(self):
         _, path = self.gate_draft(mergeable="CONFLICTING")
@@ -875,10 +1003,11 @@ class PriorBase(Base):
         known["used"] = sorted({*known["used"], *ids, *used})
         self.save(known, "finding-ids.json")
 
-    def posted(self, gh, fid="M-1", reviewer="me", review_id=1, comment_id=5):
+    def posted(self, gh, fid="M-1", reviewer="me", review_id=1, comment_id=5, blocking=None):
+        mark = {} if blocking is None else {"blocking": blocking}
         block = mod.finding_block({
             "id": fid, "location": "src/a.py:10", "text": "text @bob",
-            "recommendation": ["src/a.py:10 — fix it"]}, "en", False)
+            "recommendation": ["src/a.py:10 — fix it"], **mark}, "en", False)
         gh.reviews.append({"id": review_id, "state": "COMMENTED", "user": {"login": reviewer},
                            "body": "", "submitted_at": "2026-01-01T00:00:00Z"})
         gh.review_comments.append({
@@ -1080,6 +1209,134 @@ class Prior(PriorBase):
         self.assertEqual([f["id"] for f in prior["findings"]], ["M-1"])
         self.assertNotIn("I-1", read_text(doc))
 
+    def marked_finding(self, blocking):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh, blocking=blocking)
+        return gh
+
+    def later_review(self, gh, body, reviewer="me", state="COMMENTED"):
+        gh.reviews.append({"id": 2, "state": state, "user": {"login": reviewer}, "body": body,
+                           "submitted_at": "2026-01-02T00:00:00Z"})
+
+    def prior_blocking(self, states=None):
+        return self.prior("gate", states=states)[1]["findings"][0]["blocking"]
+
+    def test_the_mark_on_a_posted_comment_reaches_prior(self):
+        for blocking in (True, False, None):
+            self.marked_finding(blocking)
+            self.assertIs(self.prior_blocking(), blocking)
+
+    def test_a_later_result_line_overrides_the_mark_on_the_comment(self):
+        for first, line, expected in ((False, "- 💬 **M-1** · blocking: x", True),
+                                      (True, "- 💬 **M-1** · non-blocking: x", False),
+                                      (True, "- ✅ **M-1** · 非ブロッキング: x", False),
+                                      (False, "- ➖ **M-1** · ブロッキング: x", True)):
+            gh = self.marked_finding(first)
+            self.later_review(gh, f"## Merge gate: BLOCK\n\nabc\n\n### Earlier\n\n{line}\n")
+            self.assertIs(self.prior_blocking(), expected)
+
+    def test_a_mark_earlier_than_the_comment_does_not_override_it(self):
+        gh = self.marked_finding(True)
+        gh.reviews.append({"id": 2, "state": "COMMENTED", "user": {"login": "me"},
+                           "body": "- 💬 **M-1** · non-blocking: x",
+                           "submitted_at": "2025-12-31T00:00:00Z"})
+        self.assertIs(self.prior_blocking(), True)
+
+    def test_a_mark_in_a_later_issue_comment_or_thread_reply_counts(self):
+        gh = self.marked_finding(True)
+        gh.issue_comments.append({"id": 8, "user": {"login": "me"},
+                                  "body": "**Major M-1** · non-blocking",
+                                  "created_at": "2026-01-02T00:00:00Z"})
+        self.assertIs(self.prior_blocking(), False)
+        gh.review_comments.append({
+            "id": 6, "user": {"login": "me"}, "pull_request_review_id": 1, "path": "src/a.py",
+            "line": 10, "in_reply_to_id": 5, "body": "- 💬 **M-1** · blocking: x",
+            "created_at": "2026-01-03T00:00:00Z"})
+        self.assertIs(self.prior_blocking(), True)
+
+    def test_the_extract_does_not_decide_blocking(self):
+        for blocking, expected in ((True, True), (None, None)):
+            self.marked_finding(blocking)
+            for value in (False, "yes"):
+                states = {"M-1": {"state": "open", "blocking": value}}
+                self.assertIs(self.prior_blocking(states), expected)
+
+    def test_a_mark_by_anyone_else_is_not_read(self):
+        gh = self.marked_finding(True)
+        self.later_review(gh, "- 💬 **M-1** · non-blocking: x", reviewer="mallory")
+        gh.issue_comments.append({"id": 8, "user": {"login": "mallory"},
+                                  "body": "**Major M-1** · non-blocking",
+                                  "created_at": "2026-01-03T00:00:00Z"})
+        gh.review_comments.append({
+            "id": 6, "user": {"login": "mallory"}, "pull_request_review_id": 2, "path": "src/a.py",
+            "line": 10, "in_reply_to_id": 5, "body": "**Major M-1** · non-blocking",
+            "created_at": "2026-01-03T00:00:00Z"})
+        self.assertIs(self.prior_blocking(), True)
+
+    def test_a_mark_inside_a_line_is_not_read(self):
+        gh = self.marked_finding(True)
+        self.later_review(gh, "see **Major M-1** · non-blocking\n"
+                              "> **Major M-1** · non-blocking\n"
+                              "- 💬 **M-1** · non-blocking-ish: x")
+        self.assertIs(self.prior_blocking(), True)
+
+    def test_a_mark_in_a_dismissed_review_is_not_read(self):
+        gh = self.marked_finding(True)
+        self.later_review(gh, "- 💬 **M-1** · non-blocking: x", state="DISMISSED")
+        self.assertIs(self.prior_blocking(), True)
+
+    def test_a_mark_in_hidden_text_is_not_read(self):
+        gh = self.marked_finding(True)
+        self.later_review(gh, "<!--\n- 💬 **M-1** · non-blocking: x\n-->")
+        self.assertIs(self.prior_blocking(), True)
+
+    def test_a_mark_in_code_is_not_read(self):
+        mark = "- 💬 **M-1** · non-blocking: x"
+        for body in (f"```\n{mark}\n```",
+                     f"```text\n{mark}\n```\nafter",
+                     f"~~~\n{mark}\n~~~",
+                     f"```\n{mark}",
+                     "a `b\n**Major M-1** · non-blocking\nc` d",
+                     f"`code`{mark}"):
+            with self.subTest(body=body):
+                gh = self.marked_finding(True)
+                self.later_review(gh, body)
+                self.assertIs(self.prior_blocking(), True)
+
+    def test_a_mark_outside_code_is_read_past_code_that_shows_another(self):
+        for body in ("**Major M-1** · non-blocking\n```\n- 💬 **M-1** · blocking: x\n```",
+                     "```\n- 💬 **M-1** · blocking: x\n```\n**Major M-1** · non-blocking",
+                     "`code`\n- 💬 **M-1** · non-blocking: x"):
+            with self.subTest(body=body):
+                gh = self.marked_finding(True)
+                self.later_review(gh, body)
+                self.assertIs(self.prior_blocking(), False)
+
+    def test_stray_backticks_in_notes_do_not_hide_the_result_lines_between_them(self):
+        draft = {"lang": "en", "head_sha": HEAD, "findings": [], "prior": [
+            {"id": f"M-{n}", "state": "open", "blocking": True, "note": note}
+            for n, note in enumerate(("uses `a", "still `b", "ok"), 1)]}
+        plan = {"verdict": "BLOCK", "conflict": False, "selected": []}
+        body = mod.review_body(draft, plan, [], False)
+        self.assertEqual(mod.blocking_marks([{"body": body}]),
+                         {"M-1": True, "M-2": True, "M-3": True})
+
+    def test_what_the_script_writes_is_what_it_reads_back(self):
+        for lang in mod.LABELS:
+            for blocking in (True, False):
+                for with_location in (True, False):
+                    block = mod.finding_block(
+                        {"id": "mi-1", "location": "a.py:1", "text": "t", "blocking": blocking},
+                        lang, with_location)
+                    self.assertEqual(mod.blocking_marks([{"body": block}]), {"mi-1": blocking})
+                for state in ("open", "verified", "waived"):
+                    draft = {"lang": lang, "head_sha": HEAD, "findings": [], "prior": [
+                        {"id": "M-1", "state": state, "blocking": blocking, "note": "n"}]}
+                    plan = {"verdict": "BLOCK", "conflict": False, "selected": []}
+                    body = mod.review_body(draft, plan, [], False)
+                    self.assertEqual(mod.blocking_marks([{"body": body}]), {"M-1": blocking})
+
 
 class ResolveReplies(Base):
     def setup_doc(self):
@@ -1201,14 +1458,33 @@ class Replies(Base):
     def test_review_body_reply_mentions_the_reviewer(self):
         gh = self.fake()
         gh.objects = {"repos/acme/app/pulls/7/reviews/4": {
-            "id": 4, "user": {"login": "coderabbitai[bot]"}}}
+            "id": 4, "user": {"login": "pal", "type": "User"}}}
         path = self.replies_file([{"kind": "review", "target_id": 4, "finding_ids": ["M-1"],
                                    "body": "fixed, thanks @other"}])
         mod.cmd_post(URL, path, None)
         self.assertEqual(gh.posts[0][0], "repos/acme/app/issues/7/comments")
         body = gh.posts[0][1]["body"]
-        self.assertTrue(body.startswith("@coderabbitai "))
+        self.assertTrue(body.startswith("@pal "))
         self.assertIn("thanks @other", body)
+
+    def test_a_reply_to_a_bot_mentions_nobody(self):
+        for user in ({"login": "copilot-pull-request-reviewer[bot]", "type": "Bot"},
+                     {"login": "coderabbitai[bot]"},
+                     {"login": "Copilot", "type": "Bot"}):
+            gh = self.fake()
+            issue_url = "https://api.github.com/repos/acme/app/issues/7"
+            gh.objects = {
+                "repos/acme/app/pulls/7/reviews/4": {"id": 4, "user": user},
+                "repos/acme/app/issues/comments/5": {
+                    "id": 5, "user": user, "issue_url": issue_url},
+            }
+            path = self.replies_file([
+                {"kind": "review", "target_id": 4, "finding_ids": ["M-1"], "body": "fixed"},
+                {"kind": "issue_comment", "target_id": 5, "finding_ids": ["M-2"], "body": "fixed"},
+            ])
+            mod.cmd_post(URL, path, None)
+            bodies = [post[1]["body"] for post in gh.posts]
+            self.assertEqual(bodies, ["**Major M-1**: fixed", "**Major M-2**: fixed"])
 
     def test_issue_comment_reply_checks_its_pull_request(self):
         gh = self.fake()
@@ -1385,7 +1661,7 @@ class Replies(Base):
             {"kind": "thread", "target_id": 1, **reply},
         ])
         result, preview = self.preview(path)
-        expected = ["Mentions: @coderabbitai", "Mentions: @pal"]
+        expected = ["Mentions: @pal"]
         self.assertEqual(re.findall(r"^Mentions: .*$", preview, re.M), expected)
         self.assertEqual(re.findall(r"^Mentions: .*$", read_text(result["post_preview_path"]), re.M),
                          expected)
@@ -2747,6 +3023,7 @@ class PostedContext(PriorBase):
             ("<!-- ` --> a `<!-- b -->`", "a `<!-- b -->`"),
             ("<!-- ```\nhidden\n``` -->Shown", "Shown"),
             ("` open\n\n<!-- hidden -->\n\nclose `", "` open\n\n\n\nclose `"),
+            ("` open\n- <!-- hidden -->\nclose `", "` open\n- \nclose `"),
             ("\\`<!-- hidden -->`", "\\``"),
             ("Shown\n   <!-- line start never closed\nhidden", "Shown"),
             (" <!-- c -->\nvisible after", "visible after"),
@@ -3062,6 +3339,30 @@ class Raised(Base):
         self.assertEqual(result["comments"], 1)
         self.assertEqual(batches[0]["comments"][0]["text"], "open")
 
+    def test_a_discussion_leaves_out_a_thread_started_in_a_dismissed_review_whole(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "DISMISSED", "user": {"login": "rev"}, "body": ""},
+                      {"id": 4, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
+        gh.review_comments = [self.comment(1, "dismissed"),
+                              self.comment(2, "reply in a live review", reply_to=1, review=4),
+                              self.comment(5, "open", review=4),
+                              self.comment(6, "reply in the dismissed review", reply_to=5)]
+        result, batches = self.discussion_batches()
+        self.assertEqual(result["comments"], 1)
+        self.assertEqual(batches[0]["comments"][0]["text"], "open")
+
+    def test_a_plain_listing_keeps_a_live_reply_in_a_thread_of_a_dismissed_review(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "DISMISSED", "user": {"login": "rev"}, "body": ""},
+                      {"id": 4, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
+        gh.review_comments = [self.comment(1, "dismissed"),
+                              self.comment(2, "reply in a live review", reply_to=1, review=4),
+                              self.comment(5, "open", review=4),
+                              self.comment(6, "reply in the dismissed review", reply_to=5)]
+        _, batches = self.batches()
+        self.assertEqual([c["text"] for c in batches[0]["comments"]],
+                         ["reply in a live review", "open"])
+
     def test_resolved_threads_are_left_out_on_every_page(self):
         gh = self.fake()
         gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
@@ -3071,6 +3372,72 @@ class Raised(Base):
         result, batches = self.batches()
         self.assertEqual(result["comments"], 1)
         self.assertEqual(batches[0]["comments"][0]["text"], "open")
+
+    def discussion_batches(self):
+        result = mod.cmd_raised(URL, self.dir, discussion=True)
+        return result, [json.loads(read_text(os.path.join(self.dir, "raised", f"batch-{n}.json")))
+                        for n in range(1, result["batches"] + 1)]
+
+    def test_a_discussion_keeps_resolved_threads(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
+        gh.review_comments = [self.comment(1, "first"), self.comment(4, "open")]
+        gh.threads = [(True, 1), (False, 4)]
+        result, batches = self.discussion_batches()
+        self.assertEqual(result["comments"], 2)
+        self.assertEqual([c["text"] for c in batches[0]["comments"]], ["first", "open"])
+
+    def test_a_discussion_gives_a_comment_with_no_line_at_the_head_only_its_path(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
+        gh.review_comments = [dict(self.comment(1, "outdated"), line=None, original_line=10)]
+        self.assertEqual(self.discussion_batches()[1][0]["comments"][0]["location"], "src/a.py")
+        self.assertEqual(self.batches()[1][0]["comments"][0]["location"], "src/a.py:10")
+
+    def test_a_discussion_shows_who_decides_and_the_review_each_comment_is_in(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "me"},
+                       "submitted_at": "2026-01-01T00:00:00Z", "body": "## Merge gate: BLOCK"}]
+        gh.review_comments = [dict(self.comment(1, "inline", "me"),
+                                   created_at="2026-01-01T00:00:00Z")]
+        result, batches = self.discussion_batches()
+        batch = batches[0]
+        self.assertEqual(batch["viewer"], "me")
+        self.assertIn("author", batch)
+        self.assertIn("assignees", batch)
+        inline = next(c for c in batch["comments"] if c["text"] == "inline")
+        self.assertEqual(inline["review_opening"], "## Merge gate: BLOCK")
+        self.assertEqual(inline["created_at"], "2026-01-01T00:00:00Z")
+
+    def test_the_conversation_outside_threads_is_written_once_in_order(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"},
+                       "submitted_at": "2026-01-02T00:00:00Z", "body": "later"},
+                      {"id": 4, "state": "DISMISSED", "user": {"login": "rev"},
+                       "submitted_at": "2026-01-01T00:00:00Z", "body": "dismissed"}]
+        gh.review_comments = [self.comment(c, "x" * 30000) for c in (1, 2)]
+        gh.issue_comments = [{"id": 8, "user": {"login": "pal"}, "body": "earlier",
+                              "created_at": "2026-01-01T00:00:00Z"},
+                             {"id": 9, "user": {"login": "pal"}, "body": "<!-- hidden -->"}]
+        result, batches = self.discussion_batches()
+        self.assertGreater(result["batches"], 1)
+        self.assertEqual(result["conversation_path"],
+                         os.path.join(self.dir, "raised", "conversation.json"))
+        conversation = json.loads(read_text(result["conversation_path"]))["conversation"]
+        self.assertEqual([c["text"] for c in conversation], ["earlier", "later"])
+        for batch in batches:
+            self.assertEqual(list(batch), ["viewer", "author", "assignees", "comments"])
+
+    def test_a_plain_listing_adds_nothing_of_a_discussion(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
+        gh.review_comments = [self.comment(1, "inline")]
+        result, batches = self.batches()
+        self.assertIsNone(result["conversation_path"])
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "raised", "conversation.json")))
+        self.assertEqual(list(batches[0]), ["comments"])
+        self.assertEqual(sorted(batches[0]["comments"][0]),
+                         ["author", "in_reply_to", "location", "text"])
 
     def test_no_comments_writes_no_batch(self):
         self.fake()
@@ -3085,6 +3452,15 @@ class Raised(Base):
         result, batches = self.batches()
         self.assertEqual(result["batches"], 2)
         self.assertEqual([len(b["comments"]) for b in batches], [2, 1])
+
+    def test_a_review_opening_counts_towards_the_size_of_a_batch(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"},
+                       "body": "r" * mod.OPENING_LIMIT}]
+        size = mod.BATCH_CHARS // 2 - 200
+        gh.review_comments = [self.comment(1, "a" * size), self.comment(2, "b" * size)]
+        self.assertEqual(self.discussion_batches()[0]["batches"], 2)
+        self.assertEqual(self.batches()[0]["batches"], 1)
 
 
 class CommentsContext(Base):
@@ -3810,12 +4186,15 @@ class Cli(unittest.TestCase):
             (["prior", URL, "t", "--kind", "gate", "--document", "d", "--trust"], "cmd_prior",
              (URL, "t", "gate", "d", True)),
             (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--prior-doc", "p"],
-             "cmd_draft", (URL, "t", "d", "gate", "ja", "p")),
+             "cmd_draft", (URL, "t", "d", "gate", "ja", "p", None)),
+            (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--blocking", "b"],
+             "cmd_draft", (URL, "t", "d", "gate", "ja", None, "b")),
             (["draft", URL, "t", "d", "--kind", "review", "--lang", "en"], "cmd_draft",
-             (URL, "t", "d", "review", "en", None)),
+             (URL, "t", "d", "review", "en", None, None)),
             (["wording", URL, "j"], "cmd_wording", (URL, "j")),
             (["comments", URL, "t"], "cmd_comments", (URL, "t")),
-            (["raised", URL, "t"], "cmd_raised", (URL, "t")),
+            (["raised", URL, "t"], "cmd_raised", (URL, "t", False)),
+            (["raised", URL, "t", "--discussion"], "cmd_raised", (URL, "t", True)),
             (["participants", URL], "cmd_participants", (URL,)),
             (["own", URL, "t"], "cmd_own", (URL, "t")),
             (["ids", URL, "t"], "cmd_ids", (URL, "t")),
