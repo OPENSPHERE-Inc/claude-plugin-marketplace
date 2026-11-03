@@ -349,6 +349,8 @@ class Base(unittest.TestCase):
                 finding["summary"] = " / ".join(finding["recommendation"])
         for entry in draft["prior"]:
             entry["worded"] = True
+        if kind == "gate":
+            draft["overview"] = ""
         self.save(draft)
         return result, draft
 
@@ -395,6 +397,12 @@ class Parsing(Base):
         self.assertEqual(first["severity"], "Critical")
         self.assertEqual(first["location"], "src/a.py:10")
         self.assertEqual(first["text"], "null を参照する。\n@alice に確認済み。")
+        self.assertEqual([f["categories"] for f in findings], ["Bug", "Bug", "", "Style", "", ""])
+
+    def test_categories_are_what_the_heading_brackets(self):
+        self.write_document("### M-1 — `a.py:1` [バグ/セキュリティ]", "", "x", "",
+                            "<!-- METADATA(M-1) -->", "<!-- /METADATA(M-1) -->")
+        self.assertEqual(mod.parse_document(self.doc)[1][0]["categories"], "バグ/セキュリティ")
 
     def write_document(self, *lines):
         with open(self.doc, "w", encoding="utf-8") as f:
@@ -482,6 +490,16 @@ class Parsing(Base):
         self.assertEqual(mod.finding_block({**finding, "recommendation": []}, "en", False),
                          "**Major M-2**\n\nBroken.")
 
+    def test_a_finding_block_shows_its_categories_after_whether_it_blocks(self):
+        finding = {"id": "M-2", "location": "a.py:1", "text": "Broken.", "recommendation": [],
+                   "categories": "Bug/Security"}
+        self.assertEqual(mod.finding_block(finding, "en", True),
+                         "**Major M-2** [Bug/Security] `a.py:1`\n\nBroken.")
+        self.assertEqual(mod.finding_block({**finding, "blocking": True}, "en", False),
+                         "**Major M-2** · blocking [Bug/Security]\n\nBroken.")
+        self.assertEqual(mod.finding_block({**finding, "categories": ""}, "en", False),
+                         "**Major M-2**\n\nBroken.")
+
 
 class Draft(Base):
     def test_selection_and_placement(self):
@@ -495,6 +513,7 @@ class Draft(Base):
         self.assertEqual(by_id["M-2"]["placement"], "body")
         self.assertEqual(by_id["I-1"]["placement"], "body")
         self.assertEqual(result["selected"], 3)
+        self.assertEqual((by_id["C-1"]["categories"], by_id["M-2"]["categories"]), ("Bug", ""))
 
     def test_only_the_label_decides_the_selection(self):
         self.fake()
@@ -578,7 +597,7 @@ class ReviewPosting(Base):
         threads = gh.named("addPullRequestReviewThread")
         line = next(t for t in threads if t["path"] == "src/a.py" and t["subjectType"] == "LINE")
         self.assertEqual((line["line"], line["side"]), (10, "RIGHT"))
-        self.assertIn("**Critical C-1**", line["body"])
+        self.assertTrue(line["body"].startswith("**Critical C-1** [Bug]\n"))
         self.assertIn("null を確認", line["body"])
         self.assertNotIn("Cost", line["body"])
         self.assertNotIn("レビュアー", line["body"])
@@ -587,7 +606,7 @@ class ReviewPosting(Base):
         file_level = next(t for t in threads if t["subjectType"] == "FILE")
         self.assertEqual(file_level["path"], "src/a.py")
         self.assertNotIn("line", file_level)
-        self.assertIn("`src/a.py:99`", file_level["body"])
+        self.assertIn("**Major M-1** [Bug] `src/a.py:99`", file_level["body"])
 
     def test_comment_without_critical_or_major(self):
         gh = self.fake()
@@ -846,7 +865,7 @@ class Gate(Base):
         mod.cmd_post(URL, path, None)
         sent = json.dumps(gh.mutations, ensure_ascii=False)
         self.assertIn("non-blocking", sent)
-        self.assertRegex(sent, r"\*\*Minor mi-\d+\*\* · blocking")
+        self.assertRegex(sent, r"\*\*Minor mi-\d+\*\* · blocking \[Style\]")
 
     def test_a_review_draft_says_nothing_of_blocking(self):
         gh = self.fake()
@@ -1326,10 +1345,13 @@ class Prior(PriorBase):
         for lang in mod.LABELS:
             for blocking in (True, False):
                 for with_location in (True, False):
-                    block = mod.finding_block(
-                        {"id": "mi-1", "location": "a.py:1", "text": "t", "blocking": blocking},
-                        lang, with_location)
-                    self.assertEqual(mod.blocking_marks([{"body": block}]), {"mi-1": blocking})
+                    for categories in ("", "Bug/Security"):
+                        block = mod.finding_block(
+                            {"id": "mi-1", "location": "a.py:1", "text": "t",
+                             "blocking": blocking, "categories": categories},
+                            lang, with_location)
+                        self.assertEqual(mod.blocking_marks([{"body": block}]),
+                                         {"mi-1": blocking})
                 for state in ("open", "verified", "waived"):
                     draft = {"lang": lang, "head_sha": HEAD, "findings": [], "prior": [
                         {"id": "M-1", "state": state, "blocking": blocking, "note": "n"}]}
@@ -3782,7 +3804,7 @@ class Wording(Base):
         mod.cmd_draft(URL, self.dir, self.doc, "gate", "ja", prior)
         path = os.path.join(self.dir, "draft.json")
         draft = json.loads(read_text(path))
-        self.wording({"comment_lang": "en", "findings": [
+        self.wording({"comment_lang": "en", "overview": "o", "findings": [
             {"id": f["id"]} for f in draft["findings"] if f["selected"]]})
         self.assertEqual(mod.cmd_wording(URL, path)["missing"], ["M-7"])
 
@@ -3982,7 +4004,7 @@ class Wording(Base):
         self.assertEqual(result["prior_ids"], ["M-7"])
         path = os.path.join(self.dir, "draft.json")
         draft = json.loads(read_text(path))
-        self.wording({"comment_lang": "en", "findings": [
+        self.wording({"comment_lang": "en", "overview": "o", "findings": [
             {"id": "M-7", "post_note": "still broken"},
             *({"id": f["id"], "summary": "s"} for f in draft["findings"] if f["selected"])]})
         mod.cmd_wording(URL, path)
@@ -3993,6 +4015,74 @@ class Wording(Base):
         self.assertIn("still broken", body)
         self.assertNotIn("まだ壊れている", body)
         self.assertIn("Merge gate: BLOCK", body)
+
+    def test_categories_go_out_translated(self):
+        _, path = self.raw_draft()
+        draft = json.loads(read_text(path))
+        self.wording({"comment_lang": "en", "findings": [
+            {"id": f["id"], "summary": "s", "post_categories": f"Defect {f['id']}"}
+            for f in draft["findings"] if f["selected"]]})
+        mod.cmd_wording(URL, path)
+        result, preview = self.preview(path)
+        self.assertIn("**Critical C-1** [Bug]", preview)
+        self.assertIn("**Critical C-1** [Defect C-1]", read_text(result["post_preview_path"]))
+        self.assertIn("C-1", result["post_differs"])
+        gh = mod.run
+        mod.cmd_post(URL, path, None)
+        line = next(t for t in gh.named("addPullRequestReviewThread") if t["subjectType"] == "LINE")
+        self.assertTrue(line["body"].startswith("**Critical C-1** [Defect C-1]\n"))
+
+    def gate_raw_draft(self):
+        self.fake()
+        mod.cmd_draft(URL, self.dir, self.doc, "gate", "ja", None)
+        return os.path.join(self.dir, "draft.json")
+
+    def test_a_gate_draft_needs_an_overview(self):
+        path = self.gate_raw_draft()
+        draft = json.loads(read_text(path))
+        self.wording({"comment_lang": "ja", "findings": [
+            {"id": f["id"], "summary": "s"} for f in draft["findings"] if f["selected"]]})
+        self.assertEqual(mod.cmd_wording(URL, path)["missing"], ["overview"])
+        self.assertEqual(self.preview(path)[0]["wording_missing"], ["overview"])
+        with self.assertRaisesRegex(mod.Error, "overview"):
+            mod.cmd_post(URL, path, None)
+        self.wording({"comment_lang": "ja", "overview": "差分を確認した。"})
+        self.assertEqual(mod.cmd_wording(URL, path)["missing"], [])
+
+    def test_the_overview_follows_the_verdict_and_goes_out_translated(self):
+        path = self.gate_raw_draft()
+        draft = json.loads(read_text(path))
+        for finding in draft["findings"]:
+            finding["selected"] = False
+        self.save(draft)
+        self.wording({"comment_lang": "en", "overview": "差分全体を確認した。",
+                      "post_overview": "Checked the whole change."})
+        mod.cmd_wording(URL, path)
+        result, preview = self.preview(path)
+        self.assertIn(f"{HEAD[:mod.SHORT_SHA]}\n\n差分全体を確認した。", preview)
+        self.assertEqual(result["post_differs"], ["overview"])
+        gh = mod.run
+        mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.named("submitPullRequestReview")[0]["body"],
+                         f"## Merge gate: PASS\n\n{HEAD[:mod.SHORT_SHA]}\n\n"
+                         "Checked the whole change.")
+
+    def test_a_review_draft_takes_no_overview(self):
+        _, path = self.raw_draft()
+        bad = self.wording({"comment_lang": "en", "overview": "o"})
+        with self.assertRaisesRegex(mod.Error, r"^wording-1\.json: .*overview"):
+            mod.cmd_wording(URL, path)
+        self.assertFalse(os.path.exists(bad))
+
+    def test_a_malformed_overview_is_refused(self):
+        path = self.gate_raw_draft()
+        for data in ({"comment_lang": "en", "overview": 1},
+                     {"comment_lang": "en", "overview": "o", "post_overview": ["x"]}):
+            bad = self.wording(data)
+            with self.assertRaisesRegex(mod.Error, r"^wording-1\.json: "):
+                mod.cmd_wording(URL, path)
+            self.assertFalse(os.path.exists(bad))
+        self.assertNotIn("overview", json.loads(read_text(path)))
 
     def test_replies_merge_by_index_and_post_the_translation(self):
         gh = self.fake()

@@ -8,20 +8,22 @@
 
 ## 指摘
 
-`/cgh:review` と `/cgh:gate` 用。入力: draft の `findings`（`id`、`text`、`recommendation`: 修正計画の編集の一覧）と `prior`（`id`、`note`）。
+`/cgh:review` と `/cgh:gate` 用。入力: draft の `findings`（`id`、`categories`: `/` で連結したラベル、`text`、`recommendation`: 修正計画の編集の一覧）と `prior`（`id`、`note`）。
 
 選択された指摘それぞれについて:
 
 - `summary`（`recommendation` が空でないとき）: 指摘について何をすべきかとその理由を、コメントを読む人に向けて 1〜3 文で、`text` の言語で書く。編集ごとにではなく、コードの動作や設計の何を変えるべきかを述べる。行番号、ファイルの一覧、ミラーの更新や対応するテストの追加などの雑務は、それが指摘の要点でない限り書かない。識別子はバッククォートで囲む。
-- `post_text`: `text` を `comment_lang` にしたもの。`post_summary`: `summary` を同様にしたもの。
+- `post_text`: `text` を `comment_lang` にしたもの。`post_summary`: `summary` を同様にしたもの。`post_categories`: `categories` を同様にしたもの。ラベルは `/` で連結したまま保つ。
 
 `note` のある `prior` の各エントリについて、`post_note`: その `note` を `comment_lang` にしたもの。
+
+`/cgh:gate` では `overview`: レビュー本文の判定の下に置く 2〜4 文の総評を `{doc_lang}` で書き、レビューを読む人が指摘を読む前にこの回のゲートの概略をつかめるようにする。このヘッドで何を確認したか（変更を、それが何をするかで述べ、再確認した前回までの指摘と考慮した議論があればそれも）と、何が残るか（マージを止めるものの要旨と、止めずに残るもの、たとえば非ブロッキングの指摘やコードでは決着しない前回までの指摘。何も残らなければそう述べる）を述べる。draft の選択された指摘とその `blocking`、`prior`、レビュードキュメント、議論の一覧があればそれから書く。ゲートの進め方（レビュアー、エージェント、元の指摘数、重複除去、トリアージなど）と、本文がすでに示す判定と指摘数は書かない。`post_overview`: `overview` を `comment_lang` にしたもの。
 
 テキストがすでに `comment_lang` でコードの外に `@` がなければ、その `post_` フィールドは省く。他のフィールドがなくてもすべての id を挙げる: ファイルにない id は未処理とみなされる。
 
 `{tmp_dir}/wording-{n}.json` を書く:
 
-`{"comment_lang": "en", "findings": [{"id": "M-1", "summary": "...", "post_text": "...", "post_summary": "..."}, {"id": "M-7", "post_note": "..."}]}`
+`{"comment_lang": "en", "overview": "...", "post_overview": "...", "findings": [{"id": "M-1", "summary": "...", "post_text": "...", "post_summary": "...", "post_categories": "..."}, {"id": "M-7", "post_note": "..."}]}`
 
 ## 翻訳する返信
 

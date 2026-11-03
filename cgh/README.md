@@ -43,8 +43,9 @@ wrong about the problem's cause, location, or effect.
 - **Event**: Request Changes when a posted finding is Critical or Major, otherwise Comment.
   It makes no LGTM judgment.
 - **Content**: each comment holds the severity and finding ID (`Critical C-1`, `Major M-1`,
-  `Minor mi-1`), the finding, and the estimate's recommendation, summarized for people. Cost,
-  signals, and reviewer agents are left out.
+  `Minor mi-1`), the finding's category tags from the review document (`[Bug/Security]`), the
+  finding, and the estimate's recommendation, summarized for people. Cost, signals, and reviewer
+  agents are left out.
 - **Posted by default**: findings triaged Will Fix, including a Critical or Major finding the
   estimate downgraded, since the problem stays in the code.
   - Info, Won't Fix, and a downgraded Minor finding stay out unless you ask for them. The
@@ -103,7 +104,9 @@ posted comment shows which, next to its severity:
   problem. AI-facing prompts, code, and the description are not documentation here.
 - A finding with no judgment blocks. You can change a judgment at the preview.
 
-The verdict goes in the review body, and findings are placed as in `/cgh:review`.
+The verdict goes in the review body, followed by a short overview: what this run checked and what
+remains, so that the author knows where the pull request stands before reading the findings.
+Findings are placed and tagged as in `/cgh:review`.
 
 Run it again after fixes until it passes. A later run verifies the earlier gate findings at the
 current head with `/creview:resolve`, reports them in the review body, and reviews the whole
