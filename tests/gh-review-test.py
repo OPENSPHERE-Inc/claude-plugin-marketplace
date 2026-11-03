@@ -3339,7 +3339,7 @@ class Raised(Base):
         self.assertEqual(result["comments"], 1)
         self.assertEqual(batches[0]["comments"][0]["text"], "open")
 
-    def test_a_thread_started_in_a_dismissed_review_is_left_out_whole(self):
+    def test_a_discussion_leaves_out_a_thread_started_in_a_dismissed_review_whole(self):
         gh = self.fake()
         gh.reviews = [{"id": 3, "state": "DISMISSED", "user": {"login": "rev"}, "body": ""},
                       {"id": 4, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
@@ -3347,9 +3347,21 @@ class Raised(Base):
                               self.comment(2, "reply in a live review", reply_to=1, review=4),
                               self.comment(5, "open", review=4),
                               self.comment(6, "reply in the dismissed review", reply_to=5)]
-        for result, batches in (self.batches(), self.discussion_batches()):
-            self.assertEqual(result["comments"], 1)
-            self.assertEqual(batches[0]["comments"][0]["text"], "open")
+        result, batches = self.discussion_batches()
+        self.assertEqual(result["comments"], 1)
+        self.assertEqual(batches[0]["comments"][0]["text"], "open")
+
+    def test_a_plain_listing_keeps_a_live_reply_in_a_thread_of_a_dismissed_review(self):
+        gh = self.fake()
+        gh.reviews = [{"id": 3, "state": "DISMISSED", "user": {"login": "rev"}, "body": ""},
+                      {"id": 4, "state": "COMMENTED", "user": {"login": "rev"}, "body": ""}]
+        gh.review_comments = [self.comment(1, "dismissed"),
+                              self.comment(2, "reply in a live review", reply_to=1, review=4),
+                              self.comment(5, "open", review=4),
+                              self.comment(6, "reply in the dismissed review", reply_to=5)]
+        _, batches = self.batches()
+        self.assertEqual([c["text"] for c in batches[0]["comments"]],
+                         ["reply in a live review", "open"])
 
     def test_resolved_threads_are_left_out_on_every_page(self):
         gh = self.fake()

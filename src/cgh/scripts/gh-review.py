@@ -110,8 +110,9 @@ and viewer, the authenticated user, and <tmp_dir>/pr-body.json.
 
 raised: writes <tmp_dir>/raised/batch-<n>.json, the comments with visible text already on the
 pull request by author and place, split into batches with each thread whole. Leaves out dismissed
-reviews, their comments, the replies in threads those comments start, and threads resolved on
-GitHub. With --discussion, it keeps the resolved threads, each comment has created_at and, in a
+reviews, their comments, and threads resolved on GitHub. With --discussion, it also leaves out the
+replies in threads those comments start, keeps the resolved threads, each comment has created_at
+and, in a
 thread, review_opening, a comment with no line at the head has only its path as its location, a
 batch also holds viewer, author, and assignees, and <tmp_dir>/raised/conversation.json, printed as
 conversation_path, holds conversation, the review bodies and issue comments outside dismissed
@@ -1925,7 +1926,8 @@ def cmd_raised(pr_url, tmp_dir, discussion=False):
     for comment in comments:
         root = comment.get("in_reply_to_id") or comment.get("id")
         if (comment.get("pull_request_review_id") in dismissed
-                or review_id_of.get(root) in dismissed or root in resolved):
+                or (discussion and review_id_of.get(root) in dismissed)
+                or root in resolved):
             continue
         if root not in threads:
             threads[root] = []
