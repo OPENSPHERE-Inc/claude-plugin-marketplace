@@ -87,7 +87,7 @@ Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_d
 
 ## Step 4 — Confirm and post
 
-Follow § Confirm and post with `{json_path}` = `{tmp_dir}/draft.json`. When the user waives an earlier finding, set its `state` under `prior` to `waived`: later runs neither check nor report it. When the user changes whether a finding or an earlier finding blocks, set its `blocking` to match. When a finding becomes blocking, also set its `selected` to true: the verdict and what goes out count only selected findings. When you show the preview and an earlier finding stays not verified because the code cannot settle it, tell the user that they can waive it now if it is dealt with.
+Follow § Confirm and post with `{json_path}` = `{tmp_dir}/draft.json`. When the user waives an earlier finding, set its `state` under `prior` to `waived`: later runs neither check nor report it. When the user changes whether a finding or an earlier finding blocks, set its `blocking` to match. When a finding becomes blocking, also set its `selected` to true: the verdict and what goes out count only selected findings. When a change makes `overview` wrong, or it mentions a finding that is not selected, rewrite it and `post_overview` to match. When you show the preview and an earlier finding stays not verified because the code cannot settle it, tell the user that they can waive it now if it is dealt with.
 
 The script computes the verdict, the event, and each finding's place from `{json_path}`: do not choose them yourself.
 

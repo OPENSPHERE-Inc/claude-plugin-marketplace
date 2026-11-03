@@ -79,7 +79,8 @@ pr_body_path.
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after
-every ID finding-ids.json lists as used on the pull request, with whether it is selected
+every ID finding-ids.json lists as used on the pull request, with the categories its heading
+brackets, which its comment shows, whether it is selected,
 and where it goes (inline: a line of the diff; file: a file of the diff; body: anywhere else).
 Selected by default: a Will Fix finding other than Info, unless Downgrade leaves it at Minor;
 Critical or Major with Downgrade stays a real problem. --prior-doc, which must be at the pull
@@ -98,12 +99,14 @@ severity: Critical and Major block. One still open with no mark is printed in bl
 
 wording: merges every wording-*.json next to <json_path> into it: comment_lang, the
 language comments go out in, with, per finding, summary (the recommendation for people,
-in the preview's language) and post_text, post_summary, post_note (the wording that goes
-out, when it differs from the preview's), or, per reply by index, post_body. It changes
-nothing else in the file, removes the merged files, so that a later run cannot undo an
-edit to the file, and prints the selected findings and the earlier findings with a note
-that no wording has covered yet. A wording file it cannot merge is removed and named in the
-error, with nothing merged and the other files kept, so that a writer run again replaces it.
+in the preview's language) and post_text, post_summary, post_categories, post_note (the
+wording that goes out, when it differs from the preview's), for a gate draft only, overview,
+which the review body shows after the verdict, and post_overview, or, per reply by index,
+post_body. It changes nothing else in the file, removes the merged files, so that a later run
+cannot undo an edit to the file, and prints the selected findings and the earlier findings
+with a note that no wording has covered yet, and overview when a gate draft has none. A
+wording file it cannot merge is removed and named in the error, with nothing merged and the
+other files kept, so that a writer run again replaces it.
 
 comments: writes <tmp_dir>/comments.json, the pull request's comments with their IDs, times,
 and viewer, the authenticated user, and <tmp_dir>/pr-body.json.
@@ -138,9 +141,10 @@ draft.json, or a file with a "replies" list of {kind: thread|review|issue_commen
 target_id, finding_ids, body, post_body, selected (default true), verified}. For a draft,
 wording_missing holds what wording would print as missing, an empty recommendation or not.
 post_differs holds the IDs of what goes out in other wording than the preview's, a reply with no
-finding IDs by its kind and target. Findings not posted are listed with Critical and Major first,
-marked. A reply shows a heading for each of its finding IDs its text does not hold, such as
-**Major M-1**, and one that post would send with a mention names its target in a Mentions line.
+finding IDs by its kind and target, and overview for the overview. Findings not posted are listed
+with Critical and Major first, marked. A reply shows a heading for each of its finding IDs its
+text does not hold, such as **Major M-1**, and one that post would send with a mention names its
+target in a Mentions line.
 For a gate draft, it first waits for GitHub to compute whether the pull request merges, and
 records the verdict it shows as previewed_verdict.
 
@@ -199,7 +203,7 @@ BRANCH_BULLET_RE = re.compile(r"- \*\*Branch:\*\* ([\w./+@-]+)")
 BRANCH_NAME_RE = re.compile(r"\w[\w./+@-]*")
 FINDING_ID = r"(?:C|M|mi|I)-[0-9]+"
 FINDING_ID_RE = re.compile(FINDING_ID)
-HEADING_RE = re.compile(rf"### ({FINDING_ID})\s+[—-]\s+`?([^`]*?)`?(?:\s+\[.*\])?\s*")
+HEADING_RE = re.compile(rf"### ({FINDING_ID})\s+[—-]\s+`?([^`]*?)`?(?:\s+\[(.*)\])?\s*")
 FINDING_HEADING_RE = re.compile(rf"###\s+{FINDING_ID}")
 METADATA_OPEN_RE = re.compile(rf"<!-- METADATA\(({FINDING_ID})\) -->")
 METADATA_RE = re.compile(r"- \*\*(Triage|Estimate|Status|Verification):\*\* (.*)")
@@ -225,7 +229,8 @@ PRIOR_VERIFIED = "✅ Verified — Verified at an earlier commit"
 POSTED_STATES = ("open", "declined", "verified", "withdrawn")
 SKIP_REASONS = ("other_kind", "no_problem")
 COMMENT_LANG_RE = re.compile(r"[a-z]{2,3}(?:-[A-Za-z0-9]+)*")
-FINDING_WORDING = ("summary", "post_text", "post_summary", "post_note")
+FINDING_WORDING = ("summary", "post_text", "post_summary", "post_categories", "post_note")
+OVERVIEW_WORDING = ("overview", "post_overview")
 SEVERITIES = {"C": "Critical", "M": "Major", "mi": "Minor", "I": "Info"}
 SERIOUS = ("Critical", "Major")
 ATTENTION = "⚠️"
@@ -615,7 +620,8 @@ def parse_document(path):
             raise Error(f"{path} has a metadata block under no heading of its ID: {line}")
         if heading:
             current = {"id": heading.group(1), "severity": severity_of(heading.group(1)),
-                       "location": heading.group(2).strip(), "text": [], "metadata": {}}
+                       "location": heading.group(2).strip(),
+                       "categories": (heading.group(3) or "").strip(), "text": [], "metadata": {}}
             findings.append(current)
             state = "text"
         elif current is None:
@@ -678,6 +684,8 @@ def finding_block(finding, lang, with_location):
     head = f"**{severity_of(finding['id'])} {finding['id']}**"
     if "blocking" in finding:
         head += blocking_mark(finding["blocking"], labels)
+    if finding.get("categories"):
+        head += f" [{finding['categories']}]"
     if with_location and location != "PR":
         head += f" `{location.replace('`', '')}`"
     parts = [head, "", finding["text"]]
@@ -695,7 +703,8 @@ def comment_view(finding, post):
     """The finding as the preview (post False) or the pull request (post True) shows it."""
     text = (post and finding.get("post_text")) or finding["text"]
     summary = (post and finding.get("post_summary")) or finding.get("summary")
-    return {**finding, "text": text,
+    categories = (post and finding.get("post_categories")) or finding.get("categories")
+    return {**finding, "text": text, "categories": categories,
             "recommendation": [summary] if summary else finding.get("recommendation") or []}
 
 
@@ -1288,6 +1297,7 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
             **blocking,
             "id": f"{prefix}-{base + int(n)}", "doc_id": finding["id"],
             "severity": finding["severity"], "location": finding["location"],
+            "categories": finding["categories"],
             "placement": placement(finding["location"], files), "selected": selected,
             "excluded_reason": reason, "text": finding["text"],
             "recommendation": recommendation(finding),
@@ -1333,7 +1343,8 @@ def review_plan(draft, view):
 
 def wording_missing(draft):
     missing = [f["id"] for f in draft["findings"] if f["selected"] and not f.get("worded")]
-    return missing + [p["id"] for p in draft["prior"] if p["note"] and not p.get("worded")]
+    missing += [p["id"] for p in draft["prior"] if p["note"] and not p.get("worded")]
+    return missing + (["overview"] if draft["kind"] == "gate" and "overview" not in draft else [])
 
 
 def review_body(draft, plan, body_findings, post):
@@ -1345,6 +1356,9 @@ def review_body(draft, plan, body_findings, post):
         lines += [f"## {labels['gate']}: {plan['verdict']}", "", short, ""]
         if plan["conflict"]:
             lines += [labels["conflict"], ""]
+        overview = (post and draft.get("post_overview")) or draft.get("overview")
+        if overview:
+            lines += [overview, ""]
     counts = [f"{name} {sum(f['severity'] == name for f in plan['selected'])}"
               for name in ("Critical", "Major", "Minor", "Info")
               if any(f["severity"] == name for f in plan["selected"])]
@@ -1478,6 +1492,8 @@ def post_differs(data):
                if f["selected"] and comment_view(f, True) != comment_view(f, False)]
         ids += [p["id"] for p in data["prior"] if p["state"] != "waived" and p.get("post_note")
                 and p["post_note"] != p["note"]]
+        if data.get("post_overview") and data["post_overview"] != data.get("overview"):
+            ids.append("overview")
         return ids
     ids = []
     for entry in data["replies"]:
@@ -1509,6 +1525,11 @@ def cmd_preview(pr_url, path):
 
 
 def merge_wording(data, wording):
+    overview = {k: wording[k] for k in OVERVIEW_WORDING if k in wording}
+    if overview and data["kind"] != "gate":
+        raise Error("an overview is only for a gate draft")
+    if not all(isinstance(v, str) for v in overview.values()):
+        raise Error(f"malformed overview: {overview!r}")
     for entry in wording.get("findings", []):
         if not isinstance(entry, dict):
             raise Error(f"malformed wording: {entry!r}")
@@ -1517,6 +1538,7 @@ def merge_wording(data, wording):
         if not known or not all(isinstance(v, str) for v in values.values()):
             raise Error(f"malformed wording: {entry!r}")
         known[0].update(values, worded=True)
+    data.update(overview)
 
 
 def merge_reply_wording(data, wording):

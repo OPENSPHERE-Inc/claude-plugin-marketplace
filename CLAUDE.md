@@ -294,9 +294,11 @@ leader's own reads and writes on GitHub all go through `scripts/gh-review.py`, w
 pull request of a repository that is not a remote of the clone and also computes the event,
 the verdict, and where each finding goes; the creview skills it runs read through `gh-pr.py`.
 The leader itself writes what goes out, following `rules/wording.md`, since it knows what the user
-decided in the conversation: summaries, replies, and their translation into the language of the pull
-request's description. A bundled `comment-writer`, which has Read and Write only, makes the judgments
-that are not posted. The preview stays in the user's language, and when what goes out differs, the user is shown that
+decided in the conversation: summaries, the overview of a `/cgh:gate` run, replies, and their
+translation into the language of the pull request's description. `gh-review.py` adds each finding's
+category tags from the review document's heading to its comment. A bundled `comment-writer`,
+which has Read and Write only, makes the judgments that are not posted. The preview stays in the
+user's language, and when what goes out differs, the user is shown that
 as well. Nothing cgh posts carries a hidden marker, and nothing reads one: a pull request is worked
 on by several people and AI, with or without these skills, so nothing guarantees that a marker
 survives, stays unedited, or is not forged. `gh-review.py` and `gh-pr.py` remove HTML comments from

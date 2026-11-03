@@ -26,7 +26,7 @@ An item whose `key` starts with `review:` or `issue_comment:` has no thread: loo
 
 Whatever an item's `key`, a `viewer` comment in `conversation` with a result line that names a finding's ID, such as `✅ **M-1**: ...` or `➖ **M-1**: ...`, answers that finding.
 
-Give an item an entry per problem it raises in the pull request's code or description, and none when it raises none, such as a summary, a status report, a question, or a reply to something else: a `viewer` reply that reports what was done about someone else's finding raises nothing. A problem the comment raised keeps its entry however settled it looks: only its `state` says so, and a problem with no entry drops out of every check. Set an entry's `id` to the ID in `earlier_ids` that the comment gives the same problem, and leave it out when none does.
+Give an item an entry per problem it raises in the pull request's code or description, and none when it raises none, such as a summary, a status report, a question, or a reply to something else: a `viewer` reply that reports what was done about someone else's finding raises nothing. A problem the comment raised keeps its entry however settled it looks: only its `state` says so, and a problem with no entry drops out of every check. Set an entry's `id` to the ID in `earlier_ids` that the comment gives the same problem, and leave it out when none does. A review body that opens with a merge gate's verdict has an overview: the prose after the verdict heading, up to the first of a finding count line, a subheading, and the end of the body. It sums up findings raised elsewhere and earlier results, and raises no problem: give it no entry.
 
 Each entry's `state`:
 
