@@ -98,6 +98,8 @@ posted comment shows which, next to its severity:
 - Other broken code and regressions block, unless both of these hold: it occurs only under a
   special condition normal use does not reach or in a very short window, and deferring it is
   evident from the description or from a decline by the assignees or, with none, the author.
+- A problem in documentation for people, such as a README, does not block, even a security
+  problem. AI-facing prompts, code, and the description are not documentation here.
 - A finding with no judgment blocks. You can change a judgment at the preview.
 
 The verdict goes in the review body, and findings are placed as in `/cgh:review`.
