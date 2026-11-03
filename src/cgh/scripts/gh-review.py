@@ -142,8 +142,9 @@ target_id, finding_ids, body, post_body, selected (default true), verified}. For
 wording_missing holds what wording would print as missing, an empty recommendation or not.
 post_differs holds the IDs of what goes out in other wording than the preview's, a reply with no
 finding IDs by its kind and target, and overview for the overview. Findings not posted are listed
-with Critical and Major first, marked. A reply shows a heading for each of its finding IDs its text does not hold, such as
-**Major M-1**, and one that post would send with a mention names its target in a Mentions line.
+with Critical and Major first, marked. A reply shows a heading for each of its finding IDs its
+text does not hold, such as **Major M-1**, and one that post would send with a mention names its
+target in a Mentions line.
 For a gate draft, it first waits for GitHub to compute whether the pull request merges, and
 records the verdict it shows as previewed_verdict.
 
