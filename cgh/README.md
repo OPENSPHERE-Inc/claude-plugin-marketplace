@@ -69,14 +69,15 @@ comment does not record one. The focus is in [rules/gate-focus.md](rules/gate-fo
 It also reads every comment on the pull request, including threads marked resolved on GitHub. What
 a discussion concludes has to end up in the code or the description, or be tracked in an issue or
 ticket that the description, a code comment, or a comment by the author, an assignee, or you names.
-Any other comment records nothing.
+For a security problem, only a tracking issue named by the author or an assignee counts. Any other
+comment records nothing.
 
 - A problem discussed and recorded this way is not raised again, unless the code shows the record
   wrong about it. Neither is one declined because its premise is wrong, when the code bears that
   out.
 - A discussion with no such ending is raised as an unsettled discussion in place of the problem
   itself, and it blocks. A line in the description or a comment naming the tracking issue settles
-  it.
+  it, for a security problem only a comment by the author or an assignee.
 - An agreed change or a promised follow-up counts whatever the topic. A declined comment counts
   when its problem is one the gate looks for, unless the code shows it absent. An unanswered one
   counts only when its problem is one the gate looks for and holds in the code.
