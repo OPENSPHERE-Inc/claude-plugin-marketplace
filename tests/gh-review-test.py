@@ -787,9 +787,33 @@ class Gate(Base):
         result, text = self.preview(path)
         self.assertEqual(result["verdict"], "PASS")
         self.assertIn("**Merge gate: No blocking findings**", text)
+        self.assertIn("## Merge gate: No blocking findings\n",
+                      read_text(result["post_preview_path"]))
+        self.assertEqual(result["post_differs"], [])
         self.assertEqual(json.loads(read_text(path))["previewed_verdict"], "PASS")
         post = mod.cmd_post(URL, path, None)
         self.assertEqual((post["verdict"], post["event"]), ("PASS", "COMMENT"))
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertTrue(body.startswith("## Merge gate: No blocking findings\n"))
+
+    def test_post_verdict_labels_go_out_in_place_of_verdict_labels(self):
+        gh = self.fake()
+        _, draft = self.draft("gate", "ja")
+        for f in draft["findings"]:
+            f["selected"] = False
+        draft.update(comment_lang="en",
+                     verdict_labels={"PASS": "ブロッキングな指摘なし", "BLOCK": "ブロッキングな指摘あり"},
+                     post_verdict_labels={"PASS": "No blocking findings",
+                                          "BLOCK": "Blocking findings"})
+        path = self.save(draft)
+        result, text = self.preview(path)
+        self.assertIn("**マージゲート: ブロッキングな指摘なし**", text)
+        self.assertIn("## マージゲート: ブロッキングな指摘なし\n", text)
+        posted = read_text(result["post_preview_path"])
+        self.assertIn("**Merge gate: No blocking findings**", posted)
+        self.assertIn("## Merge gate: No blocking findings\n", posted)
+        self.assertEqual(result["post_differs"], ["verdict_labels"])
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "PASS")
         body = gh.named("submitPullRequestReview")[0]["body"]
         self.assertTrue(body.startswith("## Merge gate: No blocking findings\n"))
 
@@ -801,17 +825,20 @@ class Gate(Base):
         self.assertTrue(body.startswith("## Merge gate: Blocking findings\n"))
 
     def test_malformed_verdict_labels_are_refused(self):
-        for bad in ({"PASS": "ok"}, {"PASS": "", "BLOCK": "x"}, {"PASS": "a\nb", "BLOCK": "x"},
-                    {"PASS": 1, "BLOCK": "x"}, ["PASS", "BLOCK"]):
-            gh = self.fake()
-            _, draft = self.draft("gate", "en")
-            draft["verdict_labels"] = bad
-            path = self.save(draft)
-            with self.assertRaisesRegex(mod.Error, "verdict_labels"):
-                mod.cmd_preview(URL, path)
-            with self.assertRaisesRegex(mod.Error, "verdict_labels"):
-                mod.cmd_post(URL, path, None)
-            self.assertEqual(gh.mutations, [])
+        for key in ("verdict_labels", "post_verdict_labels"):
+            for bad in ({"PASS": "ok"}, {"PASS": "", "BLOCK": "x"},
+                        {"PASS": "a\nb", "BLOCK": "x"}, {"PASS": 1, "BLOCK": "x"},
+                        ["PASS", "BLOCK"]):
+                with self.subTest(key=key, bad=bad):
+                    gh = self.fake()
+                    _, draft = self.draft("gate", "en")
+                    draft[key] = bad
+                    path = self.save(draft)
+                    with self.assertRaisesRegex(mod.Error, f"malformed {key}"):
+                        mod.cmd_preview(URL, path)
+                    with self.assertRaisesRegex(mod.Error, f"malformed {key}"):
+                        mod.cmd_post(URL, path, None)
+                    self.assertEqual(gh.mutations, [])
 
     def test_force_comment_sends_a_block_as_comment(self):
         gh, path = self.gate_draft(selected=("M-1",), force_comment=True)
