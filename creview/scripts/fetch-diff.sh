@@ -119,8 +119,23 @@ if [[ -n "${SINCE}" ]]; then
         DIFF_FROM="${SINCE}"
     else
         # merge-tree exits 1 on a conflict and still writes the tree, conflict markers included.
+        # The merge drivers of git config, and its filters under merge.renormalize, would run on
+        # the pull request's content: false replaces each driver, leaving its file conflicted.
         rc=0
-        merged="$(git --attr-source="${ATTR_SOURCE}" merge-tree --write-tree --no-messages \
+        drivers="$(git config --name-only --get-regexp '^merge\..+\.driver$')" || rc=$?
+        if [[ "${rc}" -gt 1 ]]; then
+            echo "Error: git config could not list the merge drivers" >&2
+            exit 1
+        fi
+        merge_config=(-c merge.renormalize=false)
+        while IFS= read -r key; do
+            if [[ -n "${key}" ]]; then
+                merge_config+=("--config-env=${key}=FETCH_DIFF_NO_DRIVER")
+            fi
+        done <<< "${drivers}"
+        rc=0
+        merged="$(FETCH_DIFF_NO_DRIVER=false git "${merge_config[@]}" \
+            --attr-source="${ATTR_SOURCE}" merge-tree --write-tree --no-messages \
             "${SINCE}" "${FROM}")" || rc=$?
         DIFF_FROM="${merged%%$'\n'*}"
         if [[ "${rc}" -gt 1 || ! "${DIFF_FROM}" =~ ^[0-9a-f]{40,64}$ ]]; then
@@ -182,15 +197,15 @@ untracked_diff() (
 
 {
     printf '=== Changed Files (%s) ===\n' "${LABEL}"
-    review_diff --name-status "${DIFF_FROM}..${TO}"
+    review_diff --name-status "${DIFF_FROM}..${TO}" --
     printf '\n'
 
     printf '=== Commit Log (%s) ===\n' "${LABEL}"
-    git log "${LOG_REVS[@]}" --oneline --no-color
+    git log --oneline --no-color "${LOG_REVS[@]}" --
     printf '\n'
 
     printf '=== Commit Diff (%s) ===\n' "${LABEL}"
-    review_diff "${DIFF_FROM}..${TO}"
+    review_diff "${DIFF_FROM}..${TO}" --
     printf '\n'
 
     if [[ "${RANGE_MODE}" -eq 0 ]]; then

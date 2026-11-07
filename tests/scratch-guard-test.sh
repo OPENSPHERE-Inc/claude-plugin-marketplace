@@ -1017,11 +1017,34 @@ if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
         && ! psd_has since-conflict.txt '+c1' \
         || { note "FAIL: creview fetch-diff --pr-since hid a resolution or a dropped base change"
              fail=1; }
+    printf '* merge=probe=1 filter=probe\n' > "${PSD}/.git/info/attributes"
+    rc=0; (export GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=merge.probe=1.driver \
+        GIT_CONFIG_VALUE_0='touch driver-ran' GIT_CONFIG_KEY_1=filter.probe.clean \
+        GIT_CONFIG_VALUE_1='touch filter-ran; cat' GIT_CONFIG_KEY_2=merge.renormalize \
+        GIT_CONFIG_VALUE_2=true
+        psd_diff "${PS_BASE2}" "${PS_PR3}" "${PS_PR4}" since-driver.txt) 2>/dev/null || rc=$?
+    check "creview fetch-diff --pr-since with a merge driver and renormalization" 0 "${rc}"
+    [[ ! -e "${PSD}/driver-ran" && ! -e "${PSD}/filter-ran" ]] \
+        && psd_has since-driver.txt '+a2 resolved' && psd_has since-driver.txt '-b3 base' \
+        || { note "FAIL: creview fetch-diff --pr-since ran a merge driver or filter of git config"
+             fail=1; }
+    rm -f "${PSD}/.git/info/attributes" "${PSD}/driver-ran" "${PSD}/filter-ran"
     rc=0; psd_diff "${PS_BASE0}" "${PS_PR2}" "${PS_PR2}" since-empty.txt 2>/dev/null || rc=$?
     check "creview fetch-diff --pr-since at the head" 0 "${rc}"
     [[ -s "${PSD}/.claude/tmp/since-empty.txt" ]] \
         && ! grep -q '^diff --git' "${PSD}/.claude/tmp/since-empty.txt" \
         || { note "FAIL: creview fetch-diff --pr-since at the head showed a change"; fail=1; }
+    touch "${PSD}/${PS_PR1}" "${PSD}/${PS_BASE0}" "${PSD}/${PS_BASE0}..HEAD"
+    rc=0; psd_diff "${PS_BASE0}" "${PS_PR1}" "${PS_PR2}" since-names.txt 2>/dev/null || rc=$?
+    check "creview fetch-diff --pr-since beside files named after its revisions" 0 "${rc}"
+    psd_has since-names.txt '+n1' && grep -q ' pr2$' "${PSD}/.claude/tmp/since-names.txt" \
+        || { note "FAIL: creview fetch-diff --pr-since took a revision for a file name"; fail=1; }
+    rc=0; (cd "${PSD}" && bash "${CFD}" --pr "${PS_BASE0}" HEAD .claude/tmp/pr-names.txt) \
+        2>/dev/null || rc=$?
+    check "creview fetch-diff --pr beside a file named after its range" 0 "${rc}"
+    psd_has pr-names.txt '+n1' \
+        || { note "FAIL: creview fetch-diff --pr took a range for a file name"; fail=1; }
+    rm -f "${PSD}/${PS_PR1}" "${PSD}/${PS_BASE0}" "${PSD}/${PS_BASE0}..HEAD"
     for bad in "${PS_BASE0} ${PS_BASE1} ${PS_PR2}" "${PS_BASE1} ${PS_PR1} ${PS_PR2}"; do
         read -r b s h <<< "${bad}"
         rc=0; psd_diff "${b}" "${s}" "${h}" since-bad.txt 2>/dev/null || rc=$?
