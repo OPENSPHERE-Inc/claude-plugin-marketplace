@@ -8,7 +8,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 
 ## Requirements
 
-- The `creview` plugin, version 0.18.1 or later, which Claude Code installs with `cgh` as a
+- The `creview` plugin, version 0.19.0 or later, which Claude Code installs with `cgh` as a
   dependency, and what it needs for a pull request: an authenticated GitHub CLI (`gh`), Git 2.41
   or later, `python3` (3.9 or later) on the `PATH`, and a clone with the pull request's
   repository as a remote. The skills refuse a pull request of any other repository.
@@ -24,7 +24,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 | Command | Purpose | Options |
 |---------|---------|---------|
 | `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial`, `--trust`, `--adr`, `--force-comment` |
-| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust`, `--adr`, `--force-comment` |
+| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust`, `--adr`, `--force-comment`, `--incremental` |
 | `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | `--no-confirm`, `--trust`, `--adr` |
 | `/cgh:resolve` | Verify the findings you raised, posted by `/cgh:review` or written by hand, and reply with the result. | `--trust` |
 
@@ -117,6 +117,22 @@ later runs do not report it again. Earlier findings already verified are checked
 still holds is left out of the review body, and one that no longer holds counts as unverified
 again. An open item in the description is verified from the description: it is resolved once the item is
 gone or names an issue or a pull request.
+
+With `--incremental`, a run reviews only the commits added since your latest gate review on the
+pull request, from the commit GitHub records for that review to the head. The review body names
+that commit, so that a reader knows a PASS did not cover the whole diff again. Everything else
+runs as without it: the earlier gate findings are verified at the current head, every comment is
+read for discussions, and the description and CI results are read again.
+
+- With no gate review of yours on the pull request, or when its head no longer contains that
+  commit, as after a force push or a rebase, the whole diff is reviewed, and the skill says why.
+- A dismissed gate review does not count: after you dismiss the latest one, the next run starts
+  from the one before it, or reviews the whole diff when there is none.
+- When the pull request merged its base branch since then, what the merge brought in is left out,
+  while how the pull request resolved a conflict and any base change the merge dropped are
+  reviewed.
+- Code before that commit is not reviewed again: a problem an earlier run let through, or one you
+  chose not to post, is not raised again.
 
 ### `/cgh:respond`
 

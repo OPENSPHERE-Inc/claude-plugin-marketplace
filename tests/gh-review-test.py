@@ -338,9 +338,10 @@ class Base(unittest.TestCase):
         mod.run = gh
         return gh
 
-    def draft(self, kind="review", lang="ja", prior_doc=None, blocking=None, force_comment=False):
+    def draft(self, kind="review", lang="ja", prior_doc=None, blocking=None, force_comment=False,
+              since=None):
         result = mod.cmd_draft(URL, self.dir, self.doc, kind, lang, prior_doc, blocking,
-                               force_comment)
+                               force_comment, since)
         with open(os.path.join(self.dir, "draft.json"), encoding="utf-8") as f:
             draft = json.load(f)
         draft["comment_lang"] = lang
@@ -2440,6 +2441,111 @@ class GateRecheck(Base):
         self.assertIn("✅ **M-7**", gh.named("submitPullRequestReview")[0]["body"])
 
 
+EARLIER = "e" * 40
+
+
+def gate_review(rid, commit=EARLIER, login="me", state="CHANGES_REQUESTED",
+                body="## Merge gate: BLOCK\n\neeeeeeeeee", submitted="2026-11-01T00:00:00Z"):
+    return {"id": rid, "user": {"login": login}, "state": state, "body": body,
+            "commit_id": commit, "submitted_at": submitted,
+            "html_url": f"{URL}#pullrequestreview-{rid}"}
+
+
+class Since(Base):
+    def since(self, *reviews, **status):
+        gh = self.fake()
+        gh.reviews = list(reviews)
+        gh.compare_status.update(status)
+        return mod.cmd_since(URL)
+
+    def test_no_gate_review_reviews_the_whole_diff(self):
+        result = self.since()
+        self.assertEqual((result["since"], result["commit"], result["fallback"]),
+                         (None, None, "none"))
+        self.assertEqual(result["head_sha"], HEAD)
+
+    def test_the_latest_gate_review_of_yours_gives_its_commit(self):
+        older, newer = "1" * 40, "2" * 40
+        result = self.since(
+            gate_review(1, older, submitted="2026-11-01T00:00:00Z"),
+            gate_review(3, "3" * 40, login="other", submitted="2026-11-04T00:00:00Z"),
+            gate_review(2, newer, submitted="2026-11-03T00:00:00Z",
+                        body="## マージゲート: PASS\n\n2222222222", state="COMMENTED"),
+            gate_review(4, "4" * 40, body="Findings: Major 1", submitted="2026-11-05T00:00:00Z"),
+            gate_review(5, "5" * 40, state="DISMISSED", submitted="2026-11-06T00:00:00Z"),
+            gate_review(6, "6" * 40, state="PENDING", submitted=None))
+        self.assertEqual((result["since"], result["commit"], result["fallback"]),
+                         (newer, newer, None))
+        self.assertEqual(result["review_url"], f"{URL}#pullrequestreview-2")
+
+    def test_the_commit_comes_from_the_api_not_the_body(self):
+        result = self.since(gate_review(1, body=f"## Merge gate: PASS\n\n{'9' * 40}"))
+        self.assertEqual(result["since"], EARLIER)
+
+    def test_a_heading_hidden_in_an_html_comment_is_no_gate_review(self):
+        hidden = "<!--\n## Merge gate: BLOCK\n-->\nLooks fine."
+        self.assertEqual(self.since(gate_review(1, body=hidden))["fallback"], "none")
+
+    def test_a_review_with_no_commit_is_skipped(self):
+        for commit in (None, "", "main", "E" * 40):
+            with self.subTest(commit=commit):
+                self.assertEqual(self.since(gate_review(1, commit))["fallback"], "none")
+
+    def test_a_commit_the_head_does_not_contain_falls_back(self):
+        for status in ("diverged", "behind", mod.Error("gh: Not Found (HTTP 404)")):
+            with self.subTest(status=status):
+                result = self.since(gate_review(1), **{EARLIER: status})
+                self.assertEqual((result["since"], result["commit"], result["fallback"]),
+                                 (None, EARLIER, "not_ancestor"))
+
+    def test_another_compare_failure_is_an_error(self):
+        with self.assertRaisesRegex(mod.Error, "rate limited"):
+            self.since(gate_review(1), **{EARLIER: mod.Error("rate limited")})
+
+    def test_a_gate_review_at_the_head_gives_the_head(self):
+        result = self.since(gate_review(1, HEAD))
+        self.assertEqual((result["since"], result["fallback"]), (HEAD, None))
+
+    def test_a_closed_pull_request_is_refused(self):
+        gh = self.fake(state="MERGED")
+        gh.reviews = [gate_review(1)]
+        with self.assertRaisesRegex(mod.Error, "not open"):
+            mod.cmd_since(URL)
+
+
+class SinceDraft(Base):
+    def test_the_body_names_the_commit_the_review_started_from(self):
+        gh = self.fake()
+        _, draft = self.draft("gate", "en", since=EARLIER)
+        self.assertEqual(draft["since"], EARLIER)
+        for f in draft["findings"]:
+            f["selected"] = False
+        draft["comment_lang"] = "ja"
+        path = self.save(draft)
+        result, text = self.preview(path)
+        line = mod.LABELS["en"]["since"].format(sha=EARLIER[:mod.SHORT_SHA])
+        self.assertIn(f"{HEAD[:mod.SHORT_SHA]}\n\n{line}\n", text)
+        posted = read_text(result["post_preview_path"])
+        self.assertIn(mod.LABELS["ja"]["since"].format(sha=EARLIER[:mod.SHORT_SHA]), posted)
+        mod.cmd_post(URL, path, None)
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertIn(mod.LABELS["ja"]["since"].format(sha=EARLIER[:mod.SHORT_SHA]), body)
+
+    def test_without_since_the_body_names_no_commit(self):
+        self.fake()
+        _, draft = self.draft("gate", "en")
+        self.assertNotIn("since", draft)
+        _, text = self.preview(self.save(draft))
+        self.assertNotIn(mod.LABELS["en"]["since"].split("{sha}")[0], text)
+
+    def test_since_is_refused_outside_a_gate_draft_or_off_a_commit(self):
+        for kind, since in (("review", EARLIER), ("gate", "main"), ("gate", EARLIER[:10])):
+            with self.subTest(kind=kind, since=since):
+                self.fake()
+                with self.assertRaisesRegex(mod.Error, "--since"):
+                    self.draft(kind, "en", since=since)
+
+
 class PostedContext(PriorBase):
     ROOT = 4432283150
 
@@ -4372,13 +4478,16 @@ class Cli(unittest.TestCase):
             (["prior", URL, "t", "--kind", "gate", "--document", "d", "--trust"], "cmd_prior",
              (URL, "t", "gate", "d", True)),
             (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--prior-doc", "p"],
-             "cmd_draft", (URL, "t", "d", "gate", "ja", "p", None, False)),
+             "cmd_draft", (URL, "t", "d", "gate", "ja", "p", None, False, None)),
             (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--blocking", "b"],
-             "cmd_draft", (URL, "t", "d", "gate", "ja", None, "b", False)),
+             "cmd_draft", (URL, "t", "d", "gate", "ja", None, "b", False, None)),
             (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--force-comment"],
-             "cmd_draft", (URL, "t", "d", "gate", "ja", None, None, True)),
+             "cmd_draft", (URL, "t", "d", "gate", "ja", None, None, True, None)),
+            (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--since", "s"],
+             "cmd_draft", (URL, "t", "d", "gate", "ja", None, None, False, "s")),
             (["draft", URL, "t", "d", "--kind", "review", "--lang", "en"], "cmd_draft",
-             (URL, "t", "d", "review", "en", None, None, False)),
+             (URL, "t", "d", "review", "en", None, None, False, None)),
+            (["since", URL], "cmd_since", (URL,)),
             (["wording", URL, "j"], "cmd_wording", (URL, "j")),
             (["comments", URL, "t"], "cmd_comments", (URL, "t")),
             (["raised", URL, "t"], "cmd_raised", (URL, "t", False)),

@@ -958,6 +958,86 @@ else
     note "SKIP: creview fetch-diff --pr submodule case (git has no --attr-source)"
 fi
 
+# --- fetch-diff.sh (creview) --pr-since: the changes since a commit, without the base's ------
+PSD="${SANDBOX}/prsince"
+psd_git() {
+    git -C "${PSD}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
+        -c core.autocrlf=false "$@"
+}
+psd_diff() { # <merge-base> <since> <head> <output-name>
+    (cd "${PSD}" && bash "${CFD}" --pr-since "$1" "$2" "$3" ".claude/tmp/$4")
+}
+psd_has() { # <output-name> <fixed line>
+    grep -qxF -- "$2" "${PSD}/.claude/tmp/$1" 2>/dev/null
+}
+# main: base0, base1 (b2, m.txt), base2 (a2 base, b3). feature: pr1 (a2 pr), pr2 (n.txt, which
+# its .gitattributes marks -diff), a clean merge of base1, pr3 (c.txt), and a merge of base2 that
+# resolves the a.txt conflict and drops b3.
+mkdir -p "${PSD}" && psd_git init -q && psd_git checkout -q -b main \
+    && printf 'a1\na2\na3\n' > "${PSD}/a.txt" && printf 'b1\n' > "${PSD}/b.txt" \
+    && psd_git add a.txt b.txt && psd_git commit -qm base0 && PS_BASE0="$(psd_git rev-parse HEAD)" \
+    && psd_git checkout -q -b feature && printf 'a1\na2 pr\na3\n' > "${PSD}/a.txt" \
+    && psd_git commit -qam pr1 && PS_PR1="$(psd_git rev-parse HEAD)" \
+    && printf 'n1\n' > "${PSD}/n.txt" && printf 'n.txt -diff\n' > "${PSD}/.gitattributes" \
+    && psd_git add n.txt .gitattributes && psd_git commit -qm pr2 \
+    && PS_PR2="$(psd_git rev-parse HEAD)" \
+    && psd_git checkout -q main && printf 'b1\nb2 base\n' > "${PSD}/b.txt" \
+    && printf 'm1\n' > "${PSD}/m.txt" && psd_git add b.txt m.txt && psd_git commit -qm base1 \
+    && PS_BASE1="$(psd_git rev-parse HEAD)" \
+    && psd_git checkout -q feature && psd_git merge -q --no-edit main \
+    && printf 'c1\n' > "${PSD}/c.txt" && psd_git add c.txt && psd_git commit -qm pr3 \
+    && PS_PR3="$(psd_git rev-parse HEAD)" \
+    && psd_git checkout -q main && printf 'a1\na2 base\na3\n' > "${PSD}/a.txt" \
+    && printf 'b1\nb2 base\nb3 base\n' > "${PSD}/b.txt" && psd_git commit -qam base2 \
+    && PS_BASE2="$(psd_git rev-parse HEAD)" \
+    && psd_git checkout -q feature && { psd_git merge -q --no-edit main >/dev/null 2>&1; true; } \
+    && printf 'a1\na2 resolved\na3\n' > "${PSD}/a.txt" && printf 'b1\nb2 base\n' > "${PSD}/b.txt" \
+    && psd_git add a.txt b.txt && psd_git commit -qm resolve && PS_PR4="$(psd_git rev-parse HEAD)" \
+    || { note "FAIL: creview fetch-diff --pr-since repository setup"; fail=1; }
+if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
+    rc=0; psd_diff "${PS_BASE0}" "${PS_PR1}" "${PS_PR2}" since-plain.txt 2>/dev/null || rc=$?
+    check "creview fetch-diff --pr-since with no base merge" 0 "${rc}"
+    psd_has since-plain.txt '+n1' && ! psd_has since-plain.txt '+a2 pr' \
+        && psd_has since-plain.txt "=== Commit Diff (${PS_PR1}..${PS_PR2}) ===" \
+        && grep -q ' pr2$' "${PSD}/.claude/tmp/since-plain.txt" \
+        && ! grep -q ' pr1$' "${PSD}/.claude/tmp/since-plain.txt" \
+        || { note "FAIL: creview fetch-diff --pr-since did not hold just the later commits"
+             fail=1; }
+    rc=0; psd_diff "${PS_BASE1}" "${PS_PR2}" "${PS_PR3}" since-merged.txt 2>/dev/null || rc=$?
+    check "creview fetch-diff --pr-since over a clean merge of the base" 0 "${rc}"
+    psd_has since-merged.txt '+c1' && ! psd_has since-merged.txt '+b2 base' \
+        && ! psd_has since-merged.txt '+m1' \
+        && grep -q ' pr3$' "${PSD}/.claude/tmp/since-merged.txt" \
+        && ! grep -q ' base1$' "${PSD}/.claude/tmp/since-merged.txt" \
+        || { note "FAIL: creview fetch-diff --pr-since kept the base's changes or commits"
+             fail=1; }
+    rc=0; psd_diff "${PS_BASE2}" "${PS_PR3}" "${PS_PR4}" since-conflict.txt 2>/dev/null || rc=$?
+    check "creview fetch-diff --pr-since over a conflicted merge of the base" 0 "${rc}"
+    psd_has since-conflict.txt '+a2 resolved' && psd_has since-conflict.txt '-b3 base' \
+        && ! psd_has since-conflict.txt '+c1' \
+        || { note "FAIL: creview fetch-diff --pr-since hid a resolution or a dropped base change"
+             fail=1; }
+    rc=0; psd_diff "${PS_BASE0}" "${PS_PR2}" "${PS_PR2}" since-empty.txt 2>/dev/null || rc=$?
+    check "creview fetch-diff --pr-since at the head" 0 "${rc}"
+    [[ -s "${PSD}/.claude/tmp/since-empty.txt" ]] \
+        && ! grep -q '^diff --git' "${PSD}/.claude/tmp/since-empty.txt" \
+        || { note "FAIL: creview fetch-diff --pr-since at the head showed a change"; fail=1; }
+    for bad in "${PS_BASE0} ${PS_BASE1} ${PS_PR2}" "${PS_BASE1} ${PS_PR1} ${PS_PR2}"; do
+        read -r b s h <<< "${bad}"
+        rc=0; psd_diff "${b}" "${s}" "${h}" since-bad.txt 2>/dev/null || rc=$?
+        check "creview fetch-diff --pr-since off the head's history rejected" 1 "${rc}"
+        [[ ! -e "${PSD}/.claude/tmp/since-bad.txt" ]] \
+            || { note "FAIL: creview fetch-diff --pr-since wrote a rejected range"; fail=1; }
+    done
+    rc=0; (export PATH="${OLDGIT}:${PATH}"; psd_diff "${PS_BASE0}" "${PS_PR1}" "${PS_PR2}" \
+        since-old.txt) 2>"${SANDBOX}/prsince-old.err" || rc=$?
+    check "creview fetch-diff --pr-since without --attr-source" 1 "${rc}"
+    grep -qF 'Git 2.41 or later' "${SANDBOX}/prsince-old.err" \
+        || { note "FAIL: creview fetch-diff --pr-since on an old git: no error"; fail=1; }
+else
+    note "SKIP: creview fetch-diff --pr-since cases (git has no --attr-source)"
+fi
+
 # --- fetch-diff.sh (creview): a non-ASCII path is printed as it is, not octal-escaped -
 PRQ="${SANDBOX}/prquote"
 QNAME=$'\xe7\x94\xbb\xe5\x83\x8f.png'
