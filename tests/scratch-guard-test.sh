@@ -1065,9 +1065,9 @@ if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
     check "creview fetch-diff --pr-since without --attr-source" 1 "${rc}"
     grep -qF 'Git 2.41 or later' "${SANDBOX}/prsince-old.err" \
         || { note "FAIL: creview fetch-diff --pr-since on an old git: no error"; fail=1; }
-    # bmain: bin0 (binary p.bin and q.bin, and k.txt), bin1 (changes p.bin and q.bin, deletes
-    # k.txt). bfeature: binpr1 (changes all three), and a merge of bin1 that keeps its own p.bin
-    # and k.txt and takes the base's q.bin.
+    # bmain: bin0 (binary p.bin and q.bin, and k.txt), bin1 (changes p.bin and its mode, changes
+    # q.bin, deletes k.txt). bfeature: binpr1 (changes all three), and a merge of bin1 that keeps
+    # its own p.bin and k.txt and takes the base's q.bin.
     psd_git checkout -q -b bmain "${PS_BASE0}" \
         && printf 'p\0 0\n' > "${PSD}/p.bin" && printf 'q\0 0\n' > "${PSD}/q.bin" \
         && printf 'k1\n' > "${PSD}/k.txt" && psd_git add p.bin q.bin k.txt \
@@ -1076,6 +1076,7 @@ if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
         && printf 'k1 pr\n' > "${PSD}/k.txt" && psd_git commit -qam binpr1 \
         && PS_BINPR1="$(psd_git rev-parse HEAD)" && psd_git checkout -q bmain \
         && printf 'p\0 base\n' > "${PSD}/p.bin" && printf 'q\0 base\n' > "${PSD}/q.bin" \
+        && chmod +x "${PSD}/p.bin" && psd_git update-index --chmod=+x p.bin \
         && psd_git rm -q k.txt && psd_git commit -qam bin1 && PS_BIN1="$(psd_git rev-parse HEAD)" \
         && psd_git checkout -q bfeature \
         && { psd_git merge -q --no-edit bmain >/dev/null 2>&1; true; } \
@@ -1083,6 +1084,12 @@ if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
         && psd_git add p.bin q.bin k.txt && psd_git commit -qm binresolve \
         && PS_BINPR2="$(psd_git rev-parse HEAD)" && mkdir -p "${PSD}/sub" \
         || { note "FAIL: creview fetch-diff --pr-since kept-file repository setup"; fail=1; }
+    mkdir -p "${PSD}/.probe-hooks" \
+        && printf '#!/bin/sh\n: > "%s"\n' "${PSD}/hook-ran" \
+            > "${PSD}/.probe-hooks/post-index-change" \
+        && printf '#!/bin/sh\n: > "%s"\n' "${PSD}/fsmonitor-ran" > "${PSD}/.probe-hooks/fsmonitor" \
+        && chmod +x "${PSD}/.probe-hooks/post-index-change" "${PSD}/.probe-hooks/fsmonitor" \
+        || { note "FAIL: creview fetch-diff --pr-since hook probe setup"; fail=1; }
     # The driver variant needs git merge-file's exit 255 on a binary file to count as a conflict.
     for v in plain driver sub; do
         rm -f "${PSD}/.git/info/attributes"
@@ -1091,20 +1098,28 @@ if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
         [[ "${v}" != sub ]] || dir="${PSD}/sub"
         out="${dir}/.claude/tmp/since-kept.txt"
         rm -f "${out}"
-        rc=0; (export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=merge.probe.driver \
-            GIT_CONFIG_VALUE_0='touch driver-ran'
+        rc=0; (export GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=merge.probe.driver \
+            GIT_CONFIG_VALUE_0='touch driver-ran' \
+            GIT_CONFIG_KEY_1=core.hooksPath GIT_CONFIG_VALUE_1=.probe-hooks \
+            GIT_CONFIG_KEY_2=core.fsmonitor GIT_CONFIG_VALUE_2=.probe-hooks/fsmonitor
             cd "${dir}" && bash "${CFD}" --pr-since "${PS_BIN1}" "${PS_BINPR1}" "${PS_BINPR2}" \
                 .claude/tmp/since-kept.txt) 2>/dev/null || rc=$?
         check "creview fetch-diff --pr-since over files kept without conflict markers (${v})" 0 \
             "${rc}"
         [[ ! -e "${PSD}/driver-ran" ]] && grep -qxF $'M\tp.bin' "${out}" \
+            && grep -qxF 'Binary files a/p.bin and b/p.bin differ' "${out}" \
             && grep -qxF $'A\tk.txt' "${out}" && grep -qxF '+k1 pr' "${out}" \
             && ! grep -qF 'q.bin' "${out}" \
             || { note "FAIL: creview fetch-diff --pr-since did not start a file merge-tree kept" \
                      "without conflict markers from the base's version (${v})"
                  fail=1; }
+        [[ ! -e "${PSD}/hook-ran" && ! -e "${PSD}/fsmonitor-ran" ]] \
+            || { note "FAIL: creview fetch-diff --pr-since ran a post-index-change hook or" \
+                     "core.fsmonitor that a relative path names (${v})"
+                 fail=1; }
     done
-    rm -f "${PSD}/.git/info/attributes" "${PSD}/driver-ran"
+    rm -rf "${PSD}/.git/info/attributes" "${PSD}/driver-ran" "${PSD}/.probe-hooks" \
+        "${PSD}/hook-ran" "${PSD}/fsmonitor-ran"
 else
     note "SKIP: creview fetch-diff --pr-since cases (git has no --attr-source)"
 fi
