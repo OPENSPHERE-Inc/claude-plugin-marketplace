@@ -184,6 +184,8 @@ class FakeGitHub:
         self.ssh_config = ""
         self.compare_status = {}
         self.mergeable = []
+        self.base_events = []
+        self.more_base_events = False
 
     def __call__(self, cmd, input=None, **_):
         self.calls.append(cmd)
@@ -262,6 +264,10 @@ class FakeGitHub:
         if "mutation" not in query:
             if "reviewThreads" in query:
                 return self.review_threads(variables.get("cursor"))
+            if "timelineItems" in query:
+                return json.dumps({"data": {"repository": {"pullRequest": {"timelineItems": {
+                    "nodes": [{"createdAt": at} for at in self.base_events],
+                    "pageInfo": {"hasNextPage": self.more_base_events}}}}}})
             if "node(" not in query:
                 if self.mergeable:
                     pull = self.view["data"]["repository"]["pullRequest"]
@@ -2452,10 +2458,12 @@ def gate_review(rid, commit=EARLIER, login="me", state="CHANGES_REQUESTED",
 
 
 class Since(Base):
-    def since(self, *reviews, **status):
+    def since(self, *reviews, base_events=(), more=False, **status):
         gh = self.fake()
         gh.reviews = list(reviews)
         gh.compare_status.update(status)
+        gh.base_events = list(base_events)
+        gh.more_base_events = more
         return mod.cmd_since(URL)
 
     def test_no_gate_review_reviews_the_whole_diff(self):
@@ -2505,6 +2513,30 @@ class Since(Base):
     def test_a_gate_review_at_the_head_gives_the_head(self):
         result = self.since(gate_review(1, HEAD))
         self.assertEqual((result["since"], result["fallback"]), (HEAD, None))
+
+    def test_a_base_change_after_the_review_falls_back(self):
+        for at in ("2026-11-01T00:00:00Z", "2026-11-02T08:00:00Z"):
+            for commit in (EARLIER, HEAD):
+                with self.subTest(at=at, commit=commit):
+                    result = self.since(gate_review(1, commit),
+                                        base_events=["2026-10-30T00:00:00Z", at])
+                    self.assertEqual((result["since"], result["commit"], result["fallback"]),
+                                     (None, commit, "base_changed"))
+                    self.assertEqual(result["head_sha"], HEAD)
+
+    def test_a_base_change_before_the_review_keeps_its_commit(self):
+        result = self.since(gate_review(1), base_events=["2026-10-31T23:59:59Z"])
+        self.assertEqual((result["since"], result["fallback"]), (EARLIER, None))
+
+    def test_a_timeline_past_one_page_counts_as_a_base_change(self):
+        result = self.since(gate_review(1), base_events=["2026-10-30T00:00:00Z"], more=True)
+        self.assertEqual((result["since"], result["fallback"]), (None, "base_changed"))
+
+    def test_a_commit_the_head_does_not_contain_falls_back_before_the_base(self):
+        result = self.since(gate_review(1), base_events=["2026-11-02T00:00:00Z"],
+                            **{EARLIER: "diverged"})
+        self.assertEqual((result["since"], result["commit"], result["fallback"]),
+                         (None, EARLIER, "not_ancestor"))
 
     def test_a_closed_pull_request_is_refused(self):
         gh = self.fake(state="MERGED")

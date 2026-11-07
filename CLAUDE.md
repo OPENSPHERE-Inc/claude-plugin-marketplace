@@ -333,8 +333,9 @@ separate: a `comment-writer` judges each Will Fix finding after triage, `gh-revi
 and `gh-review.py collect` reads it back on a later run, from the user's own comments only.
 Under `--incremental`, `gh-review.py since` takes the commit of the user's latest gate review from
 the review's `commit_id`, and `/cgh:gate` passes it to `/creview:start --since` and to `draft
---since`, which names it under the verdict; with no such review, or when the head no longer
-contains that commit, the whole diff is reviewed.
+--since`, which names it under the verdict; with no such review, when the head no longer
+contains that commit, or when the base branch was changed or force-pushed after that review, the
+whole diff is reviewed.
 `/cgh:respond` handles the comments of anyone through the PR mode of `/creview:triage`, whose
 triage sub-agent an override tells to judge what is already dealt with, and the leader judges
 from the conversation whether a comment needs a reply. Posted findings number on from the

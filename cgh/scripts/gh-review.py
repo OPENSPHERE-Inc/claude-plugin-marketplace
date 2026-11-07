@@ -81,9 +81,11 @@ pr_body_path.
 since: finds the authenticated user's latest gate review outside pending and dismissed reviews, one
 whose visible body opens with the verdict heading post writes, and prints commit, the commit GitHub
 records it was made at, not a SHA its editable body shows, review_url, and head_sha. since is that
-commit when the pull request's head contains it, otherwise null, and fallback says why it is null:
-none, with no such review, or not_ancestor, when the head does not contain the commit, as after a
-force push or a rebase.
+commit when the pull request's head contains it and its base has not changed after that review,
+otherwise null, and fallback says why it is null: none, with no such review, not_ancestor, when the
+head does not contain the commit, as after a force push or a rebase, or base_changed, when the pull
+request's base branch was changed or force-pushed after that review, so that its diff may hold
+commits no gate run reviewed.
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after
@@ -304,6 +306,23 @@ query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
       reviewThreads(first: 100, after: $cursor) {
         nodes { isResolved comments(first: 1) { nodes { databaseId } } }
         pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+"""
+BASE_CHANGES = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      timelineItems(first: 100, itemTypes: [BASE_REF_CHANGED_EVENT, BASE_REF_FORCE_PUSHED_EVENT,
+                                            AUTOMATIC_BASE_CHANGE_SUCCEEDED_EVENT]) {
+        nodes {
+          ... on BaseRefChangedEvent { createdAt }
+          ... on BaseRefForcePushedEvent { createdAt }
+          ... on AutomaticBaseChangeSucceededEvent { createdAt }
+        }
+        pageInfo { hasNextPage }
       }
     }
   }
@@ -1226,10 +1245,13 @@ def cmd_since(pr_url):
                 "fallback": "none"}
     latest = by_time(gates)[-1]
     commit = latest["commit_id"]
-    contained = commit_on_pr(pr, commit, head)
-    return {"since": commit if contained else None, "commit": commit,
-            "review_url": latest.get("html_url"), "head_sha": head,
-            "fallback": None if contained else "not_ancestor"}
+    fallback = None
+    if not commit_on_pr(pr, commit, head):
+        fallback = "not_ancestor"
+    elif base_changed_after(pr, latest.get("submitted_at") or ""):
+        fallback = "base_changed"
+    return {"since": None if fallback else commit, "commit": commit,
+            "review_url": latest.get("html_url"), "head_sha": head, "fallback": fallback}
 
 
 def changed_files(pr):
@@ -1916,6 +1938,16 @@ def post_replies(pr, path, data):
         write_json(path, data)
         urls.append(confirm_reply(pr, entry, sent, answered, body, viewer) if sent else url)
     return {"posted": len(urls), "urls": urls, "confirmed": len(urls)}
+
+
+def base_changed_after(pr, moment):
+    """Whether the base branch was changed or force-pushed at or after moment, an ISO 8601 UTC
+    timestamp, counting a timeline too long for one page as changed.
+    """
+    data = graphql(pr, BASE_CHANGES, owner=pr.owner, name=pr.name, number=pr.number)
+    events = data["repository"]["pullRequest"]["timelineItems"]
+    return (events["pageInfo"]["hasNextPage"]
+            or any(node["createdAt"] >= moment for node in events["nodes"]))
 
 
 def commit_on_pr(pr, sha, head):
