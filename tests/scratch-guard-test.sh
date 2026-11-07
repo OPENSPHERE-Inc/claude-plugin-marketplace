@@ -1090,6 +1090,19 @@ if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
         && printf '#!/bin/sh\n: > "%s"\n' "${PSD}/fsmonitor-ran" > "${PSD}/.probe-hooks/fsmonitor" \
         && chmod +x "${PSD}/.probe-hooks/post-index-change" "${PSD}/.probe-hooks/fsmonitor" \
         || { note "FAIL: creview fetch-diff --pr-since hook probe setup"; fail=1; }
+    PSD_PROBE_ENV=(GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=merge.probe.driver
+        'GIT_CONFIG_VALUE_0=touch driver-ran'
+        GIT_CONFIG_KEY_1=core.hooksPath GIT_CONFIG_VALUE_1=.probe-hooks
+        GIT_CONFIG_KEY_2=core.fsmonitor GIT_CONFIG_VALUE_2=.probe-hooks/fsmonitor)
+    env "${PSD_PROBE_ENV[@]}" GIT_INDEX_FILE="${SANDBOX}/probe-index" \
+        git -C "${PSD}" read-tree HEAD >/dev/null 2>&1
+    env "${PSD_PROBE_ENV[@]}" GIT_INDEX_FILE="${SANDBOX}/probe-index" \
+        git -C "${PSD}" write-tree >/dev/null 2>&1
+    for mark in hook-ran fsmonitor-ran; do
+        [[ -e "${PSD}/${mark}" ]] || note "SKIP: creview fetch-diff --pr-since ${mark} check" \
+            "(git did not run the probe)"
+    done
+    rm -f "${SANDBOX}/probe-index" "${PSD}/hook-ran" "${PSD}/fsmonitor-ran"
     # The driver variant needs git merge-file's exit 255 on a binary file to count as a conflict.
     for v in plain driver sub; do
         rm -f "${PSD}/.git/info/attributes"
@@ -1098,12 +1111,8 @@ if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
         [[ "${v}" != sub ]] || dir="${PSD}/sub"
         out="${dir}/.claude/tmp/since-kept.txt"
         rm -f "${out}"
-        rc=0; (export GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=merge.probe.driver \
-            GIT_CONFIG_VALUE_0='touch driver-ran' \
-            GIT_CONFIG_KEY_1=core.hooksPath GIT_CONFIG_VALUE_1=.probe-hooks \
-            GIT_CONFIG_KEY_2=core.fsmonitor GIT_CONFIG_VALUE_2=.probe-hooks/fsmonitor
-            cd "${dir}" && bash "${CFD}" --pr-since "${PS_BIN1}" "${PS_BINPR1}" "${PS_BINPR2}" \
-                .claude/tmp/since-kept.txt) 2>/dev/null || rc=$?
+        rc=0; (cd "${dir}" && env "${PSD_PROBE_ENV[@]}" bash "${CFD}" --pr-since "${PS_BIN1}" \
+            "${PS_BINPR1}" "${PS_BINPR2}" .claude/tmp/since-kept.txt) 2>/dev/null || rc=$?
         check "creview fetch-diff --pr-since over files kept without conflict markers (${v})" 0 \
             "${rc}"
         [[ ! -e "${PSD}/driver-ran" ]] && grep -qxF $'M\tp.bin' "${out}" \
