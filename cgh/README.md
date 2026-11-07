@@ -24,7 +24,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 | Command | Purpose | Options |
 |---------|---------|---------|
 | `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial`, `--trust`, `--adr` |
-| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust`, `--adr` |
+| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust`, `--adr`, `--force-comment` |
 | `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | `--no-confirm`, `--trust`, `--adr` |
 | `/cgh:resolve` | Verify the findings you raised, posted by `/cgh:review` or written by hand, and reply with the result. | `--trust` |
 
@@ -86,6 +86,8 @@ comment records nothing.
 - **BLOCK** (Request Changes): a posted finding or an earlier gate finding still unverified is
   blocking, or the pull request has merge conflicts.
 - **PASS** (Comment): otherwise. PASS is not an approval.
+
+With `--force-comment`, a BLOCK goes out as Comment as well, never as Request Changes.
 
 Severity and blocking are separate. Critical, Major, and Minor say only how bad a problem's
 consequence is. After triage, each finding is judged blocking or non-blocking on its own, and each
