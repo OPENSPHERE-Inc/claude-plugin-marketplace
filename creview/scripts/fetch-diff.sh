@@ -108,7 +108,7 @@ fi
 
 # Print, as update-index -z --index-info records, the base's entry for each path that <merge>,
 # the -z output of merge-tree run at the top of the working tree, left conflicted with the since
-# side's entry, or a removal when the base has none.
+# side's content, or a removal when the base has none.
 base_entries() { # <merge>
     local tree record mode oid stage path kept=""
     {
@@ -118,9 +118,8 @@ base_entries() { # <merge>
             path="${record#*$'\t'}"
             if [[ "${stage}" == 2 ]]; then
                 kept=""
-                if [[ "$(GIT_LITERAL_PATHSPECS=1 git ls-tree --full-tree \
-                    --format='%(objectmode) %(objectname)' "${tree}" -- "${path}")" \
-                    == "${mode} ${oid}" ]]; then
+                if [[ "$(GIT_LITERAL_PATHSPECS=1 git ls-tree --full-tree --format='%(objectname)' \
+                    "${tree}" -- "${path}")" == "${oid}" ]]; then
                     kept="${path}"
                     printf '0 %s\t%s\0' "${oid}" "${path}"
                 fi
@@ -177,15 +176,16 @@ if [[ -n "${SINCE}" ]]; then
             echo "Error: git merge-tree could not merge ${FROM} into ${SINCE}" >&2
             exit 1
         fi
-        # A file merge left with the since side's entry and no conflict markers starts from the
-        # base's entry instead.
         base_entries "${merge_dir}/merge" > "${merge_dir}/entries"
         if [[ -s "${merge_dir}/entries" ]]; then
+            # A relative core.hooksPath or core.fsmonitor resolves in the pull request's tree,
+            # and git runs those hooks when it reads or writes an index.
             index="${merge_dir}/index"
-            GIT_INDEX_FILE="${index}" git read-tree "${DIFF_FROM}" \
-                && GIT_INDEX_FILE="${index}" git update-index -z --index-info \
+            no_hooks=(-c "core.hooksPath=${merge_dir}/no-hooks" -c core.fsmonitor=)
+            GIT_INDEX_FILE="${index}" git "${no_hooks[@]}" read-tree "${DIFF_FROM}" \
+                && GIT_INDEX_FILE="${index}" git "${no_hooks[@]}" update-index -z --index-info \
                     < "${merge_dir}/entries" \
-                && DIFF_FROM="$(GIT_INDEX_FILE="${index}" git write-tree)" \
+                && DIFF_FROM="$(GIT_INDEX_FILE="${index}" git "${no_hooks[@]}" write-tree)" \
                 || { echo "Error: git could not start the diff from the base's entries" >&2
                      exit 1; }
         fi

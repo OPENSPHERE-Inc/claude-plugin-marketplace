@@ -118,7 +118,8 @@ still holds is left out of the review body, and one that no longer holds counts 
 again. An open item in the description is verified from the description: it is resolved once the item is
 gone or names an issue or a pull request. A claim of the title or description is verified from the
 code and the description: it is resolved once the code does what the claim says or the title and
-description no longer make the claim.
+description no longer make the claim. A finding about a failed check or an unsettled discussion is
+not resolved by taking a claim out of the description.
 
 With `--incremental`, a run reviews only the commits added since your latest gate review on the
 pull request, from the commit GitHub records for that review to the head. The review body names
@@ -137,6 +138,8 @@ read for discussions, and the description and CI results are read again.
   - A file that the merge left conflicted without conflict markers, such as a binary file or one
     the base deleted, is reviewed from the base's version, so the pull request's earlier changes
     to that file are reviewed as well.
+    - A file the base deleted has no base version, so the whole file is reviewed, including code
+      before that commit.
 - Code before that commit is not reviewed again: a problem an earlier run let through, or one you
   chose not to post, is not raised again.
   - A failed check and a claim of the description are the exception: they are checked against
