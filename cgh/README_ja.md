@@ -23,7 +23,7 @@
 
 | コマンド | 目的 | オプション |
 |---------|---------|---------|
-| `/cgh:review` | プルリクエストをレビューし、トリアージ済みの指摘を投稿する。 | `--adversarial`, `--trust`, `--adr` |
+| `/cgh:review` | プルリクエストをレビューし、トリアージ済みの指摘を投稿する。 | `--adversarial`, `--trust`, `--adr`, `--force-comment` |
 | `/cgh:gate` | セルフレビュー済みのプルリクエストがマージできるかを判定し、PASS / BLOCK を投稿する。 | `--adversarial`, `--trust`, `--adr`, `--force-comment` |
 | `/cgh:respond` | プルリクエストのレビューが求める修正を行い、返信する。 | `--no-confirm`, `--trust`, `--adr` |
 | `/cgh:resolve` | 自分が挙げた指摘（`/cgh:review` の投稿または手書き）を検証し、結果を返信する。 | `--trust` |
@@ -39,7 +39,7 @@
 ときは、指摘を残します。
 
 - **イベント**: 投稿する指摘に Critical または Major があれば Request Changes、なければ Comment。
-  LGTM の判定は行いません。
+  `--force-comment` を指定すると常に Comment。LGTM の判定は行いません。
 - **内容**: 各コメントは深刻度と指摘 ID（`Critical C-1`、`Major M-1`、`Minor mi-1`）、
   レビュー文書のカテゴリタグ（`[バグ/セキュリティ]`）、指摘内容、人向けに要約した見積の推奨を
   含みます。コスト、シグナル、レビューエージェントは含みません。

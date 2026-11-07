@@ -23,7 +23,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 
 | Command | Purpose | Options |
 |---------|---------|---------|
-| `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial`, `--trust`, `--adr` |
+| `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial`, `--trust`, `--adr`, `--force-comment` |
 | `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust`, `--adr`, `--force-comment` |
 | `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | `--no-confirm`, `--trust`, `--adr` |
 | `/cgh:resolve` | Verify the findings you raised, posted by `/cgh:review` or written by hand, and reply with the result. | `--trust` |
@@ -41,7 +41,7 @@ marked ⚠️, and you can still select it. A finding stays when the code shows 
 wrong about the problem's cause, location, or effect.
 
 - **Event**: Request Changes when a posted finding is Critical or Major, otherwise Comment.
-  It makes no LGTM judgment.
+  With `--force-comment`, always Comment. It makes no LGTM judgment.
 - **Content**: each comment holds the severity and finding ID (`Critical C-1`, `Major M-1`,
   `Minor mi-1`), the finding's category tags from the review document (`[Bug/Security]`), the
   finding, and the estimate's recommendation, summarized for people. Cost, signals, and reviewer

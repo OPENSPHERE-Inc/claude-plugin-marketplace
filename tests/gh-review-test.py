@@ -666,6 +666,16 @@ class ReviewPosting(Base):
         mod.cmd_post(URL, path, None)
         self.assertEqual(gh.named("submitPullRequestReview")[0]["event"], "COMMENT")
 
+    def test_force_comment_sends_a_major_as_comment(self):
+        gh = self.fake()
+        self.draft(force_comment=True)
+        path = os.path.join(self.dir, "draft.json")
+        result, text = self.preview(path)
+        self.assertEqual(result["event"], "COMMENT")
+        self.assertNotIn("verdict_labels", json.loads(read_text(path)))
+        self.assertEqual(mod.cmd_post(URL, path, None)["event"], "COMMENT")
+        self.assertEqual(gh.named("submitPullRequestReview")[0]["event"], "COMMENT")
+
     def test_refused_line_falls_back_to_file_then_body(self):
         gh = self.fake()
         gh.fail_threads = {("src/a.py", "LINE")}
