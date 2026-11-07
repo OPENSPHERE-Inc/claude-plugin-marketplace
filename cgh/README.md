@@ -147,6 +147,8 @@ read for discussions, and the description and CI results are read again.
     reported at that line.
     - A claim with no line found is reported on the pull request.
     - A failed check whose cause is not found in the code is not reported.
+      - One whose CI output places the cause in an agent file left out of the worktree is
+        reported on the pull request, with a note that checking it takes `--trust`.
 
 ### `/cgh:respond`
 
