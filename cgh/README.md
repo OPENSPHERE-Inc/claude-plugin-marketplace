@@ -124,8 +124,9 @@ that commit, so that a reader knows a PASS did not cover the whole diff again. E
 runs as without it: the earlier gate findings are verified at the current head, every comment is
 read for discussions, and the description and CI results are read again.
 
-- With no gate review of yours on the pull request, or when its head no longer contains that
-  commit, as after a force push or a rebase, the whole diff is reviewed, and the skill says why.
+- With no gate review of yours on the pull request, when its head no longer contains that
+  commit, as after a force push or a rebase, or when its base branch was changed or force-pushed
+  after that review, the whole diff is reviewed, and the skill says why.
 - A dismissed gate review does not count: after you dismiss the latest one, the next run starts
   from the one before it, or reviews the whole diff when there is none.
 - When the pull request merged its base branch since then, what the merge brought in is left out,
@@ -133,6 +134,9 @@ read for discussions, and the description and CI results are read again.
   reviewed.
 - Code before that commit is not reviewed again: a problem an earlier run let through, or one you
   chose not to post, is not raised again.
+  - A failed check and a claim of the description are the exception: they are checked against
+    the code at the head even when the code they concern lies before that commit, and are
+    reported at that line, or on the pull request when no line is found.
 
 ### `/cgh:respond`
 
