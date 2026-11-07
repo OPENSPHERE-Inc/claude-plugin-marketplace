@@ -116,7 +116,9 @@ pull request again. To accept an earlier finding without a fix, tell the skill t
 later runs do not report it again. Earlier findings already verified are checked again: one that
 still holds is left out of the review body, and one that no longer holds counts as unverified
 again. An open item in the description is verified from the description: it is resolved once the item is
-gone or names an issue or a pull request.
+gone or names an issue or a pull request. A claim of the title or description is verified from the
+code and the description: it is resolved once the code does what the claim says or the title and
+description no longer make the claim.
 
 With `--incremental`, a run reviews only the commits added since your latest gate review on the
 pull request, from the commit GitHub records for that review to the head. The review body names
@@ -125,18 +127,23 @@ runs as without it: the earlier gate findings are verified at the current head, 
 read for discussions, and the description and CI results are read again.
 
 - With no gate review of yours on the pull request, when its head no longer contains that
-  commit, as after a force push or a rebase, or when its base branch was changed or force-pushed
-  after that review, the whole diff is reviewed, and the skill says why.
+  commit, as after a force push or a rebase, or when its base branch was changed, force-pushed,
+  or deleted after that review, the whole diff is reviewed, and the skill says why.
 - A dismissed gate review does not count: after you dismiss the latest one, the next run starts
   from the one before it, or reviews the whole diff when there is none.
 - When the pull request merged its base branch since then, what the merge brought in is left out,
   while how the pull request resolved a conflict and any base change the merge dropped are
   reviewed.
+  - A file that the merge left conflicted without conflict markers, such as a binary file or one
+    the base deleted, is reviewed from the base's version, so the pull request's earlier changes
+    to that file are reviewed as well.
 - Code before that commit is not reviewed again: a problem an earlier run let through, or one you
   chose not to post, is not raised again.
   - A failed check and a claim of the description are the exception: they are checked against
     the code at the head even when the code they concern lies before that commit, and are
-    reported at that line, or on the pull request when no line is found.
+    reported at that line.
+    - A claim with no line found is reported on the pull request.
+    - A failed check whose cause is not found in the code is not reported.
 
 ### `/cgh:respond`
 
@@ -262,7 +269,8 @@ The state lives on the pull request, so a later run needs nothing from an earlie
 - When the pull request moves between the review and the post, the skill refuses to post, and
   you run it again: the findings' line numbers belong to the reviewed head.
 - `/cgh:gate` waits for GitHub to compute whether the pull request merges, and refuses to post
-  when GitHub does not finish, or when the verdict has changed since the preview.
+  when GitHub does not finish, when the verdict has changed since the preview, or when the pull
+  request's base has changed since the review.
 - `/cgh:gate` and `/cgh:resolve` stop when there are earlier findings to check
   and HEAD holds commits the pull request does not have, or uncommitted changes at its head: the
   result would describe code the pull request does not contain.
