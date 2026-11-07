@@ -16,6 +16,8 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 `--adr`（デフォルト OFF）— `/creview:triage` に `--adr` を渡す。
 
+`--force-comment`（デフォルト OFF）— `gh-review.py draft` に `--force-comment` を渡し、レビューを Request Changes ではなく常に Comment で送るようにする。
+
 `${CLAUDE_PLUGIN_ROOT}/rules/leader.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}`、`{skill}` は `gate` とする。
 
 ## Step 1 — 前回までの指摘と議論
@@ -83,14 +85,14 @@ Include `template_id` (Read from the template's frontmatter) in the return value
 
 返された `template_id` は `d76407d5-7ea4-4a7a-89e2-cffbb00f1d38` でなければならない。不一致なら起動し直し、2 回起きたら中止する。
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc '{prior_document}'` を、判定したなら `--blocking '{tmp_dir}/blocking.json'` を追加する。`{tmp_dir}/draft.json` が書き出され、`unchanged`（以前に検証済みで解決が保たれており、レビュー本文に載せない指摘）、`blocking_unjudged`（判定から漏れた選択済みの指摘で、ブロッキングとして数える）、`blocking_fallback`（プルリクエスト上にブロッキングの表示がなく、重大度で決まった未解決の前回までの指摘）が出力される: その ID をユーザーに伝える。エラーが `blocking.json` を挙げるとき（不正なファイルなら削除されている）は、書き手をもう一度起動して再実行する。2 回目の失敗では、そのエラーで中止する。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc '{prior_document}'` を、判定したなら `--blocking '{tmp_dir}/blocking.json'` を、指定されていれば `--force-comment` を追加する。`{tmp_dir}/draft.json` が書き出され、`unchanged`（以前に検証済みで解決が保たれており、レビュー本文に載せない指摘）、`blocking_unjudged`（判定から漏れた選択済みの指摘で、ブロッキングとして数える）、`blocking_fallback`（プルリクエスト上にブロッキングの表示がなく、重大度で決まった未解決の前回までの指摘）が出力される: その ID をユーザーに伝える。エラーが `blocking.json` を挙げるとき（不正なファイルなら削除されている）は、書き手をもう一度起動して再実行する。2 回目の失敗では、そのエラーで中止する。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
 
 ## Step 4 — 確認と投稿
 
 `{json_path}` = `{tmp_dir}/draft.json` で § 確認と投稿 に従う。ユーザーが前回までの指摘を取り下げたら、`prior` 配下のその `state` を `waived` にする: 以後の実行では確認も報告もしない。ユーザーが指摘や前回までの指摘のブロッキングを変更したら、その `blocking` を合わせる。指摘がブロッキングになったら、その `selected` も true にする: 判定と投稿内容は選択済みの指摘だけを数える。変更で `overview` が実態と合わなくなったとき、または選択されていない指摘に触れているときは、それと `post_overview` を書き直す。プレビューを示すとき、コードから判定できないために未検証のままの前回までの指摘があれば、対応済みならその場で取り下げを指示できることをユーザーに伝える。
 
-判定、イベント、各指摘の投稿先はスクリプトが `{json_path}` から算出する: 自分で選ばない。
+判定、イベント、各指摘の投稿先はスクリプトが `{json_path}` から算出する: 自分で選ばない。判定の見出しには `PASS` か `BLOCK` が表示される。プレビューでは `{json_path}` の `verdict_labels` から、投稿する本文では `post_verdict_labels` があればその代わりにそこから取られる。どちらも `PASS` と `BLOCK` の両方のキーを持ち、各値は空でない 1 行とする。`preview` がそのどちらかを挙げるエラーで終了したら、直して `preview` を再実行し、2 回目の失敗ではそのエラーで中止する。
 
 ## Step 5 — 報告
 
-`verdict`、`review_url`、`fallbacks` の ID、`unchanged` の件数、Step 1 の `waived` と `demoted` の ID、`(none)` でなければ `{prior_document}` を報告する。`recovered_from` が null でなければ、その呼び出しは失敗したがレビューは投稿されたとしてそのエラーを添える。`own_pr` が true で判定が BLOCK なら、GitHub は自分のプルリクエストへの Request Changes を拒否するため、判定を本文に記載して Comment で送ったことを添える。判定が PASS で `own_pr` が false なら、以前に送った Request Changes は dismiss されるまで GitHub に残ることと、dismiss するとそのレビューの指摘が以後の実行の対象外になることを添える。BLOCK の後は、指摘への対応後に `/cgh:gate` を再度実行するよう伝え、そのような前回までの指摘があれば Step 4 の案内を繰り返す。その後終了する。
+`verdict`、`review_url`、`fallbacks` の ID、`unchanged` の件数、Step 1 の `waived` と `demoted` の ID、`(none)` でなければ `{prior_document}` を報告する。`recovered_from` が null でなければ、その呼び出しは失敗したがレビューは投稿されたとしてそのエラーを添える。`own_pr` が true で判定が BLOCK、かつ `--force-comment` が指定されていないなら、GitHub は自分のプルリクエストへの Request Changes を拒否するため、判定を本文に記載して Comment で送ったことを添える。判定が PASS で `own_pr` が false なら、以前に送った Request Changes は dismiss されるまで GitHub に残ることと、dismiss するとそのレビューの指摘が以後の実行の対象外になることを添える。BLOCK の後は、指摘への対応後に `/cgh:gate` を再度実行するよう伝え、そのような前回までの指摘があれば Step 4 の案内を繰り返す。その後終了する。

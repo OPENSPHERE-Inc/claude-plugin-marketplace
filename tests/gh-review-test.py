@@ -338,8 +338,9 @@ class Base(unittest.TestCase):
         mod.run = gh
         return gh
 
-    def draft(self, kind="review", lang="ja", prior_doc=None, blocking=None):
-        result = mod.cmd_draft(URL, self.dir, self.doc, kind, lang, prior_doc, blocking)
+    def draft(self, kind="review", lang="ja", prior_doc=None, blocking=None, force_comment=False):
+        result = mod.cmd_draft(URL, self.dir, self.doc, kind, lang, prior_doc, blocking,
+                               force_comment)
         with open(os.path.join(self.dir, "draft.json"), encoding="utf-8") as f:
             draft = json.load(f)
         draft["comment_lang"] = lang
@@ -665,6 +666,16 @@ class ReviewPosting(Base):
         mod.cmd_post(URL, path, None)
         self.assertEqual(gh.named("submitPullRequestReview")[0]["event"], "COMMENT")
 
+    def test_force_comment_sends_a_major_as_comment(self):
+        gh = self.fake()
+        self.draft(force_comment=True)
+        path = os.path.join(self.dir, "draft.json")
+        result, text = self.preview(path)
+        self.assertEqual(result["event"], "COMMENT")
+        self.assertNotIn("verdict_labels", json.loads(read_text(path)))
+        self.assertEqual(mod.cmd_post(URL, path, None)["event"], "COMMENT")
+        self.assertEqual(gh.named("submitPullRequestReview")[0]["event"], "COMMENT")
+
     def test_refused_line_falls_back_to_file_then_body(self):
         gh = self.fake()
         gh.fail_threads = {("src/a.py", "LINE")}
@@ -747,19 +758,104 @@ class Gate(Base):
                                     for fid, value in blocking.items()]}, f)
         return path
 
-    def gate_draft(self, entries=None, selected=(), judged=None, **view_args):
+    def gate_draft(self, entries=None, selected=(), judged=None, force_comment=False,
+                   verdict_labels=None, **view_args):
         gh = self.fake(**view_args)
         prior = None
         if entries is not None:
             prior = os.path.join(self.dir, "prior.md")
             with open(prior, "w", encoding="utf-8") as f:
                 f.write(prior_doc_text(entries))
-        _, draft = self.draft("gate", "en", prior, judged)
+        _, draft = self.draft("gate", "en", prior, judged, force_comment)
         for f in draft["findings"]:
             f["selected"] = f["doc_id"] in selected
+        if verdict_labels is not None:
+            draft["verdict_labels"] = verdict_labels
         path = self.save(draft)
         self.preview(path)
         return gh, path
+
+    def test_a_gate_draft_shows_pass_and_block_by_default(self):
+        self.fake()
+        self.assertEqual(self.draft("gate", "en")[1]["verdict_labels"],
+                         {"PASS": "PASS", "BLOCK": "BLOCK"})
+        self.assertNotIn("verdict_labels", self.draft("review", "en")[1])
+
+    def test_verdict_labels_change_only_the_words_shown(self):
+        labels = {"PASS": "No blocking findings", "BLOCK": "Blocking findings"}
+        gh, path = self.gate_draft(verdict_labels=labels)
+        result, text = self.preview(path)
+        self.assertEqual(result["verdict"], "PASS")
+        self.assertIn("**Merge gate: No blocking findings**", text)
+        self.assertIn("## Merge gate: No blocking findings\n",
+                      read_text(result["post_preview_path"]))
+        self.assertEqual(result["post_differs"], [])
+        self.assertEqual(json.loads(read_text(path))["previewed_verdict"], "PASS")
+        post = mod.cmd_post(URL, path, None)
+        self.assertEqual((post["verdict"], post["event"]), ("PASS", "COMMENT"))
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertTrue(body.startswith("## Merge gate: No blocking findings\n"))
+
+    def test_post_verdict_labels_go_out_in_place_of_verdict_labels(self):
+        gh = self.fake()
+        _, draft = self.draft("gate", "ja")
+        for f in draft["findings"]:
+            f["selected"] = False
+        draft.update(comment_lang="en",
+                     verdict_labels={"PASS": "ブロッキングな指摘なし", "BLOCK": "ブロッキングな指摘あり"},
+                     post_verdict_labels={"PASS": "No blocking findings",
+                                          "BLOCK": "Blocking findings"})
+        path = self.save(draft)
+        result, text = self.preview(path)
+        self.assertIn("**マージゲート: ブロッキングな指摘なし**", text)
+        self.assertIn("## マージゲート: ブロッキングな指摘なし\n", text)
+        posted = read_text(result["post_preview_path"])
+        self.assertIn("**Merge gate: No blocking findings**", posted)
+        self.assertIn("## Merge gate: No blocking findings\n", posted)
+        self.assertEqual(result["post_differs"], ["verdict_labels"])
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "PASS")
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertTrue(body.startswith("## Merge gate: No blocking findings\n"))
+
+    def test_a_blocked_gate_shows_its_label(self):
+        labels = {"PASS": "No blocking findings", "BLOCK": "Blocking findings"}
+        gh, path = self.gate_draft(selected=("M-1",), verdict_labels=labels)
+        self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "BLOCK")
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertTrue(body.startswith("## Merge gate: Blocking findings\n"))
+
+    def test_malformed_verdict_labels_are_refused(self):
+        for key in ("verdict_labels", "post_verdict_labels"):
+            for bad in ({"PASS": "ok"}, {"PASS": "", "BLOCK": "x"},
+                        {"PASS": "a\nb", "BLOCK": "x"}, {"PASS": 1, "BLOCK": "x"},
+                        ["PASS", "BLOCK"]):
+                with self.subTest(key=key, bad=bad):
+                    gh = self.fake()
+                    _, draft = self.draft("gate", "en")
+                    draft[key] = bad
+                    path = self.save(draft)
+                    with self.assertRaisesRegex(mod.Error, f"malformed {key}"):
+                        mod.cmd_preview(URL, path)
+                    with self.assertRaisesRegex(mod.Error, f"malformed {key}"):
+                        mod.cmd_post(URL, path, None)
+                    self.assertEqual(gh.mutations, [])
+
+    def test_force_comment_sends_a_block_as_comment(self):
+        gh, path = self.gate_draft(selected=("M-1",), force_comment=True)
+        self.assertTrue(json.loads(read_text(path))["force_comment"])
+        result = mod.cmd_post(URL, path, None)
+        self.assertEqual((result["verdict"], result["event"]), ("BLOCK", "COMMENT"))
+        self.assertEqual(gh.named("submitPullRequestReview")[0]["event"], "COMMENT")
+
+    def test_force_comment_on_your_own_pull_request_names_no_refusal(self):
+        _, path = self.gate_draft(selected=("M-1",), force_comment=True, author="me")
+        result, text = self.preview(path)
+        self.assertEqual((result["verdict"], result["event"]), ("BLOCK", "COMMENT"))
+        self.assertNotIn(mod.LABELS["en"]["own_pr"], text)
+
+    def test_without_force_comment_the_draft_records_none(self):
+        _, path = self.gate_draft()
+        self.assertNotIn("force_comment", json.loads(read_text(path)))
 
     def test_document_without_findings_passes(self):
         gh = self.fake()
@@ -1336,7 +1432,7 @@ class Prior(PriorBase):
         draft = {"lang": "en", "head_sha": HEAD, "findings": [], "prior": [
             {"id": f"M-{n}", "state": "open", "blocking": True, "note": note}
             for n, note in enumerate(("uses `a", "still `b", "ok"), 1)]}
-        plan = {"verdict": "BLOCK", "conflict": False, "selected": []}
+        plan = {"verdict": "BLOCK", "label": "BLOCK", "conflict": False, "selected": []}
         body = mod.review_body(draft, plan, [], False)
         self.assertEqual(mod.blocking_marks([{"body": body}]),
                          {"M-1": True, "M-2": True, "M-3": True})
@@ -1355,7 +1451,7 @@ class Prior(PriorBase):
                 for state in ("open", "verified", "waived"):
                     draft = {"lang": lang, "head_sha": HEAD, "findings": [], "prior": [
                         {"id": "M-1", "state": state, "blocking": blocking, "note": "n"}]}
-                    plan = {"verdict": "BLOCK", "conflict": False, "selected": []}
+                    plan = {"verdict": "BLOCK", "label": "BLOCK", "conflict": False, "selected": []}
                     body = mod.review_body(draft, plan, [], False)
                     self.assertEqual(mod.blocking_marks([{"body": body}]), {"M-1": blocking})
 
@@ -4276,11 +4372,13 @@ class Cli(unittest.TestCase):
             (["prior", URL, "t", "--kind", "gate", "--document", "d", "--trust"], "cmd_prior",
              (URL, "t", "gate", "d", True)),
             (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--prior-doc", "p"],
-             "cmd_draft", (URL, "t", "d", "gate", "ja", "p", None)),
+             "cmd_draft", (URL, "t", "d", "gate", "ja", "p", None, False)),
             (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--blocking", "b"],
-             "cmd_draft", (URL, "t", "d", "gate", "ja", None, "b")),
+             "cmd_draft", (URL, "t", "d", "gate", "ja", None, "b", False)),
+            (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--force-comment"],
+             "cmd_draft", (URL, "t", "d", "gate", "ja", None, None, True)),
             (["draft", URL, "t", "d", "--kind", "review", "--lang", "en"], "cmd_draft",
-             (URL, "t", "d", "review", "en", None, None)),
+             (URL, "t", "d", "review", "en", None, None, False)),
             (["wording", URL, "j"], "cmd_wording", (URL, "j")),
             (["comments", URL, "t"], "cmd_comments", (URL, "t")),
             (["raised", URL, "t"], "cmd_raised", (URL, "t", False)),

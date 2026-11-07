@@ -8,7 +8,7 @@ Usage:
     python3 gh-review.py prior <pr_url> <tmp_dir> --kind review|gate --document <path>
         [--trust]
     python3 gh-review.py draft <pr_url> <tmp_dir> <document> --kind review|gate --lang en|ja
-        [--prior-doc <path>] [--blocking <path>]
+        [--prior-doc <path>] [--blocking <path>] [--force-comment]
     python3 gh-review.py wording <pr_url> <json_path>
     python3 gh-review.py comments <pr_url> <tmp_dir>
     python3 gh-review.py raised <pr_url> <tmp_dir> [--discussion]
@@ -96,6 +96,10 @@ again can write it. A selected finding it does not name counts as blocking, and 
 blocking_unjudged. A blocking finding stays selected through a Downgrade. An earlier finding has
 blocking from prior.json, the latest mark in the user's own comments, or, with none, from its
 severity: Critical and Major block. One still open with no mark is printed in blocking_fallback.
+A gate draft also has verdict_labels, the one-line words its verdict heading shows for PASS and
+BLOCK, by default those, and may have post_verdict_labels, the same for what goes out, which
+takes verdict_labels' place there. --force-comment records force_comment, under which the review
+goes out as Comment, never Request Changes.
 
 wording: merges every wording-*.json next to <json_path> into it: comment_lang, the
 language comments go out in, with, per finding, summary (the recommendation for people,
@@ -141,10 +145,10 @@ draft.json, or a file with a "replies" list of {kind: thread|review|issue_commen
 target_id, finding_ids, body, post_body, selected (default true), verified}. For a draft,
 wording_missing holds what wording would print as missing, an empty recommendation or not.
 post_differs holds the IDs of what goes out in other wording than the preview's, a reply with no
-finding IDs by its kind and target, and overview for the overview. Findings not posted are listed
-with Critical and Major first, marked. A reply shows a heading for each of its finding IDs its
-text does not hold, such as **Major M-1**, and one that post would send with a mention names its
-target in a Mentions line.
+finding IDs by its kind and target, verdict_labels for the verdict heading, and overview for the
+overview. Findings not posted are listed with Critical and Major first, marked. A reply shows a
+heading for each of its finding IDs its text does not hold, such as **Major M-1**, and one that
+post would send with a mention names its target in a Mentions line.
 For a gate draft, it first waits for GitHub to compute whether the pull request merges, and
 records the verdict it shows as previewed_verdict.
 
@@ -233,6 +237,7 @@ FINDING_WORDING = ("summary", "post_text", "post_summary", "post_categories", "p
 OVERVIEW_WORDING = ("overview", "post_overview")
 SEVERITIES = {"C": "Critical", "M": "Major", "mi": "Minor", "I": "Info"}
 SERIOUS = ("Critical", "Major")
+VERDICTS = ("PASS", "BLOCK")
 ATTENTION = "⚠️"
 SCRATCH_EXCLUDES = [":(top,exclude).claude/tmp", ":(top,exclude).claude/worktrees"]
 REPLY_KINDS = ("thread", "review", "issue_comment", "issue")
@@ -1270,7 +1275,8 @@ def prior_states(pr, prior_doc, head, earlier, blocking):
     return prior, unchanged
 
 
-def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=None):
+def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=None,
+              force_comment=False):
     pr = checked_pr(pr_url)
     header, findings = checked_document(pr, document)
     view = view_pr(pr)
@@ -1304,6 +1310,8 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
         })
     write_json(os.path.join(tmp_dir, "draft.json"), {
         "url": pr.url, "head_sha": view["headRefOid"], "kind": kind, "lang": lang,
+        **({"verdict_labels": {v: v for v in VERDICTS}} if gate else {}),
+        **({"force_comment": True} if force_comment else {}),
         "findings": entries, "prior": prior, "waived": earlier_waived(tmp_dir), "posted": False,
     })
     selected = [e for e in entries if e["selected"]]
@@ -1322,22 +1330,37 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
     }
 
 
+def verdict_label(draft, verdict, post=False):
+    key = "post_verdict_labels" if post and "post_verdict_labels" in draft else "verdict_labels"
+    labels = draft.get(key, {v: v for v in VERDICTS})
+    if not isinstance(labels, dict) or not all(
+            isinstance(labels.get(v), str) and len(labels[v].strip().splitlines()) == 1
+            for v in VERDICTS):
+        raise Error(f"malformed {key}: {labels!r}")
+    return labels[verdict].strip()
+
+
 def review_plan(draft, view):
     selected = [f for f in draft["findings"] if f["selected"]]
-    verdict = None
+    verdict = label = post_label = None
     conflict = draft["kind"] == "gate" and view.get("mergeable") == "CONFLICTING"
     if draft["kind"] == "gate":
         open_prior = [p for p in draft["prior"] if p["state"] == "open" and p["blocking"]]
         blocking = any(f["blocking"] for f in selected)
         verdict = "BLOCK" if blocking or open_prior or conflict else "PASS"
+        label = verdict_label(draft, verdict)
+        post_label = verdict_label(draft, verdict, True)
         wanted = "REQUEST_CHANGES" if verdict == "BLOCK" else "COMMENT"
     else:
         wanted = ("REQUEST_CHANGES" if any(f["severity"] in SERIOUS for f in selected)
                   else "COMMENT")
+    if draft.get("force_comment"):
+        wanted = "COMMENT"
     own_pr = (view.get("author") or {}).get("login") == view["viewer"]
     return {
         "event": "COMMENT" if own_pr else wanted, "wanted": wanted, "verdict": verdict,
-        "own_pr": own_pr, "conflict": conflict, "selected": selected,
+        "label": label, "post_label": post_label, "own_pr": own_pr, "conflict": conflict,
+        "selected": selected,
     }
 
 
@@ -1353,7 +1376,8 @@ def review_body(draft, plan, body_findings, post):
     lines = []
     short = draft["head_sha"][:SHORT_SHA]
     if plan["verdict"]:
-        lines += [f"## {labels['gate']}: {plan['verdict']}", "", short, ""]
+        label = plan["post_label"] if post else plan["label"]
+        lines += [f"## {labels['gate']}: {label}", "", short, ""]
         if plan["conflict"]:
             lines += [labels["conflict"], ""]
         overview = (post and draft.get("post_overview")) or draft.get("overview")
@@ -1397,7 +1421,8 @@ def preview_review(draft, view, post):
                 for p in ("inline", "file", "body")}
     lines = []
     if plan["verdict"]:
-        lines += [f"**{labels['gate']}: {plan['verdict']}**", ""]
+        label = plan["post_label"] if post else plan["label"]
+        lines += [f"**{labels['gate']}: {label}**", ""]
     lines += [f"**{labels['event']}:** {plan['event']}", ""]
     if plan["own_pr"] and plan["wanted"] != plan["event"]:
         lines += [labels["own_pr"], ""]
@@ -1492,6 +1517,9 @@ def post_differs(data):
                if f["selected"] and comment_view(f, True) != comment_view(f, False)]
         ids += [p["id"] for p in data["prior"] if p["state"] != "waived" and p.get("post_note")
                 and p["post_note"] != p["note"]]
+        verdict = data.get("previewed_verdict")
+        if verdict and verdict_label(data, verdict, True) != verdict_label(data, verdict):
+            ids.append("verdict_labels")
         if data.get("post_overview") and data["post_overview"] != data.get("overview"):
             ids.append("overview")
         return ids
@@ -2096,6 +2124,7 @@ def parser():
     draft.add_argument("--lang", required=True, choices=sorted(LABELS))
     draft.add_argument("--prior-doc")
     draft.add_argument("--blocking")
+    draft.add_argument("--force-comment", action="store_true")
     command("wording", "pr_url", "path")
     command("comments", "pr_url", "tmp_dir")
     raised = command("raised", "pr_url", "tmp_dir")
@@ -2122,7 +2151,7 @@ def dispatch(args):
         return cmd_prior(args.pr_url, args.tmp_dir, args.kind, args.document, args.trust)
     if args.command == "draft":
         return cmd_draft(args.pr_url, args.tmp_dir, args.document, args.kind, args.lang,
-                         args.prior_doc, args.blocking)
+                         args.prior_doc, args.blocking, args.force_comment)
     if args.command == "wording":
         return cmd_wording(args.pr_url, args.path)
     if args.command == "comments":
