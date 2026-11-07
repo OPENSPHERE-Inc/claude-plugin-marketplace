@@ -7,8 +7,9 @@ Usage:
     python3 gh-review.py collect <pr_url> <tmp_dir> --kind review|gate
     python3 gh-review.py prior <pr_url> <tmp_dir> --kind review|gate --document <path>
         [--trust]
+    python3 gh-review.py since <pr_url>
     python3 gh-review.py draft <pr_url> <tmp_dir> <document> --kind review|gate --lang en|ja
-        [--prior-doc <path>] [--blocking <path>] [--force-comment]
+        [--prior-doc <path>] [--blocking <path>] [--force-comment] [--since <commit>]
     python3 gh-review.py wording <pr_url> <json_path>
     python3 gh-review.py comments <pr_url> <tmp_dir>
     python3 gh-review.py raised <pr_url> <tmp_dir> [--discussion]
@@ -77,6 +78,15 @@ no_problem the key, IDs, and why of those skipped as raising nothing. Also write
 <tmp_dir>/pr-body.json, the pull request's title and description, and prints its path in
 pr_body_path.
 
+since: finds the authenticated user's latest gate review outside pending and dismissed reviews, one
+whose visible body opens with the verdict heading post writes, and prints commit, the commit GitHub
+records it was made at, not a SHA its editable body shows, review_url, and head_sha. since is that
+commit when the pull request's head contains it and its base has not changed after that review,
+otherwise null, and fallback says why it is null: none, with no such review, not_ancestor, when the
+head does not contain the commit, as after a force push or a rebase, or base_changed, when the pull
+request's base branch was changed or force-pushed after that review, so that its diff may hold
+commits no gate run reviewed.
+
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after
 every ID finding-ids.json lists as used on the pull request, with the categories its heading
@@ -99,7 +109,8 @@ severity: Critical and Major block. One still open with no mark is printed in bl
 A gate draft also has verdict_labels, the one-line words its verdict heading shows for PASS and
 BLOCK, by default those, and may have post_verdict_labels, the same for what goes out, which
 takes verdict_labels' place there. --force-comment records force_comment, under which the review
-goes out as Comment, never Request Changes.
+goes out as Comment, never Request Changes. --since, for a gate draft only, records since, the
+full SHA of the commit the review covered the changes from, which a line under the verdict names.
 
 wording: merges every wording-*.json next to <json_path> into it: comment_lang, the
 language comments go out in, with, per finding, summary (the recommendation for people,
@@ -205,6 +216,7 @@ PR_URL_RE = re.compile(
 PR_BULLET_RE = re.compile(r"- \*\*PR:\*\* (\S+) \(head ([0-9a-f]+), base ([0-9a-f]+)\)")
 BRANCH_BULLET_RE = re.compile(r"- \*\*Branch:\*\* ([\w./+@-]+)")
 BRANCH_NAME_RE = re.compile(r"\w[\w./+@-]*")
+COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 FINDING_ID = r"(?:C|M|mi|I)-[0-9]+"
 FINDING_ID_RE = re.compile(FINDING_ID)
 HEADING_RE = re.compile(rf"### ({FINDING_ID})\s+[—-]\s+`?([^`]*?)`?(?:\s+\[(.*)\])?\s*")
@@ -299,6 +311,23 @@ query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   }
 }
 """
+BASE_CHANGES = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      timelineItems(first: 100, itemTypes: [BASE_REF_CHANGED_EVENT, BASE_REF_FORCE_PUSHED_EVENT,
+                                            AUTOMATIC_BASE_CHANGE_SUCCEEDED_EVENT]) {
+        nodes {
+          ... on BaseRefChangedEvent { createdAt }
+          ... on BaseRefForcePushedEvent { createdAt }
+          ... on AutomaticBaseChangeSucceededEvent { createdAt }
+        }
+        pageInfo { hasNextPage }
+      }
+    }
+  }
+}
+"""
 DELETE_REVIEW = """
 mutation($input: DeletePullRequestReviewInput!) {
   deletePullRequestReview(input: $input) { clientMutationId }
@@ -313,6 +342,7 @@ LABELS = {
         "out_of_diff": "Findings outside the diff",
         "gate": "Merge gate",
         "conflict": "The pull request has merge conflicts.",
+        "since": "This run reviewed only the changes since {sha}, which an earlier run reviewed.",
         "prior": "Earlier findings",
         "not_verified": "not verified",
         "waived": "waived by the reviewer",
@@ -337,6 +367,7 @@ LABELS = {
         "out_of_diff": "差分外の指摘",
         "gate": "マージゲート",
         "conflict": "プルリクエストにマージコンフリクトがあります。",
+        "since": "この回は、以前のゲート実行がレビューした {sha} 以降の変更のみをレビューしました。",
         "prior": "前回までの指摘",
         "not_verified": "未確認",
         "waived": "レビュアー判断により取り下げ",
@@ -356,6 +387,8 @@ LABELS = {
 }
 BLOCKING_WORDS = {labels[name]: name == "blocking" for labels in LABELS.values()
                   for name in ("blocking", "non_blocking")}
+# The verdict heading review_body writes at the start of a gate review's body.
+GATE_HEADINGS = tuple(f"## {labels['gate']}:" for labels in LABELS.values())
 # What finding_block and the result lines of review_body write at the start of a line.
 BLOCKING_MARK_RE = re.compile(
     rf"^(?:\*\*(?:{'|'.join(SEVERITIES.values())}) |- [✅💬➖] \*\*)({FINDING_ID})\*\* · "
@@ -1197,6 +1230,30 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
     }
 
 
+def cmd_since(pr_url):
+    pr = checked_pr(pr_url)
+    view = view_pr(pr)
+    reviews = rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/reviews")
+    gates = [r for r in reviews
+             if comment_author(r) == view["viewer"]
+             and r.get("state") not in ("PENDING", "DISMISSED")
+             and visible_body(r).startswith(GATE_HEADINGS)
+             and COMMIT_RE.fullmatch(r.get("commit_id") or "")]
+    head = view["headRefOid"]
+    if not gates:
+        return {"since": None, "commit": None, "review_url": None, "head_sha": head,
+                "fallback": "none"}
+    latest = by_time(gates)[-1]
+    commit = latest["commit_id"]
+    fallback = None
+    if not commit_on_pr(pr, commit, head):
+        fallback = "not_ancestor"
+    elif base_changed_after(pr, latest.get("submitted_at") or ""):
+        fallback = "base_changed"
+    return {"since": None if fallback else commit, "commit": commit,
+            "review_url": latest.get("html_url"), "head_sha": head, "fallback": fallback}
+
+
 def changed_files(pr):
     return {f["filename"]: diff_lines(f.get("patch"))
             for f in rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/files")}
@@ -1276,8 +1333,10 @@ def prior_states(pr, prior_doc, head, earlier, blocking):
 
 
 def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=None,
-              force_comment=False):
+              force_comment=False, since=None):
     pr = checked_pr(pr_url)
+    if since is not None and (kind != "gate" or not COMMIT_RE.fullmatch(since)):
+        raise Error(f"--since takes the full SHA of a commit, for a gate draft only: {since}")
     header, findings = checked_document(pr, document)
     view = view_pr(pr)
     if view["headRefOid"] != header.get("head_sha"):
@@ -1312,6 +1371,7 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
         "url": pr.url, "head_sha": view["headRefOid"], "kind": kind, "lang": lang,
         **({"verdict_labels": {v: v for v in VERDICTS}} if gate else {}),
         **({"force_comment": True} if force_comment else {}),
+        **({"since": since} if since else {}),
         "findings": entries, "prior": prior, "waived": earlier_waived(tmp_dir), "posted": False,
     })
     selected = [e for e in entries if e["selected"]]
@@ -1378,6 +1438,8 @@ def review_body(draft, plan, body_findings, post):
     if plan["verdict"]:
         label = plan["post_label"] if post else plan["label"]
         lines += [f"## {labels['gate']}: {label}", "", short, ""]
+        if draft.get("since"):
+            lines += [labels["since"].format(sha=draft["since"][:SHORT_SHA]), ""]
         if plan["conflict"]:
             lines += [labels["conflict"], ""]
         overview = (post and draft.get("post_overview")) or draft.get("overview")
@@ -1878,6 +1940,16 @@ def post_replies(pr, path, data):
     return {"posted": len(urls), "urls": urls, "confirmed": len(urls)}
 
 
+def base_changed_after(pr, moment):
+    """Whether the base branch was changed or force-pushed at or after moment, an ISO 8601 UTC
+    timestamp, counting a timeline too long for one page as changed.
+    """
+    data = graphql(pr, BASE_CHANGES, owner=pr.owner, name=pr.name, number=pr.number)
+    events = data["repository"]["pullRequest"]["timelineItems"]
+    return (events["pageInfo"]["hasNextPage"]
+            or any(node["createdAt"] >= moment for node in events["nodes"]))
+
+
 def commit_on_pr(pr, sha, head):
     if sha == head:
         return True
@@ -2119,12 +2191,14 @@ def parser():
     prior.add_argument("--kind", required=True, choices=("review", "gate"))
     prior.add_argument("--document", required=True)
     prior.add_argument("--trust", action="store_true")
+    command("since", "pr_url")
     draft = command("draft", "pr_url", "tmp_dir", "document")
     draft.add_argument("--kind", required=True, choices=("review", "gate"))
     draft.add_argument("--lang", required=True, choices=sorted(LABELS))
     draft.add_argument("--prior-doc")
     draft.add_argument("--blocking")
     draft.add_argument("--force-comment", action="store_true")
+    draft.add_argument("--since")
     command("wording", "pr_url", "path")
     command("comments", "pr_url", "tmp_dir")
     raised = command("raised", "pr_url", "tmp_dir")
@@ -2149,9 +2223,11 @@ def dispatch(args):
         return cmd_collect(args.pr_url, args.tmp_dir, args.kind)
     if args.command == "prior":
         return cmd_prior(args.pr_url, args.tmp_dir, args.kind, args.document, args.trust)
+    if args.command == "since":
+        return cmd_since(args.pr_url)
     if args.command == "draft":
         return cmd_draft(args.pr_url, args.tmp_dir, args.document, args.kind, args.lang,
-                         args.prior_doc, args.blocking, args.force_comment)
+                         args.prior_doc, args.blocking, args.force_comment, args.since)
     if args.command == "wording":
         return cmd_wording(args.pr_url, args.path)
     if args.command == "comments":

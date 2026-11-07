@@ -250,7 +250,9 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     `- **PR:**` bullet → gh-pr.py remove (hooks disabled); the header
                     also carries a `- **Branch:**` bullet when the review ran on a branch,
                     and in PR mode a `- **Trust:** on|off` bullet (whether the reviewed
-                    tree had the agent files)
+                    tree had the agent files); --since {commit} narrows PR mode to the
+                    changes since that commit (fetch-diff.sh --pr-since, which leaves
+                    out what a merge of the base brought in)
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist
                     triage / estimate metadata into the doc
                     PR mode (a pull request URL, triage and resolve): rules/pr-comment-doc.md:
@@ -329,6 +331,11 @@ says only how bad a problem's consequence is, and the gate's verdict rests on `b
 separate: a `comment-writer` judges each Will Fix finding after triage, `gh-review.py draft
 --blocking` reads that, each posted comment and result line shows the result in its visible text,
 and `gh-review.py collect` reads it back on a later run, from the user's own comments only.
+Under `--incremental`, `gh-review.py since` takes the commit of the user's latest gate review from
+the review's `commit_id`, and `/cgh:gate` passes it to `/creview:start --since` and to `draft
+--since`, which names it under the verdict; with no such review, when the head no longer
+contains that commit, or when the base branch was changed or force-pushed after that review, the
+whole diff is reviewed.
 `/cgh:respond` handles the comments of anyone through the PR mode of `/creview:triage`, whose
 triage sub-agent an override tells to judge what is already dealt with, and the leader judges
 from the conversation whether a comment needs a reply. Posted findings number on from the

@@ -3,6 +3,7 @@
 # Usage: <path>/fetch-diff.sh <base-branch> <output-file>
 #        <path>/fetch-diff.sh --range <from-rev> <to-rev> <output-file>
 #        <path>/fetch-diff.sh --pr <merge-base> <head> <output-file>
+#        <path>/fetch-diff.sh --pr-since <merge-base> <since> <head> <output-file>
 #
 # Writes the following sections to <output-file>:
 #   === Changed Files (<from>..<to>) ===
@@ -21,6 +22,12 @@
 # from the merge base, so neither an exact rename, the pull request's
 # .gitmodules, nor its .gitattributes can hide a change. --pr requires Git 2.41
 # or later (--attr-source) and always fails on an older Git.
+#
+# --pr-since is --pr for the changes <head> adds to <since>, an ancestor of it:
+# <from> is <since>. When the pull request merged its base since <since>, the
+# diff starts from <since> merged with <merge-base>, so that what the base
+# brought in is left out while a conflict's resolution and a base change the
+# merge dropped stay, and the log leaves out the base's commits.
 
 set -euo pipefail
 
@@ -46,19 +53,27 @@ prepare_out() {
 
 RANGE_MODE=0
 PR_MODE=0
+SINCE=""
 if [[ "${1:-}" == "--range" || "${1:-}" == "--pr" ]]; then
     RANGE_MODE=1
     [[ "$1" == "--range" ]] || PR_MODE=1
     FROM="${2:?Error: $1 requires a from revision}"
     TO="${3:?Error: $1 requires a to revision}"
     OUT="${4:?Error: output file path argument required}"
+elif [[ "${1:-}" == "--pr-since" ]]; then
+    RANGE_MODE=1
+    PR_MODE=1
+    FROM="${2:?Error: --pr-since requires a merge base}"
+    SINCE="${3:?Error: --pr-since requires a since revision}"
+    TO="${4:?Error: --pr-since requires a head revision}"
+    OUT="${5:?Error: output file path argument required}"
 else
     FROM="${1:?Error: base branch argument required}"
     TO="HEAD"
     OUT="${2:?Error: output file path argument required}"
 fi
 
-for rev in "${FROM}" "${TO}"; do
+for rev in "${FROM}" "${TO}" ${SINCE:+"${SINCE}"}; do
     if ! git rev-parse --verify --quiet --end-of-options "${rev}^{commit}" >/dev/null; then
         echo "Error: invalid revision: ${rev}" >&2
         exit 1
@@ -86,6 +101,47 @@ if [[ "${PR_MODE}" -eq 1 ]]; then
         echo "Error: git does not accept --attr-source;" \
             "fetch-diff.sh --pr requires Git 2.41 or later" >&2
         exit 1
+    fi
+fi
+
+LABEL="${FROM}..${TO}"
+LOG_REVS=("${FROM}..${TO}")
+if [[ -n "${SINCE}" ]]; then
+    for rev in "${FROM}" "${SINCE}"; do
+        if ! git merge-base --is-ancestor "${rev}" "${TO}"; then
+            echo "Error: ${rev} is not an ancestor of ${TO}" >&2
+            exit 1
+        fi
+    done
+    LABEL="${SINCE}..${TO}"
+    LOG_REVS=("^${SINCE}" "^${FROM}" "${TO}")
+    if git merge-base --is-ancestor "${FROM}" "${SINCE}"; then
+        DIFF_FROM="${SINCE}"
+    else
+        # merge-tree exits 1 on a conflict and still writes the tree, conflict markers included.
+        # The merge drivers of git config, and its filters under merge.renormalize, would run on
+        # the pull request's content: false replaces each driver, leaving its file conflicted.
+        rc=0
+        drivers="$(git config --name-only --get-regexp '^merge\..+\.driver$')" || rc=$?
+        if [[ "${rc}" -gt 1 ]]; then
+            echo "Error: git config could not list the merge drivers" >&2
+            exit 1
+        fi
+        merge_config=(-c merge.renormalize=false)
+        while IFS= read -r key; do
+            if [[ -n "${key}" ]]; then
+                merge_config+=("--config-env=${key}=FETCH_DIFF_NO_DRIVER")
+            fi
+        done <<< "${drivers}"
+        rc=0
+        merged="$(FETCH_DIFF_NO_DRIVER=false git "${merge_config[@]}" \
+            --attr-source="${ATTR_SOURCE}" merge-tree --write-tree --no-messages \
+            "${SINCE}" "${FROM}")" || rc=$?
+        DIFF_FROM="${merged%%$'\n'*}"
+        if [[ "${rc}" -gt 1 || ! "${DIFF_FROM}" =~ ^[0-9a-f]{40,64}$ ]]; then
+            echo "Error: git merge-tree could not merge ${FROM} into ${SINCE}" >&2
+            exit 1
+        fi
     fi
 fi
 
@@ -140,16 +196,16 @@ untracked_diff() (
 )
 
 {
-    printf '=== Changed Files (%s..%s) ===\n' "${FROM}" "${TO}"
-    review_diff --name-status "${DIFF_FROM}..${TO}"
+    printf '=== Changed Files (%s) ===\n' "${LABEL}"
+    review_diff --name-status "${DIFF_FROM}..${TO}" --
     printf '\n'
 
-    printf '=== Commit Log (%s..%s) ===\n' "${FROM}" "${TO}"
-    git log "${FROM}..${TO}" --oneline --no-color
+    printf '=== Commit Log (%s) ===\n' "${LABEL}"
+    git log --oneline --no-color "${LOG_REVS[@]}" --
     printf '\n'
 
-    printf '=== Commit Diff (%s..%s) ===\n' "${FROM}" "${TO}"
-    review_diff "${DIFF_FROM}..${TO}"
+    printf '=== Commit Diff (%s) ===\n' "${LABEL}"
+    review_diff "${DIFF_FROM}..${TO}" --
     printf '\n'
 
     if [[ "${RANGE_MODE}" -eq 0 ]]; then
