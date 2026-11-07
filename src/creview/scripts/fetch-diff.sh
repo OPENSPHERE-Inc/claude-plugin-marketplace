@@ -27,7 +27,9 @@
 # <from> is <since>. When the pull request merged its base since <since>, the
 # diff starts from <since> merged with <merge-base>, so that what the base
 # brought in is left out while a conflict's resolution and a base change the
-# merge dropped stay, and the log leaves out the base's commits.
+# merge dropped stay, and the log leaves out the base's commits. A file that
+# merge left conflicted without conflict markers, such as a binary file or one
+# the base deleted, starts from its version in <merge-base>, or from no file.
 
 set -euo pipefail
 
@@ -104,6 +106,31 @@ if [[ "${PR_MODE}" -eq 1 ]]; then
     fi
 fi
 
+# Print, as update-index -z --index-info records, the base's entry for each path that <merge>,
+# the -z output of merge-tree run at the top of the working tree, left conflicted with the since
+# side's entry, or a removal when the base has none.
+base_entries() { # <merge>
+    local tree record mode oid stage path kept=""
+    {
+        IFS= read -r -d '' tree
+        while IFS= read -r -d '' record; do
+            read -r mode oid stage <<< "${record%%$'\t'*}"
+            path="${record#*$'\t'}"
+            if [[ "${stage}" == 2 ]]; then
+                kept=""
+                if [[ "$(GIT_LITERAL_PATHSPECS=1 git ls-tree --full-tree \
+                    --format='%(objectmode) %(objectname)' "${tree}" -- "${path}")" \
+                    == "${mode} ${oid}" ]]; then
+                    kept="${path}"
+                    printf '0 %s\t%s\0' "${oid}" "${path}"
+                fi
+            elif [[ "${stage}" == 3 && "${path}" == "${kept}" ]]; then
+                printf '%s %s\t%s\0' "${mode}" "${oid}" "${path}"
+            fi
+        done
+    } < "$1"
+}
+
 LABEL="${FROM}..${TO}"
 LOG_REVS=("${FROM}..${TO}")
 if [[ -n "${SINCE}" ]]; then
@@ -120,9 +147,12 @@ if [[ -n "${SINCE}" ]]; then
     else
         # merge-tree exits 1 on a conflict and still writes the tree, conflict markers included.
         # The merge drivers of git config, and its filters under merge.renormalize, would run on
-        # the pull request's content: false replaces each driver, leaving its file conflicted.
+        # the pull request's content: git merge-file, the built-in text merge, replaces each
+        # driver, and its exit of 128 or more, as on a binary file, counts as a conflict. git
+        # config reads only the file GIT_CONFIG names, while merge-tree ignores it.
         rc=0
-        drivers="$(git config --name-only --get-regexp '^merge\..+\.driver$')" || rc=$?
+        drivers="$(unset GIT_CONFIG; git config --name-only --get-regexp '^merge\..*\.driver$')" \
+            || rc=$?
         if [[ "${rc}" -gt 1 ]]; then
             echo "Error: git config could not list the merge drivers" >&2
             exit 1
@@ -130,17 +160,34 @@ if [[ -n "${SINCE}" ]]; then
         merge_config=(-c merge.renormalize=false)
         while IFS= read -r key; do
             if [[ -n "${key}" ]]; then
-                merge_config+=("--config-env=${key}=FETCH_DIFF_NO_DRIVER")
+                merge_config+=("--config-env=${key}=FETCH_DIFF_TEXT_MERGE")
             fi
         done <<< "${drivers}"
+        text_merge='git merge-file -q --marker-size=%L -L since -L ancestor -L base %A %O %B'
+        text_merge+='; s=$?; [ "$s" -lt 128 ] || s=1; exit "$s"'
+        merge_dir="$(mktemp -d)"
+        trap 'rm -rf "${merge_dir}"' EXIT
+        top="$(git rev-parse --show-cdup)"
         rc=0
-        merged="$(FETCH_DIFF_NO_DRIVER=false git "${merge_config[@]}" \
-            --attr-source="${ATTR_SOURCE}" merge-tree --write-tree --no-messages \
-            "${SINCE}" "${FROM}")" || rc=$?
-        DIFF_FROM="${merged%%$'\n'*}"
-        if [[ "${rc}" -gt 1 || ! "${DIFF_FROM}" =~ ^[0-9a-f]{40,64}$ ]]; then
+        FETCH_DIFF_TEXT_MERGE="${text_merge}" git -C "${top}" "${merge_config[@]}" \
+            --attr-source="${ATTR_SOURCE}" merge-tree -z --write-tree --no-messages \
+            "${SINCE}" "${FROM}" > "${merge_dir}/merge" || rc=$?
+        if [[ "${rc}" -gt 1 ]] || ! IFS= read -r -d '' DIFF_FROM < "${merge_dir}/merge" \
+            || [[ ! "${DIFF_FROM}" =~ ^[0-9a-f]{40,64}$ ]]; then
             echo "Error: git merge-tree could not merge ${FROM} into ${SINCE}" >&2
             exit 1
+        fi
+        # A file merge left with the since side's entry and no conflict markers starts from the
+        # base's entry instead.
+        base_entries "${merge_dir}/merge" > "${merge_dir}/entries"
+        if [[ -s "${merge_dir}/entries" ]]; then
+            index="${merge_dir}/index"
+            GIT_INDEX_FILE="${index}" git read-tree "${DIFF_FROM}" \
+                && GIT_INDEX_FILE="${index}" git update-index -z --index-info \
+                    < "${merge_dir}/entries" \
+                && DIFF_FROM="$(GIT_INDEX_FILE="${index}" git write-tree)" \
+                || { echo "Error: git could not start the diff from the base's entries" >&2
+                     exit 1; }
         fi
     fi
 fi

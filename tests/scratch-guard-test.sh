@@ -1017,18 +1017,26 @@ if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
         && ! psd_has since-conflict.txt '+c1' \
         || { note "FAIL: creview fetch-diff --pr-since hid a resolution or a dropped base change"
              fail=1; }
-    printf '* merge=probe=1 filter=probe\n' > "${PSD}/.git/info/attributes"
-    rc=0; (export GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=merge.probe=1.driver \
-        GIT_CONFIG_VALUE_0='touch driver-ran' GIT_CONFIG_KEY_1=filter.probe.clean \
-        GIT_CONFIG_VALUE_1='touch filter-ran; cat' GIT_CONFIG_KEY_2=merge.renormalize \
-        GIT_CONFIG_VALUE_2=true
-        psd_diff "${PS_BASE2}" "${PS_PR3}" "${PS_PR4}" since-driver.txt) 2>/dev/null || rc=$?
-    check "creview fetch-diff --pr-since with a merge driver and renormalization" 0 "${rc}"
-    [[ ! -e "${PSD}/driver-ran" && ! -e "${PSD}/filter-ran" ]] \
-        && psd_has since-driver.txt '+a2 resolved' && psd_has since-driver.txt '-b3 base' \
-        || { note "FAIL: creview fetch-diff --pr-since ran a merge driver or filter of git config"
-             fail=1; }
-    rm -f "${PSD}/.git/info/attributes" "${PSD}/driver-ran" "${PSD}/filter-ran"
+    # GIT_CONFIG makes git config read that file alone, while merge-tree reads every scope.
+    : > "${SANDBOX}/empty.gitconfig"
+    for drv in probe=1 ''; do
+        printf '* merge=%s filter=probe\n' "${drv}" > "${PSD}/.git/info/attributes"
+        rc=0; (export GIT_CONFIG="${SANDBOX}/empty.gitconfig" GIT_CONFIG_COUNT=3 \
+            GIT_CONFIG_KEY_0="merge.${drv}.driver" GIT_CONFIG_VALUE_0='touch driver-ran' \
+            GIT_CONFIG_KEY_1=filter.probe.clean GIT_CONFIG_VALUE_1='touch filter-ran; cat' \
+            GIT_CONFIG_KEY_2=merge.renormalize GIT_CONFIG_VALUE_2=true
+            psd_diff "${PS_BASE2}" "${PS_PR3}" "${PS_PR4}" since-driver.txt) 2>/dev/null || rc=$?
+        check "creview fetch-diff --pr-since with merge driver '${drv}' and renormalization" 0 \
+            "${rc}"
+        [[ ! -e "${PSD}/driver-ran" && ! -e "${PSD}/filter-ran" ]] \
+            && psd_has since-driver.txt '+a2 resolved' && psd_has since-driver.txt '-a2 pr' \
+            && psd_has since-driver.txt '-a2 base' && psd_has since-driver.txt '-b3 base' \
+            || { note "FAIL: creview fetch-diff --pr-since ran merge driver '${drv}' or a filter" \
+                     "of git config, or hid a side of a conflict"
+                 fail=1; }
+        rm -f "${PSD}/driver-ran" "${PSD}/filter-ran"
+    done
+    rm -f "${PSD}/.git/info/attributes"
     rc=0; psd_diff "${PS_BASE0}" "${PS_PR2}" "${PS_PR2}" since-empty.txt 2>/dev/null || rc=$?
     check "creview fetch-diff --pr-since at the head" 0 "${rc}"
     [[ -s "${PSD}/.claude/tmp/since-empty.txt" ]] \
@@ -1057,6 +1065,46 @@ if [[ "${ATTR_SOURCE_OK}" -eq 1 ]]; then
     check "creview fetch-diff --pr-since without --attr-source" 1 "${rc}"
     grep -qF 'Git 2.41 or later' "${SANDBOX}/prsince-old.err" \
         || { note "FAIL: creview fetch-diff --pr-since on an old git: no error"; fail=1; }
+    # bmain: bin0 (binary p.bin and q.bin, and k.txt), bin1 (changes p.bin and q.bin, deletes
+    # k.txt). bfeature: binpr1 (changes all three), and a merge of bin1 that keeps its own p.bin
+    # and k.txt and takes the base's q.bin.
+    psd_git checkout -q -b bmain "${PS_BASE0}" \
+        && printf 'p\0 0\n' > "${PSD}/p.bin" && printf 'q\0 0\n' > "${PSD}/q.bin" \
+        && printf 'k1\n' > "${PSD}/k.txt" && psd_git add p.bin q.bin k.txt \
+        && psd_git commit -qm bin0 && psd_git checkout -q -b bfeature \
+        && printf 'p\0 pr\n' > "${PSD}/p.bin" && printf 'q\0 pr\n' > "${PSD}/q.bin" \
+        && printf 'k1 pr\n' > "${PSD}/k.txt" && psd_git commit -qam binpr1 \
+        && PS_BINPR1="$(psd_git rev-parse HEAD)" && psd_git checkout -q bmain \
+        && printf 'p\0 base\n' > "${PSD}/p.bin" && printf 'q\0 base\n' > "${PSD}/q.bin" \
+        && psd_git rm -q k.txt && psd_git commit -qam bin1 && PS_BIN1="$(psd_git rev-parse HEAD)" \
+        && psd_git checkout -q bfeature \
+        && { psd_git merge -q --no-edit bmain >/dev/null 2>&1; true; } \
+        && psd_git checkout -q --ours p.bin && psd_git checkout -q --theirs q.bin \
+        && psd_git add p.bin q.bin k.txt && psd_git commit -qm binresolve \
+        && PS_BINPR2="$(psd_git rev-parse HEAD)" && mkdir -p "${PSD}/sub" \
+        || { note "FAIL: creview fetch-diff --pr-since kept-file repository setup"; fail=1; }
+    # The driver variant needs git merge-file's exit 255 on a binary file to count as a conflict.
+    for v in plain driver sub; do
+        rm -f "${PSD}/.git/info/attributes"
+        [[ "${v}" != driver ]] || printf '* merge=probe\n' > "${PSD}/.git/info/attributes"
+        dir="${PSD}"
+        [[ "${v}" != sub ]] || dir="${PSD}/sub"
+        out="${dir}/.claude/tmp/since-kept.txt"
+        rm -f "${out}"
+        rc=0; (export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=merge.probe.driver \
+            GIT_CONFIG_VALUE_0='touch driver-ran'
+            cd "${dir}" && bash "${CFD}" --pr-since "${PS_BIN1}" "${PS_BINPR1}" "${PS_BINPR2}" \
+                .claude/tmp/since-kept.txt) 2>/dev/null || rc=$?
+        check "creview fetch-diff --pr-since over files kept without conflict markers (${v})" 0 \
+            "${rc}"
+        [[ ! -e "${PSD}/driver-ran" ]] && grep -qxF $'M\tp.bin' "${out}" \
+            && grep -qxF $'A\tk.txt' "${out}" && grep -qxF '+k1 pr' "${out}" \
+            && ! grep -qF 'q.bin' "${out}" \
+            || { note "FAIL: creview fetch-diff --pr-since did not start a file merge-tree kept" \
+                     "without conflict markers from the base's version (${v})"
+                 fail=1; }
+    done
+    rm -f "${PSD}/.git/info/attributes" "${PSD}/driver-ran"
 else
     note "SKIP: creview fetch-diff --pr-since cases (git has no --attr-source)"
 fi

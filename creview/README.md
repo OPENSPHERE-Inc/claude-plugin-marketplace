@@ -98,8 +98,11 @@ commit, given as its full SHA, which the pull request's head must contain.
 When the pull request merged its base branch since then, the diff starts from
 that commit with the base's changes merged in, so that it leaves out what the
 merge brought in and keeps how the pull request resolved a conflict and any
-base change the merge dropped. When the range changes no file, the description
-and CI reviewer described below still runs.
+base change the merge dropped. A file that the merge left conflicted without
+conflict markers, such as a binary file or one the base deleted, has its diff
+start from the base's version, so the diff also shows the pull request's earlier
+changes to that file. When the range changes no file, the description and CI
+reviewer described below still runs.
 
 - When HEAD is the pull request's head commit, the working tree is reviewed
   in place; uncommitted changes to tracked files stop the run with an error.
