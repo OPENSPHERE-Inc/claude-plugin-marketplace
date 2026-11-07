@@ -84,11 +84,12 @@ records it was made at, not a SHA its editable body shows, review_url, and head_
 commit when the pull request's head contains it and its base has not changed after that review,
 otherwise null, and fallback says why it is null: none, with no such review, not_ancestor, when the
 head does not contain the commit, as after a force push or a rebase, or base_changed, when the pull
-request's base branch was changed or force-pushed after that review, so that its diff may hold
-commits no gate run reviewed.
+request's base branch was changed, force-pushed, or deleted after that review, so that its diff may
+hold commits no gate run reviewed.
 
 draft: reads a review document of the pull request, with or without findings, which must
-still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after
+still be at the document's head and, for a gate draft, at its merge base, with --since still the
+commit since picks, and writes <tmp_dir>/draft.json: every finding, numbered after
 every ID finding-ids.json lists as used on the pull request, with the categories its heading
 brackets, which its comment shows, whether it is selected,
 and where it goes (inline: a line of the diff; file: a file of the diff; body: anywhere else).
@@ -165,8 +166,9 @@ records the verdict it shows as previewed_verdict.
 
 post: sends it. A review needs its wording and its head unchanged, is sent as one pending
 review, and cannot be sent twice. A gate draft also needs its verdict to match
-previewed_verdict, and gives BLOCK when a selected finding or an earlier finding still open is
-blocking, or the pull request has merge conflicts. When a call fails, the review's state decides:
+previewed_verdict, its merge base unchanged, and its since still the commit since picks, and gives
+BLOCK when a selected finding or an earlier finding still open is blocking, or the pull request has
+merge conflicts. When a call fails, the review's state decides:
 one that
 went out anyway counts as posted, one still pending is deleted, and with the state
 unknown the review counts as posted, so that a rerun cannot send it twice. The draft records the
@@ -316,10 +318,12 @@ query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       timelineItems(first: 100, itemTypes: [BASE_REF_CHANGED_EVENT, BASE_REF_FORCE_PUSHED_EVENT,
+                                            BASE_REF_DELETED_EVENT,
                                             AUTOMATIC_BASE_CHANGE_SUCCEEDED_EVENT]) {
         nodes {
           ... on BaseRefChangedEvent { createdAt }
           ... on BaseRefForcePushedEvent { createdAt }
+          ... on BaseRefDeletedEvent { createdAt }
           ... on AutomaticBaseChangeSucceededEvent { createdAt }
         }
         pageInfo { hasNextPage }
@@ -1232,7 +1236,10 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
 
 def cmd_since(pr_url):
     pr = checked_pr(pr_url)
-    view = view_pr(pr)
+    return since_state(pr, view_pr(pr))
+
+
+def since_state(pr, view):
     reviews = rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/reviews")
     gates = [r for r in reviews
              if comment_author(r) == view["viewer"]
@@ -1252,6 +1259,19 @@ def cmd_since(pr_url):
         fallback = "base_changed"
     return {"since": None if fallback else commit, "commit": commit,
             "review_url": latest.get("html_url"), "head_sha": head, "fallback": fallback}
+
+
+def base_moved(pr, view, merge_base, since):
+    now = merge_base_of(pr, view)
+    if now != merge_base:
+        return f"its merge base moved from {merge_base} to {now}"
+    if since and since_state(pr, view)["since"] != since:
+        return f"the base branch changed after the gate review at {since}"
+    return None
+
+
+def base_moved_error(reason):
+    return Error(f"the pull request's base changed since the review: {reason}; run the skill again")
 
 
 def changed_files(pr):
@@ -1342,6 +1362,10 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
     if view["headRefOid"] != header.get("head_sha"):
         raise Error(f"the pull request moved past the reviewed head {header.get('head_sha')} "
                     f"to {view['headRefOid']}; run the skill again")
+    gate = kind == "gate"
+    moved = gate and base_moved(pr, view, header.get("merge_base"), since)
+    if moved:
+        raise base_moved_error(moved)
     _, used = known_ids(tmp_dir)
     marks = earlier_blocking(tmp_dir)
     prior, unchanged = prior_states(pr, prior_doc, view["headRefOid"], earlier_verified(tmp_dir),
@@ -1352,7 +1376,6 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
     files = changed_files(pr)
     entries = []
     labels = labels_for(lang)
-    gate = kind == "gate"
     for finding in findings:
         prefix, _, n = finding["id"].rpartition("-")
         base = numbers.get(prefix, 0)
@@ -1369,6 +1392,7 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
         })
     write_json(os.path.join(tmp_dir, "draft.json"), {
         "url": pr.url, "head_sha": view["headRefOid"], "kind": kind, "lang": lang,
+        **({"merge_base": header.get("merge_base")} if gate else {}),
         **({"verdict_labels": {v: v for v in VERDICTS}} if gate else {}),
         **({"force_comment": True} if force_comment else {}),
         **({"since": since} if since else {}),
@@ -1775,6 +1799,10 @@ def post_review(pr, path, draft):
     if view["headRefOid"] != draft["head_sha"]:
         raise Error(f"the pull request moved past the reviewed head {draft['head_sha']} to "
                     f"{view['headRefOid']}; run the skill again")
+    moved = draft["kind"] == "gate" and base_moved(pr, view, draft.get("merge_base"),
+                                                   draft.get("since"))
+    if moved:
+        raise base_moved_error(moved)
     plan = review_plan(draft, view)
     if not plan["selected"] and draft["kind"] != "gate":
         raise Error("no finding is selected")
@@ -1941,8 +1969,8 @@ def post_replies(pr, path, data):
 
 
 def base_changed_after(pr, moment):
-    """Whether the base branch was changed or force-pushed at or after moment, an ISO 8601 UTC
-    timestamp, counting a timeline too long for one page as changed.
+    """Whether the base branch was changed, force-pushed, or deleted at or after moment, an ISO 8601
+    UTC timestamp, counting a timeline too long for one page as changed.
     """
     data = graphql(pr, BASE_CHANGES, owner=pr.owner, name=pr.name, number=pr.number)
     events = data["repository"]["pullRequest"]["timelineItems"]

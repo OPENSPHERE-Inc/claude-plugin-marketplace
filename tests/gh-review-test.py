@@ -186,6 +186,7 @@ class FakeGitHub:
         self.mergeable = []
         self.base_events = []
         self.more_base_events = False
+        self.merge_base = BASE
 
     def __call__(self, cmd, input=None, **_):
         self.calls.append(cmd)
@@ -249,7 +250,7 @@ class FakeGitHub:
             status = self.compare_status.get(path.rsplit("/", 1)[1].split("...")[0], "ahead")
             if isinstance(status, Exception):
                 raise status
-            return {"status": status, "merge_base_commit": {"sha": BASE}}
+            return {"status": status, "merge_base_commit": {"sha": self.merge_base}}
         query = dict(re.findall(r"[?&](\w+)=([0-9]+)", path))
         page, size = int(query.get("page", 1)), int(query.get("per_page", mod.PAGE_SIZE))
         for tail, items in (("/files", FILES), ("/pulls/7/reviews", self.reviews),
@@ -265,9 +266,7 @@ class FakeGitHub:
             if "reviewThreads" in query:
                 return self.review_threads(variables.get("cursor"))
             if "timelineItems" in query:
-                return json.dumps({"data": {"repository": {"pullRequest": {"timelineItems": {
-                    "nodes": [{"createdAt": at} for at in self.base_events],
-                    "pageInfo": {"hasNextPage": self.more_base_events}}}}}})
+                return self.timeline(query)
             if "node(" not in query:
                 if self.mergeable:
                     pull = self.view["data"]["repository"]["pullRequest"]
@@ -316,6 +315,23 @@ class FakeGitHub:
 
     def named(self, name):
         return [v["input"] for q, v in self.mutations if name + "(" in q]
+
+    def timeline(self, query):
+        """Answers the base_events of the item types the query asks for. An event is a createdAt of
+        a BASE_REF_CHANGED_EVENT or an (item type, createdAt) pair, and its node has createdAt only
+        when the query has a fragment for its type, as GitHub answers.
+        """
+        asked = re.search(r"itemTypes:\s*\[([^\]]*)\]", query).group(1).replace(",", " ").split()
+        nodes = []
+        for event in self.base_events:
+            kind, at = ("BASE_REF_CHANGED_EVENT", event) if isinstance(event, str) else event
+            if kind not in asked:
+                continue
+            name = "".join(word.capitalize() for word in kind.split("_"))
+            fragment = rf"\.\.\.\s*on\s+{name}\s*\{{\s*createdAt\s*\}}"
+            nodes.append({"createdAt": at} if re.search(fragment, query) else {})
+        return json.dumps({"data": {"repository": {"pullRequest": {"timelineItems": {
+            "nodes": nodes, "pageInfo": {"hasNextPage": self.more_base_events}}}}}})
 
     def review_threads(self, cursor):
         """Answers two threads a page, from `threads`, a list of (isResolved, first comment ID)."""
@@ -2528,6 +2544,13 @@ class Since(Base):
         result = self.since(gate_review(1), base_events=["2026-10-31T23:59:59Z"])
         self.assertEqual((result["since"], result["fallback"]), (EARLIER, None))
 
+    def test_each_kind_of_base_change_falls_back(self):
+        for kind in ("BASE_REF_CHANGED_EVENT", "BASE_REF_FORCE_PUSHED_EVENT",
+                     "BASE_REF_DELETED_EVENT", "AUTOMATIC_BASE_CHANGE_SUCCEEDED_EVENT"):
+            with self.subTest(kind=kind):
+                result = self.since(gate_review(1), base_events=[(kind, "2026-11-02T00:00:00Z")])
+                self.assertEqual((result["since"], result["fallback"]), (None, "base_changed"))
+
     def test_a_timeline_past_one_page_counts_as_a_base_change(self):
         result = self.since(gate_review(1), base_events=["2026-10-30T00:00:00Z"], more=True)
         self.assertEqual((result["since"], result["fallback"]), (None, "base_changed"))
@@ -2548,6 +2571,7 @@ class Since(Base):
 class SinceDraft(Base):
     def test_the_body_names_the_commit_the_review_started_from(self):
         gh = self.fake()
+        gh.reviews = [gate_review(1)]
         _, draft = self.draft("gate", "en", since=EARLIER)
         self.assertEqual(draft["since"], EARLIER)
         for f in draft["findings"]:
@@ -2576,6 +2600,46 @@ class SinceDraft(Base):
                 self.fake()
                 with self.assertRaisesRegex(mod.Error, "--since"):
                     self.draft(kind, "en", since=since)
+
+    def previewed_gate(self, gh, since=None):
+        """The path of a gate draft with nothing selected, previewed."""
+        _, draft = self.draft("gate", "en", since=since)
+        for f in draft["findings"]:
+            f["selected"] = False
+        path = self.save(draft)
+        self.preview(path)
+        return path
+
+    def test_a_gate_draft_off_the_documents_merge_base_is_refused(self):
+        gh = self.fake()
+        gh.merge_base = "d" * 40
+        with self.assertRaisesRegex(mod.Error, "base changed since the review"):
+            mod.cmd_draft(URL, self.dir, self.doc, "gate", "en", None)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "draft.json")))
+
+    def test_a_merge_base_moved_after_the_gate_draft_is_refused_at_post(self):
+        gh = self.fake()
+        path = self.previewed_gate(gh)
+        gh.merge_base = "d" * 40
+        with self.assertRaisesRegex(mod.Error, "base changed since the review"):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.mutations, [])
+
+    def test_a_base_change_after_an_incremental_gate_draft_is_refused_at_post(self):
+        gh = self.fake()
+        gh.reviews = [gate_review(1)]
+        path = self.previewed_gate(gh, since=EARLIER)
+        gh.base_events = ["2026-11-02T00:00:00Z"]
+        with self.assertRaisesRegex(mod.Error, "base changed since the review"):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.mutations, [])
+
+    def test_a_review_draft_posts_after_its_merge_base_moved(self):
+        gh = self.fake()
+        self.draft()
+        gh.merge_base = "d" * 40
+        mod.cmd_post(URL, os.path.join(self.dir, "draft.json"), None)
+        self.assertEqual(len(gh.named("addPullRequestReview")), 1)
 
 
 class PostedContext(PriorBase):
