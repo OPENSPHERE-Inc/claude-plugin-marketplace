@@ -91,7 +91,7 @@ Include `template_id` (Read from the template's frontmatter) in the return value
 
 `{json_path}` = `{tmp_dir}/draft.json` で § 確認と投稿 に従う。ユーザーが前回までの指摘を取り下げたら、`prior` 配下のその `state` を `waived` にする: 以後の実行では確認も報告もしない。ユーザーが指摘や前回までの指摘のブロッキングを変更したら、その `blocking` を合わせる。指摘がブロッキングになったら、その `selected` も true にする: 判定と投稿内容は選択済みの指摘だけを数える。変更で `overview` が実態と合わなくなったとき、または選択されていない指摘に触れているときは、それと `post_overview` を書き直す。プレビューを示すとき、コードから判定できないために未検証のままの前回までの指摘があれば、対応済みならその場で取り下げを指示できることをユーザーに伝える。
 
-判定、イベント、各指摘の投稿先はスクリプトが `{json_path}` から算出する: 自分で選ばない。判定の見出しには、`{json_path}` の `verdict_labels` の文言が表示される（既定は `PASS` と `BLOCK`）。
+判定、イベント、各指摘の投稿先はスクリプトが `{json_path}` から算出する: 自分で選ばない。判定の見出しには `PASS` か `BLOCK` が表示される。プレビューでは `{json_path}` の `verdict_labels` から、投稿する本文では `post_verdict_labels` があればその代わりにそこから取られる。どちらも `PASS` と `BLOCK` の両方のキーを持ち、各値は空でない 1 行とする。`preview` がそのどちらかを挙げるエラーで終了したら、直して `preview` を再実行し、2 回目の失敗ではそのエラーで中止する。
 
 ## Step 5 — 報告
 
