@@ -136,10 +136,8 @@ read for discussions, and the description and CI results are read again.
   while how the pull request resolved a conflict and any base change the merge dropped are
   reviewed.
   - A file that the merge left conflicted without conflict markers, such as a binary file or one
-    the base deleted, is reviewed from the base's version, so the pull request's earlier changes
-    to that file are reviewed as well.
-    - A file the base deleted has no base version, so the whole file is reviewed, including code
-      before that commit.
+    the base deleted, is reviewed from the base's version, or in full when the base deleted it,
+    so the pull request's earlier changes to that file are reviewed as well.
 - Code before that commit is not reviewed again: a problem an earlier run let through, or one you
   chose not to post, is not raised again.
   - A failed check and a claim of the description are the exception: they are checked against

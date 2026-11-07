@@ -100,10 +100,10 @@ that commit with the base's changes merged in, so that it leaves out what the
 merge brought in and keeps how the pull request resolved a conflict and any
 base change the merge dropped. A file that the merge left conflicted without
 conflict markers, such as a binary file or one the base deleted, has its diff
-start from the base's version, so the diff also shows the pull request's earlier
-changes to that file. A file the base deleted has no such version: its diff
-starts from no file, so the whole file shows as added. When the range changes
-no file, the description and CI reviewer described below still runs.
+start from the base's version, or from no file when the base deleted it, so the
+diff also shows the pull request's earlier changes to that file. A file the
+base deleted thus shows as added in full. When the range changes no file, the
+description and CI reviewer described below still runs.
 
 - When HEAD is the pull request's head commit, the working tree is reviewed
   in place; uncommitted changes to tracked files stop the run with an error.
