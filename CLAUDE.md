@@ -65,7 +65,7 @@ claude-plugin-marketplace/
 │   ├── .claude-plugin/plugin.json
 │   ├── README.md / README_ja.md
 │   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, design, design-review, code, code-review, comment-review, prompt-review, prompt-test, qa)
-│   ├── agents/                   # comment-sensei.md, prompt-sensei.md, dev-helper.md
+│   ├── agents/                   # comment-sensei.md, prompt-sensei.md, prompt-tester.md, dev-helper.md
 │   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, prompt.md, divergence.md
 │   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
 │
@@ -124,8 +124,9 @@ When changing a plugin:
   - `templates/*.md` and bundled rules (opened with Read by a sub-agent, or by a leader for
     `rules/doc-worktree.md` / `rules/pr-comment-doc.md` / `cgh/rules/leader.md`) use the
     `{{plugin_root}}/...` launch variable.
-- **Agent-dispatch generalization**: skills do **not** bundle specialist reviewers. The
-  single-best-match resolution mechanics (enumerate agents recursively `**/*.md` across
+- **Agent-dispatch generalization**: skills do **not** bundle specialist reviewers, apart
+  from the comment and prompt specialists named below, which the skills also run in fixed
+  roles. The single-best-match resolution mechanics (enumerate agents recursively `**/*.md` across
   **destination project** → **user** → **plugin bundle** scopes, higher-priority scope wins
   on duplicate `name`, fall back to `general-purpose`) live in the shared bundled rule
   `rules/agents-detection.md`. The triage / analyze / format-build-verify / divergence-check sub-agents read it
@@ -143,10 +144,12 @@ When changing a plugin:
   In creview, the detection rule and `scope-analysis.md` leave the fixed-role bundled
   agents (`review-helper`, `review-leader`, `pr-description-reviewer`, `pr-comment-compiler`)
   out of the
-  candidates, so `comment-sensei` is the only bundled candidate. cdev bundles `dev-helper`
-  and two specialists its skill also runs as fixed-role teammates, `comment-sensei` and
-  `prompt-sensei`; the detection rule leaves none out, so team formation can pick
-  `prompt-sensei` as the reviewer of AI-facing prompt files.
+  candidates, so `comment-sensei` is the only bundled candidate. cdev bundles `dev-helper`,
+  two specialists its skill also runs as fixed-role teammates, `comment-sensei` and
+  `prompt-sensei`, and `prompt-tester`, the context-free interpretation tester `prompt-sensei`
+  launches, whose `tools:` hold Read, Glob, and Grep only; the detection rule leaves out only
+  `prompt-tester`, so team formation can pick `prompt-sensei` as the reviewer of AI-facing
+  prompt files.
 
 ---
 
@@ -375,6 +378,11 @@ the variables their templates name, as absolute paths, with no `plugin_root`, `m
 `target_dir`, or Round-specific overrides, since those templates read no bundled rule and the
 agent has Read and Write only. A cgh launch that goes beyond that passes all three.
 
+The launches of cdev's `prompt-tester` are an exception as well: so that the tester carries no
+context of the run, `prompt-sensei` launches it with an inline prompt, with no external
+template, no `template_id`, and no `plugin_root`, `main_root`, or `target_dir`. The agent has
+Read, Glob, and Grep only.
+
 ---
 
 ## Code Style & Formatting
@@ -417,11 +425,13 @@ agent has Read and Write only. A cgh launch that goes beyond that passes all thr
 2. Use `${CLAUDE_PLUGIN_ROOT}/...` in the SKILL body / `allowed-tools`; use
    `{{plugin_root}}/...` inside templates and the bundled rules they point to, and pass
    `plugin_root`, `main_root`, and `target_dir` in every launch prompt (cgh's
-   `comment-writer` excepted; see Sub-agent launch contract) — `main_root` is the
+   `comment-writer` and cdev's `prompt-tester` excepted; see Sub-agent launch contract) —
+   `main_root` is the
    main working tree's root under `--worktree` or the value an upper flow passed, and
    `(none)` otherwise; `target_dir` is the work target (see Sub-agent launch contract).
 3. Resolve reviewers/fixers via the destination project's `.claude/agents/` with a
-   `general-purpose` fallback — do not hardcode specialist agent names.
+   `general-purpose` fallback — do not hardcode a destination-project agent name; name a
+   bundled agent only by its namespaced name.
 4. Add the command to the marketplace `README.md`/`README_ja.md` and the plugin
    `README.md`/`README_ja.md`.
 
@@ -518,7 +528,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   move plugin runtime files under `src/` or reference `src/...` from active skills.
 - **Destination-project agents, not bundled ones.** Active skills must resolve reviewers/
   fixers from the consuming project's `.claude/agents/` with a `general-purpose` fallback.
-  Re-introducing hardcoded `*-sensei` names breaks portability.
+  Re-introducing hardcoded names of destination-project agents (`*-sensei` and the like)
+  breaks portability. A skill hardcodes only a bundled agent, by its namespaced name, such
+  as the specialists it runs in fixed roles (`creview:comment-sensei`, `cdev:prompt-sensei`).
 - **CRLF line endings** in skill/template files are inherited from upstream. Avoid global
   reflow/`autocrlf` churn so diffs stay reviewable.
 - **Bundled rule cross-references resolve relative to the file.** `creview/rules/sub-agent.md`
@@ -532,7 +544,8 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   across all four (`creview/`, `cdev/`, and their mirrors); each plugin ships its own copy
   because plugins install independently. Edit one copy and replicate to the others;
   `tests/scratch-guard-test.sh` fails on any drift. `scripts/worktree.sh` is likewise
-  byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors). `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `creview/scripts/gh-pr.py`, and
+  byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors).
+  `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `creview/scripts/gh-pr.py`, and
   `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` are likewise each
   byte-identical with its own `src/` mirror.
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
@@ -576,7 +589,7 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 
 - **translation-sensei** — src ↔ active localization, README_ja sync (token-preserving
   translation).
-- **prompt-sensei / prompt-editor** — SKILL.md / template prompt structure vs
+- **prompt-sensei** — SKILL.md / template prompt structure vs
   `.claude/rules/prompt.md`.
 - **devops-sensei** — marketplace.json / plugin.json manifests, future CI.
 - **python-sensei** — helper script (`scripts/*.py`, `compile-review.py`) correctness.

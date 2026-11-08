@@ -65,8 +65,9 @@ between named teammates. The session has a single implicit team — no explicit 
 or deletion, and no shared task list; the leader tracks each cell's status itself. When the
 run ends, the leader stops the teammates with `TaskStop`. It runs only in a runtime where
 these are available — a deliberate trade-off favoring efficiency over the broad portability
-of a one-shot, stateless agent design. A task with AI-facing prompt files also needs a teammate
-to launch sub-agents with the `Agent` tool: `prompt-sensei` launches the interpretation testers.
+of a one-shot, stateless agent design. The interpretation test of AI-facing prompt files has a
+teammate, `prompt-sensei`, launch sub-agents with the `Agent` tool; where a teammate cannot,
+the test reports those files as untested.
 
 The skill requires a session started at the repository root, with or without `--worktree`;
 started from a subdirectory of the repository, it stops with an error.
@@ -129,23 +130,33 @@ it remains.
 
 A file an AI agent reads as its instructions — an agent definition, a skill (`SKILL.md`), a
 slash command, a rule, or a prompt template a skill has an agent read — is an AI-facing prompt
-(`rules/prompt.md`). A task that creates or edits one goes through the same design cells, code
-cells, and QA gate as any other task, with these additions:
+(`rules/prompt.md`); project memory files such as `CLAUDE.md` and Markdown output templates are
+not. The skill changes only prompt files in the repository: those under `~/.claude/` or
+elsewhere outside it are out of reach, since a teammate writes only inside its work target, and
+a run needs a clean working tree unless it uses `--worktree`. A task that creates or edits a
+prompt file goes through the same design cells, code cells, and QA gate as any other task, with
+these additions:
 
 - Team formation gives the prompt files to coders whose scope holds no other source, and pairs
-  each of them with a reviewer for prompts: a matching agent of the destination project or the
-  user, otherwise the bundled `prompt-sensei`.
+  each of them with a reviewer for prompts, picked like any other reviewer as the best match in
+  the agent pool, which includes the bundled `prompt-sensei`.
 - Coders follow `rules/prompt.md` when they write a prompt. In the code cell, before the
-  review, the `prompt-sensei` teammate self-checks the coder's prompt files against it, fixes
-  the violations in up to two passes, and compresses the files without changing what they ask
-  of the agent. The coder hands any violation left over to the reviewer with the change.
+  review, the `prompt-sensei` teammate self-checks what the coder created or changed in its
+  prompt files against it, fixes the violations in up to two passes, and compresses that part
+  without changing what it asks of the agent; the rest of an existing file is left as it is
+  unless the design covers the whole file. The coder hands any violation left over to the
+  reviewer with the change.
 - In the QA gate, `prompt-sensei` also runs an interpretation test. For each prompt file
-  changed in the run, it writes a checklist of questions such as what an agent should do when a
-  step fails, and has a newly launched sub-agent with no context of the run answer them from the
-  prompt and the files the prompt tells its reader to read. A file with an item the sub-agent
-  cannot answer fails the test and goes through a QA-fix cell, a coder's fix reviewed by a
-  paired reviewer, before QA runs again. The test runs in the same QA attempts as the build and
-  tests, bounded by `--qa-attempts`.
+  changed in the run, it writes a checklist of questions about what the run created or changed,
+  such as how an agent should decide a value the input omits, and has a newly launched sub-agent
+  with no context of the run, which can only read files, answer them from the prompt and the
+  files the prompt tells its reader to read. A file with an item the sub-agent cannot answer
+  fails the test and goes through a QA-fix cell, a coder's fix reviewed by a paired reviewer,
+  before QA runs again. A retry tests again only the files that failed or were fixed, with the
+  same checklist. A file the test could not be run on, for example because the sub-agent could
+  not be launched, is reported as untested; it goes through no QA-fix cell, and the run does not
+  pass the test. The test runs in the same QA attempts as the build and tests, bounded by
+  `--qa-attempts`.
 
 ## Architect / coder / reviewer agents
 
@@ -172,6 +183,8 @@ enforce domain correctness. When no specialist matches a domain, the reviewer fa
   compresses the prompt files a coder changed, against `rules/prompt.md`, and runs their
   interpretation test in the QA gate. Team formation can also pick it as the reviewer of prompt
   files.
+- `agents/prompt-tester.md` — context-free interpretation tester that `prompt-sensei` launches
+  in the QA gate; it has Read, Glob, and Grep only and is never a team-formation candidate.
 - `rules/` — `teammate.md` (teammate common rules), `agents-detection.md`,
   `build-format-detection.md`, `comment.md`, `review.md`, `document.md`, `prompt.md` (prompt
   discipline), `divergence.md` (divergence patterns the design must not introduce).

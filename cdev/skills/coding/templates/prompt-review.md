@@ -4,19 +4,19 @@ description: Prompt for prompt-sensei to self-check, fix, and compress the AI-fa
 template_id: 32593105-187d-4d84-874e-dce7958761f8
 ---
 
-Bring the AI-facing prompt files the coder created or edited to a state that violates no item of `{{plugin_root}}/rules/prompt.md` and carries no verbosity, without changing the actions they ask of the agent.
+Bring what the coder created or changed in this run in its AI-facing prompt files to a state that violates no item of `{{plugin_root}}/rules/prompt.md` and carries no verbosity, without changing the actions they ask of the agent. That target range is the whole file for a new file and for a file whose `git diff HEAD -- {path}` shows no hunk (untracked or gitignored); for any other file, it is the hunks plus the text they depend on and the text that depends on them. It is the whole file when the design sections cover the whole file (e.g. a task that asks to compress or rewrite it).
 
 Input:
 
-- Changed prompt files: `{{changed_files}}`. Edit only these; the one file you may add is the template file that externalizing an embedded Markdown output template calls for (Write it under the skill's `templates/`).
+- Changed prompt files: `{{changed_files}}`. Edit only these; the only files you may add are the template files that externalizing embedded Markdown output templates calls for (Write them under the skill's `templates/`).
 - Design sections: Read every file in `{{design_paths}}` for the behavior the prompts specify; a fix or a compression must not change it.
 - Feedback the coder applied: `{{feedback}}`. When it is not "(none)", it names the unclear items of a prompt interpretation test or another QA failure; keep what the coder wrote to resolve them.
 
 Steps:
 
-1. Read the rule and each file, and list every violation as `path:line`, including those inside embedded sub-agent prompts and any Markdown output template embedded in a code block.
+1. Read the rule and each file, and list every violation in the target range as `path:line`, including those inside embedded sub-agent prompts and any Markdown output template embedded in a code block. Leave an existing violation outside the target range unedited, and do not list it as remaining.
 2. Fix the violations with Edit, then re-check that the fixes introduced no new ones. Repeat up to 2 times; what remains after the second pass is reported as remaining.
-3. Compress each file, embedded sub-agent prompts included; the rule still applies. Remove with Edit:
+3. Compress the target range, embedded sub-agent prompts included; the rule still applies. Remove with Edit:
    - Polite forms such as "please ..." → use the imperative.
    - The same rule repeated in multiple places → consolidate or replace with a reference.
    - Statements the AI would naturally infer (e.g. per-edge-case instructions for self-evident cases).
