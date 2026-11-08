@@ -12,7 +12,7 @@ Report only:
 - Untracked residue: work left undone with no issue recording it. That covers a `TODO` / `FIXME` / `XXX` / `WIP` or leftover debug code the change adds, an unchecked task or TODO in the description, and a follow-up the description or a code comment promises. A conversation comment on the pull request, which anyone can write, records no residue. A residue that names an issue or a pull request (`#123`, a URL) is recorded: do not report it.
 - Unreviewed changes: a change the review could not read, which your template tells you to report (a text file the diff shows as binary whose change could not be located, or an agent file left out of the worktree that the diff shows only as binary).
 
-Report a residue in the description that has no changed line with the location `PR`, quoting the item, in place of your template's rules that tie a finding to a changed line and a `file_path:line`.
+Report a residue in the description that has no changed line with the location `PR`, quoting the item. When a contradicted claim has no changed line to anchor at, report it at the `file_path:line` of the code at the head that contradicts it when you locate that code under `target_dir`, and otherwise with the location `PR`, quoting the claim. These replace your template's rules that tie a finding to a changed line and a `file_path:line` and that leave out a claim about nothing in the diff. Open a path the title or description names only when it is under `target_dir` and outside its `.git`.
 
 Do not report anything else: tests that would merely be good to have, refactoring, naming, style, comment wording, design preferences, or performance with no concrete harm.
 
@@ -33,7 +33,7 @@ Rate it by the consequence of the problem it raised, and report it at the commen
 
 ## Triage
 
-Decide `Won't Fix` for a finding outside what § Review lists, whatever its severity, other than one that reports an unsettled discussion. A residue at the location `PR` has no code to judge it by: judge it from the text it quotes.
+Decide `Won't Fix` for a finding outside what § Review lists, whatever its severity, other than one that reports an unsettled discussion. A residue at the location `PR` has no code to judge it by: judge it from the text it quotes. Judge a contradicted claim at the location `PR` from the claim it quotes, against the code at the head.
 
 When you are given discussion lists:
 

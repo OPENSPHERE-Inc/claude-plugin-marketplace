@@ -95,9 +95,11 @@ consequence is. After triage, each finding is judged blocking or non-blocking on
 posted comment shows which, next to its severity:
 
 - Work left undone with no issue, an unsettled discussion, a claim of the title or description
-  that the code contradicts, and a change the review could not read always block. An unchecked
-  item in the description, or a test count the description has not caught up with, is typically
-  Minor and blocking.
+  that the code contradicts, and a change the review could not read always block.
+  - An unchecked item in the description, or a test count the description has not caught up
+    with, is typically Minor and blocking.
+  - A contradicted claim blocks even when its problem would not block under the points below,
+    such as a deferred bug or a README that lacks what the description says it covers.
 - A security problem blocks unless the author or an assignee deferred it explicitly, in the
   description, by naming a tracking issue, or, for a decider, by a decline.
 - A decline in a comment alone normally leaves an unsettled discussion, which blocks until the
