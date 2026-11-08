@@ -1,6 +1,6 @@
 ---
 name: coding
-description: ペアレビューセルを用いて、設計セルステップ・コーディングセルステップ・QA ゲートでコーディングタスクをエンドツーエンドに統括する、常駐エージェントチーム方式のワークフロー。AI 向けプロンプトファイル（agent / skill / rule / command / プロンプトテンプレート）には、コーディングセルでのプロンプト規律セルフチェックと圧縮、QA ゲートでの解釈テストも行う。reviewer は対象プロジェクトのエージェントから自動選定する。ユーザーが機能の実装・変更の構築・コーディングタスクの遂行を求めたとき、エージェント定義・SKILL.md・ルール・スラッシュコマンド・サブエージェントプロンプトの作成や修正を含め、能動的に使用する。バックグラウンドのサブエージェント（Agent の run_in_background）とエージェント間メッセージング（SendMessage）が利用可能なランタイムを要する。
+description: ペアレビューセルを用いて、設計セルステップ・コーディングセルステップ・QA ゲートでコーディングタスクをエンドツーエンドに統括する、常駐エージェントチーム方式のワークフロー。AI 向けプロンプトファイル（agent / skill / rule / command / プロンプトテンプレート）には、コーディングセルでのプロンプト規律セルフチェックと圧縮、QA ゲートでの解釈テストも行う。reviewer は対象プロジェクトのエージェントから自動選定する。ユーザーがリポジトリ内での機能の実装・変更の構築・コーディングタスクの遂行を求めたとき、リポジトリ内の AI 向けプロンプトファイル（エージェント定義・SKILL.md・ルール・スラッシュコマンド・プロンプトテンプレート）の作成や修正を含め、能動的に使用する。リポジトリ外のファイル（`~/.claude/` 配下など）、1 体のエージェントで直接済む小さな編集（ルールへの 1 項目の追記など）、ファイルになっていないプロンプトの起草、`--worktree` なしでの未コミットの変更がある作業ツリーには使わない。バックグラウンドのサブエージェント（Agent の run_in_background）とエージェント間メッセージング（SendMessage）が利用可能なランタイムを要する。
 allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
@@ -12,7 +12,7 @@ allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Glob, Grep, Bash(c
 
 ## 動作要件
 
-このスキルは、バックグラウンドのサブエージェント（`Agent` の `run_in_background`）とチームメイト間メッセージング（`SendMessage`）を使用し、それらが利用可能なランタイムでのみ動作する。AI 向けプロンプトファイルを含むタスクでは、teammate がサブエージェントを起動できることも要する: `prompt-sensei` が Agent ツールで解釈テスト担当を起動する。これらのいずれかが利用できない場合は続行せず、動作要件を満たさない旨をユーザーへ報告して中止する。
+このスキルは、バックグラウンドのサブエージェント（`Agent` の `run_in_background`）とチームメイト間メッセージング（`SendMessage`）を使用し、それらが利用可能なランタイムでのみ動作する。いずれかが利用できない場合は続行せず、動作要件を満たさない旨をユーザーへ報告して中止する。teammate がサブエージェントを起動できるかどうか（`prompt-sensei` が AI 向けプロンプトファイルの解釈テスト担当を Agent ツールで起動するのに要する）は中止の理由にしない: 起動できない場合は、解釈テストがそのファイルを未テストとして記録する。
 
 ## 信頼前提
 
@@ -140,7 +140,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 2. 各 architect について、設計セル `design-{slug}` を 2 つのメッセージで開始する（宛先は roster の name）:
    - `architect-{slug}` 宛に `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`output_path = {design_dir}/design-{slug}.md`、`reviewer = {ペア reviewer の name}` を渡して `SendMessage`。
    - ペア reviewer の name 宛に `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {design_dir}/design-{slug}.md`、`producer = architect-{slug}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
-3. ゲート: 設計セルごとにクローズ報告 1 通（届いたエスカレーションは随時裁定する）。セクションパスを `{design_paths}` として収集する。
+3. ゲート: 設計セルごとにクローズ報告 1 通（届いたエスカレーションは随時裁定する）。セクションパスを `{design_paths}` として収集する。いずれかの architect が、その設計で AI 向けプロンプトファイルを作成または編集すると報告した場合は、`has_prompts` を true にする。
 
 ## ステップ 3 — コードセル（コーディング）
 
@@ -157,14 +157,14 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 1. コンソールに表示する: `## Step 4 — QA (attempt {n})`。
 2. コーディング開始以降の差分を取得する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh diff {tmp_dir}/baseline-tree {tmp_dir}/changes.txt`。
 3. `dev-helper` 宛に `templates/qa.md` を指定して `tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`attempt_num = {n}` を渡して `SendMessage`。その 1 行の完了報告を `{summary_line}` として保持し、`{tmp_dir}/qa-result.jsonl` を Read する: `{success}` は `failure == null`、`{suggested_specialist}` / `{error_summary}` / `{environmental}` は `failure` の対応フィールド（`failure` が null なら `{environmental}` は false）。`workflow_warning` が非 null の場合、ステップ 5 のために保持する。
-4. `has_prompts` が true の場合、手順 3 と同じターンで `prompt-sensei` 宛に `templates/prompt-test.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`diff_path = {tmp_dir}/changes.txt`、`output_path = {tmp_dir}/prompt-test.jsonl`、`attempt_num = {n}` を渡して `SendMessage`。その 1 行の完了報告を `{prompt_summary_line}` として保持し、`{tmp_dir}/prompt-test.jsonl` を Read する: `{prompt_pass}` はその `pass`、`{prompt_failed_files}` は `pass` が false の各ファイルの `path`。`has_prompts` が false の場合、`{prompt_pass}` は true とする。
+4. `has_prompts` が true の場合、手順 3 と同じターンで `prompt-sensei` 宛に `templates/prompt-test.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`diff_path = {tmp_dir}/changes.txt`、`output_path = {tmp_dir}/prompt-test.jsonl`、`attempt_num = {n}`、`fixed_files = {前の試行の QA 修正セルの割り当てスコープのファイル。試行 1 では (none)}` を渡して `SendMessage`。その 1 行の完了報告を `{prompt_summary_line}` として保持し、`{tmp_dir}/prompt-test.jsonl` を Read する: `{prompt_pass}` はその `pass`、`{prompt_failed_files}` は `pass` が false かつ `untested` が null の各ファイルの `path`、`{prompt_untested_files}` は `untested` が非 null の各ファイルの `path` と `untested` の理由。そのファイルがないか `files` を持たない場合は、解釈テストが結果を書かなかったものとする: `{prompt_pass}` は false、`{prompt_failed_files}` は空とし、`{prompt_untested_files}` には解釈テストが結果を書かなかったことを記録する。`has_prompts` が false の場合、`{prompt_pass}` は true とする。
 5. 手順 3〜4 の報告がそろったら、`success` と `prompt_pass` がともに true の場合はループを抜ける。
-6. 修正可能な失敗は、`success == false` かつ `environmental` が false の場合のビルド / テスト失敗と、`prompt_pass == false` の場合の解釈テスト失敗である。`success == false` かつ `environmental` が true の場合は、`error_summary` を環境起因の失敗としてコンソールに提示し、この失敗には QA 修正セルを回さない。修正可能な失敗がない場合はステップ 5 へ進む。
-7. 試行回数が残っている場合、修正可能な失敗ごとに QA 修正セルを 1 つずつ並行して回す:
-   a. 失敗スコープ — ビルド / テスト失敗のファイル、または `{prompt_failed_files}` — を `general-purpose` の coder と、失敗ドメインに一致するペア reviewer でカバーする（ビルド / テスト失敗では `{suggested_specialist}` をヒントとし、解釈テスト失敗のドメインは AI 向けプロンプト）。適合する roster のメンバーは再利用し（2 つのセルに同じ coder を充てない）、いなければ roster にない `coder-{slug}` / `reviewer-{slug}` を name として起動する。新規に起動する reviewer の subagent_type は、ビルド / テスト失敗では `{suggested_specialist}` が § Agent 種別と起動要件 の登録名として存在すればそれを、解釈テスト失敗では `cdev:prompt-sensei` を、それ以外は `general-purpose` を用いる。
+6. 修正可能な失敗は、`success == false` かつ `environmental` が false の場合のビルド / テスト失敗と、`{prompt_failed_files}` が空でない場合の解釈テスト失敗である。`success == false` かつ `environmental` が true の場合は、`error_summary` を環境起因の失敗としてコンソールに提示し、この失敗には QA 修正セルを回さない。`{prompt_untested_files}` も同様に理由とともにコンソールに提示し、QA 修正セルを回さない。修正可能な失敗がない場合はステップ 5 へ進む。
+7. 試行回数が残っている場合、修正可能な失敗ごとに QA 修正セルを 1 つずつ並行して回す。ビルド / テスト失敗のファイル（`error_files`）と `{prompt_failed_files}` が同じファイルを含む場合は、代わりに 2 つの失敗を 1 つの QA 修正セルで回す: スコープは両者のファイルの和集合、フィードバックは手順 b の 2 つのフィードバックをつなげたもの、セル id は `code-qa-{n}`、reviewer はビルド / テスト失敗に合わせる。
+   a. 失敗スコープ — ビルド / テスト失敗のファイル、または `{prompt_failed_files}` — を `general-purpose` の coder と、失敗ドメインに一致するペア reviewer でカバーする（ビルド / テスト失敗では `{suggested_specialist}` をヒントとし、解釈テスト失敗のドメインは AI 向けプロンプト）。適合する roster のメンバーは再利用し（2 つのセルに同じ coder を充てない。`prompt-sensei` の teammate はそのセルのファイルのプロンプトレビューと解釈テストを担うので、セルの reviewer にしない）、いなければ roster にない `coder-{slug}` / `reviewer-{slug}` を name として起動する。新規に起動する reviewer の subagent_type は、ビルド / テスト失敗では `{suggested_specialist}` が § Agent 種別と起動要件 の登録名として存在すればそれを、解釈テスト失敗では `cdev:prompt-sensei` を、それ以外は `general-purpose` を用いる。
    b. coder の name 宛に `templates/code.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {失敗したファイル}`、`tdd = {has_test_suite}`、`feedback = {その失敗のフィードバック}`、`reviewer = {ペア reviewer の name}`、`comment_reviewer = comment-sensei`、`prompt_reviewer = {ステップ 3 と同じ}` を渡して `SendMessage`。そして reviewer の name 宛に `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = {coder の name}`、`cell_task = {その失敗のセル id}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。失敗ごとの値:
       - ビルド / テスト: `feedback = QA failure — Read {tmp_dir}/qa-result.jsonl (failure section) and {tmp_dir}/build.log; fix the build/test error.`、セル id `code-qa-{n}`。
-      - 解釈テスト: `feedback = Prompt interpretation test failure — Read {tmp_dir}/prompt-test.jsonl (the files whose pass is false); make each unclear item answerable from the prompt.`、セル id `prompt-qa-{n}`。
+      - 解釈テスト: `feedback = Prompt interpretation test failure — Read {tmp_dir}/prompt-test.jsonl (the files whose pass is false and untested is null); make each unclear item answerable from the prompt.`、セル id `prompt-qa-{n}`。
    c. この試行の QA 修正セルすべてのクローズ報告を受信したら、このループのステップ 1 へ戻る（再 QA）。
 8. 最大試行回数を超えても修正可能な失敗が残る場合、残った失敗の `error_summary` と `{prompt_failed_files}` をコンソールに提示してステップ 5 へ進む。
 
@@ -174,4 +174,4 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 2. teammate を停止する: roster の各 name を `task_id` として `TaskStop` を呼び、応答や通知を待たずに次の手順へ進む。アイドルの teammate には稼働中のタスクがないため、稼働していない旨の失敗は停止済みとみなす。`shutdown_request` は送らない: リーダーが待てる完了の合図がない。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`。
 4. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
-5. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、coder が報告したプロンプトレビューの件数、QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、および稼働していない以外の理由で `TaskStop` が失敗した teammate。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
+5. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、coder が報告したプロンプトレビューの件数、QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、および稼働していない以外の理由で `TaskStop` が失敗した teammate。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
