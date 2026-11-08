@@ -155,13 +155,21 @@ code cells, and QA gate as any other task, with these additions:
   - A contract is what another file, a script, or the consumer of an output depends on, such
     as a command that must run in a given form, the format of a return value or an output, or
     a variable or path exchanged with another file.
-  - Reviewers raise such a procedure and recommend a rewrite that states the goal and the
-    contracts and leaves the method to the AI.
+  - A detail finding is a finding whose fix only adds to or refines a method that an AI knowing
+    the goal and the contracts would already carry out correctly.
+  - Reviewers raise over-specification and recommend a rewrite that states the goal and the
+    contracts and leaves the method to the AI. They raise no detail finding, and judge a
+    missing edge case by the same test.
+  - Coders reject a detail finding citing the rule, unless the prompt does not yet state the
+    goal or contract the method rests on; then they state it instead.
   - Coders settle a gap or ambiguity in a prompt's procedure, including an item the QA gate's
     interpretation test finds unclear, by stating the goal or contract it concerns rather than
     by adding steps.
-  - A procedure the task or the design specifies is not over-specification, and the prompt
-    keeps it as specified.
+  - Architects write down each prompt's goal and contracts in the design, and settle a gap or
+    ambiguity in its method the same way, leaving to the AI what concerns neither.
+  - A procedure the user's task explicitly asks for, and in the code cells also one the design
+    specifies, is not over-specification: the prompt must satisfy it, and a missing one is
+    added.
 - In the QA gate, `prompt-sensei` also runs an interpretation test on each prompt file changed
   in the run:
   - It writes a checklist of questions about what the run created or changed in the file, such
