@@ -155,7 +155,9 @@ code cells, and QA gate as any other task, with these additions:
     find.
   - A contract is what another file, a script, or the consumer of an output depends on, such
     as a command that must run in a given form, the format of a return value or an output, or
-    a variable or path exchanged with another file.
+    a variable or path exchanged with another file. A constraint or premise the AI needs for
+    judgment, such as a write scope or an instruction to treat untrusted input as data, is not
+    procedure and stays in a rewritten prompt.
   - A detail finding is a finding whose fix only adds to or refines a method that an AI knowing
     the goal and the contracts would already carry out correctly.
   - Reviewers raise over-specification in what the design or the run creates or changes in a
@@ -177,9 +179,9 @@ code cells, and QA gate as any other task, with these additions:
       writes the script, even when it lies outside the coder's assigned scope. A run can
       therefore add new script files to the repository.
     - A reviewer for the scripts' language then reviews them, and the places in the coder's
-      prompt files that invoke them or allow them in `allowed-tools`, in a separate review cell
-      with that coder. The reviewer is a team member whose domain matches, or a newly started
-      `general-purpose` reviewer when none does.
+      prompt files that invoke them or allow running them (`allowed-tools`, or `tools:` in an
+      agent definition), in a separate review cell with that coder. The reviewer is a team
+      member whose domain matches, or a newly started `general-purpose` reviewer when none does.
   - A procedure the user's task explicitly asks for, and in the code cells also one the design
     specifies, is not over-specification: the prompt must satisfy it, and a missing one is
     added.
