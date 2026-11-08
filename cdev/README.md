@@ -132,10 +132,10 @@ A file an AI agent reads as its instructions — an agent definition, a skill (`
 slash command, a rule, or a prompt template a skill has an agent read — is an AI-facing prompt
 (`rules/prompt.md`); project memory files such as `CLAUDE.md` and Markdown output templates are
 not. The skill changes only prompt files in the repository: those under `~/.claude/` or
-elsewhere outside it are out of reach, since a teammate writes only inside its work target, and
-a run needs a clean working tree unless it uses `--worktree`. A task that creates or edits a
-prompt file goes through the same design cells, code cells, and QA gate as any other task, with
-these additions:
+elsewhere outside it are out of reach, since a teammate writes only inside its work target.
+Like any other run, a run that edits prompt files needs a clean working tree unless it uses
+`--worktree`. A task that creates or edits a prompt file goes through the same design cells,
+code cells, and QA gate as any other task, with these additions:
 
 - Team formation gives the prompt files to coders whose scope holds no other source, and pairs
   each of them with a reviewer for prompts, picked like any other reviewer as the best match in
@@ -146,17 +146,19 @@ these additions:
   without changing what it asks of the agent; the rest of an existing file is left as it is
   unless the design covers the whole file. The coder hands any violation left over to the
   reviewer with the change.
-- In the QA gate, `prompt-sensei` also runs an interpretation test. For each prompt file
-  changed in the run, it writes a checklist of questions about what the run created or changed,
-  such as how an agent should decide a value the input omits, and has a newly launched sub-agent
-  with no context of the run, which can only read files, answer them from the prompt and the
-  files the prompt tells its reader to read. A file with an item the sub-agent cannot answer
-  fails the test and goes through a QA-fix cell, a coder's fix reviewed by a paired reviewer,
-  before QA runs again. A retry tests again only the files that failed or were fixed, with the
-  same checklist. A file the test could not be run on, for example because the sub-agent could
-  not be launched, is reported as untested; it goes through no QA-fix cell, and the run does not
-  pass the test. The test runs in the same QA attempts as the build and tests, bounded by
-  `--qa-attempts`.
+- In the QA gate, `prompt-sensei` also runs an interpretation test on each prompt file changed
+  in the run:
+  - It writes a checklist of questions about what the run created or changed in the file, such
+    as how an agent should decide a value the input omits.
+  - A newly launched sub-agent answers the checklist from the prompt and the files the prompt
+    tells its reader to read; it has no context of the run and can only read files.
+  - A file with an item the sub-agent cannot answer fails the test and goes through a QA-fix
+    cell, a coder's fix reviewed by a paired reviewer, before QA runs again.
+  - A retry tests again only the files that failed or were fixed, with the same checklist.
+  - A file the test could not be run on, for example because the sub-agent could not be
+    launched, is reported as untested; it goes through no QA-fix cell, and the run does not pass
+    the test.
+  - The test runs in the same QA attempts as the build and tests, bounded by `--qa-attempts`.
 
 ## Architect / coder / reviewer agents
 
