@@ -34,8 +34,9 @@ and drives two cell steps and a final QA gate, reporting progress to the console
    `rules/divergence.md`: the design must not carry a source that makes later reviews
    diverge (a fix producing the next finding without end) — an undecided specification or
    invariant, a problem class the approach cannot close, an unadjudicated conflict between
-   requirements, or a mismatch with the existing design — and the reviewer raises any it
-   finds as Major or higher.
+   requirements, a mismatch with the existing design, or an AI-facing prompt that specifies
+   its procedure in more detail than its goal and contracts need — and the reviewer raises
+   any it finds as Major or higher.
 2. **Code cells** — each coder implements its scope (test-first when the project has a test
    suite); `comment-sensei` fixes comment violations when comments are present, and
    `prompt-sensei` self-checks and compresses AI-facing prompt files (see
@@ -146,6 +147,21 @@ code cells, and QA gate as any other task, with these additions:
   without changing what it asks of the agent; the rest of an existing file is left as it is
   unless the design covers the whole file. The coder hands any violation left over to the
   reviewer with the change.
+- The design cells and the code cells keep prompt files from over-specification
+  (`rules/divergence.md`):
+  - A procedure specified in more detail than the prompt's goal and contracts need draws new
+    findings at every review, and each fix that adds detail gives the next review more to
+    find.
+  - A contract is what another file, a script, or the consumer of an output depends on, such
+    as a command that must run in a given form, the format of a return value or an output, or
+    a variable or path exchanged with another file.
+  - Reviewers raise such a procedure and recommend a rewrite that states the goal and the
+    contracts and leaves the method to the AI.
+  - Coders settle a gap or ambiguity in a prompt's procedure, including an item the QA gate's
+    interpretation test finds unclear, by stating the goal or contract it concerns rather than
+    by adding steps.
+  - A procedure the task or the design specifies is not over-specification, and the prompt
+    keeps it as specified.
 - In the QA gate, `prompt-sensei` also runs an interpretation test on each prompt file changed
   in the run:
   - It writes a checklist of questions about what the run created or changed in the file, such
@@ -191,7 +207,8 @@ enforce domain correctness. When no specialist matches a domain, the reviewer fa
   in the QA gate; it has Read, Glob, and Grep only and is never a team-formation candidate.
 - `rules/` — `teammate.md` (teammate common rules), `agents-detection.md`,
   `build-format-detection.md`, `comment.md`, `review.md`, `document.md`, `prompt.md` (prompt
-  discipline), `divergence.md` (divergence patterns the design must not introduce).
+  discipline), `divergence.md` (divergence patterns the design must not introduce, and how
+  code cells keep prompt files from over-specification).
 - `scripts/` — `fetch-diff.sh` (snapshots the pre-coding tree, then captures the QA diff since
   coding start), `del-tmp.sh` (deletes the run's working directory under `.claude/tmp/`; with
   `--dry`, it only runs the containment check, which the skill does before creating that

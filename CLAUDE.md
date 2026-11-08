@@ -573,8 +573,10 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   byte-identical with its own `src/` mirror.
 - **`creview/rules/contract-style-prompts.md` restates part of `cdev/rules/prompt.md`.** It
   rephrases § Contract-style prompts and the definition of an AI-facing prompt file as the
-  criteria of the `/creview:rounds` divergence gate. It is not a byte-identical copy, so no
-  test catches drift: when you change either one, check the other.
+  criteria of the `/creview:rounds` divergence gate. The over-specified prompt pattern of
+  `cdev/rules/divergence.md` also judges by `cdev/rules/prompt.md` and names the kinds of
+  contract `contract-style-prompts.md` lists. None of them is a byte-identical copy, so no
+  test catches drift: when you change one, check the others.
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
   `SUMMARY`, `FINDINGS`, or `ANALYSIS`** (case-insensitive, basename only). Claude Code's
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output
