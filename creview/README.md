@@ -103,7 +103,13 @@ conflict markers, such as a binary file or one the base deleted, has its diff
 start from the base's version, or from no file when the base deleted it, so the
 diff also shows the pull request's earlier changes to that file. A file the
 base deleted thus shows as added in full. When the range changes no file, the
-description and CI reviewer described below still runs.
+description and CI reviewer described below still runs, unless `--code-only` is
+given.
+
+`--code-only` runs only the code reviewers, and `--pr-only` runs only the
+description and CI reviewer described below. With `--pr-only`, that reviewer
+reviews the pull request's whole diff, and `--since` cannot be given. Given
+together, the two options count as neither.
 
 - When HEAD is the pull request's head commit, the working tree is reviewed
   in place; uncommitted changes to tracked files stop the run with an error.
