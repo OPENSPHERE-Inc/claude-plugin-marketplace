@@ -56,7 +56,7 @@ null なら `{prior_document}` は `(none)` とする。
 
 ## Step 2 — レビューとトリアージ
 
-`--incremental` の指定がなければ `{since}` は null とする。指定があれば `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py since '{pr_url}'` を実行する。`since`（プルリクエスト上のあなたの最新のゲートレビューが作られたコミットで、head がそれを含むときはその値、それ以外は null）、そのレビューのコミット `commit`、`since` が null である理由を表す `fallback`（あなたのゲートレビューがない `none`、force push や rebase の後のように head がもう `commit` を含まない `not_ancestor`、またはそのレビューの後にベースブランチが変更、force push、または削除された `base_changed`）が出力される。`{since}` を `since` とする。null のときは、コードの段階が差分全体をレビューすることとその理由をユーザーに伝える。
+`--incremental` の指定がなければ `{since}` は null とする。指定があれば `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py since '{pr_url}'` を実行する。`since`（プルリクエスト上のあなたの最新のゲートレビューが作られたコミットで、head がそれを含むときはその値、それ以外は null）、そのレビューのコミット `commit`、`since` が null である理由を表す `fallback`（あなたのゲートレビューがない `none`、force push や rebase の後のように head がもう `commit` を含まない `not_ancestor`、またはそのレビューの後かその前の 10 分以内にベースブランチが変更、force push、または削除された `base_changed`）が出力される。`{since}` を `since` とする。null のときは、コードの段階が差分全体をレビューすることとその理由をユーザーに伝える。
 
 レビューは 2 つの段階で、順に行う。プルリクエストの段階は、`{since}` によらず、プルリクエストのタイトル、説明、CI の結果、会話をその差分全体に照らしてレビューする。コードの段階はコードをレビューし、`{since}` が null でなければ `{since}` 以降の変更、それ以外は差分全体を対象とする。各段階で `creview:start` を実行し、指摘が報告されたら `creview:triage` を実行する。その後、2 つの文書を 1 つにする。`{pr_document}` は `{tmp_dir}/pr.md`、`{code_document}` は `{tmp_dir}/code.md` とし、ここで確定する。
 

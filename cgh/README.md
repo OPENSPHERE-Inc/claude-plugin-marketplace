@@ -149,7 +149,8 @@ head.
 
 - With no gate review of yours on the pull request, when its head no longer contains that
   commit, as after a force push or a rebase, or when its base branch was changed, force-pushed,
-  or deleted after that review, the code stage reviews the whole diff, and the skill says why.
+  or deleted after that review or in the ten minutes before it, the code stage reviews the whole
+  diff, and the skill says why.
 - A dismissed gate review does not count: after you dismiss the latest one, the next run starts
   from the one before it, or the code stage reviews the whole diff when there is none.
 - When the pull request merged its base branch since then, what the merge brought in is left out,
