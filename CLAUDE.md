@@ -526,11 +526,14 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   divergence breaks the documented localization workflow.
 - **`src/` is not shipped.** It sits outside the plugin `source` dirs on purpose. Do not
   move plugin runtime files under `src/` or reference `src/...` from active skills.
-- **Destination-project agents, not bundled ones.** Active skills must resolve reviewers/
-  fixers from the consuming project's `.claude/agents/` with a `general-purpose` fallback.
-  Re-introducing hardcoded names of destination-project agents (`*-sensei` and the like)
-  breaks portability. A skill hardcodes only a bundled agent, by its namespaced name, such
-  as the specialists it runs in fixed roles (`creview:comment-sensei`, `cdev:prompt-sensei`).
+- **Resolve reviewers/fixers by detection; hardcode only bundled agents.** Active skills resolve
+  the reviewers/fixers they pick by detection from the consuming project's `.claude/agents/`
+  (then the user and plugin-bundle scopes; see Agent-dispatch generalization) with a
+  `general-purpose` fallback. Re-introducing hardcoded names of destination-project agents
+  (`*-sensei` and the like) breaks portability. Apart from the built-in `general-purpose`, the
+  only agents a skill names directly are bundled ones, by their namespaced names, in the fixed
+  roles it runs them in, such as `creview:comment-sensei` and `cdev:prompt-sensei` (the prompt
+  teammate, and the reviewer a QA-fix cell spawns for a prompt-test failure).
 - **CRLF line endings** in skill/template files are inherited from upstream. Avoid global
   reflow/`autocrlf` churn so diffs stay reviewable.
 - **Bundled rule cross-references resolve relative to the file.** `creview/rules/sub-agent.md`
