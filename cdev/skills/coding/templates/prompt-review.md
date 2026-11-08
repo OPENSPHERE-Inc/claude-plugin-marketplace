@@ -4,11 +4,11 @@ description: Prompt for prompt-sensei to self-check, fix, and compress the AI-fa
 template_id: 32593105-187d-4d84-874e-dce7958761f8
 ---
 
-Bring what the coder created or changed in this run in its AI-facing prompt files to a state that violates no item of `{{plugin_root}}/rules/prompt.md` and carries no verbosity, without changing the actions they ask of the agent. That target range is the whole file for a file the request marks as created in this run, and when the design sections cover the whole file (e.g. a task that asks to compress or rewrite it). For any other file, it is the hunks of `git diff HEAD -- {path}`, or, when git shows none (a gitignored file, or one moved or renamed), the parts the request names as changed, in either case plus the text they depend on and the text that depends on them. A file with neither hunks nor parts named as changed has no target range.
+Bring what the coder created or changed in this run in its AI-facing prompt files to a state that violates no item of `{{plugin_root}}/rules/prompt.md` and carries no verbosity, without changing the actions they ask of the agent. That target range is the whole file for a file the request marks as created in this run, and when the design sections cover the whole file (e.g. a task that asks to compress or rewrite it). For any other file, it is the parts the request names as changed, or, when it names none, the hunks of `git diff HEAD -- {path}`, in either case plus the text they depend on and the text that depends on them. A file with neither parts named as changed nor hunks has no target range.
 
 Input:
 
-- Changed prompt files: `{{changed_files}}`. A file created in this run is marked as created, and an edited file whose change git does not show (one git does not track, or one moved or renamed) comes with the parts changed. Edit only these; the only files you may add are the template files that externalizing embedded Markdown output templates calls for (Write them under the skill's `templates/`).
+- Changed prompt files: `{{changed_files}}`. A file created in this run is marked as created, and an edited file git does not track, and one moved or renamed, comes with the parts changed. Edit only these; the only files you may add are the template files that externalizing embedded Markdown output templates calls for (Write them under the skill's `templates/`).
 - Design sections: Read every file in `{{design_paths}}` for the behavior the prompts specify; a fix or a compression must not change it.
 - Feedback the coder applied: `{{feedback}}`. When it is not "(none)", it names the unclear items of a prompt interpretation test or another QA failure; keep what the coder wrote to resolve them.
 
