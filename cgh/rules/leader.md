@@ -85,4 +85,4 @@ A failed post changes nothing already sent: a rerun skips the replies that went 
 
 ## Finish and abort
 
-To finish or abort, remove `{tmp_dir}` with `{{plugin_root}}/scripts/del-tmp.sh '{tmp_dir}'`, and report `{document_path}` when it exists, along with what the creview skill's report added.
+To finish or abort, remove `{tmp_dir}` with `{{plugin_root}}/scripts/del-tmp.sh '{tmp_dir}'`, and report `{document_path}` when it exists, along with what the creview skill's report added other than paths under `{tmp_dir}`.

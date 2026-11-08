@@ -333,7 +333,8 @@ description, CI results, and conversation against the pull request's whole diff 
 `rules/gate-focus-pr.md`. The code stage then runs `/creview:start --code-only` under
 `rules/gate-focus-code.md`, and its reviewers and triage leave out a problem the pull request
 stage's document reports. `gh-review.py merge` puts the two documents into one, the pull request
-stage's findings first, for the blocking judgment and `draft`. The gate collects with
+stage's findings first, with the ADR files their estimates name copied next to it under the new
+IDs, for the blocking judgment and `draft`. The gate collects with
 `gh-review.py raised --discussion`, which keeps threads resolved on GitHub: a `comment-writer`
 lists each problem with its answers and conclusion, the PR description reviewer reports what
 `rules/gate-focus-pr.md` § Discussions finds unsettled, and an override has each stage's triage

@@ -85,4 +85,4 @@ SKILL が `{json_path}` と `post` のオプションを指定する。
 
 ## 終了と中断
 
-終了または中断するときは、`{{plugin_root}}/scripts/del-tmp.sh '{tmp_dir}'` で `{tmp_dir}` を削除し、`{document_path}` が存在すればそれを、creview スキルの報告が追加した内容とともに報告する。
+終了または中断するときは、`{{plugin_root}}/scripts/del-tmp.sh '{tmp_dir}'` で `{tmp_dir}` を削除し、`{document_path}` が存在すればそれを、creview スキルの報告が追加した内容のうち `{tmp_dir}` 配下のパス以外とともに報告する。

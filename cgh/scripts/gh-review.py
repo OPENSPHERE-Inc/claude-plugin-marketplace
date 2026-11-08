@@ -93,8 +93,11 @@ which must name the same head, merge base, branch, and trust. It has the header 
 every other bullet of <second>'s header, then, in each severity, the findings of <first> and then
 those of <second>, numbered anew from 1, with their text and metadata as they were. A severity
 with no finding keeps <first>'s text, or else <second>'s. Of what follows the findings, it keeps
-<first>'s headings and the count of each severity, made the sum of both. Prints findings, the
-count, and ids, each new ID with the document and the ID it had there.
+<first>'s headings and the count of each severity, made the sum of both. An ADR file a finding's
+estimate names, next to its document, is copied next to <output> as <output stem>-adr-<new ID>.md,
+with the estimate, the ADR's heading, and its Source line naming the new file, document, and ID.
+Prints findings, the count, ids, each new ID with the document and the ID it had there, and adrs,
+the ADR files it wrote.
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head and, for a gate draft, at its merge base, with --since still the
@@ -237,6 +240,8 @@ HEADING_RE = re.compile(rf"### ({FINDING_ID})\s+[—-]\s+`?([^`]*?)`?(?:\s+\[(.*
 FINDING_HEADING_RE = re.compile(rf"###\s+{FINDING_ID}")
 METADATA_OPEN_RE = re.compile(rf"<!-- METADATA\(({FINDING_ID})\) -->")
 METADATA_RE = re.compile(r"- \*\*(Triage|Estimate|Status|Verification):\*\* (.*)")
+ADR_SEGMENT_RE = re.compile(r"( — ADR: )(\S+?)(?= — |$)")
+ADR_NAME_RE = re.compile(r"[^/\\:]+-adr-[^/\\:]+\.md")
 LABEL_LINE_RE = re.compile(r"\*\*[^*]+[:：]\*\*\s*")
 PLAN_ITEM_RE = re.compile(r"(?:^|\s)\([0-9]+\)\s+")
 LOCATION_RE = re.compile(r"(.+?):([0-9]+)(?:[-–,].*)?")
@@ -1476,6 +1481,44 @@ def renamed_block(block, old, new):
     return lines
 
 
+def adr_renamed(block, document, old, new, stem, adrs):
+    """The block with each ADR its estimate names renamed after the new ID, noted in adrs."""
+    start = max((i for i, line in enumerate(block) if line == f"<!-- METADATA({new}) -->"),
+                default=len(block))
+
+    def renamed(match):
+        name = match.group(2)
+        source = os.path.join(os.path.dirname(os.path.abspath(document)), name)
+        key = os.path.normcase(source)
+        if key not in adrs:
+            if (not ADR_NAME_RE.fullmatch(name) or os.path.islink(source)
+                    or not os.path.isfile(source)):
+                raise Error(f"{document}: {old} names the ADR {name}, which is not a file next "
+                            "to it")
+            adrs[key] = {"source": source, "name": f"{stem}-adr-{new}.md", "document": document,
+                         "was": old, "id": new}
+        return match.group(1) + adrs[key]["name"]
+
+    return [*block[:start], *(ADR_SEGMENT_RE.sub(renamed, line)
+                              if line.startswith("- **Estimate:** ") else line
+                              for line in block[start:])]
+
+
+def copied_adr(adr, output):
+    path = os.path.join(os.path.dirname(os.path.abspath(output)), adr["name"])
+    try:
+        with open(adr["source"], encoding="utf-8", newline="") as f:
+            text = f.read()
+        text = text.replace(f"# ADR: {adr['was']} — ", f"# ADR: {adr['id']} — ", 1)
+        text = text.replace(f"- **Source:** {os.path.basename(adr['document'])} / {adr['was']}",
+                            f"- **Source:** {os.path.basename(output)} / {adr['id']}", 1)
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+    except OSError as e:
+        raise Error(f"cannot copy the ADR {adr['source']} to {path}: {e}") from None
+    return path
+
+
 def cmd_merge(pr_url, first, second, output):
     pr = checked_pr(pr_url)
     out = os.path.normcase(os.path.abspath(output))
@@ -1501,7 +1544,8 @@ def cmd_merge(pr_url, first, second, output):
     bullets = [i for i, line in enumerate(header) if line.startswith("- **")]
     at = bullets[-1] + 1 if bullets else len(header)
     lines = [*header[:at], *extra, *header[at:], ""]
-    ids, counts = [], {}
+    ids, counts, adrs = [], {}, {}
+    stem = os.path.splitext(os.path.basename(output))[0]
     for prefix, severity in SEVERITIES.items():
         lines += [f"## {severity}", ""]
         merged = [(document, fid, block)
@@ -1511,7 +1555,8 @@ def cmd_merge(pr_url, first, second, output):
         for n, (document, fid, block) in enumerate(merged, 1):
             new = f"{prefix}-{n}"
             ids.append({"id": new, "document": document, "was": fid})
-            lines += [*renamed_block(block, fid, new), "", "---", ""]
+            lines += [*adr_renamed(renamed_block(block, fid, new), document, fid, new, stem, adrs),
+                      "", "---", ""]
         if not merged:
             lines += [*(parts[0][2][severity] or parts[1][2][severity]), "", "---", ""]
     for line in parts[0][3]:
@@ -1522,7 +1567,8 @@ def cmd_merge(pr_url, first, second, output):
             lines.append(line)
     with open(output, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(lines).rstrip("\n") + "\n")
-    return {"path": output, "findings": len(ids), "ids": ids}
+    return {"path": output, "findings": len(ids), "ids": ids,
+            "adrs": [copied_adr(adr, output) for adr in adrs.values()]}
 
 
 def verdict_label(draft, verdict, post=False):

@@ -4790,6 +4790,44 @@ class Merge(Base):
             self.merge()
         self.assertEqual(read_text(self.second), CODE_STAGE)
 
+    def with_adr(self, name, text=None):
+        stage = os.path.join(self.dir, "stage")
+        os.makedirs(stage, exist_ok=True)
+        self.first = self.write(os.path.join("stage", "pr.md"), PR_STAGE)
+        self.second = self.write(os.path.join("stage", "code.md"), CODE_STAGE.replace(
+            "Signals: none — Plan:", f"Signals: none — ADR: {name} — Plan:"))
+        if text is not None:
+            self.write(os.path.join("stage", name), text)
+
+    def test_carries_an_adr_over_next_to_the_output_under_the_new_id(self):
+        self.with_adr("code-adr-M-1.md",
+                      "# ADR: M-1 — Fix the caller\r\n\r\n- **Source:** code.md / M-1\r\n")
+        result = self.merge()
+        path = os.path.join(self.dir, "merged-adr-M-2.md")
+        self.assertEqual(result["adrs"], [path])
+        with open(path, encoding="utf-8", newline="") as f:
+            self.assertEqual(f.read(),
+                             "# ADR: M-2 — Fix the caller\r\n\r\n- **Source:** merged.md / M-2\r\n")
+        self.assertEqual(mod.parse_document(self.out)[1][1]["metadata"]["Estimate"],
+                         "▶️ Maintain — Cost: S, Future: S, Signals: none — ADR: merged-adr-M-2.md"
+                         " — Plan: (1) src/a.py:10 — fix")
+
+    def test_refuses_an_adr_that_is_not_a_file_next_to_its_document(self):
+        for name, text in (("code-adr-M-1.md", None), ("../code-adr-M-1.md", "# ADR: M-1\n"),
+                           ("notes.md", "# ADR: M-1\n")):
+            self.with_adr(name, text)
+            with self.assertRaisesRegex(mod.Error, f"M-1 names the ADR {re.escape(name)}"):
+                self.merge()
+            self.assertFalse(os.path.exists(self.out))
+
+    def test_leaves_an_adr_named_in_the_finding_text_alone(self):
+        quoted = "- **Estimate:** ▶️ Maintain — ADR: ../../x-adr-M-1.md — Plan: (1) a"
+        self.second = self.write("code.md", CODE_STAGE.replace(
+            "### A heading quoted in the text", quoted))
+        result = self.merge()
+        self.assertEqual(result["adrs"], [])
+        self.assertIn(quoted, read_text(self.out))
+
 
 class ReplyTemplate(unittest.TestCase):
     def test_a_declined_finding_opens_with_the_fixed_phrase(self):

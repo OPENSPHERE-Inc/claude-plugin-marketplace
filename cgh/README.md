@@ -246,7 +246,8 @@ Passed to `/creview:triage`, it lets the estimate record design decisions as ADR
 the review document. They stay local and are not posted. With `/cgh:respond`, the confirmation
 after the triage names them so that you can edit them before the fixes, and `/creview:respond`
 reads them. `--no-confirm` skips that chance. `/cgh:respond` also passes `--adr` to
-`/creview:respond`, so that a design decision made while fixing gets an ADR file too.
+`/creview:respond`, so that a design decision made while fixing gets an ADR file too. With
+`/cgh:gate`, they go next to the merged review document, named after its finding IDs.
 
 ## How state is kept
 
