@@ -72,7 +72,10 @@ two review documents into one, with the pull request stage's findings first.
 - The code stage reviews the code. It looks only for broken code, regressions of existing
   behavior, changes the review could not read, and work left undone in the code with no issue
   recording it, such as a `TODO` or a follow-up a code comment promises. It does not raise again
-  a problem the pull request stage reports. The focus is in
+  a problem the pull request stage reports as a failed check or an unsettled discussion. It
+  still raises a problem in the code that the pull request stage reports only as a claim of the
+  title or description or an open item in the description, since editing the title or
+  description settles those findings. The focus is in
   [rules/gate-focus-code.md](rules/gate-focus-code.md).
 
 Nice-to-have tests, refactoring, and style are not findings. A residue that names an issue or a

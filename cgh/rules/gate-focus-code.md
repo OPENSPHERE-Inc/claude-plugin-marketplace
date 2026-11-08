@@ -19,7 +19,7 @@ Severity states only how bad the consequence is: whether a finding stops the mer
 
 Decide `Won't Fix` for a finding outside what § Review lists, whatever its severity.
 
-When you are given the pull request review's document, decide `Won't Fix` for a finding that raises the same problem as a finding there triaged `🔧 Will Fix`, with a reason that names that finding: the pull request review reports it.
+When you are given the pull request review's document, decide `Won't Fix` for a finding that raises the same problem as a finding there triaged `🔧 Will Fix` that reports a failed check or an unsettled discussion, with a reason that names that finding: the pull request review reports it. A finding there about a claim of the title or description or an open item in the description is no reason for `Won't Fix`: editing the title or description settles it while the code stays as it is.
 
 When you are given discussion lists, decide `Won't Fix` for a finding that raises the same problem as an entry when the code bears out a `declined` reason that the problem's premise is wrong, with a reason that names the discussion, or when that discussion is on record, with a reason that names where, unless the code shows the record wrong about the problem's cause, location, or effect, in which case judge the finding as usual and name the discussion in your reason. A discussion is on record when a code comment or the pull request's description states its conclusion or names an issue or a pull request (`#123`, a URL) that records it, or when the entry's `Tracked` names one. A security problem is on record for this rule only by the description, a code comment, or a `Tracked` that `author` or an assignee named. Do not add a separate-PR recommendation to these reasons.
 
