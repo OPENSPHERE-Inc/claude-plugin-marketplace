@@ -413,9 +413,18 @@ Superseded にします。`/creview:rounds` も同じフラグを受け取り、
 指摘への修正が後のラウンドの指摘を生む連鎖を辿ります。3 ラウンド以上に
 またがったまま縮小しない連鎖、または今ラウンドの指摘が過去の修正を元に戻すよう
 求めている連鎖を発散とみなし、1 ラウンドで複数検出されることもあります。
+AI 向けプロンプトファイルが定める手続きの細部への修正対象の指摘が、3 ラウンド
+連続で縮小せずに出ている場合も発散とみなします。AI 向けプロンプトファイルとは、
+エージェント定義、SKILL.md、スラッシュコマンド、ルール、スキルがエージェントに
+読ませるプロンプトテンプレートです。
 1 件以上検出した場合は、調査サブエージェント（他の専門家と同様に移譲先
 プロジェクトのエージェントから解決）が各発散の源泉を特定し、修正案を
-レビュードキュメントの隣の `divergence-round{N}.md` に書き出します。その後
+レビュードキュメントの隣の `divergence-round{N}.md` に書き出します。
+プロンプトの手続きの細部での発散では、調査は指示の精密化を案に含めません。
+得るべき結果（ゴール）と守るべき契約だけを明示し、方法は AI に任せるよう
+プロンプトを書き直す案を勧めます。契約とは、たとえば指定形で実行すべき
+コマンドや、戻り値・出力の形式です。検出と修正案の判定基準は同梱ルール
+`rules/contract-style-prompts.md` にあります。その後
 `--confirm` と同様にループを一時停止し、そのレポートを提示して続行の指示を
 待ちます。続行の指示とともに修正方針が示された場合は、そのラウンドの対応
 フェーズへ引き継ぎます。
@@ -498,7 +507,8 @@ frontmatter の `name` / `description` を読み、指摘ごとに最適なも�
 ## 同梱サポートファイル
 
 - `rules/` — `comment.md`、`document.md`、`review.md`、`wontfix.md`、`sub-agent.md`、
-  `adr-format.md`、`doc-worktree.md`、`pr-comment-doc.md`（スキルが参照するルールのみ）。
+  `adr-format.md`、`doc-worktree.md`、`pr-comment-doc.md`、`contract-style-prompts.md`
+  （スキルが参照するルールのみ）。
 - `scripts/` — `fetch-diff.sh`、`render-review.py`、`del-tmp.sh`、
   `check-jsonl.py`（サブエージェントが書き出した `.jsonl` の検証に使用）、
   `lib/scratch-guard.py`（`fetch-diff.sh` / `del-tmp.sh` が共有する

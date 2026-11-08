@@ -27,9 +27,9 @@ see **[CLAUDE.md](CLAUDE.md)**.
   `pr-comment-compiler.md` (the PR mode of `/creview:triage` / `resolve`).
 - `creview/rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
   `adr-format.md`, `agents-detection.md`, `build-format-detection.md`, `doc-worktree.md`,
-  `pr-comment-doc.md` (rules referenced by skills; `doc-worktree.md` is read by the
-  `/creview:triage` / `respond` / `resolve` leaders, `pr-comment-doc.md` by the
-  `/creview:triage` / `resolve` leaders in PR mode).
+  `pr-comment-doc.md`, `contract-style-prompts.md` (rules referenced by skills;
+  `doc-worktree.md` is read by the `/creview:triage` / `respond` / `resolve` leaders,
+  `pr-comment-doc.md` by the `/creview:triage` / `resolve` leaders in PR mode).
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `check-jsonl.py`,
   `worktree.sh`, `compile-pr-comments.py` (the review document of the PR mode of
   `/creview:triage` / `resolve`), `gh-pr.py` (pull request resolution and worktree checkout and removal for

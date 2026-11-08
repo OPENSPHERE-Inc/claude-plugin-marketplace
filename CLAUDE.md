@@ -58,7 +58,7 @@ claude-plugin-marketplace/
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
 │   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md, pr-description-reviewer.md, pr-comment-compiler.md
-│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md, pr-comment-doc.md
+│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md, pr-comment-doc.md, contract-style-prompts.md
 │   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, compile-pr-comments.py, lib/scratch-guard.py
 │
 ├── cdev/                         # Plugin: multi-agent coding workflow (active, English)
@@ -571,6 +571,10 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `creview/scripts/gh-pr.py`, and
   `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` are likewise each
   byte-identical with its own `src/` mirror.
+- **`creview/rules/contract-style-prompts.md` restates part of `cdev/rules/prompt.md`.** It
+  rephrases § Contract-style prompts and the definition of an AI-facing prompt file as the
+  criteria of the `/creview:rounds` divergence gate. It is not a byte-identical copy, so no
+  test catches drift: when you change either one, check the other.
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
   `SUMMARY`, `FINDINGS`, or `ANALYSIS`** (case-insensitive, basename only). Claude Code's
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output

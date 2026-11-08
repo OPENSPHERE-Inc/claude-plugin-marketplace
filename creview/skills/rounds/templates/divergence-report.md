@@ -7,7 +7,7 @@
 
 ## D-1 — <one-line summary of the divergence>
 
-- **Kind:** <Non-shrinking chain / Oscillation>
+- **Kind:** <Non-shrinking chain / Oscillation / Over-specified prompt>
 - **Chain:** R1 M-2 → R2 M-1 → R3 mi-3
 
 ### History

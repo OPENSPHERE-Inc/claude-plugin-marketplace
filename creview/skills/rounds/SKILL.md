@@ -61,7 +61,7 @@ Write the review document in the user's chat language.
   - Triage & estimate phase (Step 2.2 / 2.5) — `creview:triage`
   - Respond phase (Step 2.3 / 2.5) — `creview:respond`
   - Resolve phase (Step 2.4 / 2.5) — `creview:resolve`
-- **Divergence pattern detection sub-agent (Step 2.2)** — `subagent_type="creview:review-helper"`; detects every divergence of the round loop from the chains in which a fix for a finding produces a finding in a later round.
+- **Divergence pattern detection sub-agent (Step 2.2)** — `subagent_type="creview:review-helper"`; detects every divergence of the round loop from the chains in which a fix for a finding produces a finding in a later round and from the AI-facing prompt files whose procedural details draw findings round after round.
 - **Divergence investigation sub-agent (Step 2.2)** — its `subagent_type` is the `investigator` the divergence pattern detection sub-agent returns; identifies each divergence's source and writes fix proposals into the divergence investigation report.
 - **Final report aggregator sub-agent (Step 3)** — `subagent_type="creview:review-helper"`; generates the final report from all rounds' review documents.
 - **What you handle directly is limited to the following:**

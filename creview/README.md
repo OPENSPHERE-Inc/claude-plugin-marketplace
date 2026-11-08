@@ -425,13 +425,24 @@ triage: a sub-agent reads the past rounds' and the current round's review
 documents and traces the chains in which a fix for a finding produces a
 finding in a later round. A chain that spans three or more rounds without
 shrinking, or in which a finding of the current round asks to revert a past
-fix, is a divergence; one round can yield several. When at least one is
-detected, an investigation sub-agent — resolved from the destination project's
-agents like the other specialists — identifies the source of each divergence
-and writes fix proposals to `divergence-round{N}.md` next to the review
-documents. The loop then pauses as it does for `--confirm`, presents that
-report, and waits for the instruction to continue; a fix policy given with
-that instruction is passed on to the round's respond phase.
+fix, is a divergence; one round can yield several. Findings triaged to be
+fixed on the details of the procedure an AI-facing prompt file prescribes are
+a divergence as well when they come in three consecutive rounds without
+shrinking. An AI-facing prompt file is an agent definition, a SKILL.md, a
+slash command, a rule, or a prompt template a skill has an agent read. When
+at least one is detected, an investigation sub-agent — resolved from the
+destination project's agents like the other specialists — identifies the
+source of each divergence and writes fix proposals to `divergence-round{N}.md`
+next to the review documents. For a divergence on the details of a prompt's
+procedure, it does not propose making the instructions more precise. It
+proposes rewriting the prompt to state only the result to obtain (the goal)
+and the contracts to keep, and to leave the method to the AI. A contract is,
+for example, a command that must run in a given form or the format of a
+return value or an output. The criteria for the detection and the proposal
+are in the bundled rule `rules/contract-style-prompts.md`. The loop then
+pauses as it does for `--confirm`, presents that report, and waits for the
+instruction to continue; a fix policy given with that instruction is passed
+on to the round's respond phase.
 
 `/creview:rounds` takes a `--worktree[=branch]` option (default OFF) that runs
 every round in a separate git worktree under `.claude/worktrees/`, so the
@@ -512,7 +523,8 @@ the other four by name.
 ## Bundled support files
 
 - `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
-  `adr-format.md`, `doc-worktree.md`, `pr-comment-doc.md` (only the rules the skills reference).
+  `adr-format.md`, `doc-worktree.md`, `pr-comment-doc.md`, `contract-style-prompts.md`
+  (only the rules the skills reference).
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`,
   `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it),
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
