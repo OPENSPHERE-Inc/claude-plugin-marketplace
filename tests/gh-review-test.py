@@ -4869,6 +4869,54 @@ class Merge(Base):
         self.assertEqual(result["adrs"], [])
         self.assertIn(quoted, read_text(self.out))
 
+    def test_renames_only_the_adr_segment_just_before_the_plan(self):
+        estimate = "▶️ Maintain — Cost: S, Future: S, Signals: none — Plan: (1) src/a.py:10 — fix"
+        items = " (2) src/a.py:12 — ADR: x-adr-M-9.md — Plan: の順 (3) src/a.py:14 — ADR: 記録"
+        self.write("code-adr-M-1.md", "# ADR: M-1 — Fix\n")
+        for segment, copied in (("", []), (" — ADR: code-adr-M-1.md", ["merged-adr-M-2.md"])):
+            with self.subTest(segment=segment):
+                named = estimate.replace(" — Plan:", f"{segment} — Plan:", 1) + items
+                self.second = self.write("code.md", CODE_STAGE.replace(estimate, named))
+                result = self.merge()
+                self.assertEqual(result["adrs"], [os.path.join(self.dir, n) for n in copied])
+                self.assertEqual(mod.parse_document(self.out)[1][1]["metadata"]["Estimate"],
+                                 named.replace("code-adr-M-1.md", "merged-adr-M-2.md"))
+
+    def with_pr_adr(self, name):
+        self.first = self.write(os.path.join("stage", "pr.md"), PR_STAGE.replace(
+            "— valid\n<!-- /METADATA(M-1) -->",
+            "— valid\n- **Estimate:** ▶️ Maintain — Cost: S, Future: S, Signals: none — "
+            f"ADR: {name} — Plan: (1) PR — say so\n<!-- /METADATA(M-1) -->"))
+
+    def test_names_a_shared_adr_after_the_finding_its_file_name_names(self):
+        self.with_adr("code-adr-M-1.md",
+                      "# ADR: M-1 — Fix the caller\n\n- **Source:** code.md / M-1\n")
+        self.with_pr_adr("code-adr-M-1.md")
+        result = self.merge()
+        path = os.path.join(self.dir, "merged-adr-M-2.md")
+        self.assertEqual(result["adrs"], [path])
+        self.assertEqual(read_text(path),
+                         "# ADR: M-2 — Fix the caller\n\n- **Source:** merged.md / M-2\n")
+        for finding in mod.parse_document(self.out)[1][:2]:
+            self.assertIn(" — ADR: merged-adr-M-2.md — Plan: ", finding["metadata"]["Estimate"])
+
+    def test_names_an_adr_of_no_merged_finding_after_the_first_that_names_it(self):
+        for name in ("review-adr-M-1.md", "code-adr-M-7.md"):
+            with self.subTest(name=name):
+                self.with_adr(name, "# ADR: M-5 — Fix the caller\n")
+                result = self.merge()
+                self.assertEqual(result["adrs"], [os.path.join(self.dir, "merged-adr-M-2.md")])
+                self.assertIn(" — ADR: merged-adr-M-2.md — Plan: ",
+                              mod.parse_document(self.out)[1][1]["metadata"]["Estimate"])
+
+    def test_refuses_two_adrs_that_would_take_one_name(self):
+        self.with_adr("review-adr-M-1.md", "# ADR: M-1 — Fix the caller\n")
+        self.write(os.path.join("stage", "code-adr-M-1.md"), "# ADR: M-1 — Fix the caller\n")
+        self.with_pr_adr("code-adr-M-1.md")
+        with self.assertRaisesRegex(mod.Error, "review-adr-M-1.md, .*merged-adr-M-2.md"):
+            self.merge()
+        self.assertFalse(os.path.exists(self.out))
+
 
 class ReplyTemplate(unittest.TestCase):
     def test_a_declined_finding_opens_with_the_fixed_phrase(self):

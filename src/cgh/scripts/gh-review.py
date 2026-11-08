@@ -95,10 +95,11 @@ every other bullet of <second>'s header, then, in each severity, the findings of
 those of <second>, numbered anew from 1, with their text and metadata as they were. A severity
 with no finding keeps <first>'s text, or else <second>'s. Of what follows the findings, it keeps
 <first>'s headings and the count of each severity, made the sum of both. An ADR file a finding's
-estimate names, next to its document, is copied next to <output> as <output stem>-adr-<new ID>.md,
-with the estimate, the ADR's heading, and its Source line naming the new file, document, and ID.
-Prints findings, the count, ids, each new ID with the document and the ID it had there, and adrs,
-the ADR files it wrote.
+estimate names just before its plan, next to its document, is copied once next to <output> as
+<output stem>-adr-<new ID>.md, with the estimates, the ADR's heading, and its Source line naming
+the new file, document, and ID. The new ID is that of the finding the ADR's file name names when
+that finding is merged, else that of the first finding that names it. Prints findings, the count,
+ids, each new ID with the document and the ID it had there, and adrs, the ADR files it wrote.
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head and, for a gate draft, at its merge base, with --since still the
@@ -242,8 +243,9 @@ HEADING_RE = re.compile(rf"### ({FINDING_ID})\s+[—-]\s+`?([^`]*?)`?(?:\s+\[(.*
 FINDING_HEADING_RE = re.compile(rf"###\s+{FINDING_ID}")
 METADATA_OPEN_RE = re.compile(rf"<!-- METADATA\(({FINDING_ID})\) -->")
 METADATA_RE = re.compile(r"- \*\*(Triage|Estimate|Status|Verification):\*\* (.*)")
-ADR_SEGMENT_RE = re.compile(r"( — ADR: )(\S+?)(?= — |$)")
+ADR_SEGMENT_RE = re.compile(r"( — ADR: )(\S+)\Z")
 ADR_NAME_RE = re.compile(r"[^/\\:]+-adr-[^/\\:]+\.md")
+ADR_OWNER_RE = re.compile(rf"(.+)-adr-({FINDING_ID})\.md")
 LABEL_LINE_RE = re.compile(r"\*\*[^*]+[:：]\*\*\s*")
 PLAN_ITEM_RE = re.compile(r"(?:^|\s)\([0-9]+\)\s+")
 LOCATION_RE = re.compile(r"(.+?):([0-9]+)(?:[-–,].*)?")
@@ -1507,8 +1509,12 @@ def renamed_block(block, old, new):
     return lines
 
 
-def adr_renamed(block, document, old, new, stem, adrs):
-    """The block with each ADR its estimate names renamed after the new ID, noted in adrs."""
+def adr_renamed(block, document, old, new, stem, adrs, owners):
+    """The block with the ADR its estimate names before the plan renamed, noted in adrs.
+
+    The ADR takes the new ID of the finding its file name names when owners, the merged findings
+    by their document and former ID, have it, else that of the first finding that names it.
+    """
     start = max((i for i, line in enumerate(block) if line == f"<!-- METADATA({new}) -->"),
                 default=len(block))
 
@@ -1521,12 +1527,22 @@ def adr_renamed(block, document, old, new, stem, adrs):
                     or not os.path.isfile(source)):
                 raise Error(f"{document}: {old} names the ADR {name}, which is not a file next "
                             "to it")
-            adrs[key] = {"source": source, "name": f"{stem}-adr-{new}.md", "document": document,
-                         "was": old, "id": new}
+            named = ADR_OWNER_RE.fullmatch(name)
+            owner = named and owners.get((os.path.normcase(os.path.join(
+                os.path.dirname(source), f"{named.group(1)}.md")), named.group(2)))
+            owner = owner or {"id": new, "document": document, "was": old}
+            adr = {"source": source, "name": f"{stem}-adr-{owner['id']}.md", **owner}
+            if any(other["name"] == adr["name"] for other in adrs.values()):
+                raise Error(f"{document}: {old} names the ADR {name}, whose copy would take the "
+                            f"name {adr['name']} of another ADR's copy")
+            adrs[key] = adr
         return match.group(1) + adrs[key]["name"]
 
-    return [*block[:start], *(ADR_SEGMENT_RE.sub(renamed, line)
-                              if line.startswith("- **Estimate:** ") else line
+    def estimate(line):
+        head, plan, rest = line.partition(" — Plan: ")
+        return ADR_SEGMENT_RE.sub(renamed, head, count=1) + plan + rest if plan else line
+
+    return [*block[:start], *(estimate(line) if line.startswith("- **Estimate:** ") else line
                               for line in block[start:])]
 
 
@@ -1575,25 +1591,29 @@ def cmd_merge(pr_url, first, second, output):
     bullets = [i for i, line in enumerate(header) if line.startswith("- **")]
     at = bullets[-1] + 1 if bullets else len(header)
     lines = [*header[:at], *extra, *header[at:], ""]
-    ids, counts, adrs = [], {}, {}
-    stem = os.path.splitext(os.path.basename(output))[0]
+    merged = {}
     for prefix, severity in SEVERITIES.items():
+        found = [(document, fid, block)
+                 for document, (_, blocks, _, _) in zip((first, second), parts)
+                 for fid, block in blocks[severity]]
+        merged[severity] = [(f"{prefix}-{n}", *entry) for n, entry in enumerate(found, 1)]
+    ids = [{"id": new, "document": document, "was": fid}
+           for found in merged.values() for new, document, fid, _ in found]
+    owners = {(os.path.normcase(os.path.abspath(i["document"])), i["was"]): i for i in ids}
+    adrs = {}
+    stem = os.path.splitext(os.path.basename(output))[0]
+    for severity, found in merged.items():
         lines += [f"## {severity}", ""]
-        merged = [(document, fid, block)
-                  for document, (_, blocks, _, _) in zip((first, second), parts)
-                  for fid, block in blocks[severity]]
-        counts[severity] = len(merged)
-        for n, (document, fid, block) in enumerate(merged, 1):
-            new = f"{prefix}-{n}"
-            ids.append({"id": new, "document": document, "was": fid})
-            lines += [*adr_renamed(renamed_block(block, fid, new), document, fid, new, stem, adrs),
+        for new, document, fid, block in found:
+            lines += [*adr_renamed(renamed_block(block, fid, new), document, fid, new, stem, adrs,
+                                   owners),
                       "", "---", ""]
-        if not merged:
+        if not found:
             lines += [*(parts[0][2][severity] or parts[1][2][severity]), "", "---", ""]
     for line in parts[0][3]:
         count = COUNT_LINE_RE.fullmatch(line)
         if count:
-            lines.append(f"{count.group(1)}{counts[count.group(2)]}{count.group(3)}")
+            lines.append(f"{count.group(1)}{len(merged[count.group(2)])}{count.group(3)}")
         elif line.startswith("#") or not line.strip() or line.strip() == "---":
             lines.append(line)
     with open(output, "w", encoding="utf-8", newline="\n") as f:
