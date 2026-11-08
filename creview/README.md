@@ -438,11 +438,18 @@ procedure, it does not propose making the instructions more precise. It
 proposes rewriting the prompt to state only the result to obtain (the goal)
 and the contracts to keep, and to leave the method to the AI. A contract is,
 for example, a command that must run in a given form or the format of a
-return value or an output. The criteria for the detection and the proposal
-are in the bundled rule `rules/contract-style-prompts.md`. The loop then
+return value or an output. When the prompt already states its goal and
+contracts, it instead recommends treating the round's findings on those details
+as Won't Fix, along with a rewrite that removes any excess instructions still
+left. For each file to rewrite, it names one finding whose fix makes the
+rewrite, and lists the file's other findings to be fixed as covered by that
+rewrite rather than fixed one by one. The criteria for the detection and the
+proposal are in the bundled rule `rules/contract-style-prompts.md`. The loop then
 pauses as it does for `--confirm`, presents that report, and waits for the
-instruction to continue; a fix policy given with that instruction is passed
-on to the round's respond phase.
+instruction to continue. A fix policy given with that instruction is passed on
+to the round's respond and resolve phases, and to the triage, respond, and
+resolve phases the feedback re-fix loop re-runs; where it differs from a
+finding's triage or estimate, the policy prevails.
 
 `/creview:rounds` takes a `--worktree[=branch]` option (default OFF) that runs
 every round in a separate git worktree under `.claude/worktrees/`, so the
