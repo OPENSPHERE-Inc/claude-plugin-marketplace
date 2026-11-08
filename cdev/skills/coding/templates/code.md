@@ -8,7 +8,7 @@ As the coder for your assigned files, implement the design (or apply the fix fee
 
 Task: `{{task}}`
 Design sections: Read every file in `{{design_paths}}`.
-Assigned scope: `{{assigned_scope}}` (edit only files in this scope, the template files the prompt review of step 5 adds by externalizing from them, and the new external scripts the AI-facing prompt files in this scope invoke).
+Assigned scope: `{{assigned_scope}}` (edit only files in this scope, the template files the prompt review of step 5 adds by externalizing from them, and, when `{{feedback}}` is "(none)", the new external scripts the design sections name for the AI-facing prompt files in this scope).
 Test-driven: `{{tdd}}` (true when the project has a test suite).
 Paired reviewer: `{{reviewer}}`
 Comment reviewer: `{{comment_reviewer}}`
@@ -23,4 +23,4 @@ Steps:
 5. If you created or edited an AI-facing prompt file (per `{{plugin_root}}/rules/prompt.md`) and `{{prompt_reviewer}}` is not "(none)", then, after any comment review of step 4 has reported back, DM `{{prompt_reviewer}}` naming `{{plugin_root}}/skills/coding/templates/prompt-review.md` with `changed_files = {the prompt files you created or changed, marking each one you created in this run as created and giving the parts you changed in each other one where you know them}`, `design_paths = {{design_paths}}`, and `feedback = {{feedback}}`; it self-checks, fixes, and compresses them and reports back to you.
 6. DM `{{reviewer}}` that your change is ready for review, listing the files you changed (each AI-facing prompt file marked as in step 5's `changed_files`), any template file the prompt review added, and each violation the prompt review left remaining, and run the cell as the producer; the reviewer closes it.
 
-Report to the leader via SendMessage, in {{doc_lang}}: one line per changed file, any template file the prompt review added included (`path` — what changed), whether the change added or modified comments, the prompt review's counts (violations detected / fixed / remaining, files compressed) when you requested one, and a one-line summary.
+Report to the leader via SendMessage, in {{doc_lang}}: one line per changed file, any template file the prompt review added included and each new external script you wrote marked as such (`path` — what changed), whether the change added or modified comments, the prompt review's counts (violations detected / fixed / remaining, files compressed) when you requested one, and a one-line summary.
