@@ -2541,8 +2541,21 @@ class Since(Base):
                     self.assertEqual(result["head_sha"], HEAD)
 
     def test_a_base_change_before_the_review_keeps_its_commit(self):
-        result = self.since(gate_review(1), base_events=["2026-10-31T23:59:59Z"])
+        result = self.since(gate_review(1), base_events=["2026-10-31T23:49:59Z"])
         self.assertEqual((result["since"], result["fallback"]), (EARLIER, None))
+
+    def test_a_base_change_shortly_before_the_review_falls_back(self):
+        for at in ("2026-10-31T23:50:00Z", "2026-10-31T23:55:00Z"):
+            with self.subTest(at=at):
+                result = self.since(gate_review(1), base_events=[at])
+                self.assertEqual((result["since"], result["fallback"]), (None, "base_changed"))
+
+    def test_a_review_with_no_readable_time_counts_any_base_change(self):
+        for submitted in (None, "", "yesterday", "2026-11-01"):
+            with self.subTest(submitted=submitted):
+                result = self.since(gate_review(1, submitted=submitted),
+                                    base_events=["2020-01-01T00:00:00Z"])
+                self.assertEqual((result["since"], result["fallback"]), (None, "base_changed"))
 
     def test_each_kind_of_base_change_falls_back(self):
         for kind in ("BASE_REF_CHANGED_EVENT", "BASE_REF_FORCE_PUSHED_EVENT",
@@ -4783,6 +4796,34 @@ class Merge(Base):
         self.second = self.write("code.md", CODE_STAGE.replace("## Minor", "## Info", 1))
         with self.assertRaisesRegex(mod.Error, "mi-1 is under Info"):
             self.merge()
+
+    def test_refuses_a_finding_under_a_heading_that_names_no_severity(self):
+        for heading, first, second, lost in (
+                ("## Major (1)", PR_STAGE.replace("## Major", "## Major (1)"), CODE_STAGE, "M-1"),
+                ("## Minor（軽微）", PR_STAGE, CODE_STAGE.replace("## Minor", "## Minor（軽微）"),
+                 "mi-1, mi-2"),
+                ("##  Minor", PR_STAGE, CODE_STAGE.replace("## Minor", "##  Minor"),
+                 "mi-1, mi-2")):
+            with self.subTest(heading=heading):
+                self.first = self.write("pr.md", first)
+                self.second = self.write("code.md", second)
+                with self.assertRaisesRegex(mod.Error, f"{lost} is not under a severity section"):
+                    self.merge()
+                self.assertFalse(os.path.exists(self.out))
+
+    def test_keeps_the_metadata_after_its_end_marker_quoted_in_the_text(self):
+        for quote in ("- **Triage:** 🚫 Won't Fix — quoted\n<!-- /METADATA(M-1) -->",
+                      "<!-- METADATA(M-1) -->\n- **Triage:** 🚫 Won't Fix — quoted\n"
+                      "<!-- /METADATA(M-1) -->"):
+            with self.subTest(quote=quote):
+                self.second = self.write("code.md", CODE_STAGE.replace(
+                    "### A heading quoted in the text", quote))
+                self.merge()
+                metadata = mod.parse_document(self.out)[1][1]["metadata"]
+                self.assertEqual(metadata["Triage"], "🔧 Will Fix (assignee: py) — valid")
+                self.assertEqual(metadata["Estimate"],
+                                 "▶️ Maintain — Cost: S, Future: S, Signals: none — Plan: "
+                                 "(1) src/a.py:10 — fix")
 
     def test_refuses_an_output_that_is_an_input(self):
         self.out = self.second
