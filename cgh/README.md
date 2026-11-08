@@ -135,9 +135,11 @@ read for discussions, and the description and CI results are read again.
 - When the pull request merged its base branch since then, what the merge brought in is left out,
   while how the pull request resolved a conflict and any base change the merge dropped are
   reviewed.
-  - A file that the merge left conflicted without conflict markers, such as a binary file or one
-    the base deleted, is reviewed from the base's version, or in full when the base deleted it,
-    so the pull request's earlier changes to that file are reviewed as well.
+  - A file that the merge left conflicted without conflict markers, such as a binary file, is
+    reviewed from the base's version, so the pull request's earlier changes to that file are
+    reviewed as well.
+    - A file the base deleted has no base version, so the whole file is reviewed, including code
+      before that commit.
 - Code before that commit is not reviewed again: a problem an earlier run let through, or one you
   chose not to post, is not raised again.
   - A failed check and a claim of the description are the exception: they are checked against
@@ -146,7 +148,9 @@ read for discussions, and the description and CI results are read again.
     - A claim with no line found is reported on the pull request.
     - A failed check whose cause is not found in the code is not reported.
       - One whose CI output places the cause in an agent file left out of the worktree is
-        reported on the pull request, with a note that checking it takes `--trust`.
+        reported on the pull request, with a note that its cause was not checked, and that
+        checking it takes a run with those files present, in a sandbox, either with `--trust` or
+        with the head commit checked out in your working tree.
 
 ### `/cgh:respond`
 
