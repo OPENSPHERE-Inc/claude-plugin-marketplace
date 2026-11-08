@@ -148,9 +148,10 @@ read for discussions, and the description and CI results are read again.
     - A claim with no line found is reported on the pull request.
     - A failed check whose cause is not found in the code is not reported.
       - One whose CI output places the cause in an agent file left out of the worktree is
-        reported on the pull request, with a note that its cause was not checked, and that
-        checking it takes a run with those files present, in a sandbox, either with `--trust` or
-        with the head commit checked out in your working tree.
+        reported on the pull request, with a note that says:
+        - Its cause was not checked.
+        - Checking it takes a run with those files present, in a sandbox, either with `--trust`
+          or with the head commit checked out in your working tree.
 
 ### `/cgh:respond`
 
