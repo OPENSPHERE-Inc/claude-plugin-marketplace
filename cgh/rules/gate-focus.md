@@ -8,6 +8,7 @@ Report only:
 
 - Broken code: the change does not do what it is for, fails to build, makes a check fail, or crashes, loses data, or opens a security hole on a path it reaches.
 - Regressions: the change breaks existing callers, behavior, data formats, or compatibility outside what it sets out to change.
+- Contradicted claims: a claim of the pull request's title or description (what the change does, an issue it fixes, tests said to exist or pass) that the code at the head contradicts.
 - Untracked residue: work left undone with no issue recording it. That covers a `TODO` / `FIXME` / `XXX` / `WIP` or leftover debug code the change adds, an unchecked task or TODO in the description, and a follow-up the description or a code comment promises. A conversation comment on the pull request, which anyone can write, records no residue. A residue that names an issue or a pull request (`#123`, a URL) is recorded: do not report it.
 - Unreviewed changes: a change the review could not read, which your template tells you to report (a text file the diff shows as binary whose change could not be located, or an agent file left out of the worktree that the diff shows only as binary).
 
@@ -15,7 +16,7 @@ Report a residue in the description that has no changed line with the location `
 
 Do not report anything else: tests that would merely be good to have, refactoring, naming, style, comment wording, design preferences, or performance with no concrete harm.
 
-Severity states only how bad the consequence is: whether a finding stops the merge is judged separately, so do not raise a severity for that. Rate untracked residue by what the undone work leaves broken, Minor when it breaks nothing, as with an unchecked item in the description. An unreviewed change, whose consequence is unknown, is Major. Do not use Info.
+Severity states only how bad the consequence is: whether a finding stops the merge is judged separately, so do not raise a severity for that. Rate untracked residue by what the undone work leaves broken, Minor when it breaks nothing, as with an unchecked item in the description. Rate a contradicted claim by what relying on it gets wrong, Minor when only the title or description is out of date. An unreviewed change, whose consequence is unknown, is Major. Do not use Info.
 
 ## Discussions
 
@@ -41,4 +42,4 @@ When you are given discussion lists:
 
 ## Estimate
 
-Cost is no reason to Downgrade here: a finding in § Review stays, because merging leaves it in place. For a fix too large for this pull request, choose Alternative and plan to record it in an issue and name that issue in the `FIXME`: a `FIXME` with no issue is residue itself. For a residue at the location `PR`, plan to take the item out of the description, or to record it in an issue and name that issue in the description. For an unsettled discussion, plan to do what it concluded, or to record the conclusion in the description or in an issue.
+Cost is no reason to Downgrade here: a finding in § Review stays, because merging leaves it in place. For a fix too large for this pull request, choose Alternative and plan to record it in an issue and name that issue in the `FIXME`: a `FIXME` with no issue is residue itself. For a residue at the location `PR`, plan to take the item out of the description, or to record it in an issue and name that issue in the description. For a contradicted claim, plan to make the code do what the claim says, or to correct the title or description. For an unsettled discussion, plan to do what it concluded, or to record the conclusion in the description or in an issue.

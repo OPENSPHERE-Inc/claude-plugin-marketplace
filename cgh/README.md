@@ -61,11 +61,12 @@ wrong about the problem's cause, location, or effect.
 ### `/cgh:gate`
 
 A merge gate for code that has already been self-reviewed. It looks only for broken code,
-regressions of existing behavior, changes the review could not read, and work left undone with
-no issue recording it: a `TODO` in the code, an open item in the description, or a follow-up the
-description or a code comment promises. Nice-to-have tests, refactoring, and style are not
-findings. A residue that names an issue or a pull request counts as recorded. A conversation
-comment does not record one. The focus is in [rules/gate-focus.md](rules/gate-focus.md).
+regressions of existing behavior, claims of the title or description that the code contradicts,
+changes the review could not read, and work left undone with no issue recording it: a `TODO` in
+the code, an open item in the description, or a follow-up the description or a code comment
+promises. Nice-to-have tests, refactoring, and style are not findings. A residue that names an
+issue or a pull request counts as recorded. A conversation comment does not record one. The focus
+is in [rules/gate-focus.md](rules/gate-focus.md).
 
 It also reads every comment on the pull request, including threads marked resolved on GitHub. What
 a discussion concludes has to end up in the code or the description, or be tracked in an issue or
@@ -93,8 +94,10 @@ Severity and blocking are separate. Critical, Major, and Minor say only how bad 
 consequence is. After triage, each finding is judged blocking or non-blocking on its own, and each
 posted comment shows which, next to its severity:
 
-- Work left undone with no issue, an unsettled discussion, and a change the review could not read
-  always block. An unchecked item in the description is typically Minor and blocking.
+- Work left undone with no issue, an unsettled discussion, a claim of the title or description
+  that the code contradicts, and a change the review could not read always block. An unchecked
+  item in the description, or a test count the description has not caught up with, is typically
+  Minor and blocking.
 - A security problem blocks unless the author or an assignee deferred it explicitly, in the
   description, by naming a tracking issue, or, for a decider, by a decline.
 - A decline in a comment alone normally leaves an unsettled discussion, which blocks until the
