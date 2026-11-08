@@ -21,7 +21,7 @@ Common rules that sub-agents of the creview skills (start / triage / respond / r
 
 Launch every agent as a one-shot foreground run (Agent tool with `run_in_background: false`). Do not launch standing / persistent agents, and do not continue a launched agent via `SendMessage` — when a retry is needed, launch a fresh instance. A persistent agent reports via `SendMessage`, which reaches the root `main` rather than the launcher, stalling nested runs. This binds the SKILL leaders and every sub-agent that launches nested agents.
 
-Launch at most 20 agents in one message: 20 is the runtime's default limit on concurrently running sub-agents (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`), and a launch beyond the limit is refused. Launch a larger parallel set in successive messages of at most 20 each. Launch an agent refused for the concurrency limit again in the next message; when every launch in a message is refused for that limit, treat those agents as failed launches.
+Keep at most 20 of the agents you launch running at once: 20 is the runtime's default limit on concurrently running sub-agents (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`), and a launch beyond the limit is refused. Launch the rest of a larger parallel set as agents you launched finish. When a launch is refused for that limit, launch it again after an agent you launched finishes; when it is refused while no agent you launched is running, treat it as a failed launch.
 
 ## Tools
 

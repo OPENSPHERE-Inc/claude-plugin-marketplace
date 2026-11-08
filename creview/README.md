@@ -486,7 +486,7 @@ per (scope, reviewer) pair — so raise
 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
 session) when using a high `--max-rounds`. Sub-agents that run in parallel are
 launched at most 20 at a time, the default of
-`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`; the rest follow in later batches.
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`; the rest start as earlier ones finish.
 
 ## Reviewer / fixer agents
 

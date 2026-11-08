@@ -10,6 +10,8 @@ Fix once: `{timestamp}` (`YYYYMMDD-HHMMSS`); `{tmp_dir}`, the absolute path of `
 
 Before creating `{tmp_dir}`, run `{{plugin_root}}/scripts/del-tmp.sh --dry '{tmp_dir}'`, which refuses a symlinked `.claude`; on a non-zero exit, show its error and terminate the skill. Create it with `mkdir -p '{tmp_dir}'`.
 
+Keep at most 20 of the agents you launch running at once, the runtime's default limit (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`): launch the rest of a larger set as agents you launched finish. When a launch is refused for that limit, launch it again after an agent you launched finishes; when it is refused while no agent you launched is running, abort with that error.
+
 ## Running a creview skill
 
 Invoke it with the Skill tool, with the arguments the SKILL names. Act as its leader through its last step, as when the user invokes it directly, then continue at the SKILL's next step: its closing report does not end this skill. Add the overrides the SKILL names to the "Round-specific overrides" section of the launch prompts it names. When the creview skill aborts or cannot be invoked, abort. While the creview skill runs, `plugin_root`, `{tmp_dir}`, `{document_path}`, and `{timestamp}` are the values that skill fixes; from the SKILL's next step on, they are the values the SKILL and § Setup fixed, with any replacement the SKILL names.

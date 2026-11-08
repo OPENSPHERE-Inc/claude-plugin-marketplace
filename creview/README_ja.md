@@ -472,7 +472,7 @@ configure はビルド段の冒頭でのみ実行されます（format コマン
 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`（デフォルト 200、セッション累積）の
 引き上げを検討してください。並列に実行するサブエージェントは、
 `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` のデフォルト値である 20 体ずつ起動し、
-残りは後続のバッチで起動します。
+残りは先に起動したものが終わるたびに起動します。
 
 ## レビュアー / 修正担当エージェント
 
