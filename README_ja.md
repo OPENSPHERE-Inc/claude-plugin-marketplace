@@ -9,8 +9,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 | プラグイン | 説明 |
 |--------|-------------|
 | `creview` | マルチエージェントによる並列コードレビューのワークフロー: start → triage → respond → resolve、および複数ラウンドの自動ドライバ。 |
-| `cprompt` | AI 向けプロンプトを作成・編集し、プロンプト規律ルールに照らしてセルフチェックする。 |
-| `cdev` | チームネイティブなマルチエージェントコーディングワークフロー: 常駐チームが設計とコーディングをペアレビューセルで実行し、最後に QA ゲートを通す。 |
+| `cdev` | チームネイティブなマルチエージェントコーディングワークフロー: 常駐チームが設計とコーディングをペアレビューセルで実行し、最後に QA ゲートを通す。AI 向けプロンプトにはプロンプト規律のセルフチェック・圧縮・解釈テストも行う。 |
 | `cgh` | `creview` を土台にした GitHub プルリクエストのワークフロー: トリアージ済みレビューの投稿、マージゲート、投稿されたレビューへの対応、自分のレビューの対応確認。 |
 
 ## インストール
@@ -20,12 +19,11 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 ```
 /plugin marketplace add OPENSPHERE-Inc/claude-plugin-marketplace
 /plugin install creview@opensphere-inc
-/plugin install cprompt@opensphere-inc
 /plugin install cdev@opensphere-inc
 /plugin install cgh@opensphere-inc
 ```
 
-`creview`・`cprompt`・`cdev` は単体で完結します。`cgh` は `creview` に依存し、Claude Code が
+`creview`・`cdev` は単体で完結します。`cgh` は `creview` に依存し、Claude Code が
 一緒にインストールします。
 
 ## スキルコマンド
@@ -37,8 +35,7 @@ OPENSPHERE Inc. が保守する Claude Code プラグインマーケットプレ
 | `/creview:respond` | Will-Fix / Maintain / Alternative の指摘を修正し、`status` を永続化する。 |
 | `/creview:resolve` | レビュードキュメントまたは GitHub プルリクエストのコメントの指摘をソースに照らして検証し、`verification` を永続化する。 |
 | `/creview:rounds` | 4 つのフェーズを複数ラウンドにわたって自動反復する。 |
-| `/cprompt:edit` | AI 向けプロンプトを作成・編集し、セルフチェックする。 |
-| `/cdev:coding` | コーディングタスクをエンドツーエンドで実装する: 設計とコーディングをペアレビューセルで行い、最後に QA ゲート。 |
+| `/cdev:coding` | AI 向けプロンプトを含むコーディングタスクをエンドツーエンドで実装する: 設計とコーディングをペアレビューセルで行い、最後に QA ゲート。 |
 | `/cgh:review` | プルリクエストをレビューし、指示を受けて指摘を Request Changes または Comment のレビューとして投稿する。 |
 | `/cgh:gate` | セルフレビュー済みのプルリクエストがこのままマージできるかを判定し、指示を受けて PASS / BLOCK を投稿する。パスするまで繰り返し実行する。 |
 | `/cgh:respond` | プルリクエストのレビューをトリアージし、確認後に修正して（`--no-confirm` で確認を省略）、push と指示の後に対応内容とコミットを返信する。 |

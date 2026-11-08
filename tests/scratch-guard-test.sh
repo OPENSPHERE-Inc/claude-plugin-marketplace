@@ -48,7 +48,7 @@ same creview/scripts/fetch-diff.sh src/creview/scripts/fetch-diff.sh
 same creview/scripts/gh-pr.py src/creview/scripts/gh-pr.py
 same creview/scripts/compile-pr-comments.py src/creview/scripts/compile-pr-comments.py
 same cgh/scripts/gh-review.py src/cgh/scripts/gh-review.py
-for d in src/cdev creview src/creview cprompt src/cprompt; do
+for d in src/cdev creview src/creview; do
     same cdev/scripts/worktree.sh "${d}/scripts/worktree.sh"
 done
 
@@ -64,9 +64,6 @@ for d in cdev creview src/cdev src/creview; do
     for s in fetch-diff.sh del-tmp.sh worktree.sh; do
         mode_check "${d}/scripts/${s}"
     done
-done
-for d in cprompt src/cprompt; do
-    mode_check "${d}/scripts/worktree.sh"
 done
 for d in cgh src/cgh; do
     mode_check "${d}/scripts/del-tmp.sh"
