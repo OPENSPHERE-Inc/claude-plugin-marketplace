@@ -60,17 +60,28 @@ wrong about the problem's cause, location, or effect.
 
 ### `/cgh:gate`
 
-A merge gate for code that has already been self-reviewed. It looks only for broken code,
-regressions of existing behavior, claims of the title or description that the code contradicts,
-changes the review could not read, and work left undone with no issue recording it: a `TODO` in
-the code, an open item in the description, or a follow-up the description or a code comment
-promises. Nice-to-have tests, refactoring, and style are not findings. A residue that names an
-issue or a pull request counts as recorded. A conversation comment does not record one. The focus
-is in [rules/gate-focus.md](rules/gate-focus.md).
+A merge gate for code that has already been self-reviewed. It reviews the pull request in two
+stages, one after the other, each with `/creview:start` and `/creview:triage`, and then merges the
+two review documents into one, with the pull request stage's findings first.
 
-It also reads every comment on the pull request, including threads marked resolved on GitHub. What
-a discussion concludes has to end up in the code or the description, or be tracked in an issue or
-ticket that the description, a code comment, or a comment by the author, an assignee, or you names.
+- The pull request stage reviews the title, description, CI results, and conversation against the
+  pull request's whole diff. It looks only for a changed line that makes a check fail, a claim of
+  the title or description that the change does not bear out, an open item or a promised follow-up
+  in the description with no issue recording it, and the unsettled discussions below. The focus is
+  in [rules/gate-focus-pr.md](rules/gate-focus-pr.md).
+- The code stage reviews the code. It looks only for broken code, regressions of existing
+  behavior, changes the review could not read, and work left undone in the code with no issue
+  recording it, such as a `TODO` or a follow-up a code comment promises. It does not raise again
+  a problem the pull request stage reports. The focus is in
+  [rules/gate-focus-code.md](rules/gate-focus-code.md).
+
+Nice-to-have tests, refactoring, and style are not findings. A residue that names an issue or a
+pull request counts as recorded. A conversation comment does not record one.
+
+The pull request stage reads every comment on the pull request, including threads marked resolved
+on GitHub. What a discussion concludes has to end up in the code or the description, or be
+tracked in an issue or ticket that the description, a code comment, or a comment by the author,
+an assignee, or you names.
 For a security problem, only a tracking issue named by the author or an assignee counts. Any other
 comment records nothing.
 
@@ -126,17 +137,18 @@ code and the description: it is resolved once the code does what the claim says 
 description no longer make the claim. A finding about a failed check or an unsettled discussion is
 not resolved by taking a claim out of the description.
 
-With `--incremental`, a run reviews only the commits added since your latest gate review on the
-pull request, from the commit GitHub records for that review to the head. The review body names
-that commit, so that a reader knows a PASS did not cover the whole diff again. Everything else
-runs as without it: the earlier gate findings are verified at the current head, every comment is
-read for discussions, and the description and CI results are read again.
+With `--incremental`, the code stage reviews only the commits added since your latest gate review
+on the pull request, from the commit GitHub records for that review to the head. The review body
+names that commit, so that a reader knows a PASS did not cover the whole code again. Everything
+else runs as without it: the pull request stage reviews the title, description, CI results, and
+conversation against the whole diff, and the earlier gate findings are verified at the current
+head.
 
 - With no gate review of yours on the pull request, when its head no longer contains that
   commit, as after a force push or a rebase, or when its base branch was changed, force-pushed,
-  or deleted after that review, the whole diff is reviewed, and the skill says why.
+  or deleted after that review, the code stage reviews the whole diff, and the skill says why.
 - A dismissed gate review does not count: after you dismiss the latest one, the next run starts
-  from the one before it, or reviews the whole diff when there is none.
+  from the one before it, or the code stage reviews the whole diff when there is none.
 - When the pull request merged its base branch since then, what the merge brought in is left out,
   while how the pull request resolved a conflict and any base change the merge dropped are
   reviewed.
@@ -145,18 +157,8 @@ read for discussions, and the description and CI results are read again.
     reviewed as well.
     - A file the base deleted has no base version, so the whole file is reviewed, including code
       before that commit.
-- Code before that commit is not reviewed again: a problem an earlier run let through, or one you
-  chose not to post, is not raised again.
-  - A failed check and a claim of the description are the exception: they are checked against
-    the code at the head even when the code they concern lies before that commit, and are
-    reported at that line.
-    - A claim with no line found is reported on the pull request.
-    - A failed check whose cause is not found in the code is not reported.
-      - One whose CI output places the cause in an agent file left out of the worktree is
-        reported on the pull request, with a note that says:
-        - Its cause was not checked.
-        - Checking it takes a run with those files present, in a sandbox, either with `--trust`
-          or with the head commit checked out in your working tree.
+- The code stage does not review code before that commit again: a problem an earlier run let
+  through, or one you chose not to post, is not raised again.
 
 ### `/cgh:respond`
 

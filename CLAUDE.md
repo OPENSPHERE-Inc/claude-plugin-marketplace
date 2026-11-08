@@ -82,7 +82,7 @@ claude-plugin-marketplace/
 │   ├── README.md / README_ja.md
 │   ├── skills/                   # review (+ templates/raised-extract.md), gate (+ templates/discussion-extract.md, blocking-judge.md), resolve (+ templates/posted-extract.md, finding-ids-extract.md), respond
 │   ├── agents/                   # comment-writer.md
-│   ├── rules/                    # leader.md, gate-focus.md, wording.md
+│   ├── rules/                    # leader.md, gate-focus-pr.md, gate-focus-code.md, wording.md
 │   └── scripts/                  # gh-review.py, del-tmp.sh, lib/scratch-guard.py
 │
 ├── src/                          # Japanese master, mirrors each plugin's tree 1:1 (minus .claude-plugin/README)
@@ -252,7 +252,9 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     and in PR mode a `- **Trust:** on|off` bullet (whether the reviewed
                     tree had the agent files); --since {commit} narrows PR mode to the
                     changes since that commit (fetch-diff.sh --pr-since, which leaves
-                    out what a merge of the base brought in)
+                    out what a merge of the base brought in); --code-only runs only the
+                    code reviewers, and --pr-only only the pr-description-reviewer, on
+                    the whole PR diff (both together count as neither)
 /creview:triage  → triage Sub + per-assignee estimate Subs → compile → persist
                     triage / estimate metadata into the doc
                     PR mode (a pull request URL, triage and resolve): rules/pr-comment-doc.md:
@@ -291,8 +293,9 @@ adjusting a status / verification later in a chat).
 
 cgh skills run creview skills inline with the Skill tool, so a creview skill sees a direct
 invocation and handles its own worktree. `/cgh:gate` shapes them through Round-specific
-overrides that point at `rules/gate-focus.md`, so creview itself stays unaware of cgh. A cgh
-leader's own reads and writes on GitHub all go through `scripts/gh-review.py`, which refuses a
+overrides that point at `rules/gate-focus-pr.md` and `rules/gate-focus-code.md`, so creview
+itself stays unaware of cgh. A cgh leader's own reads and writes on GitHub all go through
+`scripts/gh-review.py`, which refuses a
 pull request of a repository that is not a remote of the clone and also computes the event,
 the verdict, and where each finding goes; the creview skills it runs read through `gh-pr.py`.
 The leader itself writes what goes out, following `rules/wording.md`, since it knows what the user
@@ -323,19 +326,28 @@ a `Verification` line so that it is checked again, with the comment targets in
 `{tmp_dir}/prior.json`. `gh-review.py replies` and `draft` report a finding verified earlier only
 when it no longer holds. `/cgh:review` collects with `gh-review.py raised`, before the review,
 what comments by anyone already raise, and an override has the triage sub-agent leave those out.
-`/cgh:gate` collects with `gh-review.py raised --discussion`, which keeps threads resolved on
-GitHub: a `comment-writer` lists each problem with its answers and conclusion, the PR description
-reviewer reports what `rules/gate-focus.md` § Discussions finds unsettled, and an override has the
-triage sub-agent leave out a finding that restates a discussion recorded or so reported. Severity
+`/cgh:gate` reviews in two stages, one after the other, each a `/creview:start` and a
+`/creview:triage`, so that each creview run works on one diff, as creview expects. The pull
+request stage runs `/creview:start --pr-only`, whose PR description reviewer judges the title,
+description, CI results, and conversation against the pull request's whole diff under
+`rules/gate-focus-pr.md`. The code stage then runs `/creview:start --code-only` under
+`rules/gate-focus-code.md`, and its reviewers and triage leave out a problem the pull request
+stage's document reports. `gh-review.py merge` puts the two documents into one, the pull request
+stage's findings first, for the blocking judgment and `draft`. The gate collects with
+`gh-review.py raised --discussion`, which keeps threads resolved on GitHub: a `comment-writer`
+lists each problem with its answers and conclusion, the PR description reviewer reports what
+`rules/gate-focus-pr.md` § Discussions finds unsettled, and an override has each stage's triage
+sub-agent leave out a finding that restates a discussion recorded or so reported. Severity
 says only how bad a problem's consequence is, and the gate's verdict rests on `blocking`, which is
 separate: a `comment-writer` judges each Will Fix finding after triage, `gh-review.py draft
 --blocking` reads that, each posted comment and result line shows the result in its visible text,
 and `gh-review.py collect` reads it back on a later run, from the user's own comments only.
 Under `--incremental`, `gh-review.py since` takes the commit of the user's latest gate review from
-the review's `commit_id`, and `/cgh:gate` passes it to `/creview:start --since` and to `draft
---since`, which names it under the verdict; with no such review, when the head no longer
-contains that commit, or when the base branch was changed, force-pushed, or deleted after that
-review, the whole diff is reviewed.
+the review's `commit_id`, and `/cgh:gate` passes it to the code stage's `/creview:start --since`
+and to `draft --since`, which names it under the verdict; with no such review, when the head no
+longer contains that commit, or when the base branch was changed, force-pushed, or deleted after
+that review, the code stage reviews the whole diff. The pull request stage always reviews the
+whole diff.
 `/cgh:respond` handles the comments of anyone through the PR mode of `/creview:triage`, whose
 triage sub-agent an override tells to judge what is already dealt with, and the leader judges
 from the conversation whether a comment needs a reply. Posted findings number on from the
