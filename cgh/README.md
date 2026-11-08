@@ -139,13 +139,13 @@ again.
 Each finding is verified against the code and the title and description together, since a problem
 can lie in either or in a mismatch between them. A claim the code contradicts is resolved once the
 code does what the claim says or the title and description no longer make it. Work the description
-leaves open is resolved once it is gone, the description names an issue or a pull request that
-records it, or the description marks it done and it is: the code is checked when it can show the
-work, and the description is taken at its word when it cannot, as with a manual test or work outside
-the repository. A finding that raises several problems, such as a failed check and the claim it
-contradicts, is resolved only when each one is. A decline does not resolve a contradicted claim,
-work left open, or an unsettled discussion, and no other comment in the conversation withdraws a
-claim or records the work.
+leaves open is resolved once it is removed from the description, the description names an issue
+or a pull request that records it, or the description marks it done and it is done. Whether it is
+done is checked in the code when the code can show the work, and taken at the description's word
+when it cannot, as with a manual test or work outside the repository. A finding that raises several
+problems, such as a failed check and the claim it contradicts, is resolved only when each one is.
+A decline does not resolve a contradicted claim, work left open, or an unsettled discussion, and no
+other comment in the conversation withdraws a claim or records the work.
 
 With `--incremental`, the code stage reviews only the commits added since your latest gate review
 on the pull request, from the commit GitHub records for that review to the head. The review body
@@ -226,13 +226,13 @@ decline states against the code.
 Each finding is verified against the code and the title and description together, since a problem
 can lie in either or in a mismatch between them. A claim the code contradicts is resolved once the
 code does what the claim says or the title and description no longer make it. Work the description
-leaves open is resolved once it is gone, the description names an issue or a pull request that
-records it, or the description marks it done and it is: the code is checked when it can show the
-work, and the description is taken at its word when it cannot, as with a manual test or work outside
-the repository. A finding that raises several problems, such as a failed check and the claim it
-contradicts, is resolved only when each one is. A decline does not resolve a contradicted claim,
-work left open, or an unsettled discussion, and no other comment in the conversation withdraws a
-claim or records the work.
+leaves open is resolved once it is removed from the description, the description names an issue
+or a pull request that records it, or the description marks it done and it is done. Whether it is
+done is checked in the code when the code can show the work, and taken at the description's word
+when it cannot, as with a manual test or work outside the repository. A finding that raises several
+problems, such as a failed check and the claim it contradicts, is resolved only when each one is.
+A decline does not resolve a contradicted claim, work left open, or an unsettled discussion, and no
+other comment in the conversation withdraws a claim or records the work.
 
 A finding that a discussion is unsettled is resolved once the code does what the discussion
 concluded or shows the problem absent, or once the conclusion is recorded: stated in a code comment
