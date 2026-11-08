@@ -14,4 +14,4 @@ producer: `{{producer}}` | セルタスク: `{{cell_task}}`
 
 重要度ラベル: Critical（設計が誤っている、またはタスクを満たさない）/ Major（重大なギャップまたはリスク）/ Minor（改善）/ Info（参考）。対応すべきは Critical / Major。
 
-セル `{{cell_task}}` についてセルプロトコルを回す: 対応すべき指摘をセクション / 領域と問題・推奨する修正方針として `{{producer}}` へ DM し（文面は {{doc_lang}} で、重要度ラベルはそのまま）、重要度別の件数を 1 行（`Critical N / Major N / Minor N / Info N`）でリーダーへ報告する。
+セル `{{cell_task}}` についてセルプロトコルを回す: 対応すべき指摘をセクション / 領域と問題・推奨する修正方針として `{{producer}}` へ DM し（文面は {{doc_lang}} で、重要度ラベルはそのまま）、重要度別の件数を 1 行（`Critical N / Major N / Minor N / Info N`）でリーダーへ報告する。セルをクローズするとき（resolve・ラウンド上限到達のいずれでも）は、そのリーダーへの報告に、クローズ時点の設計が AI 向けプロンプトファイル（`{{plugin_root}}/rules/prompt.md` の定義による）を作成または編集するかどうかも含める。
