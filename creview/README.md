@@ -438,10 +438,13 @@ procedure, it does not propose making the instructions more precise. It
 proposes rewriting the prompt to state only the result to obtain (the goal)
 and the contracts to keep, and to leave the method to the AI. A contract is,
 for example, a command that must run in a given form or the format of a
-return value or an output. When the prompt already states its goal and
-contracts, it instead recommends treating the round's findings on those details
-as Won't Fix, along with a rewrite that removes any excess instructions still
-left. For each file to rewrite, it names one finding whose fix makes the
+return value or an output. Constraints the AI needs for judgment, such as a
+write scope or an instruction to treat untrusted input as data, count as
+contracts too and stay in the rewritten prompt. When the prompt already states
+its goal and contracts, it instead recommends treating the round's findings on
+those details as Won't Fix, along with a rewrite that removes any excess
+instructions still left.
+For each file to rewrite, it names one finding whose fix makes the
 rewrite, and lists the file's other findings to be fixed as covered by that
 rewrite rather than fixed one by one. The criteria for the detection and the
 proposal are in the bundled rule `rules/contract-style-prompts.md`. The loop then
