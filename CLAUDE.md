@@ -3,15 +3,14 @@
 ## Project Overview
 
 **opensphere-inc** is a Claude Code **plugin marketplace** maintained by **OPENSPHERE Inc.**
-under the MIT license. It publishes four first-party plugins:
+under the MIT license. It publishes three first-party plugins:
 
 - **creview** — a multi-agent parallel code review workflow (`start` → `triage` → `respond`
   → `resolve`, plus an automatic multi-round driver `rounds`).
-- **cprompt** — create / edit AI-facing prompts and self-check them against
-  prompt-discipline rules.
 - **cdev** — a team-native multi-agent coding workflow (`coding`: a standing team runs design
-  and coding as paired review cells, then a QA gate). Requires background subagents and
-  inter-agent messaging.
+  and coding as paired review cells, then a QA gate). AI-facing prompt files also get a
+  prompt-discipline self-check, compression, and an interpretation test. Requires background
+  subagents and inter-agent messaging.
 - **cgh** — a GitHub pull request workflow on top of creview (`review`, `gate`, `respond`,
   `resolve`, each taking a pull request URL). Depends on creview; posts only on the user's
   instruction and never approves or merges.
@@ -29,7 +28,7 @@ shell + Python helper scripts, and JSON manifests, consumed by Claude Code's plu
 
 This repo is intentionally bilingual; the rule is **not** "English only":
 
-- **Active plugin files** (everything under `creview/`, `cprompt/`, `cdev/`, and `cgh/` except their
+- **Active plugin files** (everything under `creview/`, `cdev/`, and `cgh/` except their
   `README_ja.md`) are **English**. This includes SKILL.md, templates, bundled rules, and
   `agents/review-helper.md`.
 - **`src/**`** is the **Japanese master** — every file there is Japanese.
@@ -43,7 +42,7 @@ This repo is intentionally bilingual; the rule is **not** "English only":
 ```
 claude-plugin-marketplace/
 ├── .claude-plugin/
-│   └── marketplace.json          # Marketplace listing: creview, cprompt, cdev, cgh
+│   └── marketplace.json          # Marketplace listing: creview, cdev, cgh
 ├── README.md / README_ja.md      # Top README (EN) + Japanese translation, cross-linked
 ├── LICENSE                       # MIT
 ├── AGENTS.md / CLAUDE.md         # This documentation set
@@ -62,19 +61,12 @@ claude-plugin-marketplace/
 │   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md, pr-comment-doc.md
 │   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, compile-pr-comments.py, lib/scratch-guard.py
 │
-├── cprompt/                      # Plugin: prompt authoring (active, English)
-│   ├── .claude-plugin/plugin.json
-│   ├── README.md / README_ja.md
-│   ├── skills/edit/              # /cprompt:edit (from prompt-editor) + templates/
-│   ├── rules/                    # prompt.md, document.md
-│   └── scripts/                  # worktree.sh
-│
 ├── cdev/                         # Plugin: multi-agent coding workflow (active, English)
 │   ├── .claude-plugin/plugin.json
 │   ├── README.md / README_ja.md
-│   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, design, design-review, code, code-review, comment-review, qa)
-│   ├── agents/                   # comment-sensei.md, dev-helper.md
-│   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, divergence.md
+│   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, design, design-review, code, code-review, comment-review, prompt-review, prompt-test, qa)
+│   ├── agents/                   # comment-sensei.md, prompt-sensei.md, dev-helper.md
+│   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, prompt.md, divergence.md
 │   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
 │
 ├── cgh/                          # Plugin: GitHub pull request workflow on top of creview (active, English)
@@ -87,7 +79,6 @@ claude-plugin-marketplace/
 │
 ├── src/                          # Japanese master, mirrors each plugin's tree 1:1 (minus .claude-plugin/README)
 │   ├── creview/...               # src/creview/<same tree as creview/>
-│   ├── cprompt/...               # src/cprompt/<same tree as cprompt/>
 │   ├── cdev/...                  # src/cdev/<same tree as cdev/>
 │   └── cgh/...                   # src/cgh/<same tree as cgh/>
 │
@@ -120,7 +111,7 @@ When changing a plugin:
 ### The plugin transformations (master → active)
 
 - **Skill rename**: `parallel-review`→`start`, `review-respond`→`triage`+`respond`,
-  `review-resolve`→`resolve`, `review-rounds`→`rounds`, `prompt-editor`→`edit`. The
+  `review-resolve`→`resolve`, `review-rounds`→`rounds`. The
   SKILL.md `name:` frontmatter is the bare skill-dir name.
 - **`review-respond` split**: `/creview:triage` runs triage + estimate and **persists**
   `triage` / `estimate` into the review document (its own compile step). `/creview:respond`
@@ -152,7 +143,10 @@ When changing a plugin:
   In creview, the detection rule and `scope-analysis.md` leave the fixed-role bundled
   agents (`review-helper`, `review-leader`, `pr-description-reviewer`, `pr-comment-compiler`)
   out of the
-  candidates, so `comment-sensei` is the only bundled candidate.
+  candidates, so `comment-sensei` is the only bundled candidate. cdev bundles `dev-helper`
+  and two specialists its skill also runs as fixed-role teammates, `comment-sensei` and
+  `prompt-sensei`; the detection rule leaves none out, so team formation can pick
+  `prompt-sensei` as the reviewer of AI-facing prompt files.
 
 ---
 
@@ -166,16 +160,16 @@ There is **no build step**. Validation is consistency-checking + a manual instal
 # JSON manifests parse
 python3 -c "import json; [json.load(open(f,encoding='utf-8')) for f in \
   ['.claude-plugin/marketplace.json'] + \
-  [p+'/.claude-plugin/plugin.json' for p in ('creview','cprompt','cdev','cgh')]]; print('json ok')"
+  [p+'/.claude-plugin/plugin.json' for p in ('creview','cdev','cgh')]]; print('json ok')"
 
 # Token-placement invariant: no ${CLAUDE_PLUGIN_ROOT} in templates / bundled rules,
 # no {{plugin_root}} in SKILLs
-grep -rl 'CLAUDE_PLUGIN_ROOT' {creview,cprompt,cdev,cgh}/skills/*/templates \
-  {creview,cprompt,cdev,cgh}/rules && echo BAD || echo ok
-grep -rl '{{plugin_root}}'   {creview,cprompt,cdev,cgh}/skills/*/SKILL.md   && echo BAD || echo ok
+grep -rl 'CLAUDE_PLUGIN_ROOT' {creview,cdev,cgh}/skills/*/templates \
+  {creview,cdev,cgh}/rules && echo BAD || echo ok
+grep -rl '{{plugin_root}}'   {creview,cdev,cgh}/skills/*/SKILL.md   && echo BAD || echo ok
 
 # src ↔ active file-set parity (per plugin, excluding .claude-plugin/README)
-for p in creview cprompt cdev cgh; do
+for p in creview cdev cgh; do
   diff <(cd $p && find . -type f -not -path './.claude-plugin/*' -not -name 'README*.md' \
            -not -path '*/__pycache__/*' | sort) \
        <(cd src/$p && find . -type f -not -path '*/__pycache__/*' | sort) \
@@ -193,7 +187,7 @@ for f in creview/skills/rounds/SKILL.md src/creview/skills/rounds/SKILL.md; do
 done
 
 # Scratch-guard self-test: containment behavior, worktree.sh, and byte-parity of the
-# shared script copies across creview/cdev/cprompt/cgh and their src/ mirrors
+# shared script copies across creview/cdev/cgh and their src/ mirrors
 bash tests/scratch-guard-test.sh
 
 # cgh's GitHub script, with GitHub and git faked
@@ -205,7 +199,6 @@ python3 tests/gh-review-test.py
 ```
 /plugin marketplace add <path-or-OPENSPHERE-Inc/claude-plugin-marketplace>
 /plugin install creview@opensphere-inc
-/plugin install cprompt@opensphere-inc
 /plugin install cdev@opensphere-inc
 /plugin install cgh@opensphere-inc
 ```
@@ -218,8 +211,9 @@ head and elsewhere, which reviews in a worktree; needs an authenticated `gh`), t
 (which work in a worktree of the pull request), `/creview:triage` and `/creview:resolve` with
 a pull request URL (which compile a review document from its comments; `/creview:triage`
 leaves out threads resolved on GitHub and `/creview:resolve` keeps them; needs an
-authenticated `gh`), `/cprompt:edit`, and `/cdev:coding` (in a runtime with background
-subagents and inter-agent messaging).
+authenticated `gh`), and `/cdev:coding` (in a runtime with background subagents and
+inter-agent messaging), both on a task without AI-facing prompt files and on one that edits
+them (which needs a teammate to be able to launch sub-agents).
 Exercise `/cgh:review`, `/cgh:gate`, `/cgh:respond`, and `/cgh:resolve` on a pull request of a
 scratch repository: they post to GitHub under your account.
 
@@ -229,13 +223,13 @@ scratch repository: they post to GitHub under your account.
 
 ### Marketplace
 
-`.claude-plugin/marketplace.json` (`name: opensphere-inc`) lists four plugins. `creview`,
-`cprompt`, `cdev`, and `cgh` use `"source": "./<dir>"` (relative to the repo root). The `src/`
+`.claude-plugin/marketplace.json` (`name: opensphere-inc`) lists three plugins. `creview`,
+`cdev`, and `cgh` use `"source": "./<dir>"` (relative to the repo root). The `src/`
 tree is **outside** the plugin source dirs, so it is not shipped with the installed plugins.
 
 ### Plugin skills
 
-Plugin skills are namespaced `/<plugin>:<skill>` (`/creview:start`, `/cprompt:edit`). The
+Plugin skills are namespaced `/<plugin>:<skill>` (`/creview:start`, `/cdev:coding`). The
 skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
 
 ### The creview review pipeline (state lives in the review document)
@@ -451,11 +445,11 @@ There is no automated test suite. Before considering a change done:
 - Run the consistency checks in **Build / Run / Validation**.
 - Confirm `src/` ↔ active parity (file set + `template_id` set identical per plugin).
 - Confirm no stale upstream skill paths remain in active files
-  (`parallel-review` / `review-respond` / `review-resolve` / `review-rounds` /
-  `prompt-editor` as `.claude/skills/...` references).
+  (`parallel-review` / `review-respond` / `review-resolve` / `review-rounds` as
+  `.claude/skills/...` references).
 - For prompt edits, re-check against [.claude/rules/prompt.md](.claude/rules/prompt.md);
   for doc edits, [.claude/rules/document.md](.claude/rules/document.md).
-- Manually install all four plugins and exercise each command (see install smoke test).
+- Manually install all three plugins and exercise each command (see install smoke test).
 
 ---
 
@@ -538,8 +532,7 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   across all four (`creview/`, `cdev/`, and their mirrors); each plugin ships its own copy
   because plugins install independently. Edit one copy and replicate to the others;
   `tests/scratch-guard-test.sh` fails on any drift. `scripts/worktree.sh` is likewise
-  byte-identical across all six copies (`creview/`, `cdev/`, `cprompt/`, and their `src/`
-  mirrors). `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `creview/scripts/gh-pr.py`, and
+  byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors). `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `creview/scripts/gh-pr.py`, and
   `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` are likewise each
   byte-identical with its own `src/` mirror.
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,

@@ -1,6 +1,6 @@
 # Teammate 共通ルール
 
-cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sensei、dev-helper）が遵守する共通ルール。
+cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sensei、prompt-sensei、dev-helper）が遵守する共通ルール。
 
 ## 禁止事項
 
@@ -9,6 +9,7 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
   - architect: タスクが割り当てた設計ドキュメントのセクションファイル（markdown）。ソースコードは編集しない。
   - coder: 割り当てスコープ内のソースコード（実装、および QA / レビュー / コメントのフィードバック修正）。
   - コメントレビュー teammate（comment-sensei）: ソースファイル内のコメントのみ編集可。ロジックは変更しない。
+  - プロンプト teammate（prompt-sensei）: coder の依頼が指定する AI 向けプロンプトファイル内のセルフチェック修正と圧縮、そこから外部化するテンプレートファイル、および解釈テストの結果ファイル。それ以外のソースは編集しない。
   - QA teammate（dev-helper）: フォーマット / ビルド / テストコマンドとフォーマッタの自動修正のみ。手動のソース編集は不可。
   - reviewer: ソースおよび設計は Read のみ。編集はしない。
 - **スコープの継承**: teammate が起動したエージェントは、起動元の teammate と同じ制限を受ける。リーダーの roster には登録されないため、起動元の teammate は自身のタスク完了を報告する前に、まだ稼働中ならその name か agentId を指定した `TaskStop` で停止する。応答は待たない。起動したエージェントの報告先は親（起動元 teammate）であり、リーダーではない。起動時に自分の name を渡して name 宛に報告させるか、name を渡さず Agent の戻り値で結果を受け取る。リーダーへの報告は起動元 teammate が自ら行う。
@@ -33,7 +34,7 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 ## コーディング規約
 
-ソースコード編集時は、本ファイルと同一ディレクトリの `comment.md` に従う。人間向けドキュメント（設計ドキュメントを含む）の作成・編集時は、本ファイルと同一ディレクトリの `document.md` に従う。これらの同階層ファイルは、本ファイルを Read した絶対パスを基準に解決すること。
+ソースコード編集時は、本ファイルと同一ディレクトリの `comment.md` に従う。AI 向けプロンプトファイルの作成・編集時は、本ファイルと同一ディレクトリの `prompt.md` に従う。人間向けドキュメント（設計ドキュメントを含む）の作成・編集時は、本ファイルと同一ディレクトリの `document.md` に従う。これらの同階層ファイルは、本ファイルを Read した絶対パスを基準に解決すること。
 
 ## チーム規約
 

@@ -1,6 +1,6 @@
 # Teammate Common Rules
 
-Common rules that teammates of the cdev `coding` skill (architect, coder, reviewer, comment-sensei, dev-helper) observe.
+Common rules that teammates of the cdev `coding` skill (architect, coder, reviewer, comment-sensei, prompt-sensei, dev-helper) observe.
 
 ## Prohibitions
 
@@ -9,6 +9,7 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
   - Architect: the design-document section file the task assigns (markdown). No source-code edits.
   - Coder: source code (implementation, plus fixes for QA / review / comment feedback) within its assigned scope.
   - Comment-review teammate (comment-sensei): comment-only edits in source files; no logic changes.
+  - Prompt teammate (prompt-sensei): self-check fixes and compression in the AI-facing prompt files a coder's request names, a template file externalized from them, and the interpretation-test result file; no other source edits.
   - QA teammate (dev-helper): format / build / test commands and formatter auto-fixes only; no manual source edits.
   - Reviewers: Read-only on sources and design; they do not edit.
 - **Inherited scope**: An agent a teammate launches is bound by the same restrictions as that teammate. It is not in the leader's roster, so before reporting its own task complete, the teammate that launched it stops it if it is still running — `TaskStop` with its name or agentId, without waiting for a reply. A launched agent reports to its parent (the launching teammate), never to the leader. Pass your own name at launch to receive its reports by `SendMessage`, or pass no name and receive the result via the Agent call's return value. The launching teammate itself reports to the leader.
@@ -33,7 +34,7 @@ Communicate via `SendMessage`. Destination terms and resolution:
 
 ## Coding Conventions
 
-When editing source code, follow `comment.md` in the same directory as this file. When writing or editing human-facing documentation (including design documents), follow `document.md` in the same directory as this file. Resolve these siblings relative to the absolute path you Read this file from.
+When editing source code, follow `comment.md` in the same directory as this file. When writing or editing an AI-facing prompt file, follow `prompt.md` in the same directory as this file. When writing or editing human-facing documentation (including design documents), follow `document.md` in the same directory as this file. Resolve these siblings relative to the absolute path you Read this file from.
 
 ## Team conventions
 

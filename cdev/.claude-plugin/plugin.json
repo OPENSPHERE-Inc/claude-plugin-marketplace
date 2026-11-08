@@ -1,7 +1,7 @@
 {
   "name": "cdev",
-  "version": "0.3.21",
-  "description": "Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. Architects, coders, and reviewers are resolved from the destination project's .claude/agents. Requires a runtime with background subagents and inter-agent messaging.",
+  "version": "0.4.0",
+  "description": "Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. AI-facing prompt files also get a prompt-discipline self-check, compression, and an interpretation test. Architects, coders, and reviewers are resolved from the destination project's .claude/agents. Requires a runtime with background subagents and inter-agent messaging, and for AI-facing prompt files also nested sub-agent spawning.",
   "author": {
     "name": "OPENSPHERE Inc.",
     "url": "https://github.com/OPENSPHERE-Inc"
@@ -14,6 +14,7 @@
     "ai-agent",
     "workflow",
     "design",
-    "qa"
+    "qa",
+    "prompt-engineering"
   ]
 }
