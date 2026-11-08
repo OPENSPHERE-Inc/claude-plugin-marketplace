@@ -4550,6 +4550,247 @@ class Remote(Base):
             mod.checked_pr(URL)
 
 
+PR_STAGE = f"""# Parallel Code Review Report
+
+- **Date:** 2026-11-08
+- **PR:** {URL} (head {HEAD}, base {BASE})
+- **Branch:** feature
+- **Trust:** on
+- **Scope:** PR #7
+- **Reviewers:** creview:pr-description-reviewer
+
+## Critical
+
+No findings
+
+---
+
+## Major
+
+### M-1 — `PR` [Documentation]
+
+- **Reviewers:** pr-description-reviewer
+
+**Finding:**
+
+The description claims a fix the diff does not make.
+
+<!-- METADATA(M-1) -->
+- **Triage:** 🔧 Will Fix (assignee: doc) — valid
+<!-- /METADATA(M-1) -->
+
+---
+
+## Minor
+
+No findings
+
+---
+
+## Info
+
+No findings
+
+---
+
+## Summary
+
+- **Critical:** 0
+- **Major:** 1
+- **Minor:** 0
+- **Info:** 0
+- **Total:** 1 finding from 1 reviewer
+"""
+
+CODE_STAGE = f"""# Parallel Code Review Report
+
+- **Date:** 2026-11-08
+- **Mode:** adversarial
+- **PR:** {URL} (head {HEAD}, base {BASE})
+- **Branch:** feature
+- **Trust:** on
+- **Scope:** PR #7, changes since {"c" * 40}
+- **Reviewers:** a, b
+
+## Critical
+
+No findings
+
+---
+
+## Major
+
+### M-1 — `src/a.py:10` [Bug]
+
+- **Reviewers:** a
+
+**Finding:**
+
+Unlike M-1 of the other review, this breaks the caller.
+
+### A heading quoted in the text
+
+<!-- METADATA(M-1) -->
+- **Triage:** 🔧 Will Fix (assignee: py) — valid
+- **Estimate:** ▶️ Maintain — Cost: S, Future: S, Signals: none — Plan: (1) src/a.py:10 — fix
+<!-- /METADATA(M-1) -->
+
+---
+
+## Minor
+
+### mi-1 — `src/b.py:2` [Style]
+
+**Finding:**
+
+A leftover TODO.
+
+<!-- METADATA(mi-1) -->
+- **Triage:** 🔧 Will Fix (assignee: py) — valid
+<!-- /METADATA(mi-1) -->
+
+---
+
+### mi-2 — `src/b.py:3`
+
+**Finding:**
+
+Low value.
+
+<!-- METADATA(mi-2) -->
+- **Triage:** 🚫 Won't Fix — not a gate concern
+<!-- /METADATA(mi-2) -->
+
+---
+
+## Info
+
+No findings
+
+---
+
+## Summary
+
+- **Critical:** 0
+- **Major:** 1
+- **Minor:** 2
+- **Info:** 0
+- **Total:** 3 findings from 2 reviewers
+"""
+
+
+class Merge(Base):
+    def setUp(self):
+        super().setUp()
+        self.fake()
+        self.first = self.write("pr.md", PR_STAGE)
+        self.second = self.write("code.md", CODE_STAGE)
+        self.out = os.path.join(self.dir, "merged.md")
+
+    def write(self, name, text):
+        path = os.path.join(self.dir, name)
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        return path
+
+    def merge(self):
+        return mod.cmd_merge(URL, self.first, self.second, self.out)
+
+    def test_numbers_the_findings_of_both_documents_in_order(self):
+        result = self.merge()
+        header, findings = mod.parse_document(self.out)
+        self.assertEqual([f["id"] for f in findings], ["M-1", "M-2", "mi-1", "mi-2"])
+        self.assertEqual([f["location"] for f in findings],
+                         ["PR", "src/a.py:10", "src/b.py:2", "src/b.py:3"])
+        self.assertEqual(findings[1]["metadata"]["Estimate"],
+                         "▶️ Maintain — Cost: S, Future: S, Signals: none — Plan: "
+                         "(1) src/a.py:10 — fix")
+        self.assertEqual(findings[3]["metadata"]["Triage"], "🚫 Won't Fix — not a gate concern")
+        self.assertEqual(header["head_sha"], HEAD)
+        self.assertEqual(result["findings"], 4)
+        self.assertEqual(result["ids"], [
+            {"id": "M-1", "document": self.first, "was": "M-1"},
+            {"id": "M-2", "document": self.second, "was": "M-1"},
+            {"id": "mi-1", "document": self.second, "was": "mi-1"},
+            {"id": "mi-2", "document": self.second, "was": "mi-2"},
+        ])
+
+    def test_keeps_the_text_of_each_finding_as_it_was(self):
+        self.merge()
+        findings = mod.parse_document(self.out)[1]
+        self.assertEqual(findings[1]["text"],
+                         "Unlike M-1 of the other review, this breaks the caller.\n\n"
+                         "### A heading quoted in the text")
+        merged = read_text(self.out)
+        self.assertIn("<!-- METADATA(M-2) -->", merged)
+        self.assertIn("<!-- /METADATA(M-2) -->", merged)
+        self.assertEqual(merged.count("<!-- METADATA(M-1) -->"), 1)
+
+    def test_holds_the_header_bullets_of_both_once(self):
+        self.merge()
+        merged = read_text(self.out)
+        header = merged.split("\n## ")[0].split("\n")
+        self.assertEqual(header[0], "# Parallel Code Review Report")
+        for bullet in (f"- **PR:** {URL} (head {HEAD}, base {BASE})", "- **Branch:** feature",
+                       "- **Trust:** on", "- **Date:** 2026-11-08"):
+            self.assertEqual(header.count(bullet), 1, bullet)
+        self.assertIn("- **Scope:** PR #7", header)
+        self.assertIn(f"- **Scope:** PR #7, changes since {'c' * 40}", header)
+        self.assertIn("- **Reviewers:** creview:pr-description-reviewer", header)
+        self.assertIn("- **Reviewers:** a, b", header)
+        self.assertIn("- **Mode:** adversarial", header)
+        self.assertLess(header.index("- **Trust:** on"), header.index("- **Scope:** PR #7"))
+
+    def test_counts_both_documents_in_the_summary(self):
+        self.merge()
+        summary = read_text(self.out).split("## Summary")[1]
+        for line in ("- **Critical:** 0", "- **Major:** 2", "- **Minor:** 2", "- **Info:** 0"):
+            self.assertIn(line, summary)
+        self.assertNotIn("Total", summary)
+
+    def test_a_section_with_no_finding_keeps_its_text(self):
+        self.merge()
+        critical = read_text(self.out).split("## Critical")[1].split("## Major")[0]
+        self.assertIn("No findings", critical)
+        self.assertNotIn("###", critical)
+        major = read_text(self.out).split("## Major")[1].split("## Minor")[0]
+        self.assertNotIn("No findings", major)
+
+    def test_documents_with_no_finding_merge(self):
+        empty = re.sub(r"### M-1.*?<!-- /METADATA\(M-1\) -->\n\n---\n\n", "No findings\n\n---\n\n",
+                       PR_STAGE, flags=re.S)
+        self.first = self.write("pr.md", empty)
+        result = self.merge()
+        self.assertEqual([i["was"] for i in result["ids"]], ["M-1", "mi-1", "mi-2"])
+        self.assertEqual([f["id"] for f in mod.parse_document(self.out)[1]],
+                         ["M-1", "mi-1", "mi-2"])
+
+    def test_refuses_documents_that_name_another_head_branch_or_trust(self):
+        for old, new in ((f"head {HEAD}", f"head {'d' * 40}"),
+                         ("- **Branch:** feature", "- **Branch:** other"),
+                         ("- **Trust:** on", "- **Trust:** off")):
+            self.second = self.write("code.md", CODE_STAGE.replace(old, new))
+            with self.assertRaisesRegex(mod.Error, "do not review the same"):
+                self.merge()
+            self.assertFalse(os.path.exists(self.out))
+
+    def test_refuses_a_document_of_another_pull_request(self):
+        self.second = self.write("code.md", CODE_STAGE.replace(URL, URL[:-1] + "8"))
+        with self.assertRaisesRegex(mod.Error, "is not a review document of"):
+            self.merge()
+
+    def test_refuses_a_finding_under_another_severity(self):
+        self.second = self.write("code.md", CODE_STAGE.replace("## Minor", "## Info", 1))
+        with self.assertRaisesRegex(mod.Error, "mi-1 is under Info"):
+            self.merge()
+
+    def test_refuses_an_output_that_is_an_input(self):
+        self.out = self.second
+        with self.assertRaisesRegex(mod.Error, "must differ from"):
+            self.merge()
+        self.assertEqual(read_text(self.second), CODE_STAGE)
+
+
 class ReplyTemplate(unittest.TestCase):
     def test_a_declined_finding_opens_with_the_fixed_phrase(self):
         self.assertIn("`Not making this change.`", read_text(os.path.join(
@@ -4584,6 +4825,7 @@ class Cli(unittest.TestCase):
             (["draft", URL, "t", "d", "--kind", "review", "--lang", "en"], "cmd_draft",
              (URL, "t", "d", "review", "en", None, None, False, None)),
             (["since", URL], "cmd_since", (URL,)),
+            (["merge", URL, "a", "b", "o"], "cmd_merge", (URL, "a", "b", "o")),
             (["wording", URL, "j"], "cmd_wording", (URL, "j")),
             (["comments", URL, "t"], "cmd_comments", (URL, "t")),
             (["raised", URL, "t"], "cmd_raised", (URL, "t", False)),

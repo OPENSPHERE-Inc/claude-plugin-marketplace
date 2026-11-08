@@ -8,6 +8,7 @@ Usage:
     python3 gh-review.py prior <pr_url> <tmp_dir> --kind review|gate --document <path>
         [--trust]
     python3 gh-review.py since <pr_url>
+    python3 gh-review.py merge <pr_url> <first> <second> <output>
     python3 gh-review.py draft <pr_url> <tmp_dir> <document> --kind review|gate --lang en|ja
         [--prior-doc <path>] [--blocking <path>] [--force-comment] [--since <commit>]
     python3 gh-review.py wording <pr_url> <json_path>
@@ -86,6 +87,14 @@ otherwise null, and fallback says why it is null: none, with no such review, not
 head does not contain the commit, as after a force push or a rebase, or base_changed, when the pull
 request's base branch was changed, force-pushed, or deleted after that review, so that its diff may
 hold commits no gate run reviewed.
+
+merge: writes <output>, one review document from two of the pull request, <first> and <second>,
+which must name the same head, merge base, branch, and trust. It has the header of <first> with
+every other bullet of <second>'s header, then, in each severity, the findings of <first> and then
+those of <second>, numbered anew from 1, with their text and metadata as they were. A severity
+with no finding keeps <first>'s text, or else <second>'s. Of what follows the findings, it keeps
+<first>'s headings and the count of each severity, made the sum of both. Prints findings, the
+count, and ids, each new ID with the document and the ID it had there.
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head and, for a gate draft, at its merge base, with --since still the
@@ -217,6 +226,9 @@ PR_URL_RE = re.compile(
 )
 PR_BULLET_RE = re.compile(r"- \*\*PR:\*\* (\S+) \(head ([0-9a-f]+), base ([0-9a-f]+)\)")
 BRANCH_BULLET_RE = re.compile(r"- \*\*Branch:\*\* ([\w./+@-]+)")
+TRUST_BULLET_RE = re.compile(r"- \*\*Trust:\*\* (on|off)")
+SECTION_RE = re.compile(r"## (Critical|Major|Minor|Info)\s*")
+COUNT_LINE_RE = re.compile(r"(- \*\*(Critical|Major|Minor|Info):\*\*\s*)[0-9]+(.*)")
 BRANCH_NAME_RE = re.compile(r"\w[\w./+@-]*")
 COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 FINDING_ID = r"(?:C|M|mi|I)-[0-9]+"
@@ -1414,6 +1426,105 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
     }
 
 
+def document_parts(path):
+    """A review document's header lines, finding blocks and other text by severity, and tail."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = [line.rstrip() for line in f.read().split("\n")]
+    except OSError as e:
+        raise Error(f"cannot read {path}: {e}") from None
+    header, tail = [], []
+    blocks = {severity: [] for severity in SEVERITIES.values()}
+    others = {severity: [] for severity in SEVERITIES.values()}
+    section, block, block_id = None, None, None
+    for line in lines:
+        if block is not None:
+            block.append(line)
+            if line == f"<!-- /METADATA({block_id}) -->":
+                blocks[section].append((block_id, block))
+                block = None
+            continue
+        if line.startswith("## "):
+            named = SECTION_RE.fullmatch(line)
+            section = named.group(1) if named else "tail"
+        if section is None:
+            header.append(line)
+        elif section == "tail":
+            tail.append(line)
+        elif not line.startswith("## "):
+            heading = HEADING_RE.fullmatch(line)
+            if heading:
+                block_id = heading.group(1)
+                if severity_of(block_id) != section:
+                    raise Error(f"{path}: {block_id} is under {section}")
+                block = [line]
+            elif line.strip() and line.strip() != "---":
+                others[section].append(line)
+    if block is not None:
+        raise Error(f"{path}: {block_id} has no end of its metadata block")
+    return header, blocks, others, tail
+
+
+def renamed_block(block, old, new):
+    lines = [f"### {new}{block[0][len(f'### {old}'):]}"]
+    for line in block[1:]:
+        if line == f"<!-- METADATA({old}) -->":
+            line = f"<!-- METADATA({new}) -->"
+        elif line == f"<!-- /METADATA({old}) -->":
+            line = f"<!-- /METADATA({new}) -->"
+        lines.append(line)
+    return lines
+
+
+def cmd_merge(pr_url, first, second, output):
+    pr = checked_pr(pr_url)
+    out = os.path.normcase(os.path.abspath(output))
+    if out in {os.path.normcase(os.path.abspath(p)) for p in (first, second)}:
+        raise Error(f"the output {output} must differ from the documents it merges")
+    reviewed = []
+    for document in (first, second):
+        header, _ = checked_document(pr, document)
+        trust = [m.group(1) for m in map(TRUST_BULLET_RE.fullmatch, document_parts(document)[0])
+                 if m]
+        reviewed.append((header.get("head_sha"), header.get("merge_base"), header.get("branch"),
+                         trust))
+    if reviewed[0] != reviewed[1]:
+        raise Error(f"{first} and {second} do not review the same head, merge base, branch, "
+                    "and trust")
+    parts = [document_parts(document) for document in (first, second)]
+    header = list(parts[0][0])
+    while header and not header[-1].strip():
+        header.pop()
+    extra = [line for line in parts[1][0] if line.startswith("- **") and line not in header
+             and not (PR_BULLET_RE.fullmatch(line) or BRANCH_BULLET_RE.fullmatch(line)
+                      or TRUST_BULLET_RE.fullmatch(line))]
+    bullets = [i for i, line in enumerate(header) if line.startswith("- **")]
+    at = bullets[-1] + 1 if bullets else len(header)
+    lines = [*header[:at], *extra, *header[at:], ""]
+    ids, counts = [], {}
+    for prefix, severity in SEVERITIES.items():
+        lines += [f"## {severity}", ""]
+        merged = [(document, fid, block)
+                  for document, (_, blocks, _, _) in zip((first, second), parts)
+                  for fid, block in blocks[severity]]
+        counts[severity] = len(merged)
+        for n, (document, fid, block) in enumerate(merged, 1):
+            new = f"{prefix}-{n}"
+            ids.append({"id": new, "document": document, "was": fid})
+            lines += [*renamed_block(block, fid, new), "", "---", ""]
+        if not merged:
+            lines += [*(parts[0][2][severity] or parts[1][2][severity]), "", "---", ""]
+    for line in parts[0][3]:
+        count = COUNT_LINE_RE.fullmatch(line)
+        if count:
+            lines.append(f"{count.group(1)}{counts[count.group(2)]}{count.group(3)}")
+        elif line.startswith("#") or not line.strip() or line.strip() == "---":
+            lines.append(line)
+    with open(output, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines).rstrip("\n") + "\n")
+    return {"path": output, "findings": len(ids), "ids": ids}
+
+
 def verdict_label(draft, verdict, post=False):
     key = "post_verdict_labels" if post and "post_verdict_labels" in draft else "verdict_labels"
     labels = draft.get(key, {v: v for v in VERDICTS})
@@ -2220,6 +2331,7 @@ def parser():
     prior.add_argument("--document", required=True)
     prior.add_argument("--trust", action="store_true")
     command("since", "pr_url")
+    command("merge", "pr_url", "first", "second", "output")
     draft = command("draft", "pr_url", "tmp_dir", "document")
     draft.add_argument("--kind", required=True, choices=("review", "gate"))
     draft.add_argument("--lang", required=True, choices=sorted(LABELS))
@@ -2253,6 +2365,8 @@ def dispatch(args):
         return cmd_prior(args.pr_url, args.tmp_dir, args.kind, args.document, args.trust)
     if args.command == "since":
         return cmd_since(args.pr_url)
+    if args.command == "merge":
+        return cmd_merge(args.pr_url, args.first, args.second, args.output)
     if args.command == "draft":
         return cmd_draft(args.pr_url, args.tmp_dir, args.document, args.kind, args.lang,
                          args.prior_doc, args.blocking, args.force_comment, args.since)
