@@ -82,11 +82,12 @@ pr_body_path.
 since: finds the authenticated user's latest gate review outside pending and dismissed reviews, one
 whose visible body opens with the verdict heading post writes, and prints commit, the commit GitHub
 records it was made at, not a SHA its editable body shows, review_url, and head_sha. since is that
-commit when the pull request's head contains it and its base has not changed after that review,
-otherwise null, and fallback says why it is null: none, with no such review, not_ancestor, when the
-head does not contain the commit, as after a force push or a rebase, or base_changed, when the pull
-request's base branch was changed, force-pushed, or deleted after that review, so that its diff may
-hold commits no gate run reviewed.
+commit when the pull request's head contains it and its base has not changed since shortly before
+that review, otherwise null, and fallback says why it is null: none, with no such review,
+not_ancestor, when the head does not contain the commit, as after a force push or a rebase, or
+base_changed, when the pull request's base branch was changed, force-pushed, or deleted after that
+review or in the ten minutes before it was submitted, so that its diff may hold commits no gate run
+reviewed.
 
 merge: writes <output>, one review document from two of the pull request, <first> and <second>,
 which must name the same head, merge base, branch, and trust. It has the header of <first> with
@@ -123,7 +124,8 @@ A gate draft also has verdict_labels, the one-line words its verdict heading sho
 BLOCK, by default those, and may have post_verdict_labels, the same for what goes out, which
 takes verdict_labels' place there. --force-comment records force_comment, under which the review
 goes out as Comment, never Request Changes. --since, for a gate draft only, records since, the
-full SHA of the commit the review covered the changes from, which a line under the verdict names.
+full SHA of the commit the code stage covered the changes from, which a line under the verdict
+names.
 
 wording: merges every wording-*.json next to <json_path> into it: comment_lang, the
 language comments go out in, with, per finding, summary (the recommendation for people,
@@ -212,7 +214,7 @@ import re
 import subprocess
 import sys
 import time
-from collections import namedtuple
+from collections import Counter, namedtuple
 
 # A remote URL names its host and ends with the owner and repository, in URL form
 # (https://host/o/r.git, ssh://git@host:22/o/r) or scp form (git@host:o/r.git).
@@ -284,6 +286,9 @@ BATCH_CHARS = 40000
 CALLER_ERRORS = {"RATE_LIMITED", "FORBIDDEN", "INSUFFICIENT_SCOPES"}
 MERGEABLE_TRIES = 5
 MERGEABLE_WAIT = 3
+# post_review checks the base before adding the threads, so submitted_at trails that check.
+BASE_CHANGE_MARGIN = datetime.timedelta(minutes=10)
+TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 PR_QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
   viewer { login }
@@ -363,7 +368,9 @@ LABELS = {
         "out_of_diff": "Findings outside the diff",
         "gate": "Merge gate",
         "conflict": "The pull request has merge conflicts.",
-        "since": "This run reviewed only the changes since {sha}, which an earlier run reviewed.",
+        "since": ("This run reviewed the code only for the changes since {sha}, which an earlier"
+                  " run reviewed; the title, description, CI results, and conversation were"
+                  " checked against the whole diff."),
         "prior": "Earlier findings",
         "not_verified": "not verified",
         "waived": "waived by the reviewer",
@@ -388,7 +395,8 @@ LABELS = {
         "out_of_diff": "差分外の指摘",
         "gate": "マージゲート",
         "conflict": "プルリクエストにマージコンフリクトがあります。",
-        "since": "この回は、以前のゲート実行がレビューした {sha} 以降の変更のみをレビューしました。",
+        "since": ("この回のコードのレビューは、以前のゲート実行がレビューした {sha} 以降の変更のみを"
+                  "対象とし、タイトル、説明、CI の結果、会話は差分全体に照らして確認しました。"),
         "prior": "前回までの指摘",
         "not_verified": "未確認",
         "waived": "レビュアー判断により取り下げ",
@@ -1272,10 +1280,21 @@ def since_state(pr, view):
     fallback = None
     if not commit_on_pr(pr, commit, head):
         fallback = "not_ancestor"
-    elif base_changed_after(pr, latest.get("submitted_at") or ""):
+    elif base_changed_after(pr, base_check_time(latest.get("submitted_at"))):
         fallback = "base_changed"
     return {"since": None if fallback else commit, "commit": commit,
             "review_url": latest.get("html_url"), "head_sha": head, "fallback": fallback}
+
+
+def base_check_time(submitted_at):
+    """BASE_CHANGE_MARGIN before submitted_at, in its ISO 8601 UTC form, or "" when it has no
+    such form.
+    """
+    try:
+        moment = datetime.datetime.strptime(submitted_at or "", TIME_FORMAT)
+    except ValueError:
+        return ""
+    return (moment - BASE_CHANGE_MARGIN).strftime(TIME_FORMAT)
 
 
 def base_moved(pr, view, merge_base, since):
@@ -1441,11 +1460,18 @@ def document_parts(path):
     header, tail = [], []
     blocks = {severity: [] for severity in SEVERITIES.values()}
     others = {severity: [] for severity in SEVERITIES.values()}
+    last_open = {}
+    for index, line in enumerate(lines):
+        opened = METADATA_OPEN_RE.fullmatch(line)
+        if opened:
+            last_open[opened.group(1)] = index
     section, block, block_id = None, None, None
-    for line in lines:
+    for index, line in enumerate(lines):
         if block is not None:
             block.append(line)
-            if line == f"<!-- /METADATA({block_id}) -->":
+            # An end marker before the last start marker of its ID is quoted in the text.
+            if (line == f"<!-- /METADATA({block_id}) -->"
+                    and index > last_open.get(block_id, -1)):
                 blocks[section].append((block_id, block))
                 block = None
             continue
@@ -1524,9 +1550,10 @@ def cmd_merge(pr_url, first, second, output):
     out = os.path.normcase(os.path.abspath(output))
     if out in {os.path.normcase(os.path.abspath(p)) for p in (first, second)}:
         raise Error(f"the output {output} must differ from the documents it merges")
-    reviewed = []
+    reviewed, found = [], []
     for document in (first, second):
-        header, _ = checked_document(pr, document)
+        header, findings = checked_document(pr, document)
+        found.append([f["id"] for f in findings])
         trust = [m.group(1) for m in map(TRUST_BULLET_RE.fullmatch, document_parts(document)[0])
                  if m]
         reviewed.append((header.get("head_sha"), header.get("merge_base"), header.get("branch"),
@@ -1535,6 +1562,10 @@ def cmd_merge(pr_url, first, second, output):
         raise Error(f"{first} and {second} do not review the same head, merge base, branch, "
                     "and trust")
     parts = [document_parts(document) for document in (first, second)]
+    for document, ids, (_, blocks, _, _) in zip((first, second), found, parts):
+        lost = Counter(ids) - Counter(fid for kept in blocks.values() for fid, _ in kept)
+        if lost:
+            raise Error(f"{document}: {', '.join(lost)} is not under a severity section")
     header = list(parts[0][0])
     while header and not header[-1].strip():
         header.pop()
