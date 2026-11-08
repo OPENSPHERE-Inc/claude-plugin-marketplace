@@ -154,7 +154,9 @@ code cells, and QA gate as any other task, with these additions:
     tells its reader to read; it has no context of the run and can only read files.
   - A file with an item the sub-agent cannot answer fails the test and goes through a QA-fix
     cell, a coder's fix reviewed by a paired reviewer, before QA runs again.
-  - A retry tests again only the files that failed or were fixed, with the same checklist.
+  - A retry tests again the files that failed, were left untested, or were covered by a QA-fix
+    cell, and any prompt file not in the previous result; it reuses each file's checklist and
+    adds items only for what changed since the previous attempt.
   - A file the test could not be run on, for example because the sub-agent could not be
     launched, is reported as untested; it goes through no QA-fix cell, and the run does not pass
     the test.
