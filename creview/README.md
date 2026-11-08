@@ -93,6 +93,24 @@ can hide a change from the reviewers. For a submodule, the diff shows only its
 old and new commits, not the changes to the files inside it. A reviewer reads
 a text file that the diff shows as binary from the checked-out pull request.
 
+`--since {commit}` narrows a pull request review to the changes since that
+commit, given as its full SHA, which the pull request's head must contain.
+When the pull request merged its base branch since then, the diff starts from
+that commit with the base's changes merged in, so that it leaves out what the
+merge brought in and keeps how the pull request resolved a conflict and any
+base change the merge dropped. A file that the merge left conflicted without
+conflict markers, such as a binary file or one the base deleted, has its diff
+start from the base's version, or from no file when the base deleted it, so the
+diff also shows the pull request's earlier changes to that file. A file the
+base deleted thus shows as added in full. When the range changes no file, the
+description and CI reviewer described below still runs, unless `--code-only` is
+given.
+
+`--code-only` runs only the code reviewers, and `--pr-only` runs only the
+description and CI reviewer described below. With `--pr-only`, that reviewer
+reviews the pull request's whole diff, and `--since` cannot be given. Given
+together, the two options count as neither.
+
 - When HEAD is the pull request's head commit, the working tree is reviewed
   in place; uncommitted changes to tracked files stop the run with an error.
 - Otherwise the head commit is checked out, detached, in a temporary worktree
@@ -468,7 +486,7 @@ per (scope, reviewer) pair — so raise
 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
 session) when using a high `--max-rounds`. Sub-agents that run in parallel are
 launched at most 20 at a time, the default of
-`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`; the rest follow in later batches.
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`; the rest start as earlier ones finish.
 
 ## Reviewer / fixer agents
 

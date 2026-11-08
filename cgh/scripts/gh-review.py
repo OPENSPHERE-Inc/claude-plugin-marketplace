@@ -7,8 +7,10 @@ Usage:
     python3 gh-review.py collect <pr_url> <tmp_dir> --kind review|gate
     python3 gh-review.py prior <pr_url> <tmp_dir> --kind review|gate --document <path>
         [--trust]
+    python3 gh-review.py since <pr_url>
+    python3 gh-review.py merge <pr_url> <first> <second> <output>
     python3 gh-review.py draft <pr_url> <tmp_dir> <document> --kind review|gate --lang en|ja
-        [--prior-doc <path>] [--blocking <path>] [--force-comment]
+        [--prior-doc <path>] [--blocking <path>] [--force-comment] [--since <commit>]
     python3 gh-review.py wording <pr_url> <json_path>
     python3 gh-review.py comments <pr_url> <tmp_dir>
     python3 gh-review.py raised <pr_url> <tmp_dir> [--discussion]
@@ -77,8 +79,31 @@ no_problem the key, IDs, and why of those skipped as raising nothing. Also write
 <tmp_dir>/pr-body.json, the pull request's title and description, and prints its path in
 pr_body_path.
 
+since: finds the authenticated user's latest gate review outside pending and dismissed reviews, one
+whose visible body opens with the verdict heading post writes, and prints commit, the commit GitHub
+records it was made at, not a SHA its editable body shows, review_url, and head_sha. since is that
+commit when the pull request's head contains it and its base has not changed since shortly before
+that review, otherwise null, and fallback says why it is null: none, with no such review,
+not_ancestor, when the head does not contain the commit, as after a force push or a rebase, or
+base_changed, when the pull request's base branch was changed, force-pushed, or deleted after that
+review or in the ten minutes before it was submitted, so that its diff may hold commits no gate run
+reviewed.
+
+merge: writes <output>, one review document from two of the pull request, <first> and <second>,
+which must name the same head, merge base, branch, and trust. It has the header of <first> with
+every other bullet of <second>'s header, then, in each severity, the findings of <first> and then
+those of <second>, numbered anew from 1, with their text and metadata as they were. A severity
+with no finding keeps <first>'s text, or else <second>'s. Of what follows the findings, it keeps
+<first>'s headings and the count of each severity, made the sum of both. An ADR file a finding's
+estimate names just before its plan, next to its document, is copied once next to <output> as
+<output stem>-adr-<new ID>.md, with the estimates, the ADR's heading, and its Source line naming
+the new file, document, and ID. The new ID is that of the finding the ADR's file name names when
+that finding is merged, else that of the first finding that names it. Prints findings, the count,
+ids, each new ID with the document and the ID it had there, and adrs, the ADR files it wrote.
+
 draft: reads a review document of the pull request, with or without findings, which must
-still be at the document's head, and writes <tmp_dir>/draft.json: every finding, numbered after
+still be at the document's head and, for a gate draft, at its merge base, with --since still the
+commit since picks, and writes <tmp_dir>/draft.json: every finding, numbered after
 every ID finding-ids.json lists as used on the pull request, with the categories its heading
 brackets, which its comment shows, whether it is selected,
 and where it goes (inline: a line of the diff; file: a file of the diff; body: anywhere else).
@@ -99,7 +124,9 @@ severity: Critical and Major block. One still open with no mark is printed in bl
 A gate draft also has verdict_labels, the one-line words its verdict heading shows for PASS and
 BLOCK, by default those, and may have post_verdict_labels, the same for what goes out, which
 takes verdict_labels' place there. --force-comment records force_comment, under which the review
-goes out as Comment, never Request Changes.
+goes out as Comment, never Request Changes. --since, for a gate draft only, records since, the
+full SHA of the commit the code stage covered the changes from, which a line under the verdict
+names.
 
 wording: merges every wording-*.json next to <json_path> into it: comment_lang, the
 language comments go out in, with, per finding, summary (the recommendation for people,
@@ -154,8 +181,9 @@ records the verdict it shows as previewed_verdict.
 
 post: sends it. A review needs its wording and its head unchanged, is sent as one pending
 review, and cannot be sent twice. A gate draft also needs its verdict to match
-previewed_verdict, and gives BLOCK when a selected finding or an earlier finding still open is
-blocking, or the pull request has merge conflicts. When a call fails, the review's state decides:
+previewed_verdict, its merge base unchanged, and its since still the commit since picks, and gives
+BLOCK when a selected finding or an earlier finding still open is blocking, or the pull request has
+merge conflicts. When a call fails, the review's state decides:
 one that
 went out anyway counts as posted, one still pending is deleted, and with the state
 unknown the review counts as posted, so that a rerun cannot send it twice. The draft records the
@@ -187,7 +215,7 @@ import re
 import subprocess
 import sys
 import time
-from collections import namedtuple
+from collections import Counter, namedtuple
 
 # A remote URL names its host and ends with the owner and repository, in URL form
 # (https://host/o/r.git, ssh://git@host:22/o/r) or scp form (git@host:o/r.git).
@@ -204,13 +232,20 @@ PR_URL_RE = re.compile(
 )
 PR_BULLET_RE = re.compile(r"- \*\*PR:\*\* (\S+) \(head ([0-9a-f]+), base ([0-9a-f]+)\)")
 BRANCH_BULLET_RE = re.compile(r"- \*\*Branch:\*\* ([\w./+@-]+)")
+TRUST_BULLET_RE = re.compile(r"- \*\*Trust:\*\* (on|off)")
+SECTION_RE = re.compile(r"## (Critical|Major|Minor|Info)\s*")
+COUNT_LINE_RE = re.compile(r"(- \*\*(Critical|Major|Minor|Info):\*\*\s*)[0-9]+(.*)")
 BRANCH_NAME_RE = re.compile(r"\w[\w./+@-]*")
+COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 FINDING_ID = r"(?:C|M|mi|I)-[0-9]+"
 FINDING_ID_RE = re.compile(FINDING_ID)
 HEADING_RE = re.compile(rf"### ({FINDING_ID})\s+[—-]\s+`?([^`]*?)`?(?:\s+\[(.*)\])?\s*")
 FINDING_HEADING_RE = re.compile(rf"###\s+{FINDING_ID}")
 METADATA_OPEN_RE = re.compile(rf"<!-- METADATA\(({FINDING_ID})\) -->")
 METADATA_RE = re.compile(r"- \*\*(Triage|Estimate|Status|Verification):\*\* (.*)")
+ADR_SEGMENT_RE = re.compile(r"( — ADR: )(\S+)\Z")
+ADR_NAME_RE = re.compile(r"[^/\\:]+-adr-[^/\\:]+\.md")
+ADR_OWNER_RE = re.compile(rf"(.+)-adr-({FINDING_ID})\.md")
 LABEL_LINE_RE = re.compile(r"\*\*[^*]+[:：]\*\*\s*")
 PLAN_ITEM_RE = re.compile(r"(?:^|\s)\([0-9]+\)\s+")
 LOCATION_RE = re.compile(r"(.+?):([0-9]+)(?:[-–,].*)?")
@@ -253,6 +288,9 @@ BATCH_CHARS = 40000
 CALLER_ERRORS = {"RATE_LIMITED", "FORBIDDEN", "INSUFFICIENT_SCOPES"}
 MERGEABLE_TRIES = 5
 MERGEABLE_WAIT = 3
+# post_review checks the base before adding the threads, so submitted_at trails that check.
+BASE_CHANGE_MARGIN = datetime.timedelta(minutes=10)
+TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 PR_QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
   viewer { login }
@@ -299,6 +337,25 @@ query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   }
 }
 """
+BASE_CHANGES = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      timelineItems(first: 100, itemTypes: [BASE_REF_CHANGED_EVENT, BASE_REF_FORCE_PUSHED_EVENT,
+                                            BASE_REF_DELETED_EVENT,
+                                            AUTOMATIC_BASE_CHANGE_SUCCEEDED_EVENT]) {
+        nodes {
+          ... on BaseRefChangedEvent { createdAt }
+          ... on BaseRefForcePushedEvent { createdAt }
+          ... on BaseRefDeletedEvent { createdAt }
+          ... on AutomaticBaseChangeSucceededEvent { createdAt }
+        }
+        pageInfo { hasNextPage }
+      }
+    }
+  }
+}
+"""
 DELETE_REVIEW = """
 mutation($input: DeletePullRequestReviewInput!) {
   deletePullRequestReview(input: $input) { clientMutationId }
@@ -313,6 +370,9 @@ LABELS = {
         "out_of_diff": "Findings outside the diff",
         "gate": "Merge gate",
         "conflict": "The pull request has merge conflicts.",
+        "since": ("This run reviewed the code only for the changes since {sha}, which an earlier"
+                  " run reviewed; the title, description, CI results, and conversation were"
+                  " checked against the whole diff."),
         "prior": "Earlier findings",
         "not_verified": "not verified",
         "waived": "waived by the reviewer",
@@ -337,6 +397,8 @@ LABELS = {
         "out_of_diff": "差分外の指摘",
         "gate": "マージゲート",
         "conflict": "プルリクエストにマージコンフリクトがあります。",
+        "since": ("この回のコードのレビューは、以前のゲート実行がレビューした {sha} 以降の変更のみを"
+                  "対象とし、タイトル、説明、CI の結果、会話は差分全体に照らして確認しました。"),
         "prior": "前回までの指摘",
         "not_verified": "未確認",
         "waived": "レビュアー判断により取り下げ",
@@ -356,6 +418,8 @@ LABELS = {
 }
 BLOCKING_WORDS = {labels[name]: name == "blocking" for labels in LABELS.values()
                   for name in ("blocking", "non_blocking")}
+# The verdict heading review_body writes at the start of a gate review's body.
+GATE_HEADINGS = tuple(f"## {labels['gate']}:" for labels in LABELS.values())
 # What finding_block and the result lines of review_body write at the start of a line.
 BLOCKING_MARK_RE = re.compile(
     rf"^(?:\*\*(?:{'|'.join(SEVERITIES.values())}) |- [✅💬➖] \*\*)({FINDING_ID})\*\* · "
@@ -1197,6 +1261,57 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
     }
 
 
+def cmd_since(pr_url):
+    pr = checked_pr(pr_url)
+    return since_state(pr, view_pr(pr))
+
+
+def since_state(pr, view):
+    reviews = rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/reviews")
+    gates = [r for r in reviews
+             if comment_author(r) == view["viewer"]
+             and r.get("state") not in ("PENDING", "DISMISSED")
+             and visible_body(r).startswith(GATE_HEADINGS)
+             and COMMIT_RE.fullmatch(r.get("commit_id") or "")]
+    head = view["headRefOid"]
+    if not gates:
+        return {"since": None, "commit": None, "review_url": None, "head_sha": head,
+                "fallback": "none"}
+    latest = by_time(gates)[-1]
+    commit = latest["commit_id"]
+    fallback = None
+    if not commit_on_pr(pr, commit, head):
+        fallback = "not_ancestor"
+    elif base_changed_after(pr, base_check_time(latest.get("submitted_at"))):
+        fallback = "base_changed"
+    return {"since": None if fallback else commit, "commit": commit,
+            "review_url": latest.get("html_url"), "head_sha": head, "fallback": fallback}
+
+
+def base_check_time(submitted_at):
+    """BASE_CHANGE_MARGIN before submitted_at, in its ISO 8601 UTC form, or "" when it has no
+    such form.
+    """
+    try:
+        moment = datetime.datetime.strptime(submitted_at or "", TIME_FORMAT)
+    except ValueError:
+        return ""
+    return (moment - BASE_CHANGE_MARGIN).strftime(TIME_FORMAT)
+
+
+def base_moved(pr, view, merge_base, since):
+    now = merge_base_of(pr, view)
+    if now != merge_base:
+        return f"its merge base moved from {merge_base} to {now}"
+    if since and since_state(pr, view)["since"] != since:
+        return f"the base branch changed after the gate review at {since}"
+    return None
+
+
+def base_moved_error(reason):
+    return Error(f"the pull request's base changed since the review: {reason}; run the skill again")
+
+
 def changed_files(pr):
     return {f["filename"]: diff_lines(f.get("patch"))
             for f in rest_pages(pr, f"repos/{pr.repo}/pulls/{pr.number}/files")}
@@ -1276,13 +1391,19 @@ def prior_states(pr, prior_doc, head, earlier, blocking):
 
 
 def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=None,
-              force_comment=False):
+              force_comment=False, since=None):
     pr = checked_pr(pr_url)
+    if since is not None and (kind != "gate" or not COMMIT_RE.fullmatch(since)):
+        raise Error(f"--since takes the full SHA of a commit, for a gate draft only: {since}")
     header, findings = checked_document(pr, document)
     view = view_pr(pr)
     if view["headRefOid"] != header.get("head_sha"):
         raise Error(f"the pull request moved past the reviewed head {header.get('head_sha')} "
                     f"to {view['headRefOid']}; run the skill again")
+    gate = kind == "gate"
+    moved = gate and base_moved(pr, view, header.get("merge_base"), since)
+    if moved:
+        raise base_moved_error(moved)
     _, used = known_ids(tmp_dir)
     marks = earlier_blocking(tmp_dir)
     prior, unchanged = prior_states(pr, prior_doc, view["headRefOid"], earlier_verified(tmp_dir),
@@ -1293,7 +1414,6 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
     files = changed_files(pr)
     entries = []
     labels = labels_for(lang)
-    gate = kind == "gate"
     for finding in findings:
         prefix, _, n = finding["id"].rpartition("-")
         base = numbers.get(prefix, 0)
@@ -1310,8 +1430,10 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
         })
     write_json(os.path.join(tmp_dir, "draft.json"), {
         "url": pr.url, "head_sha": view["headRefOid"], "kind": kind, "lang": lang,
+        **({"merge_base": header.get("merge_base")} if gate else {}),
         **({"verdict_labels": {v: v for v in VERDICTS}} if gate else {}),
         **({"force_comment": True} if force_comment else {}),
+        **({"since": since} if since else {}),
         "findings": entries, "prior": prior, "waived": earlier_waived(tmp_dir), "posted": False,
     })
     selected = [e for e in entries if e["selected"]]
@@ -1328,6 +1450,176 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
         "by_placement": {p: sum(e["placement"] == p for e in selected)
                          for p in ("inline", "file", "body")},
     }
+
+
+def document_parts(path):
+    """A review document's header lines, finding blocks and other text by severity, and tail."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = [line.rstrip() for line in f.read().split("\n")]
+    except OSError as e:
+        raise Error(f"cannot read {path}: {e}") from None
+    header, tail = [], []
+    blocks = {severity: [] for severity in SEVERITIES.values()}
+    others = {severity: [] for severity in SEVERITIES.values()}
+    last_open = {}
+    for index, line in enumerate(lines):
+        opened = METADATA_OPEN_RE.fullmatch(line)
+        if opened:
+            last_open[opened.group(1)] = index
+    section, block, block_id = None, None, None
+    for index, line in enumerate(lines):
+        if block is not None:
+            block.append(line)
+            # An end marker before the last start marker of its ID is quoted in the text.
+            if (line == f"<!-- /METADATA({block_id}) -->"
+                    and index > last_open.get(block_id, -1)):
+                blocks[section].append((block_id, block))
+                block = None
+            continue
+        if line.startswith("## "):
+            named = SECTION_RE.fullmatch(line)
+            section = named.group(1) if named else "tail"
+        if section is None:
+            header.append(line)
+        elif section == "tail":
+            tail.append(line)
+        elif not line.startswith("## "):
+            heading = HEADING_RE.fullmatch(line)
+            if heading:
+                block_id = heading.group(1)
+                if severity_of(block_id) != section:
+                    raise Error(f"{path}: {block_id} is under {section}")
+                block = [line]
+            elif line.strip() and line.strip() != "---":
+                others[section].append(line)
+    if block is not None:
+        raise Error(f"{path}: {block_id} has no end of its metadata block")
+    return header, blocks, others, tail
+
+
+def renamed_block(block, old, new):
+    lines = [f"### {new}{block[0][len(f'### {old}'):]}"]
+    for line in block[1:]:
+        if line == f"<!-- METADATA({old}) -->":
+            line = f"<!-- METADATA({new}) -->"
+        elif line == f"<!-- /METADATA({old}) -->":
+            line = f"<!-- /METADATA({new}) -->"
+        lines.append(line)
+    return lines
+
+
+def adr_renamed(block, document, old, new, stem, adrs, owners):
+    """The block with the ADR its estimate names before the plan renamed, noted in adrs.
+
+    The ADR takes the new ID of the finding its file name names when owners, the merged findings
+    by their document and former ID, have it, else that of the first finding that names it.
+    """
+    start = max((i for i, line in enumerate(block) if line == f"<!-- METADATA({new}) -->"),
+                default=len(block))
+
+    def renamed(match):
+        name = match.group(2)
+        source = os.path.join(os.path.dirname(os.path.abspath(document)), name)
+        key = os.path.normcase(source)
+        if key not in adrs:
+            if (not ADR_NAME_RE.fullmatch(name) or os.path.islink(source)
+                    or not os.path.isfile(source)):
+                raise Error(f"{document}: {old} names the ADR {name}, which is not a file next "
+                            "to it")
+            named = ADR_OWNER_RE.fullmatch(name)
+            owner = named and owners.get((os.path.normcase(os.path.join(
+                os.path.dirname(source), f"{named.group(1)}.md")), named.group(2)))
+            owner = owner or {"id": new, "document": document, "was": old}
+            adr = {"source": source, "name": f"{stem}-adr-{owner['id']}.md", **owner}
+            if any(other["name"] == adr["name"] for other in adrs.values()):
+                raise Error(f"{document}: {old} names the ADR {name}, whose copy would take the "
+                            f"name {adr['name']} of another ADR's copy")
+            adrs[key] = adr
+        return match.group(1) + adrs[key]["name"]
+
+    def estimate(line):
+        head, plan, rest = line.partition(" — Plan: ")
+        return ADR_SEGMENT_RE.sub(renamed, head, count=1) + plan + rest if plan else line
+
+    return [*block[:start], *(estimate(line) if line.startswith("- **Estimate:** ") else line
+                              for line in block[start:])]
+
+
+def copied_adr(adr, output):
+    path = os.path.join(os.path.dirname(os.path.abspath(output)), adr["name"])
+    try:
+        with open(adr["source"], encoding="utf-8", newline="") as f:
+            text = f.read()
+        text = text.replace(f"# ADR: {adr['was']} — ", f"# ADR: {adr['id']} — ", 1)
+        text = text.replace(f"- **Source:** {os.path.basename(adr['document'])} / {adr['was']}",
+                            f"- **Source:** {os.path.basename(output)} / {adr['id']}", 1)
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+    except OSError as e:
+        raise Error(f"cannot copy the ADR {adr['source']} to {path}: {e}") from None
+    return path
+
+
+def cmd_merge(pr_url, first, second, output):
+    pr = checked_pr(pr_url)
+    out = os.path.normcase(os.path.abspath(output))
+    if out in {os.path.normcase(os.path.abspath(p)) for p in (first, second)}:
+        raise Error(f"the output {output} must differ from the documents it merges")
+    reviewed, found = [], []
+    for document in (first, second):
+        header, findings = checked_document(pr, document)
+        found.append([f["id"] for f in findings])
+        trust = [m.group(1) for m in map(TRUST_BULLET_RE.fullmatch, document_parts(document)[0])
+                 if m]
+        reviewed.append((header.get("head_sha"), header.get("merge_base"), header.get("branch"),
+                         trust))
+    if reviewed[0] != reviewed[1]:
+        raise Error(f"{first} and {second} do not review the same head, merge base, branch, "
+                    "and trust")
+    parts = [document_parts(document) for document in (first, second)]
+    for document, ids, (_, blocks, _, _) in zip((first, second), found, parts):
+        lost = Counter(ids) - Counter(fid for kept in blocks.values() for fid, _ in kept)
+        if lost:
+            raise Error(f"{document}: {', '.join(lost)} is not under a severity section")
+    header = list(parts[0][0])
+    while header and not header[-1].strip():
+        header.pop()
+    extra = [line for line in parts[1][0] if line.startswith("- **") and line not in header
+             and not (PR_BULLET_RE.fullmatch(line) or BRANCH_BULLET_RE.fullmatch(line)
+                      or TRUST_BULLET_RE.fullmatch(line))]
+    bullets = [i for i, line in enumerate(header) if line.startswith("- **")]
+    at = bullets[-1] + 1 if bullets else len(header)
+    lines = [*header[:at], *extra, *header[at:], ""]
+    merged = {}
+    for prefix, severity in SEVERITIES.items():
+        found = [(document, fid, block)
+                 for document, (_, blocks, _, _) in zip((first, second), parts)
+                 for fid, block in blocks[severity]]
+        merged[severity] = [(f"{prefix}-{n}", *entry) for n, entry in enumerate(found, 1)]
+    ids = [{"id": new, "document": document, "was": fid}
+           for found in merged.values() for new, document, fid, _ in found]
+    owners = {(os.path.normcase(os.path.abspath(i["document"])), i["was"]): i for i in ids}
+    adrs = {}
+    stem = os.path.splitext(os.path.basename(output))[0]
+    for severity, found in merged.items():
+        lines += [f"## {severity}", ""]
+        for new, document, fid, block in found:
+            lines += [*adr_renamed(renamed_block(block, fid, new), document, fid, new, stem, adrs,
+                                   owners),
+                      "", "---", ""]
+        if not found:
+            lines += [*(parts[0][2][severity] or parts[1][2][severity]), "", "---", ""]
+    for line in parts[0][3]:
+        count = COUNT_LINE_RE.fullmatch(line)
+        if count:
+            lines.append(f"{count.group(1)}{len(merged[count.group(2)])}{count.group(3)}")
+        elif line.startswith("#") or not line.strip() or line.strip() == "---":
+            lines.append(line)
+    with open(output, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines).rstrip("\n") + "\n")
+    return {"path": output, "findings": len(ids), "ids": ids,
+            "adrs": [copied_adr(adr, output) for adr in adrs.values()]}
 
 
 def verdict_label(draft, verdict, post=False):
@@ -1378,6 +1670,8 @@ def review_body(draft, plan, body_findings, post):
     if plan["verdict"]:
         label = plan["post_label"] if post else plan["label"]
         lines += [f"## {labels['gate']}: {label}", "", short, ""]
+        if draft.get("since"):
+            lines += [labels["since"].format(sha=draft["since"][:SHORT_SHA]), ""]
         if plan["conflict"]:
             lines += [labels["conflict"], ""]
         overview = (post and draft.get("post_overview")) or draft.get("overview")
@@ -1713,6 +2007,10 @@ def post_review(pr, path, draft):
     if view["headRefOid"] != draft["head_sha"]:
         raise Error(f"the pull request moved past the reviewed head {draft['head_sha']} to "
                     f"{view['headRefOid']}; run the skill again")
+    moved = draft["kind"] == "gate" and base_moved(pr, view, draft.get("merge_base"),
+                                                   draft.get("since"))
+    if moved:
+        raise base_moved_error(moved)
     plan = review_plan(draft, view)
     if not plan["selected"] and draft["kind"] != "gate":
         raise Error("no finding is selected")
@@ -1876,6 +2174,16 @@ def post_replies(pr, path, data):
         write_json(path, data)
         urls.append(confirm_reply(pr, entry, sent, answered, body, viewer) if sent else url)
     return {"posted": len(urls), "urls": urls, "confirmed": len(urls)}
+
+
+def base_changed_after(pr, moment):
+    """Whether the base branch was changed, force-pushed, or deleted at or after moment, an ISO 8601
+    UTC timestamp, counting a timeline too long for one page as changed.
+    """
+    data = graphql(pr, BASE_CHANGES, owner=pr.owner, name=pr.name, number=pr.number)
+    events = data["repository"]["pullRequest"]["timelineItems"]
+    return (events["pageInfo"]["hasNextPage"]
+            or any(node["createdAt"] >= moment for node in events["nodes"]))
 
 
 def commit_on_pr(pr, sha, head):
@@ -2119,12 +2427,15 @@ def parser():
     prior.add_argument("--kind", required=True, choices=("review", "gate"))
     prior.add_argument("--document", required=True)
     prior.add_argument("--trust", action="store_true")
+    command("since", "pr_url")
+    command("merge", "pr_url", "first", "second", "output")
     draft = command("draft", "pr_url", "tmp_dir", "document")
     draft.add_argument("--kind", required=True, choices=("review", "gate"))
     draft.add_argument("--lang", required=True, choices=sorted(LABELS))
     draft.add_argument("--prior-doc")
     draft.add_argument("--blocking")
     draft.add_argument("--force-comment", action="store_true")
+    draft.add_argument("--since")
     command("wording", "pr_url", "path")
     command("comments", "pr_url", "tmp_dir")
     raised = command("raised", "pr_url", "tmp_dir")
@@ -2149,9 +2460,13 @@ def dispatch(args):
         return cmd_collect(args.pr_url, args.tmp_dir, args.kind)
     if args.command == "prior":
         return cmd_prior(args.pr_url, args.tmp_dir, args.kind, args.document, args.trust)
+    if args.command == "since":
+        return cmd_since(args.pr_url)
+    if args.command == "merge":
+        return cmd_merge(args.pr_url, args.first, args.second, args.output)
     if args.command == "draft":
         return cmd_draft(args.pr_url, args.tmp_dir, args.document, args.kind, args.lang,
-                         args.prior_doc, args.blocking, args.force_comment)
+                         args.prior_doc, args.blocking, args.force_comment, args.since)
     if args.command == "wording":
         return cmd_wording(args.pr_url, args.path)
     if args.command == "comments":

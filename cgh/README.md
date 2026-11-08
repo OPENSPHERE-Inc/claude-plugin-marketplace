@@ -8,7 +8,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 
 ## Requirements
 
-- The `creview` plugin, version 0.18.1 or later, which Claude Code installs with `cgh` as a
+- The `creview` plugin, version 0.19.0 or later, which Claude Code installs with `cgh` as a
   dependency, and what it needs for a pull request: an authenticated GitHub CLI (`gh`), Git 2.41
   or later, `python3` (3.9 or later) on the `PATH`, and a clone with the pull request's
   repository as a remote. The skills refuse a pull request of any other repository.
@@ -24,7 +24,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 | Command | Purpose | Options |
 |---------|---------|---------|
 | `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial`, `--trust`, `--adr`, `--force-comment` |
-| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust`, `--adr`, `--force-comment` |
+| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust`, `--adr`, `--force-comment`, `--incremental` |
 | `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | `--no-confirm`, `--trust`, `--adr` |
 | `/cgh:resolve` | Verify the findings you raised, posted by `/cgh:review` or written by hand, and reply with the result. | `--trust` |
 
@@ -60,16 +60,31 @@ wrong about the problem's cause, location, or effect.
 
 ### `/cgh:gate`
 
-A merge gate for code that has already been self-reviewed. It looks only for broken code,
-regressions of existing behavior, changes the review could not read, and work left undone with
-no issue recording it: a `TODO` in the code, an open item in the description, or a follow-up the
-description or a code comment promises. Nice-to-have tests, refactoring, and style are not
-findings. A residue that names an issue or a pull request counts as recorded. A conversation
-comment does not record one. The focus is in [rules/gate-focus.md](rules/gate-focus.md).
+A merge gate for code that has already been self-reviewed. It reviews the pull request in two
+stages, one after the other, each with `/creview:start` and `/creview:triage`, and then merges the
+two review documents into one, with the pull request stage's findings first.
 
-It also reads every comment on the pull request, including threads marked resolved on GitHub. What
-a discussion concludes has to end up in the code or the description, or be tracked in an issue or
-ticket that the description, a code comment, or a comment by the author, an assignee, or you names.
+- The pull request stage reviews the title, description, CI results, and conversation against the
+  pull request's whole diff. It looks only for a changed line that makes a check fail, a claim of
+  the title or description that the change does not bear out, an open item or a promised follow-up
+  in the description with no issue recording it, and the unsettled discussions below. The focus is
+  in [rules/gate-focus-pr.md](rules/gate-focus-pr.md).
+- The code stage reviews the code. It looks only for broken code, regressions of existing
+  behavior, changes the review could not read, and work left undone in the code with no issue
+  recording it, such as a `TODO` or a follow-up a code comment promises. It does not raise again
+  a problem the pull request stage reports as a failed check or an unsettled discussion. It
+  still raises a problem in the code that the pull request stage reports only as a claim of the
+  title or description or an open item in the description, since editing the title or
+  description settles those findings. The focus is in
+  [rules/gate-focus-code.md](rules/gate-focus-code.md).
+
+Nice-to-have tests, refactoring, and style are not findings. A residue that names an issue or a
+pull request counts as recorded. A conversation comment does not record one.
+
+The pull request stage reads every comment on the pull request, including threads marked resolved
+on GitHub. What a discussion concludes has to end up in the code or the description, or be
+tracked in an issue or ticket that the description, a code comment, or a comment by the author,
+an assignee, or you names.
 For a security problem, only a tracking issue named by the author or an assignee counts. Any other
 comment records nothing.
 
@@ -93,8 +108,12 @@ Severity and blocking are separate. Critical, Major, and Minor say only how bad 
 consequence is. After triage, each finding is judged blocking or non-blocking on its own, and each
 posted comment shows which, next to its severity:
 
-- Work left undone with no issue, an unsettled discussion, and a change the review could not read
-  always block. An unchecked item in the description is typically Minor and blocking.
+- Work left undone with no issue, an unsettled discussion, a claim of the title or description
+  that the code contradicts, and a change the review could not read always block.
+  - An unchecked item in the description, or a test count the description has not caught up
+    with, is typically Minor and blocking.
+  - A contradicted claim blocks even when its problem would not block under the points below,
+    such as a deferred bug or a README that lacks what the description says it covers.
 - A security problem blocks unless the author or an assignee deferred it explicitly, in the
   description, by naming a tracking issue, or, for a decider, by a decline.
 - A decline in a comment alone normally leaves an unsettled discussion, which blocks until the
@@ -116,7 +135,34 @@ pull request again. To accept an earlier finding without a fix, tell the skill t
 later runs do not report it again. Earlier findings already verified are checked again: one that
 still holds is left out of the review body, and one that no longer holds counts as unverified
 again. An open item in the description is verified from the description: it is resolved once the item is
-gone or names an issue or a pull request.
+gone or names an issue or a pull request. A claim of the title or description is verified from the
+code and the description: it is resolved once the code does what the claim says or the title and
+description no longer make the claim. A finding about a failed check or an unsettled discussion is
+not resolved by taking a claim out of the description.
+
+With `--incremental`, the code stage reviews only the commits added since your latest gate review
+on the pull request, from the commit GitHub records for that review to the head. The review body
+names that commit, so that a reader knows a PASS did not cover the whole code again. Everything
+else runs as without it: the pull request stage reviews the title, description, CI results, and
+conversation against the whole diff, and the earlier gate findings are verified at the current
+head.
+
+- With no gate review of yours on the pull request, when its head no longer contains that
+  commit, as after a force push or a rebase, or when its base branch was changed, force-pushed,
+  or deleted after that review or in the ten minutes before it, the code stage reviews the whole
+  diff, and the skill says why.
+- A dismissed gate review does not count: after you dismiss the latest one, the next run starts
+  from the one before it, or the code stage reviews the whole diff when there is none.
+- When the pull request merged its base branch since then, what the merge brought in is left out,
+  while how the pull request resolved a conflict and any base change the merge dropped are
+  reviewed.
+  - A file that the merge left conflicted without conflict markers, such as a binary file, is
+    reviewed from the base's version, so the pull request's earlier changes to that file are
+    reviewed as well.
+    - A file the base deleted has no base version, so the whole file is reviewed, including code
+      before that commit.
+- The code stage does not review code before that commit again: a problem an earlier run let
+  through, or one you chose not to post, is not raised again.
 
 ### `/cgh:respond`
 
@@ -204,7 +250,8 @@ Passed to `/creview:triage`, it lets the estimate record design decisions as ADR
 the review document. They stay local and are not posted. With `/cgh:respond`, the confirmation
 after the triage names them so that you can edit them before the fixes, and `/creview:respond`
 reads them. `--no-confirm` skips that chance. `/cgh:respond` also passes `--adr` to
-`/creview:respond`, so that a design decision made while fixing gets an ADR file too.
+`/creview:respond`, so that a design decision made while fixing gets an ADR file too. With
+`/cgh:gate`, they go next to the merged review document, named after its finding IDs.
 
 ## How state is kept
 
@@ -242,7 +289,8 @@ The state lives on the pull request, so a later run needs nothing from an earlie
 - When the pull request moves between the review and the post, the skill refuses to post, and
   you run it again: the findings' line numbers belong to the reviewed head.
 - `/cgh:gate` waits for GitHub to compute whether the pull request merges, and refuses to post
-  when GitHub does not finish, or when the verdict has changed since the preview.
+  when GitHub does not finish, when the verdict has changed since the preview, or when the pull
+  request's base has changed since the review.
 - `/cgh:gate` and `/cgh:resolve` stop when there are earlier findings to check
   and HEAD holds commits the pull request does not have, or uncommitted changes at its head: the
   result would describe code the pull request does not contain.

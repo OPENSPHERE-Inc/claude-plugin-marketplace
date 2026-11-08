@@ -10,6 +10,8 @@ SKILL が `{skill}` の値と `plugin_root` 変数を指定する。
 
 `{tmp_dir}` を作成する前に、シンボリックリンクの `.claude` を拒否する `{{plugin_root}}/scripts/del-tmp.sh --dry '{tmp_dir}'` を実行し、非ゼロ終了の場合はそのエラーを表示してスキルを終了する。`mkdir -p '{tmp_dir}'` で作成する。
 
+起動したエージェントのうち同時に実行中のものは、ランタイムのデフォルト上限（`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`）である 20 体までとする: それを超える分は、起動したエージェントが終わるたびに起動する。その上限で拒否された起動は、起動したエージェントのいずれかが終わってから起動し直す。起動したエージェントが 1 体も実行中でないときに拒否された場合は、そのエラーで中断する。
+
 ## creview スキルの実行
 
 SKILL が指定する引数で Skill ツールから起動する。ユーザーが直接起動したときと同じくそのリーダーとして最終ステップまで実行し、SKILL の次のステップに進む: creview スキルの締めの報告でこのスキルは終わらない。SKILL が指定するオーバーライドを、SKILL が指定する起動プロンプトの「ラウンド固有のオーバーライド」セクションに追加する。creview スキルが中断した、または起動できないときは中断する。creview スキルの実行中、`plugin_root`、`{tmp_dir}`、`{document_path}`、`{timestamp}` はそのスキルが確定した値とする。SKILL の次のステップからは、SKILL と § セットアップ が確定した値とし、SKILL が置き換えを指定していればその値とする。
@@ -83,4 +85,4 @@ SKILL が `{json_path}` と `post` のオプションを指定する。
 
 ## 終了と中断
 
-終了または中断するときは、`{{plugin_root}}/scripts/del-tmp.sh '{tmp_dir}'` で `{tmp_dir}` を削除し、`{document_path}` が存在すればそれを、creview スキルの報告が追加した内容とともに報告する。
+終了または中断するときは、`{{plugin_root}}/scripts/del-tmp.sh '{tmp_dir}'` で `{tmp_dir}` を削除し、`{document_path}` が存在すればそれを、creview スキルの報告が追加した内容のうち `{tmp_dir}` 配下のパス以外とともに報告する。

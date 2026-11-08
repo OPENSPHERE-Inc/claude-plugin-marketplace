@@ -184,6 +184,9 @@ class FakeGitHub:
         self.ssh_config = ""
         self.compare_status = {}
         self.mergeable = []
+        self.base_events = []
+        self.more_base_events = False
+        self.merge_base = BASE
 
     def __call__(self, cmd, input=None, **_):
         self.calls.append(cmd)
@@ -247,7 +250,7 @@ class FakeGitHub:
             status = self.compare_status.get(path.rsplit("/", 1)[1].split("...")[0], "ahead")
             if isinstance(status, Exception):
                 raise status
-            return {"status": status, "merge_base_commit": {"sha": BASE}}
+            return {"status": status, "merge_base_commit": {"sha": self.merge_base}}
         query = dict(re.findall(r"[?&](\w+)=([0-9]+)", path))
         page, size = int(query.get("page", 1)), int(query.get("per_page", mod.PAGE_SIZE))
         for tail, items in (("/files", FILES), ("/pulls/7/reviews", self.reviews),
@@ -262,6 +265,8 @@ class FakeGitHub:
         if "mutation" not in query:
             if "reviewThreads" in query:
                 return self.review_threads(variables.get("cursor"))
+            if "timelineItems" in query:
+                return self.timeline(query)
             if "node(" not in query:
                 if self.mergeable:
                     pull = self.view["data"]["repository"]["pullRequest"]
@@ -311,6 +316,23 @@ class FakeGitHub:
     def named(self, name):
         return [v["input"] for q, v in self.mutations if name + "(" in q]
 
+    def timeline(self, query):
+        """Answers the base_events of the item types the query asks for. An event is a createdAt of
+        a BASE_REF_CHANGED_EVENT or an (item type, createdAt) pair, and its node has createdAt only
+        when the query has a fragment for its type, as GitHub answers.
+        """
+        asked = re.search(r"itemTypes:\s*\[([^\]]*)\]", query).group(1).replace(",", " ").split()
+        nodes = []
+        for event in self.base_events:
+            kind, at = ("BASE_REF_CHANGED_EVENT", event) if isinstance(event, str) else event
+            if kind not in asked:
+                continue
+            name = "".join(word.capitalize() for word in kind.split("_"))
+            fragment = rf"\.\.\.\s*on\s+{name}\s*\{{\s*createdAt\s*\}}"
+            nodes.append({"createdAt": at} if re.search(fragment, query) else {})
+        return json.dumps({"data": {"repository": {"pullRequest": {"timelineItems": {
+            "nodes": nodes, "pageInfo": {"hasNextPage": self.more_base_events}}}}}})
+
     def review_threads(self, cursor):
         """Answers two threads a page, from `threads`, a list of (isResolved, first comment ID)."""
         start = int(cursor or 0)
@@ -338,9 +360,10 @@ class Base(unittest.TestCase):
         mod.run = gh
         return gh
 
-    def draft(self, kind="review", lang="ja", prior_doc=None, blocking=None, force_comment=False):
+    def draft(self, kind="review", lang="ja", prior_doc=None, blocking=None, force_comment=False,
+              since=None):
         result = mod.cmd_draft(URL, self.dir, self.doc, kind, lang, prior_doc, blocking,
-                               force_comment)
+                               force_comment, since)
         with open(os.path.join(self.dir, "draft.json"), encoding="utf-8") as f:
             draft = json.load(f)
         draft["comment_lang"] = lang
@@ -2440,6 +2463,198 @@ class GateRecheck(Base):
         self.assertIn("✅ **M-7**", gh.named("submitPullRequestReview")[0]["body"])
 
 
+EARLIER = "e" * 40
+
+
+def gate_review(rid, commit=EARLIER, login="me", state="CHANGES_REQUESTED",
+                body="## Merge gate: BLOCK\n\neeeeeeeeee", submitted="2026-11-01T00:00:00Z"):
+    return {"id": rid, "user": {"login": login}, "state": state, "body": body,
+            "commit_id": commit, "submitted_at": submitted,
+            "html_url": f"{URL}#pullrequestreview-{rid}"}
+
+
+class Since(Base):
+    def since(self, *reviews, base_events=(), more=False, **status):
+        gh = self.fake()
+        gh.reviews = list(reviews)
+        gh.compare_status.update(status)
+        gh.base_events = list(base_events)
+        gh.more_base_events = more
+        return mod.cmd_since(URL)
+
+    def test_no_gate_review_reviews_the_whole_diff(self):
+        result = self.since()
+        self.assertEqual((result["since"], result["commit"], result["fallback"]),
+                         (None, None, "none"))
+        self.assertEqual(result["head_sha"], HEAD)
+
+    def test_the_latest_gate_review_of_yours_gives_its_commit(self):
+        older, newer = "1" * 40, "2" * 40
+        result = self.since(
+            gate_review(1, older, submitted="2026-11-01T00:00:00Z"),
+            gate_review(3, "3" * 40, login="other", submitted="2026-11-04T00:00:00Z"),
+            gate_review(2, newer, submitted="2026-11-03T00:00:00Z",
+                        body="## マージゲート: PASS\n\n2222222222", state="COMMENTED"),
+            gate_review(4, "4" * 40, body="Findings: Major 1", submitted="2026-11-05T00:00:00Z"),
+            gate_review(5, "5" * 40, state="DISMISSED", submitted="2026-11-06T00:00:00Z"),
+            gate_review(6, "6" * 40, state="PENDING", submitted=None))
+        self.assertEqual((result["since"], result["commit"], result["fallback"]),
+                         (newer, newer, None))
+        self.assertEqual(result["review_url"], f"{URL}#pullrequestreview-2")
+
+    def test_the_commit_comes_from_the_api_not_the_body(self):
+        result = self.since(gate_review(1, body=f"## Merge gate: PASS\n\n{'9' * 40}"))
+        self.assertEqual(result["since"], EARLIER)
+
+    def test_a_heading_hidden_in_an_html_comment_is_no_gate_review(self):
+        hidden = "<!--\n## Merge gate: BLOCK\n-->\nLooks fine."
+        self.assertEqual(self.since(gate_review(1, body=hidden))["fallback"], "none")
+
+    def test_a_review_with_no_commit_is_skipped(self):
+        for commit in (None, "", "main", "E" * 40):
+            with self.subTest(commit=commit):
+                self.assertEqual(self.since(gate_review(1, commit))["fallback"], "none")
+
+    def test_a_commit_the_head_does_not_contain_falls_back(self):
+        for status in ("diverged", "behind", mod.Error("gh: Not Found (HTTP 404)")):
+            with self.subTest(status=status):
+                result = self.since(gate_review(1), **{EARLIER: status})
+                self.assertEqual((result["since"], result["commit"], result["fallback"]),
+                                 (None, EARLIER, "not_ancestor"))
+
+    def test_another_compare_failure_is_an_error(self):
+        with self.assertRaisesRegex(mod.Error, "rate limited"):
+            self.since(gate_review(1), **{EARLIER: mod.Error("rate limited")})
+
+    def test_a_gate_review_at_the_head_gives_the_head(self):
+        result = self.since(gate_review(1, HEAD))
+        self.assertEqual((result["since"], result["fallback"]), (HEAD, None))
+
+    def test_a_base_change_after_the_review_falls_back(self):
+        for at in ("2026-11-01T00:00:00Z", "2026-11-02T08:00:00Z"):
+            for commit in (EARLIER, HEAD):
+                with self.subTest(at=at, commit=commit):
+                    result = self.since(gate_review(1, commit),
+                                        base_events=["2026-10-30T00:00:00Z", at])
+                    self.assertEqual((result["since"], result["commit"], result["fallback"]),
+                                     (None, commit, "base_changed"))
+                    self.assertEqual(result["head_sha"], HEAD)
+
+    def test_a_base_change_before_the_review_keeps_its_commit(self):
+        result = self.since(gate_review(1), base_events=["2026-10-31T23:49:59Z"])
+        self.assertEqual((result["since"], result["fallback"]), (EARLIER, None))
+
+    def test_a_base_change_shortly_before_the_review_falls_back(self):
+        for at in ("2026-10-31T23:50:00Z", "2026-10-31T23:55:00Z"):
+            with self.subTest(at=at):
+                result = self.since(gate_review(1), base_events=[at])
+                self.assertEqual((result["since"], result["fallback"]), (None, "base_changed"))
+
+    def test_a_review_with_no_readable_time_counts_any_base_change(self):
+        for submitted in (None, "", "yesterday", "2026-11-01"):
+            with self.subTest(submitted=submitted):
+                result = self.since(gate_review(1, submitted=submitted),
+                                    base_events=["2020-01-01T00:00:00Z"])
+                self.assertEqual((result["since"], result["fallback"]), (None, "base_changed"))
+
+    def test_each_kind_of_base_change_falls_back(self):
+        for kind in ("BASE_REF_CHANGED_EVENT", "BASE_REF_FORCE_PUSHED_EVENT",
+                     "BASE_REF_DELETED_EVENT", "AUTOMATIC_BASE_CHANGE_SUCCEEDED_EVENT"):
+            with self.subTest(kind=kind):
+                result = self.since(gate_review(1), base_events=[(kind, "2026-11-02T00:00:00Z")])
+                self.assertEqual((result["since"], result["fallback"]), (None, "base_changed"))
+
+    def test_a_timeline_past_one_page_counts_as_a_base_change(self):
+        result = self.since(gate_review(1), base_events=["2026-10-30T00:00:00Z"], more=True)
+        self.assertEqual((result["since"], result["fallback"]), (None, "base_changed"))
+
+    def test_a_commit_the_head_does_not_contain_falls_back_before_the_base(self):
+        result = self.since(gate_review(1), base_events=["2026-11-02T00:00:00Z"],
+                            **{EARLIER: "diverged"})
+        self.assertEqual((result["since"], result["commit"], result["fallback"]),
+                         (None, EARLIER, "not_ancestor"))
+
+    def test_a_closed_pull_request_is_refused(self):
+        gh = self.fake(state="MERGED")
+        gh.reviews = [gate_review(1)]
+        with self.assertRaisesRegex(mod.Error, "not open"):
+            mod.cmd_since(URL)
+
+
+class SinceDraft(Base):
+    def test_the_body_names_the_commit_the_review_started_from(self):
+        gh = self.fake()
+        gh.reviews = [gate_review(1)]
+        _, draft = self.draft("gate", "en", since=EARLIER)
+        self.assertEqual(draft["since"], EARLIER)
+        for f in draft["findings"]:
+            f["selected"] = False
+        draft["comment_lang"] = "ja"
+        path = self.save(draft)
+        result, text = self.preview(path)
+        line = mod.LABELS["en"]["since"].format(sha=EARLIER[:mod.SHORT_SHA])
+        self.assertIn(f"{HEAD[:mod.SHORT_SHA]}\n\n{line}\n", text)
+        posted = read_text(result["post_preview_path"])
+        self.assertIn(mod.LABELS["ja"]["since"].format(sha=EARLIER[:mod.SHORT_SHA]), posted)
+        mod.cmd_post(URL, path, None)
+        body = gh.named("submitPullRequestReview")[0]["body"]
+        self.assertIn(mod.LABELS["ja"]["since"].format(sha=EARLIER[:mod.SHORT_SHA]), body)
+
+    def test_without_since_the_body_names_no_commit(self):
+        self.fake()
+        _, draft = self.draft("gate", "en")
+        self.assertNotIn("since", draft)
+        _, text = self.preview(self.save(draft))
+        self.assertNotIn(mod.LABELS["en"]["since"].split("{sha}")[0], text)
+
+    def test_since_is_refused_outside_a_gate_draft_or_off_a_commit(self):
+        for kind, since in (("review", EARLIER), ("gate", "main"), ("gate", EARLIER[:10])):
+            with self.subTest(kind=kind, since=since):
+                self.fake()
+                with self.assertRaisesRegex(mod.Error, "--since"):
+                    self.draft(kind, "en", since=since)
+
+    def previewed_gate(self, gh, since=None):
+        """The path of a gate draft with nothing selected, previewed."""
+        _, draft = self.draft("gate", "en", since=since)
+        for f in draft["findings"]:
+            f["selected"] = False
+        path = self.save(draft)
+        self.preview(path)
+        return path
+
+    def test_a_gate_draft_off_the_documents_merge_base_is_refused(self):
+        gh = self.fake()
+        gh.merge_base = "d" * 40
+        with self.assertRaisesRegex(mod.Error, "base changed since the review"):
+            mod.cmd_draft(URL, self.dir, self.doc, "gate", "en", None)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "draft.json")))
+
+    def test_a_merge_base_moved_after_the_gate_draft_is_refused_at_post(self):
+        gh = self.fake()
+        path = self.previewed_gate(gh)
+        gh.merge_base = "d" * 40
+        with self.assertRaisesRegex(mod.Error, "base changed since the review"):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.mutations, [])
+
+    def test_a_base_change_after_an_incremental_gate_draft_is_refused_at_post(self):
+        gh = self.fake()
+        gh.reviews = [gate_review(1)]
+        path = self.previewed_gate(gh, since=EARLIER)
+        gh.base_events = ["2026-11-02T00:00:00Z"]
+        with self.assertRaisesRegex(mod.Error, "base changed since the review"):
+            mod.cmd_post(URL, path, None)
+        self.assertEqual(gh.mutations, [])
+
+    def test_a_review_draft_posts_after_its_merge_base_moved(self):
+        gh = self.fake()
+        self.draft()
+        gh.merge_base = "d" * 40
+        mod.cmd_post(URL, os.path.join(self.dir, "draft.json"), None)
+        self.assertEqual(len(gh.named("addPullRequestReview")), 1)
+
+
 class PostedContext(PriorBase):
     ROOT = 4432283150
 
@@ -4348,6 +4563,361 @@ class Remote(Base):
             mod.checked_pr(URL)
 
 
+PR_STAGE = f"""# Parallel Code Review Report
+
+- **Date:** 2026-11-08
+- **PR:** {URL} (head {HEAD}, base {BASE})
+- **Branch:** feature
+- **Trust:** on
+- **Scope:** PR #7
+- **Reviewers:** creview:pr-description-reviewer
+
+## Critical
+
+No findings
+
+---
+
+## Major
+
+### M-1 — `PR` [Documentation]
+
+- **Reviewers:** pr-description-reviewer
+
+**Finding:**
+
+The description claims a fix the diff does not make.
+
+<!-- METADATA(M-1) -->
+- **Triage:** 🔧 Will Fix (assignee: doc) — valid
+<!-- /METADATA(M-1) -->
+
+---
+
+## Minor
+
+No findings
+
+---
+
+## Info
+
+No findings
+
+---
+
+## Summary
+
+- **Critical:** 0
+- **Major:** 1
+- **Minor:** 0
+- **Info:** 0
+- **Total:** 1 finding from 1 reviewer
+"""
+
+CODE_STAGE = f"""# Parallel Code Review Report
+
+- **Date:** 2026-11-08
+- **Mode:** adversarial
+- **PR:** {URL} (head {HEAD}, base {BASE})
+- **Branch:** feature
+- **Trust:** on
+- **Scope:** PR #7, changes since {"c" * 40}
+- **Reviewers:** a, b
+
+## Critical
+
+No findings
+
+---
+
+## Major
+
+### M-1 — `src/a.py:10` [Bug]
+
+- **Reviewers:** a
+
+**Finding:**
+
+Unlike M-1 of the other review, this breaks the caller.
+
+### A heading quoted in the text
+
+<!-- METADATA(M-1) -->
+- **Triage:** 🔧 Will Fix (assignee: py) — valid
+- **Estimate:** ▶️ Maintain — Cost: S, Future: S, Signals: none — Plan: (1) src/a.py:10 — fix
+<!-- /METADATA(M-1) -->
+
+---
+
+## Minor
+
+### mi-1 — `src/b.py:2` [Style]
+
+**Finding:**
+
+A leftover TODO.
+
+<!-- METADATA(mi-1) -->
+- **Triage:** 🔧 Will Fix (assignee: py) — valid
+<!-- /METADATA(mi-1) -->
+
+---
+
+### mi-2 — `src/b.py:3`
+
+**Finding:**
+
+Low value.
+
+<!-- METADATA(mi-2) -->
+- **Triage:** 🚫 Won't Fix — not a gate concern
+<!-- /METADATA(mi-2) -->
+
+---
+
+## Info
+
+No findings
+
+---
+
+## Summary
+
+- **Critical:** 0
+- **Major:** 1
+- **Minor:** 2
+- **Info:** 0
+- **Total:** 3 findings from 2 reviewers
+"""
+
+
+class Merge(Base):
+    def setUp(self):
+        super().setUp()
+        self.fake()
+        self.first = self.write("pr.md", PR_STAGE)
+        self.second = self.write("code.md", CODE_STAGE)
+        self.out = os.path.join(self.dir, "merged.md")
+
+    def write(self, name, text):
+        path = os.path.join(self.dir, name)
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        return path
+
+    def merge(self):
+        return mod.cmd_merge(URL, self.first, self.second, self.out)
+
+    def test_numbers_the_findings_of_both_documents_in_order(self):
+        result = self.merge()
+        header, findings = mod.parse_document(self.out)
+        self.assertEqual([f["id"] for f in findings], ["M-1", "M-2", "mi-1", "mi-2"])
+        self.assertEqual([f["location"] for f in findings],
+                         ["PR", "src/a.py:10", "src/b.py:2", "src/b.py:3"])
+        self.assertEqual(findings[1]["metadata"]["Estimate"],
+                         "▶️ Maintain — Cost: S, Future: S, Signals: none — Plan: "
+                         "(1) src/a.py:10 — fix")
+        self.assertEqual(findings[3]["metadata"]["Triage"], "🚫 Won't Fix — not a gate concern")
+        self.assertEqual(header["head_sha"], HEAD)
+        self.assertEqual(result["findings"], 4)
+        self.assertEqual(result["ids"], [
+            {"id": "M-1", "document": self.first, "was": "M-1"},
+            {"id": "M-2", "document": self.second, "was": "M-1"},
+            {"id": "mi-1", "document": self.second, "was": "mi-1"},
+            {"id": "mi-2", "document": self.second, "was": "mi-2"},
+        ])
+
+    def test_keeps_the_text_of_each_finding_as_it_was(self):
+        self.merge()
+        findings = mod.parse_document(self.out)[1]
+        self.assertEqual(findings[1]["text"],
+                         "Unlike M-1 of the other review, this breaks the caller.\n\n"
+                         "### A heading quoted in the text")
+        merged = read_text(self.out)
+        self.assertIn("<!-- METADATA(M-2) -->", merged)
+        self.assertIn("<!-- /METADATA(M-2) -->", merged)
+        self.assertEqual(merged.count("<!-- METADATA(M-1) -->"), 1)
+
+    def test_holds_the_header_bullets_of_both_once(self):
+        self.merge()
+        merged = read_text(self.out)
+        header = merged.split("\n## ")[0].split("\n")
+        self.assertEqual(header[0], "# Parallel Code Review Report")
+        for bullet in (f"- **PR:** {URL} (head {HEAD}, base {BASE})", "- **Branch:** feature",
+                       "- **Trust:** on", "- **Date:** 2026-11-08"):
+            self.assertEqual(header.count(bullet), 1, bullet)
+        self.assertIn("- **Scope:** PR #7", header)
+        self.assertIn(f"- **Scope:** PR #7, changes since {'c' * 40}", header)
+        self.assertIn("- **Reviewers:** creview:pr-description-reviewer", header)
+        self.assertIn("- **Reviewers:** a, b", header)
+        self.assertIn("- **Mode:** adversarial", header)
+        self.assertLess(header.index("- **Trust:** on"), header.index("- **Scope:** PR #7"))
+
+    def test_counts_both_documents_in_the_summary(self):
+        self.merge()
+        summary = read_text(self.out).split("## Summary")[1]
+        for line in ("- **Critical:** 0", "- **Major:** 2", "- **Minor:** 2", "- **Info:** 0"):
+            self.assertIn(line, summary)
+        self.assertNotIn("Total", summary)
+
+    def test_a_section_with_no_finding_keeps_its_text(self):
+        self.merge()
+        critical = read_text(self.out).split("## Critical")[1].split("## Major")[0]
+        self.assertIn("No findings", critical)
+        self.assertNotIn("###", critical)
+        major = read_text(self.out).split("## Major")[1].split("## Minor")[0]
+        self.assertNotIn("No findings", major)
+
+    def test_documents_with_no_finding_merge(self):
+        empty = re.sub(r"### M-1.*?<!-- /METADATA\(M-1\) -->\n\n---\n\n", "No findings\n\n---\n\n",
+                       PR_STAGE, flags=re.S)
+        self.first = self.write("pr.md", empty)
+        result = self.merge()
+        self.assertEqual([i["was"] for i in result["ids"]], ["M-1", "mi-1", "mi-2"])
+        self.assertEqual([f["id"] for f in mod.parse_document(self.out)[1]],
+                         ["M-1", "mi-1", "mi-2"])
+
+    def test_refuses_documents_that_name_another_head_branch_or_trust(self):
+        for old, new in ((f"head {HEAD}", f"head {'d' * 40}"),
+                         ("- **Branch:** feature", "- **Branch:** other"),
+                         ("- **Trust:** on", "- **Trust:** off")):
+            self.second = self.write("code.md", CODE_STAGE.replace(old, new))
+            with self.assertRaisesRegex(mod.Error, "do not review the same"):
+                self.merge()
+            self.assertFalse(os.path.exists(self.out))
+
+    def test_refuses_a_document_of_another_pull_request(self):
+        self.second = self.write("code.md", CODE_STAGE.replace(URL, URL[:-1] + "8"))
+        with self.assertRaisesRegex(mod.Error, "is not a review document of"):
+            self.merge()
+
+    def test_refuses_a_finding_under_another_severity(self):
+        self.second = self.write("code.md", CODE_STAGE.replace("## Minor", "## Info", 1))
+        with self.assertRaisesRegex(mod.Error, "mi-1 is under Info"):
+            self.merge()
+
+    def test_refuses_a_finding_under_a_heading_that_names_no_severity(self):
+        for heading, first, second, lost in (
+                ("## Major (1)", PR_STAGE.replace("## Major", "## Major (1)"), CODE_STAGE, "M-1"),
+                ("## Minor（軽微）", PR_STAGE, CODE_STAGE.replace("## Minor", "## Minor（軽微）"),
+                 "mi-1, mi-2"),
+                ("##  Minor", PR_STAGE, CODE_STAGE.replace("## Minor", "##  Minor"),
+                 "mi-1, mi-2")):
+            with self.subTest(heading=heading):
+                self.first = self.write("pr.md", first)
+                self.second = self.write("code.md", second)
+                with self.assertRaisesRegex(mod.Error, f"{lost} is not under a severity section"):
+                    self.merge()
+                self.assertFalse(os.path.exists(self.out))
+
+    def test_keeps_the_metadata_after_its_end_marker_quoted_in_the_text(self):
+        for quote in ("- **Triage:** 🚫 Won't Fix — quoted\n<!-- /METADATA(M-1) -->",
+                      "<!-- METADATA(M-1) -->\n- **Triage:** 🚫 Won't Fix — quoted\n"
+                      "<!-- /METADATA(M-1) -->"):
+            with self.subTest(quote=quote):
+                self.second = self.write("code.md", CODE_STAGE.replace(
+                    "### A heading quoted in the text", quote))
+                self.merge()
+                metadata = mod.parse_document(self.out)[1][1]["metadata"]
+                self.assertEqual(metadata["Triage"], "🔧 Will Fix (assignee: py) — valid")
+                self.assertEqual(metadata["Estimate"],
+                                 "▶️ Maintain — Cost: S, Future: S, Signals: none — Plan: "
+                                 "(1) src/a.py:10 — fix")
+
+    def test_refuses_an_output_that_is_an_input(self):
+        self.out = self.second
+        with self.assertRaisesRegex(mod.Error, "must differ from"):
+            self.merge()
+        self.assertEqual(read_text(self.second), CODE_STAGE)
+
+    def with_adr(self, name, text=None):
+        stage = os.path.join(self.dir, "stage")
+        os.makedirs(stage, exist_ok=True)
+        self.first = self.write(os.path.join("stage", "pr.md"), PR_STAGE)
+        self.second = self.write(os.path.join("stage", "code.md"), CODE_STAGE.replace(
+            "Signals: none — Plan:", f"Signals: none — ADR: {name} — Plan:"))
+        if text is not None:
+            self.write(os.path.join("stage", name), text)
+
+    def test_carries_an_adr_over_next_to_the_output_under_the_new_id(self):
+        self.with_adr("code-adr-M-1.md",
+                      "# ADR: M-1 — Fix the caller\r\n\r\n- **Source:** code.md / M-1\r\n")
+        result = self.merge()
+        path = os.path.join(self.dir, "merged-adr-M-2.md")
+        self.assertEqual(result["adrs"], [path])
+        with open(path, encoding="utf-8", newline="") as f:
+            self.assertEqual(f.read(),
+                             "# ADR: M-2 — Fix the caller\r\n\r\n- **Source:** merged.md / M-2\r\n")
+        self.assertEqual(mod.parse_document(self.out)[1][1]["metadata"]["Estimate"],
+                         "▶️ Maintain — Cost: S, Future: S, Signals: none — ADR: merged-adr-M-2.md"
+                         " — Plan: (1) src/a.py:10 — fix")
+
+    def test_refuses_an_adr_that_is_not_a_file_next_to_its_document(self):
+        for name, text in (("code-adr-M-1.md", None), ("../code-adr-M-1.md", "# ADR: M-1\n"),
+                           ("notes.md", "# ADR: M-1\n")):
+            self.with_adr(name, text)
+            with self.assertRaisesRegex(mod.Error, f"M-1 names the ADR {re.escape(name)}"):
+                self.merge()
+            self.assertFalse(os.path.exists(self.out))
+
+    def test_leaves_an_adr_named_in_the_finding_text_alone(self):
+        quoted = "- **Estimate:** ▶️ Maintain — ADR: ../../x-adr-M-1.md — Plan: (1) a"
+        self.second = self.write("code.md", CODE_STAGE.replace(
+            "### A heading quoted in the text", quoted))
+        result = self.merge()
+        self.assertEqual(result["adrs"], [])
+        self.assertIn(quoted, read_text(self.out))
+
+    def test_renames_only_the_adr_segment_just_before_the_plan(self):
+        estimate = "▶️ Maintain — Cost: S, Future: S, Signals: none — Plan: (1) src/a.py:10 — fix"
+        items = " (2) src/a.py:12 — ADR: x-adr-M-9.md — Plan: の順 (3) src/a.py:14 — ADR: 記録"
+        self.write("code-adr-M-1.md", "# ADR: M-1 — Fix\n")
+        for segment, copied in (("", []), (" — ADR: code-adr-M-1.md", ["merged-adr-M-2.md"])):
+            with self.subTest(segment=segment):
+                named = estimate.replace(" — Plan:", f"{segment} — Plan:", 1) + items
+                self.second = self.write("code.md", CODE_STAGE.replace(estimate, named))
+                result = self.merge()
+                self.assertEqual(result["adrs"], [os.path.join(self.dir, n) for n in copied])
+                self.assertEqual(mod.parse_document(self.out)[1][1]["metadata"]["Estimate"],
+                                 named.replace("code-adr-M-1.md", "merged-adr-M-2.md"))
+
+    def with_pr_adr(self, name):
+        self.first = self.write(os.path.join("stage", "pr.md"), PR_STAGE.replace(
+            "— valid\n<!-- /METADATA(M-1) -->",
+            "— valid\n- **Estimate:** ▶️ Maintain — Cost: S, Future: S, Signals: none — "
+            f"ADR: {name} — Plan: (1) PR — say so\n<!-- /METADATA(M-1) -->"))
+
+    def test_names_a_shared_adr_after_the_finding_its_file_name_names(self):
+        self.with_adr("code-adr-M-1.md",
+                      "# ADR: M-1 — Fix the caller\n\n- **Source:** code.md / M-1\n")
+        self.with_pr_adr("code-adr-M-1.md")
+        result = self.merge()
+        path = os.path.join(self.dir, "merged-adr-M-2.md")
+        self.assertEqual(result["adrs"], [path])
+        self.assertEqual(read_text(path),
+                         "# ADR: M-2 — Fix the caller\n\n- **Source:** merged.md / M-2\n")
+        for finding in mod.parse_document(self.out)[1][:2]:
+            self.assertIn(" — ADR: merged-adr-M-2.md — Plan: ", finding["metadata"]["Estimate"])
+
+    def test_names_an_adr_of_no_merged_finding_after_the_first_that_names_it(self):
+        for name in ("review-adr-M-1.md", "code-adr-M-7.md"):
+            with self.subTest(name=name):
+                self.with_adr(name, "# ADR: M-5 — Fix the caller\n")
+                result = self.merge()
+                self.assertEqual(result["adrs"], [os.path.join(self.dir, "merged-adr-M-2.md")])
+                self.assertIn(" — ADR: merged-adr-M-2.md — Plan: ",
+                              mod.parse_document(self.out)[1][1]["metadata"]["Estimate"])
+
+    def test_refuses_two_adrs_that_would_take_one_name(self):
+        self.with_adr("review-adr-M-1.md", "# ADR: M-1 — Fix the caller\n")
+        self.write(os.path.join("stage", "code-adr-M-1.md"), "# ADR: M-1 — Fix the caller\n")
+        self.with_pr_adr("code-adr-M-1.md")
+        with self.assertRaisesRegex(mod.Error, "review-adr-M-1.md, .*merged-adr-M-2.md"):
+            self.merge()
+        self.assertFalse(os.path.exists(self.out))
+
+
 class ReplyTemplate(unittest.TestCase):
     def test_a_declined_finding_opens_with_the_fixed_phrase(self):
         self.assertIn("`Not making this change.`", read_text(os.path.join(
@@ -4372,13 +4942,17 @@ class Cli(unittest.TestCase):
             (["prior", URL, "t", "--kind", "gate", "--document", "d", "--trust"], "cmd_prior",
              (URL, "t", "gate", "d", True)),
             (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--prior-doc", "p"],
-             "cmd_draft", (URL, "t", "d", "gate", "ja", "p", None, False)),
+             "cmd_draft", (URL, "t", "d", "gate", "ja", "p", None, False, None)),
             (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--blocking", "b"],
-             "cmd_draft", (URL, "t", "d", "gate", "ja", None, "b", False)),
+             "cmd_draft", (URL, "t", "d", "gate", "ja", None, "b", False, None)),
             (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--force-comment"],
-             "cmd_draft", (URL, "t", "d", "gate", "ja", None, None, True)),
+             "cmd_draft", (URL, "t", "d", "gate", "ja", None, None, True, None)),
+            (["draft", URL, "t", "d", "--kind", "gate", "--lang", "ja", "--since", "s"],
+             "cmd_draft", (URL, "t", "d", "gate", "ja", None, None, False, "s")),
             (["draft", URL, "t", "d", "--kind", "review", "--lang", "en"], "cmd_draft",
-             (URL, "t", "d", "review", "en", None, None, False)),
+             (URL, "t", "d", "review", "en", None, None, False, None)),
+            (["since", URL], "cmd_since", (URL,)),
+            (["merge", URL, "a", "b", "o"], "cmd_merge", (URL, "a", "b", "o")),
             (["wording", URL, "j"], "cmd_wording", (URL, "j")),
             (["comments", URL, "t"], "cmd_comments", (URL, "t")),
             (["raised", URL, "t"], "cmd_raised", (URL, "t", False)),

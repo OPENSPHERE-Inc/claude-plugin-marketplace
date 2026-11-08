@@ -1,6 +1,6 @@
 {
   "name": "cgh",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "GitHub pull request workflow on top of creview: post a triaged review, run a merge gate until it passes, answer posted reviews with fixes, and verify the fixes of your own review. Nothing is posted without the user's instruction, and the plugin never approves or merges. Requires the creview plugin and an authenticated GitHub CLI (gh).",
   "author": {
     "name": "OPENSPHERE Inc.",
@@ -17,6 +17,6 @@
     "workflow"
   ],
   "dependencies": [
-    { "name": "creview", "version": ">=0.18.1" }
+    { "name": "creview", "version": ">=0.19.0" }
   ]
 }
