@@ -8,7 +8,7 @@ cdev の teammate が、あるタスク（例: ビルド / テストエラーを
 
 1. プロジェクトスコープ: `.claude/agents/**/*.md`（起動プロンプトが `(none)` 以外の `main_root` を渡した場合はそれを基準、それ以外は `{{target_dir}}` 基準）
 2. ユーザースコープ: `~/.claude/agents/**/*.md`
-3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`
+3. プラグイン同梱: `{{plugin_root}}/agents/**/*.md`。ただし、スキルが名前を指定して起動する固定役割のエージェント `prompt-tester` は除く
 
 ## 選定
 

@@ -1,14 +1,15 @@
 # Teammate Common Rules
 
-Common rules that teammates of the cdev `coding` skill (architect, coder, reviewer, comment-sensei, dev-helper) observe.
+Common rules that teammates of the cdev `coding` skill (architect, coder, reviewer, comment-sensei, prompt-sensei, dev-helper) observe.
 
 ## Prohibitions
 
 - **Work target and write scope**: `{{target_dir}}` is the work target and your current working directory. Resolve repository-relative paths (from the task specification, a finding, or a diff) against it. Use the paths your task gives as variables (the run's working-directory files, design documents, and output paths) in the form given; resolve a relative one against `{{target_dir}}` as well. Run Bash commands in it and never leave it with a bare `cd`; reach another directory through the command's own option (e.g. `make -C dir`), or through a subshell where your template allows compound commands. Write only under `{{target_dir}}` and to the files outside it that your task tells you to write (the run's working-directory files and its output paths). Every other path is read-only: the main working tree included, an absolute path outside `{{target_dir}}` that the task or a reference document names is a reference only. A path is under `{{target_dir}}` only when it begins with `{{target_dir}}` followed by a separator and has no `..` component. When comparing, treat `\` and `/` as the same separator and ignore the case of a drive letter; apply no other normalization (do not resolve `..` or symbolic links). When a path you would write is neither under `{{target_dir}}` nor a file your task tells you to write, do not write it; report it to whoever assigned the task.
 - **Output scope / source editing**: A teammate writes only to the target its task assigns:
   - Architect: the design-document section file the task assigns (markdown). No source-code edits.
-  - Coder: source code (implementation, plus fixes for QA / review / comment feedback) within its assigned scope.
+  - Coder: source code (implementation, plus fixes for QA / review / comment feedback) within its assigned scope and the template files the prompt teammate externalized from it.
   - Comment-review teammate (comment-sensei): comment-only edits in source files; no logic changes.
+  - Prompt teammate (prompt-sensei): self-check fixes and compression in the AI-facing prompt files a coder's request names, the template files externalized from them, and the interpretation-test result file; no other source edits.
   - QA teammate (dev-helper): format / build / test commands and formatter auto-fixes only; no manual source edits.
   - Reviewers: Read-only on sources and design; they do not edit.
 - **Inherited scope**: An agent a teammate launches is bound by the same restrictions as that teammate. It is not in the leader's roster, so before reporting its own task complete, the teammate that launched it stops it if it is still running — `TaskStop` with its name or agentId, without waiting for a reply. A launched agent reports to its parent (the launching teammate), never to the leader. Pass your own name at launch to receive its reports by `SendMessage`, or pass no name and receive the result via the Agent call's return value. The launching teammate itself reports to the leader.
@@ -33,7 +34,7 @@ Communicate via `SendMessage`. Destination terms and resolution:
 
 ## Coding Conventions
 
-When editing source code, follow `comment.md` in the same directory as this file. When writing or editing human-facing documentation (including design documents), follow `document.md` in the same directory as this file. Resolve these siblings relative to the absolute path you Read this file from.
+When editing source code, follow `comment.md` in the same directory as this file. When writing or editing an AI-facing prompt file, follow `prompt.md` in the same directory as this file. When writing or editing human-facing documentation (including design documents), follow `document.md` in the same directory as this file. Resolve these siblings relative to the absolute path you Read this file from.
 
 ## Team conventions
 

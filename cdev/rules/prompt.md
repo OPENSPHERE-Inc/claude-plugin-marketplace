@@ -1,6 +1,6 @@
 # Prompt Discipline
 
-When writing or modifying AI-facing prompts (agent definitions, skills, commands, rules, etc.), follow these rules.
+When writing or modifying AI-facing prompts, follow these rules. An AI-facing prompt is a file an AI agent reads as its instructions, and only these kinds: agent definitions, skills (SKILL.md), slash commands, rules, and the prompt templates a skill has an agent Read. Project memory files such as CLAUDE.md / AGENTS.md (documentation humans read as well, governed by [document.md](document.md)), an externalized Markdown output template (the skeleton an agent fills), and a prompt string embedded in source code are not AI-facing prompts.
 
 These rules do not apply to human-facing documentation (README, API references, design docs, etc.). Human-facing documentation is governed by [document.md](document.md).
 
@@ -58,6 +58,11 @@ WHY explanations come in two kinds. Keep the first; remove the second.
 - As a rule, do not use tables. Replace them with bullet lists.
   - Exception: When specifying an output format for the AI, showing a table as an output example is acceptable.
 - Use emphasis (`**` and `*`) only for genuinely important points. Overuse dilutes the meaning.
+
+## Embedded prompts and output templates
+
+- Write a prompt embedded in a triple-backtick code block for the Agent tool as plain text: no headings, tables, or emphasis (`**` / `*` / `__`). Bullet lists for genuine enumerations and code / JSON snippets are allowed. Write placeholders the caller fills as `{...}`.
+- In a skill (its SKILL.md and the templates it has an agent Read), do not embed a Markdown output template (the skeleton of the Markdown a prompt has an agent produce) in a code block. Put it in its own file under the skill's `templates/` and leave in the body only its path and who Reads it. An agent definition, slash command, or rule outside a skill keeps its output template embedded, since Claude Code loads a file placed beside it (under `agents/`, `commands/`, or `.claude/rules/`) as one more agent, command, or rule. Input-format examples and non-Markdown formats (JSONL, JSON, command lines) may stay embedded.
 
 ## Eliminating context dependence
 

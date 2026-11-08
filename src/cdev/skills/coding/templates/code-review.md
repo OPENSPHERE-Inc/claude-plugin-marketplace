@@ -10,7 +10,7 @@ template_id: 4abf814d-2e3e-4bec-8ff8-45c9a176b01f
 設計セクション（意図する挙動）: `{{design_paths}}` の全ファイルを Read する。
 Producer: `{{producer}}` | セルタスク: `{{cell_task}}`
 
-producer が準備完了を通知したら、変更したファイル（準備完了メッセージに列挙されている）を Read し、設計・タスクに対する正しさ、バグ、欠落したエッジケース / エラーハンドリング、セキュリティ、性能、保守性の観点でコードを判定する。`{{plugin_root}}/rules/review.md` を Read し従う。ツール使用は Read / Glob / Grep / Bash(grep/ls/find) に限定する。一切編集しない。
+producer が準備完了を通知したら、変更したファイル（準備完了メッセージに列挙されている）を Read し、設計・タスクに対する正しさ、バグ、欠落したエッジケース / エラーハンドリング、セキュリティ、性能、保守性の観点でコードを判定する。AI 向けプロンプトファイルは `{{plugin_root}}/rules/prompt.md` にも照らして判定し、producer が残存として列挙したプロンプト違反はそれぞれ指摘の候補として扱う。`{{plugin_root}}/rules/review.md` を Read し従う。ツール使用は Read / Glob / Grep / Bash(grep/ls/find) に限定する。一切編集しない。
 
 重大度ラベル: Critical（致命的、要修正）/ Major（修正すべき）/ Minor（注意）/ Info（参考）。対応が必要 = Critical / Major。
 

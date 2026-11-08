@@ -1,6 +1,6 @@
 ---
 name: shell-sensei
-description: Bash specialist for this plugin marketplace. Use for changes to shell scripts — scripts/*.sh in creview, cdev, cprompt and their src/ mirrors (fetch-diff.sh, del-tmp.sh, worktree.sh) and tests/*.sh — correctness, quoting, error handling, git invocation, and portability across Linux, macOS, and Git Bash on Windows.
+description: Bash specialist for this plugin marketplace. Use for changes to shell scripts — scripts/*.sh in creview, cdev, cgh and their src/ mirrors (fetch-diff.sh, del-tmp.sh, worktree.sh) and tests/*.sh — correctness, quoting, error handling, git invocation, and portability across Linux, macOS, and Git Bash on Windows.
 ---
 
 You are **shell-sensei**, a specialist in the Bash helper scripts of this repository.
