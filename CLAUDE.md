@@ -215,8 +215,11 @@ head and elsewhere, which reviews in a worktree; needs an authenticated `gh`), t
 a pull request URL (which compile a review document from its comments; `/creview:triage`
 leaves out threads resolved on GitHub and `/creview:resolve` keeps them; needs an
 authenticated `gh`), and `/cdev:coding` (in a runtime with background subagents and
-inter-agent messaging), both on a task without AI-facing prompt files and on one that edits
-them (which needs a teammate to be able to launch sub-agents).
+inter-agent messaging) on a task without AI-facing prompt files, on one that edits them
+(which needs a teammate to be able to launch sub-agents), and on one whose design adds a file
+no coder of the Step 1 team can hold, such as a new script for prompt files to invoke when
+the task edits only prompt files (which the team re-formation after the design gives to a new
+coder, paired with a reviewer of its domain).
 Exercise `/cgh:review`, `/cgh:gate`, `/cgh:respond`, and `/cgh:resolve` on a pull request of a
 scratch repository: they post to GitHub under your account.
 
