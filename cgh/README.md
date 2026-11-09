@@ -231,6 +231,9 @@ or a pull request that records it, or the description marks it done and it is do
 done is checked in the code when the code can show the work, and taken at the description's word
 when it cannot, as with a manual test or work outside the repository. A finding that raises several
 problems, such as a failed check and the claim it contradicts, is resolved only when each one is.
+A finding about a claim or about work left open raises that one problem, but a defect it also
+reports that would be a problem without the claim or the work, such as a crash or a security hole,
+is another problem, which editing the title or description does not resolve.
 A decline does not resolve a contradicted claim, work left open, or an unsettled discussion, and no
 other comment in the conversation withdraws a claim or records the work.
 
