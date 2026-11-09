@@ -1,6 +1,6 @@
 # Divergence pattern prevention rule
 
-Divergence is the state in which a fix for a finding produces the next finding, and findings keep coming however many fixes are stacked. The architect keeps the divergence patterns below out of the design, and the reviewer detects them in the design review.
+Divergence is the state in which a fix for a finding produces the next finding, and findings keep coming however many fixes are stacked. The architect keeps the divergence patterns below out of the design, and the reviewer detects them in the design review. In a code cell, the coder and the code reviewer handle an over-specified prompt as § coder and § code reviewer direct.
 
 ## Divergence patterns
 
@@ -8,6 +8,9 @@ Divergence is the state in which a fix for a finding produces the next finding, 
 - **Unclosable problem class**: the correctness of the adopted approach depends on enumerating individual cases, and the range to enumerate is unbounded. Handling one counterexample still leaves further counterexamples of the same class constructible without limit (e.g., a race window the architecture inherently cannot remove, regex-based parsing of input that is not constrained).
 - **Unadjudicated conflict**: the design does not decide which of two conflicting requirements or quality goals takes priority (e.g., defensive checks versus removing redundancy, performance versus safety).
 - **Mismatch with the existing design**: the adopted approach does not fit the existing code's design (ownership, threading model, error-handling convention, etc.), and the design shows no policy for reconciling them.
+- **Over-specified prompt**: an AI-facing prompt file (as `prompt.md` in the same directory as this file defines it), or the design of one, is not contract-style: it specifies the procedure in more detail than its goal, its contracts, and the specified procedure need. Each review finds another gap, ambiguity, or inconsistency among those details, and each fix that adds detail gives the next review more to find. Judge whether a prompt is contract-style, and what its goal and contracts are, by `prompt.md` § Contract-style prompts. The constraints and premises the AI needs for judgment, which `prompt.md` § Judgment WHY vs effect-restatement WHY keeps, are not procedure.
+  - Specified procedure: procedure the user's task explicitly asks for, and in a code cell also procedure the design sections specify. The prompt must satisfy it as it must a contract; it is not over-specification, and its absence is an ordinary correctness finding.
+  - Detail finding: a finding whose fix adds to or refines a method that an AI knowing the goal, the contracts, and the specified procedure would already carry out correctly. A finding that shows a concrete situation in which following the prompt gives a wrong result, breaks a contract, or does not end concerns a goal or a contract instead.
 
 ## architect
 
@@ -15,9 +18,22 @@ Divergence is the state in which a fix for a finding produces the next finding, 
 - Unclosable problem class: choose an approach that closes the problem class structurally (e.g., a grammar-based parser, serialization onto a single owner). When no such approach is available, state the scope that is accepted (input constraints, preconditions, tolerated residual risk) and declare everything outside it out of scope.
 - Unadjudicated conflict: write down which side takes priority and why.
 - Mismatch with the existing design: fit the existing design. When deviating, write down the reason for the deviation and how the two are reconciled at the boundary.
+- Over-specified prompt: design the part of each AI-facing prompt file the design creates or edits, or the whole file when the task covers all of it, contract-style as `prompt.md` § Contract-style prompts directs: write down the goal the prompt states and the contracts it keeps, keep the constraints and premises that `prompt.md` § Judgment WHY vs effect-restatement WHY keeps, and leave the method to the executing AI. Settle a gap or ambiguity in a prompt's method by stating the goal or contract it concerns; when it concerns neither, leave it to the AI rather than adding steps. Include the procedure the user's task explicitly asks for.
 
 ## reviewer
 
 - Raise each place that matches a pattern as a finding of Major or higher, and pick the recommended fix direction from the responses in § architect.
 - For an unclosable problem class, do not ask for a response to the individual counterexample. Cite counterexamples only as evidence that the problem class exists.
 - When the design states the scope it accepts, do not raise counterexamples outside that scope. Raise the scope itself only when the task cannot be met within it.
+- Raise an over-specified prompt only in the part of an AI-facing prompt file the design creates or edits, or in the whole file when the design covers all of it, and recommend the rewrite in § architect, never added or refined steps, cases, or wording.
+- On the design of an AI-facing prompt file, raise no detail finding, while still raising a missing goal or contract, a contract at odds with its counterpart, and a finding that concerns a goal or a contract. This bullet takes precedence over the general criterion of missing edge cases: judge a missing edge case by the same test as a detail finding. Accept an architect's response that, under § architect, leaves a method to the AI instead of adding steps.
+
+## coder
+
+- On an AI-facing prompt file, reject a detail finding citing this rule, unless the prompt does not yet state the goal or contract the method rests on; then state that instead. Fix a finding that concerns a goal or a contract by stating the result or the contract it concerns, not by adding steps, and a missing specified procedure by adding it. Resolve QA feedback, an unclear item of the interpretation test included, by the same criteria without rejecting it; for an item that would be a detail finding, state the goal so that the method is visibly left to the reader. Triage other findings as usual.
+- When fixing, remove from what this run created or changed, or from the whole file when the design covers all of it, the procedural instructions that no goal, contract, or specified procedure needs. Keep the contracts, the specified procedure, and the behavior the design sections specify unchanged.
+
+## code reviewer
+
+- In what this run created or changed in an AI-facing prompt file, or in the whole file when the design sections cover all of it, judged from the design sections and the producer's ready message, raise an over-specified prompt as Major, name the excess instructions, and recommend the rewrite in § architect: state the goal and the contracts, and remove the excess instructions.
+- Raise no detail finding; when the prompt does not state the goal or contract the method rests on, recommend stating it. For a finding that concerns a goal or a contract, recommend stating the result or the contract, not adding steps. On an AI-facing prompt file this bullet takes precedence over the general criterion of missing edge cases: judge a missing edge case by the same test as a detail finding. Accept a coder's rejection of a detail finding under § coder. Judge other findings as usual.

@@ -58,13 +58,13 @@ claude-plugin-marketplace/
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
 │   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md, pr-description-reviewer.md, pr-comment-compiler.md
-│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md, pr-comment-doc.md
+│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md, pr-comment-doc.md, contract-style-prompts.md
 │   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, compile-pr-comments.py, lib/scratch-guard.py
 │
 ├── cdev/                         # Plugin: multi-agent coding workflow (active, English)
 │   ├── .claude-plugin/plugin.json
 │   ├── README.md / README_ja.md
-│   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, design, design-review, code, code-review, comment-review, prompt-review, prompt-test, qa)
+│   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, team-reassign, design, design-review, code, code-review, comment-review, prompt-review, prompt-test, qa)
 │   ├── agents/                   # comment-sensei.md, prompt-sensei.md, prompt-tester.md, dev-helper.md
 │   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, prompt.md, divergence.md
 │   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
@@ -215,8 +215,11 @@ head and elsewhere, which reviews in a worktree; needs an authenticated `gh`), t
 a pull request URL (which compile a review document from its comments; `/creview:triage`
 leaves out threads resolved on GitHub and `/creview:resolve` keeps them; needs an
 authenticated `gh`), and `/cdev:coding` (in a runtime with background subagents and
-inter-agent messaging), both on a task without AI-facing prompt files and on one that edits
-them (which needs a teammate to be able to launch sub-agents).
+inter-agent messaging) on a task without AI-facing prompt files, on one that edits them
+(which needs a teammate to be able to launch sub-agents), and on one whose design adds a file
+no coder of the Step 1 team can hold, such as a new script for prompt files to invoke when
+the task edits only prompt files (which the team re-formation after the design gives to a new
+coder, paired with a reviewer of its domain).
 Exercise `/cgh:review`, `/cgh:gate`, `/cgh:respond`, and `/cgh:resolve` on a pull request of a
 scratch repository: they post to GitHub under your account.
 
@@ -571,6 +574,13 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `creview/scripts/gh-pr.py`, and
   `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` are likewise each
   byte-identical with its own `src/` mirror.
+- **`creview/rules/contract-style-prompts.md` restates part of `cdev/rules/prompt.md`.** It
+  rephrases § Contract-style prompts and the definition of an AI-facing prompt file as the
+  criteria of the `/creview:rounds` divergence gate. The over-specified prompt pattern of
+  `cdev/rules/divergence.md` judges by `cdev/rules/prompt.md` without restating it, and its
+  detail finding matches the procedure-detail finding of `contract-style-prompts.md`. None of
+  them is a byte-identical copy, so no test catches drift: when you change one, check the
+  others.
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
   `SUMMARY`, `FINDINGS`, or `ANALYSIS`** (case-insensitive, basename only). Claude Code's
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output

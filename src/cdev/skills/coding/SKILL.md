@@ -79,7 +79,7 @@ teammate は Agent ツールで起動する。厳密な引数列を写経する�
 agent 種別（subagent_type）:
 
 - 同梱エージェントはプラグイン名前空間付きで指定する: `cdev:dev-helper`、`cdev:comment-sensei`、`cdev:prompt-sensei`。
-- reviewer は team-analysis が返す登録名で指定する（プロジェクト `.claude/agents` / ユーザー `~/.claude/agents` のエージェントは登録名そのまま）。
+- reviewer は team-analysis かチームの再編成が返す登録名で指定する（プロジェクト `.claude/agents` / ユーザー `~/.claude/agents` のエージェントは登録名そのまま）。
 - architect と coder は常に `general-purpose` で起動する。一部の専門家エージェントはツールコールをテキストとして出力して停止し、作業を継続できないことがあるため。producer（architect / coder）は割り当てスコープとプロジェクト規約に従って作業し、ドメインの正しさは専門家 reviewer がレビューで担保する。
 
 ## spawn 契約
@@ -111,6 +111,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 ```
 {tmp_dir} = .claude/tmp/cdev-coding-{timestamp}/
 {tmp_dir}/team.jsonl               ← team-analysis の結果（roster。リーダーが読む）
+{tmp_dir}/team-reassign.jsonl      ← チーム再編成の結果（coder / reviewer。リーダーが読む）
 {tmp_dir}/baseline-tree            ← コーディング開始前の作業ツリースナップショット（QA 差分の基点）
 {tmp_dir}/changes.txt              ← コーディング開始以降の差分（QA の入力）
 {tmp_dir}/qa-result.jsonl          ← QA 結果
@@ -134,13 +135,17 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 8. ロスターの各メンバーを起動する。name は `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}`、種別は team-analysis が返す `name` を用いる（architect と coder は `general-purpose`）。ペアリングと `{task_summary}` を保持する。producer のペア reviewer の宛先は `reviewer-{その producer の reviewer slug}`。
 9. コンソールに表示する: 各 producer のペアの reviewer と一行の理由を含むロスター。
 
-## ステップ 2 — 設計セル（設計）
+## ステップ 2 — 設計セルとチームの再編成（設計）
 
 1. コンソールに表示する: `## Step 2 — Design`。
 2. 各 architect について、設計セル `design-{slug}` を 2 つのメッセージで開始する（宛先は roster の name）:
    - `architect-{slug}` 宛に `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`output_path = {design_dir}/design-{slug}.md`、`reviewer = {ペア reviewer の name}` を渡して `SendMessage`。
    - ペア reviewer の name 宛に `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {design_dir}/design-{slug}.md`、`producer = architect-{slug}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
 3. ゲート: 設計セルごとにクローズ報告 1 通（届いたエスカレーションは随時裁定する）。セクションパスを `{design_paths}` として収集する。いずれかの設計セルのクローズ報告が、その設計で AI 向けプロンプトファイルを作成または編集すると述べた場合は、`has_prompts` を true にする。
+4. 設計が持ち込むファイルを含むすべてのファイルに書き手と領域の reviewer が付いた状態でステップ 3 を始めるよう、チームを再編成する。コンソールに表示する: `## Step 2 — Team re-formation`。`dev-helper` 宛に `templates/team-reassign.md` を指定し、`design_paths = {design_paths}`、`roster_path = {tmp_dir}/team.jsonl`、`taken_names = {このセッションで起動したすべての teammate の name}`、`output_path = {tmp_dir}/team-reassign.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team-reassign.jsonl` を Read する: `{coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`。ロール名（`coder-{slug}` / `reviewer-{slug}`）が roster にないエントリが新しいメンバーである。
+   - 次のどれかにあたる場合は、どれにあたるかを示して `dev-helper` にタスクを 1 度だけ差し戻す: ファイルがないか上の形式に合わないこと、roster の coder / reviewer に同じ `slug` のエントリがないか、そのエントリの `name`（coder では `reviewer` も）が異なること、出力の `coders` 内か `reviewers` 内に同じ `slug` のエントリが 2 つあること、coder の `reviewer` が出力の `reviewers` のどのエントリの `slug` でもないこと。差し戻した後もどれかにあたる場合は、ステップ 1 の roster のままステップ 3 を始める: そのことをコンソールに示し、ステップ 5 の報告のために保持する。
+   - そうでなければ、新しいメンバーをステップ 1 の手順 8 と同じく起動して roster に記録し、各 coder のスコープとペアの reviewer を出力のものに置き換える。
+   - コンソールに表示する: ステップ 1 の手順 9 と同じ形のロスター。追加したメンバーとスコープが変わった coder を示す。
 
 ## ステップ 3 — コードセル（コーディング）
 
@@ -174,4 +179,4 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 2. teammate を停止する: roster の各 name を `task_id` として `TaskStop` を呼び、応答や通知を待たずに次の手順へ進む。アイドルの teammate には稼働中のタスクがないため、稼働していない旨の失敗は停止済みとみなす。`shutdown_request` は送らない: リーダーが待てる完了の合図がない。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`。
 4. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
-5. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、coder が報告したプロンプトレビューの件数、QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、および稼働していない以外の理由で `TaskStop` が失敗した teammate。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
+5. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、チームの再編成がステップ 1 のロスターにフォールバックしたかどうか、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、coder が報告したプロンプトレビューの件数、QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、および稼働していない以外の理由で `TaskStop` が失敗した teammate。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。

@@ -27,16 +27,16 @@ see **[CLAUDE.md](CLAUDE.md)**.
   `pr-comment-compiler.md` (the PR mode of `/creview:triage` / `resolve`).
 - `creview/rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
   `adr-format.md`, `agents-detection.md`, `build-format-detection.md`, `doc-worktree.md`,
-  `pr-comment-doc.md` (rules referenced by skills; `doc-worktree.md` is read by the
-  `/creview:triage` / `respond` / `resolve` leaders, `pr-comment-doc.md` by the
-  `/creview:triage` / `resolve` leaders in PR mode).
+  `pr-comment-doc.md`, `contract-style-prompts.md` (rules referenced by skills;
+  `doc-worktree.md` is read by the `/creview:triage` / `respond` / `resolve` leaders,
+  `pr-comment-doc.md` by the `/creview:triage` / `resolve` leaders in PR mode).
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `check-jsonl.py`,
   `worktree.sh`, `compile-pr-comments.py` (the review document of the PR mode of
   `/creview:triage` / `resolve`), `gh-pr.py` (pull request resolution and worktree checkout and removal for
   `/creview:start`'s PR mode, and `doc-checkout`: the review document header parsing and
   worktree checkout for `/creview:triage` / `respond` / `resolve`), `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
-- `cdev/skills/coding/SKILL.md` (+ `templates/`) — The `/cdev:coding` team-native skill (9 teammate task templates, each with a `template_id`).
+- `cdev/skills/coding/SKILL.md` (+ `templates/`) — The `/cdev:coding` team-native skill (10 teammate task templates, each with a `template_id`).
 - `cdev/agents/` (bundled) — `comment-sensei.md`, `prompt-sensei.md`, `dev-helper.md`, and the tool-restricted `prompt-tester.md` (the interpretation tester `prompt-sensei` launches). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`, `prompt.md`, `divergence.md`. `cdev/scripts/` — `fetch-diff.sh`, `del-tmp.sh`, `check-jsonl.py`, `worktree.sh`, `lib/scratch-guard.py`.
 - `cgh/skills/{review,gate,respond,resolve}/SKILL.md` — The 4 `/cgh:*` skills, which run the creview skills inline. `cgh/agents/comment-writer.md` (tool-restricted). `cgh/rules/` — `leader.md` (read by the leaders), `gate-focus-pr.md` and `gate-focus-code.md` (read by the reviewers, triage, and estimate of the gate's pull request stage and code stage). `cgh/scripts/` — `gh-review.py` (the leaders' own reads and writes on GitHub), `del-tmp.sh`, `lib/scratch-guard.py`.
 - `src/<plugin>/...` — **Japanese master**, mirrors each plugin's tree 1:1 (minus

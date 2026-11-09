@@ -61,7 +61,7 @@ Write the review document in the user's chat language.
   - Triage & estimate phase (Step 2.2 / 2.5) — `creview:triage`
   - Respond phase (Step 2.3 / 2.5) — `creview:respond`
   - Resolve phase (Step 2.4 / 2.5) — `creview:resolve`
-- **Divergence pattern detection sub-agent (Step 2.2)** — `subagent_type="creview:review-helper"`; detects every divergence of the round loop from the chains in which a fix for a finding produces a finding in a later round.
+- **Divergence pattern detection sub-agent (Step 2.2)** — `subagent_type="creview:review-helper"`; detects every divergence of the round loop from the chains in which a fix for a finding produces a finding in a later round and from the AI-facing prompt files whose procedural details draw findings round after round.
 - **Divergence investigation sub-agent (Step 2.2)** — its `subagent_type` is the `investigator` the divergence pattern detection sub-agent returns; identifies each divergence's source and writes fix proposals into the divergence investigation report.
 - **Final report aggregator sub-agent (Step 3)** — `subagent_type="creview:review-helper"`; generates the final report from all rounds' review documents.
 - **What you handle directly is limited to the following:**
@@ -166,7 +166,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
    ```
 7. When `error` is non-null, do not proceed to 2.3 or beyond: report the failure to the user and end the round loop.
 8. When the user instructs to stop the loop at step 5, run no further phase, record this round's results in 2.6, and proceed to Step 3 without advancing to the next round.
-9. When the user instructs a fix policy along with continuing at step 5, add that instruction verbatim, together with `report_path` as its reference, to the overrides of this round's 2.3 (including its re-runs in Step 2.5).
+9. When the user instructs a fix policy along with continuing at step 5, add that instruction verbatim, together with `report_path` as its reference and a note that the policy prevails where it differs from a finding's Triage or Estimate, to the overrides of this round's 2.3 and 2.4 and of the re-runs of 2.2, 2.3, and 2.4 in Step 2.5.
 10. Respond phase skip decision: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4 (Won't Fix / Downgrade findings receive their verification in 2.4).
 
 ### 2.3 — Respond phase (respond skill)
@@ -182,7 +182,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
 1. Display in console: `## Round {N} — Step 4: Resolve`
 2. Launch the phase sub-agent with `templates/phase-resolve.md` (`template_id`: `2f9c6a1e-7b53-4d84-8e2b-5a1f9d3c7b26`).
    - Variables: `document_path`, `base` (this round's `{review_base}`)
-   - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
+   - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists. In a round where the user instructed a fix policy in Step 2.2, add that instruction
 3. Hold only the return value (`{summary_line, resolved_count, feedback_count, unresolved_count}`) in context.
 
 ### 2.5 — Feedback confirmation and re-fix loop
@@ -194,9 +194,9 @@ From the Step 2.4 return value (`feedback_count`), determine whether findings th
 
 Each attempt re-runs 2.2 → 2.3 → 2.4, passing the text below as the phase sub-agent's `overrides` variable:
 
-1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.`
+1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.`, adding the fix policy of Step 2.2 step 9 in a round where the user instructed one.
 2. When 2.2 decided to skip the respond phase, skip this step and proceed to step 3. Otherwise display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` and re-run 2.3 with the override `Feedback re-fix pass: the fix targets are the findings whose Verification is 💬 Feedback; re-fix based on that feedback content.` Do not scope this override to a named sub-agent — the fix-target selection sub-agent must receive it too. When the returned `workflow_warning` is non-null, update this round's recorded value (last write wins).
-3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run 2.4 with overrides `(none)`.
+3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run 2.4 with the fix policy of Step 2.2 step 9 as its overrides in a round where the user instructed one, and with overrides `(none)` otherwise.
 4. If feedback remains, return to step 1. If not resolved within 3 attempts, end the round (remaining 💬 Feedback are counted as "unresolved" in 2.6).
 
 ### 2.6 — Round end

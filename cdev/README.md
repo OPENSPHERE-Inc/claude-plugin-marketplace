@@ -26,7 +26,8 @@ lives in `creview`, `cdev` optimizes for speed and coherence instead.
 
 The leader (team lead) spawns each selected specialist once as a named, persistent
 background teammate (`Agent` with `run_in_background`), pairs each producer with a reviewer,
-and drives two cell steps and a final QA gate, reporting progress to the console:
+and drives two cell steps, with a team re-formation between them, and a final QA gate,
+reporting progress to the console:
 
 1. **Design cells** — each architect writes a design for its area, then its **paired
    reviewer** reviews it; the architect **triages** each finding (fix, or reject with a
@@ -34,25 +35,35 @@ and drives two cell steps and a final QA gate, reporting progress to the console
    `rules/divergence.md`: the design must not carry a source that makes later reviews
    diverge (a fix producing the next finding without end) — an undecided specification or
    invariant, a problem class the approach cannot close, an unadjudicated conflict between
-   requirements, or a mismatch with the existing design — and the reviewer raises any it
-   finds as Major or higher.
-2. **Code cells** — each coder implements its scope (test-first when the project has a test
+   requirements, a mismatch with the existing design, or an AI-facing prompt that specifies
+   its procedure in more detail than its goal and contracts need — and the reviewer raises
+   any it finds as Major or higher.
+2. **Team re-formation** — once every design cell has closed, `dev-helper` reads the designs
+   and the roster, and re-forms the coders so that each file the designs add or change lies in
+   the scope of exactly one coder, paired with a reviewer matching the file's domain. As in
+   team formation, prompt files go only to coders whose scope holds no other source. A test the
+   design adds goes to the coder that holds the file it tests, unless that file is a prompt
+   file or no coder holds it. A file under the scope of a coder that may not hold it moves out
+   of that scope, and a file no existing coder can hold goes to a new coder. The leader starts
+   the coders and reviewers the updated roster adds. If the updated roster is still unusable
+   after one retry, coding starts with the original roster, and the final report says so.
+3. **Code cells** — each coder implements its scope (test-first when the project has a test
    suite); `comment-sensei` fixes comment violations when comments are present, and
    `prompt-sensei` self-checks and compresses AI-facing prompt files (see
    [AI-facing prompts](#ai-facing-prompts)); the **paired reviewer** reviews, the coder triages,
    the reviewer resolves and closes the cell.
-3. **QA gate** — the build / format / test workflow runs once, together with an interpretation
+4. **QA gate** — the build / format / test workflow runs once, together with an interpretation
    test of the changed AI-facing prompt files when the task has any; on failure the responsible
    coder fixes it, the fix goes through a review cell, and QA re-runs (bounded loop).
 
 A cell runs autonomously: the producer (architect / coder) and its paired reviewer loop
 review ⇄ triage ⇄ resolve until the reviewer closes the cell. The leader sets up the cells,
-enforces the step gates (all design cells close before coding; all code cells before QA),
-runs the QA gate, and arbitrates escalations. When a reviewer and a producer deadlock on a
-`Critical` finding, the reviewer escalates to the leader; if the leader cannot decide either,
-it asks the user and leaves a `FIXME:`. Judgment priority is the user's original task first,
-then the design intent. The authoritative review is `creview`, so unresolved items are left
-as `FIXME:`s rather than blocking.
+enforces the step gates (all design cells close and the team is re-formed before coding; all
+code cells close before QA), runs the QA gate, and arbitrates escalations. When a reviewer and
+a producer deadlock on a `Critical` finding, the reviewer escalates to the leader; if the
+leader cannot decide either, it asks the user and leaves a `FIXME:`. Judgment priority is the
+user's original task first, then the design intent. The authoritative review is `creview`, so
+unresolved items are left as `FIXME:`s rather than blocking.
 
 Teammates persist across steps, so they keep their own context and revise incrementally.
 Feedback flows **peer to peer**; the leader holds only the roster, pairings, each cell's
@@ -146,6 +157,33 @@ code cells, and QA gate as any other task, with these additions:
   without changing what it asks of the agent; the rest of an existing file is left as it is
   unless the design covers the whole file. The coder hands any violation left over to the
   reviewer with the change.
+- The design cells and the code cells keep prompt files from over-specification
+  (`rules/divergence.md`):
+  - A procedure specified in more detail than the prompt's goal and contracts need draws new
+    findings at every review, and each fix that adds detail gives the next review more to
+    find.
+  - Whether a prompt is over-specified, and what its goal and contracts are, is judged by
+    `rules/prompt.md`.
+  - Constraints and premises the AI needs for judgment, such as a write scope or an instruction
+    to treat untrusted input as data, are not procedure and stay in the prompt.
+  - A detail finding is a finding whose fix only adds to or refines a method that an AI knowing
+    the goal and the contracts would already carry out correctly.
+  - Reviewers raise over-specification in what the design or the run creates or changes in a
+    prompt file, or in the whole file when the design covers all of it. They recommend a
+    rewrite that states the goal and the contracts and leaves the method to the AI, raise no
+    detail finding, and judge a missing edge case by the same test.
+  - Coders reject a detail finding citing the rule, unless the prompt does not yet state the
+    goal or contract the method rests on; then they state it instead.
+  - Coders settle a gap or ambiguity in a prompt's procedure, including an item the QA gate's
+    interpretation test finds unclear, by stating the goal or contract it concerns rather than
+    by adding steps.
+  - Architects write down in the design the goal and the contracts of the part of each prompt
+    file the design creates or edits, or of the whole file when the task covers all of it. They
+    settle a gap or ambiguity in its method the same way, leaving to the AI what concerns
+    neither.
+  - A procedure the user's task explicitly asks for, and in the code cells also one the design
+    specifies, is not over-specification: the prompt must satisfy it, and a missing one is
+    added.
 - In the QA gate, `prompt-sensei` also runs an interpretation test on each prompt file changed
   in the run:
   - It writes a checklist of questions about what the run created or changed in the file, such
@@ -174,13 +212,15 @@ out-of-domain specialty is never bundled onto one reviewer. **Architects and cod
 as `general-purpose`**: some specialist agents emit malformed tool calls and stall, and a
 producer works to its assigned scope and the project conventions while the specialist reviewers
 enforce domain correctness. When no specialist matches a domain, the reviewer falls back to
-`general-purpose`.
+`general-purpose`. Team re-formation after the design cells picks the reviewers it adds from the
+same agent pool by the same rules.
 
 ## Bundled agents and support files
 
-- `agents/dev-helper.md` — mechanical teammate: team formation (scoping + agent selection)
-  and QA (running the project's format / build / test, identifying the fix specialist on
-  failure).
+- `agents/dev-helper.md` — mechanical teammate: team formation (scoping + agent selection),
+  team re-formation after the design (assigning the files the design adds or changes to coders
+  and selecting any coders / reviewers needed), and QA (running the project's format / build /
+  test, identifying the fix specialist on failure).
 - `agents/comment-sensei.md` — code-comment specialist teammate; reviews and fixes comments
   added or modified during coding, against `rules/comment.md`.
 - `agents/prompt-sensei.md` — AI-facing prompt specialist teammate; self-checks, fixes, and
@@ -191,7 +231,8 @@ enforce domain correctness. When no specialist matches a domain, the reviewer fa
   in the QA gate; it has Read, Glob, and Grep only and is never a team-formation candidate.
 - `rules/` — `teammate.md` (teammate common rules), `agents-detection.md`,
   `build-format-detection.md`, `comment.md`, `review.md`, `document.md`, `prompt.md` (prompt
-  discipline), `divergence.md` (divergence patterns the design must not introduce).
+  discipline), `divergence.md` (divergence patterns the design must not introduce, and how
+  code cells keep prompt files from over-specification).
 - `scripts/` — `fetch-diff.sh` (snapshots the pre-coding tree, then captures the QA diff since
   coding start), `del-tmp.sh` (deletes the run's working directory under `.claude/tmp/`; with
   `--dry`, it only runs the containment check, which the skill does before creating that
