@@ -190,32 +190,34 @@ code cells, and QA gate as any other task, with these additions:
     - When an agent definition's `tools:` limits the tools of the agent that runs the prompt, or
       a skill's or command's `allowed-tools` pre-approves them, and no entry there allows the
       script, the design also lists the file holding the entry it adds or changes to allow the
-      script, and states that entry as a contract, except in the last two cases below, where it
-      adds or changes no such entry:
+      script, and states that entry as a contract, unless an item below rules the entry out:
       - The entry allows only the script's invocation, its pattern naming the script's path as in
-        `Bash(python3 scripts/check.py:*)`. It never allows an interpreter or a shell at large,
-        such as `Bash(python3:*)` or a bare `Bash`.
-      - The design adds no entry to an agent definition whose `tools:` holds no Bash entry, and
-        instead puts the invocation in a prompt run by an agent that already has a Bash entry.
+        `Bash(python3 scripts/check.py:*)`, and never an interpreter or a shell at large, such as
+        `Bash(python3:*)` or a bare `Bash`.
+      - The design adds no entry to an agent definition whose `tools:` holds no Bash entry.
       - The design adds or changes no entry for a script whose code the agent running the prompt
-        can change. It instead puts the invocation in a prompt whose agent's existing entries
-        already allow it, or leaves a skill's or command's run of the script to the permission
-        prompt. The agent can change that code when the script or a file it loads lies where the
-        agent can write, or when the script runs as code the arguments or input the agent
-        composes, so an entry allowing the script would allow as much as an interpreter. Where
-        the agent can write is judged by its tools, not by a write scope its prompt sets: an agent
-        with Write or Edit can write anywhere in the working trees the session works in, while a
-        script the plugin ships and runs from its own directory lies outside them.
-    - Whatever entry allows it, and whether or not a permission prompt asks, the design runs no
-      code that untrusted input can change. It runs no script that lies, or loads a file, in a
-      checkout of untrusted code, invoking instead a trusted copy by a path outside that
-      checkout, such as the plugin's own directory, and passes no untrusted input to a script
-      that runs its input as code.
-    - Team re-formation gives each of these files to a coder of its domain, moving it out of the
-      scope of a coder that may not hold it: a coder for the script's language writes the script
-      in an ordinary code cell, and a reviewer whose domain matches reviews it.
+        can change, since the entry allows whatever code the script runs:
+        - The agent can change that code when it can write the script or a file the script
+          loads, or when the script runs the arguments or input the agent composes as code.
+        - Where the agent can write is judged by its tools, not by a write scope its prompt sets,
+          since an agent following injected input does not keep that scope.
+    - Team re-formation gives each file the design lists to a coder of its domain, moving it out
+      of the scope of a coder that may not hold it: a coder for the script's language writes the
+      script in an ordinary code cell, and a reviewer whose domain matches reviews it.
     - Each code cell checks its own side of the invocation and the allowing entries against the
       design.
+    - The designed prompt runs no code that untrusted input can change, whatever entry allows
+      the run and whether or not a permission prompt asks:
+      - Whether a copy of a script may be run is judged by whether untrusted input can change
+        it, not by where the copy lies.
+      - This holds even for a run the user's task asks for: the design leaves that run out and
+        states it as out of scope.
+    - A script shipped in the plugin that ships the designed prompt, and run from that plugin's
+      directory, counts as code that neither the agent running the prompt, whatever its tools,
+      nor untrusted input can change.
+      - The same holds, as an accepted risk, in a session that loads the plugin from a working
+        tree, for example with `--plugin-dir`, since that session already runs the prompts and
+        agent definitions of that tree.
   - A procedure the user's task explicitly asks for, and in the code cells also one the design
     specifies, is not over-specification: the prompt must satisfy it, and a missing one is
     added.
