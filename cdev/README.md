@@ -39,12 +39,14 @@ reporting progress to the console:
    its procedure in more detail than its goal and contracts need — and the reviewer raises
    any it finds as Major or higher.
 2. **Team re-formation** — once every design cell has closed, `dev-helper` reads the designs
-   and the roster, and gives each file the designs add or change that fits no coder's scope to
-   a coder by the same rules as team formation: scopes do not overlap, prompt files go to
-   coders whose scope holds no other source, and each coder pairs with a reviewer matching its
-   domain. The leader starts the coders and reviewers the updated roster adds. If the updated
-   roster is still unusable after one retry, coding starts with the original roster, and the
-   final report says so.
+   and the roster, and re-forms the coders so that each file the designs add or change lies in
+   the scope of exactly one coder, paired with a reviewer matching the file's domain. As in
+   team formation, prompt files go only to coders whose scope holds no other source. A test the
+   design adds goes to the coder that holds the file it tests, unless that file is a prompt
+   file or no coder holds it. A file under the scope of a coder that may not hold it moves out
+   of that scope, and a file no existing coder can hold goes to a new coder. The leader starts
+   the coders and reviewers the updated roster adds. If the updated roster is still unusable
+   after one retry, coding starts with the original roster, and the final report says so.
 3. **Code cells** — each coder implements its scope (test-first when the project has a test
    suite); `comment-sensei` fixes comment violations when comments are present, and
    `prompt-sensei` self-checks and compresses AI-facing prompt files (see
@@ -183,13 +185,15 @@ code cells, and QA gate as any other task, with these additions:
   - Where a prompt needs a strict command sequence, the design puts it in a new external
     script, and the prompt holds only its invocation and the expected result. A run can
     therefore add new script files to the repository.
-    - The design lists the script, its tests, and the files holding its invocation and the
-      entries that allow running it (`allowed-tools`, or `tools:` in an agent definition) among
-      the files it adds or changes, and states the invocation, the expected result, and those
-      entries as contracts.
-    - Team re-formation gives each of these files that fits no coder's scope to a coder of its
-      domain: a coder for the script's language writes the script in an ordinary code cell, and
-      a reviewer whose domain matches reviews it.
+    - The design lists the script, its tests, and the files holding its invocation among the
+      files it adds or changes, and states the invocation and the expected result as contracts.
+      When an agent definition's `tools:` limits the tools of the agent that runs the prompt, or
+      a skill's or command's `allowed-tools` pre-approves them, and no entry there allows the
+      script, the design also lists the file holding the entry it adds or changes to allow the
+      script, and states that entry as a contract.
+    - Team re-formation gives each of these files to a coder of its domain, moving it out of the
+      scope of a coder that may not hold it: a coder for the script's language writes the script
+      in an ordinary code cell, and a reviewer whose domain matches reviews it.
     - Each code cell checks its own side of the invocation and the allowing entries against the
       design.
   - A procedure the user's task explicitly asks for, and in the code cells also one the design
