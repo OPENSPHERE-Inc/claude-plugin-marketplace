@@ -17,8 +17,8 @@ Constraints:
 - Keep every coder and reviewer of the roster with its `name`, `slug`, and `reviewer` unchanged.
 - Each file the design sections add or change ends up in the scope of exactly one coder, one that meets all three of the following, and in no other coder's scope (a scope holds a file when it names the file or a directory above it):
   - the Assignment rules let that coder hold it: a prompt file only to a coder whose scope holds no other source, any other file only to a coder whose scope holds no prompt file;
-  - the file falls in the domain of that coder's paired reviewer;
-  - when the file is a test the design adds for another file that is not an AI-facing prompt file, and a coder whose scope holds no prompt file holds that other file after this re-formation, the coder is the one that holds that other file. Otherwise judge the test by the first two, as in the domain of the file it tests. A test for an AI-facing prompt file goes, like any other file that is not a prompt file, to a coder whose scope holds no prompt file.
+  - the file falls in the domain of that coder's paired reviewer, a test the design adds for a file that is not an AI-facing prompt file counting as in the domain of the file it tests, and a test for an AI-facing prompt file as in its own domain;
+  - when the file is a test the design adds for another file that is not an AI-facing prompt file, and a coder whose scope holds no prompt file holds that other file after this re-formation, the coder is the one that holds that other file. A test for an AI-facing prompt file goes, like any other file that is not a prompt file, to a coder whose scope holds no prompt file.
 - Leave a file with a coder whose scope holds it when that coder meets all three; otherwise take it out of any scope that holds it and give it to an existing coder that meets all three, or to a new coder when none does.
 - Give each new member a kebab-case `slug` such that its role name (`coder-{slug}` / `reviewer-{slug}`) is neither in `{{taken_names}}` nor the role name of another entry in the output.
 - Assign only paths under `{{target_dir}}`.
