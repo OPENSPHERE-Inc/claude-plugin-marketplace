@@ -185,43 +185,17 @@ code cells, and QA gate as any other task, with these additions:
   - Where a prompt needs a strict command sequence, the design puts it in a new external
     script, and the prompt holds only its invocation and the expected result. A run can
     therefore add new script files to the repository.
-    - The design lists the script, its tests, and the files holding its invocation among the
-      files it adds or changes, and states the invocation and the expected result as contracts.
-    - When an agent definition's `tools:` limits the tools of the agent that runs the prompt, or
-      a skill's or command's `allowed-tools` pre-approves them, and no entry there allows the
-      script, the design also lists the file holding the entry it adds or changes to allow the
-      script, and states that entry as a contract, unless an item below rules the entry out:
-      - The entry allows only the script's invocation, its pattern naming the script's path as in
-        `Bash(python3 scripts/check.py:*)`, and never an interpreter or a shell at large, such as
-        `Bash(python3:*)` or a bare `Bash`.
-      - The design adds no entry to an agent definition whose `tools:` holds no Bash entry.
-      - The design adds or changes no entry for a script whose code the agent running the prompt
-        can change, since the entry allows whatever code the script runs:
-        - The agent can change that code when it can write the script or a file the script
-          loads, or when the script runs the arguments or input the agent composes as code.
-        - Where the agent can write is judged by its tools, not by a write scope its prompt sets,
-          since an agent following injected input does not keep that scope.
+    - The design lists among the files it adds or changes the script, its tests, each prompt
+      file that invokes it, and the definition of each agent, skill, or command that runs those
+      prompts, and states the invocation and the expected result as contracts.
+    - The design lets the agent that runs the script run it without a permission prompt, while
+      letting nothing beyond the script's invocation run that way.
+      - Whether a script so allowed can still be misused is outside the rule.
     - Team re-formation gives each file the design lists to a coder of its domain, moving it out
       of the scope of a coder that may not hold it: a coder for the script's language writes the
       script in an ordinary code cell, and a reviewer whose domain matches reviews it.
-    - Each code cell checks its own side of the invocation and the allowing entries against the
-      design.
-    - The designed prompt runs no code that untrusted input can change, whatever entry allows
-      the run and whether or not a permission prompt asks:
-      - Whether a copy of a script may be run is judged by whether untrusted input can change
-        it, not by where the copy lies.
-      - This holds even for a run the user's task asks for: the design leaves that run out and
-        states it as out of scope.
-    - When a script is shipped in the plugin that ships the designed prompt and is run from that
-      plugin's directory, the script and the files it loads from that directory count as files
-      that neither the agent running the prompt, whatever its tools, nor untrusted input can
-      write.
-      - The same holds, as an accepted risk, in a session that loads the plugin from a working
-        tree, for example with `--plugin-dir`, since that session already runs the prompts and
-        agent definitions of that tree.
-      - This covers only who can write those files: the design adds no entry for a script that
-        runs the arguments or input it is given as code, and the designed prompt passes such a
-        script no untrusted input.
+    - Each code cell checks its own side of the invocation and of the definitions that run it
+      against the design.
   - A procedure the user's task explicitly asks for, and in the code cells also one the design
     specifies, is not over-specification: the prompt must satisfy it, and a missing one is
     added.
