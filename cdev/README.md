@@ -196,11 +196,18 @@ code cells, and QA gate as any other task, with these additions:
         such as `Bash(python3:*)` or a bare `Bash`.
       - When the agent definition's `tools:` holds no Bash entry, the design adds none there and
         instead puts the invocation in a prompt run by an agent that already has a Bash entry.
-      - When the script or a file it loads lies where the agent running the prompt can write or in
-        a checkout of untrusted code, or the script runs its arguments or input as code, an entry
-        allowing the script allows as much as an interpreter. The design then adds or changes no
-        entry, and puts the invocation in a prompt whose agent's existing entries already allow it
-        or leaves a skill's or command's run of the script to the permission prompt.
+      - When the script or a file it loads lies where the agent running the prompt can write, or
+        the script runs as code the arguments or input that agent composes, an entry allowing the
+        script allows as much as an interpreter. Where the agent can write is judged by its tools,
+        not by a write scope its prompt sets: an agent with Write or Edit can write anywhere in the
+        working trees the session works in, while a script the plugin ships and runs from its own
+        directory lies outside them. In those cases the design adds or changes no entry, and puts
+        the invocation in a prompt whose agent's existing entries already allow it or leaves a
+        skill's or command's run of the script to the permission prompt.
+      - Whatever entry allows it, the design runs no code that untrusted input can change: it runs
+        no script that lies, or loads a file, in a checkout of untrusted code, invoking instead a
+        trusted copy by a path outside that checkout, such as the plugin's own directory, and
+        passes no untrusted input to a script that runs its input as code.
     - Team re-formation gives each of these files to a coder of its domain, moving it out of the
       scope of a coder that may not hold it: a coder for the script's language writes the script
       in an ordinary code cell, and a reviewer whose domain matches reviews it.
