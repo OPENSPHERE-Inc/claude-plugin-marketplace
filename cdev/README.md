@@ -212,12 +212,16 @@ code cells, and QA gate as any other task, with these additions:
         it, not by where the copy lies.
       - This holds even for a run the user's task asks for: the design leaves that run out and
         states it as out of scope.
-    - A script shipped in the plugin that ships the designed prompt, and run from that plugin's
-      directory, counts as code that neither the agent running the prompt, whatever its tools,
-      nor untrusted input can change.
+    - When a script is shipped in the plugin that ships the designed prompt and is run from that
+      plugin's directory, the script and the files it loads from that directory count as files
+      that neither the agent running the prompt, whatever its tools, nor untrusted input can
+      write.
       - The same holds, as an accepted risk, in a session that loads the plugin from a working
         tree, for example with `--plugin-dir`, since that session already runs the prompts and
         agent definitions of that tree.
+      - This covers only who can write those files: the design adds no entry for a script that
+        runs the arguments or input it is given as code, and the designed prompt passes such a
+        script no untrusted input.
   - A procedure the user's task explicitly asks for, and in the code cells also one the design
     specifies, is not over-specification: the prompt must satisfy it, and a missing one is
     added.
