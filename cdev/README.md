@@ -187,10 +187,20 @@ code cells, and QA gate as any other task, with these additions:
     therefore add new script files to the repository.
     - The design lists the script, its tests, and the files holding its invocation among the
       files it adds or changes, and states the invocation and the expected result as contracts.
-      When an agent definition's `tools:` limits the tools of the agent that runs the prompt, or
+    - When an agent definition's `tools:` limits the tools of the agent that runs the prompt, or
       a skill's or command's `allowed-tools` pre-approves them, and no entry there allows the
       script, the design also lists the file holding the entry it adds or changes to allow the
-      script, and states that entry as a contract.
+      script, and states that entry as a contract:
+      - The entry allows only the script's invocation, its pattern naming the script's path as in
+        `Bash(python3 scripts/check.py:*)`. It never allows an interpreter or a shell at large,
+        such as `Bash(python3:*)` or a bare `Bash`.
+      - When the agent definition's `tools:` holds no Bash entry, the design adds none there and
+        instead puts the invocation in a prompt run by an agent that already has a Bash entry.
+      - When the script or a file it loads lies where the agent running the prompt can write or in
+        a checkout of untrusted code, or the script runs its arguments or input as code, an entry
+        allowing the script allows as much as an interpreter. The design then adds or changes no
+        entry, and puts the invocation in a prompt whose agent's existing entries already allow it
+        or leaves a skill's or command's run of the script to the permission prompt.
     - Team re-formation gives each of these files to a coder of its domain, moving it out of the
       scope of a coder that may not hold it: a coder for the script's language writes the script
       in an ordinary code cell, and a reviewer whose domain matches reviews it.
