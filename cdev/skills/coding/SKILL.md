@@ -148,7 +148,8 @@ The design documents go to `{design_dir}/design-{slug}.md` (one design section p
 2. For each coder, start the code cell `code-{slug}` with two messages (addressed to roster names):
    - To `coder-{slug}`, `SendMessage` naming `templates/code.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `assigned_scope = {its scope}`, `tdd = {has_test_suite}`, `feedback = (none)`, `reviewer = {paired reviewer's name}`, `comment_reviewer = comment-sensei`, `prompt_reviewer = {prompt-sensei when has_prompts is true, otherwise (none)}`.
    - To the paired reviewer's name, `SendMessage` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = coder-{slug}`, `cell_task = code-{slug}`, `review_rounds = {--review-rounds}`.
-3. Gate: one closure report per code cell, arbitrating any escalation.
+3. When a coder's report marks a new external script it wrote, start the script cell `script-{slug}` on those scripts with two messages: to a roster reviewer whose domain matches the scripts' language, or, when none does, to a `general-purpose` reviewer spawned under a `reviewer-{slug}` name not already in the roster, `SendMessage` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = coder-{slug}`, `cell_task = script-{slug}`, `review_rounds = {--review-rounds}`; and to `coder-{slug}`, `SendMessage` that reviewer's name and the cell id, telling it to run that cell as the producer on those scripts and on the places in its prompt files that invoke them or allow running them (`allowed-tools`, or `tools:` in an agent definition).
+4. Gate: each coder's report, and one closure report per code cell and per script cell, arbitrating any escalation.
 
 ## Step 4 — QA gate
 

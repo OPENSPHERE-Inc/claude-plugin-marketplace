@@ -148,7 +148,8 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 2. 各 coder について、コードセル `code-{slug}` を 2 つのメッセージで開始する（宛先は roster の name）:
    - `coder-{slug}` 宛に `templates/code.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {そのスコープ}`、`tdd = {has_test_suite}`、`feedback = (none)`、`reviewer = {ペア reviewer の name}`、`comment_reviewer = comment-sensei`、`prompt_reviewer = {has_prompts が true なら prompt-sensei、それ以外は (none)}` を渡して `SendMessage`。
    - ペア reviewer の name 宛に `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = coder-{slug}`、`cell_task = code-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
-3. ゲート: コードセルごとにクローズ報告 1 通（エスカレーションは裁定する）。
+3. coder の報告が自分の書いた新しい外部スクリプトを示した場合は、それらのスクリプトのスクリプトセル `script-{slug}` を 2 つのメッセージで開始する: スクリプトの言語に領域が一致する roster の reviewer（いなければ roster にない `reviewer-{slug}` の name で起動する `general-purpose` の reviewer）宛に `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = coder-{slug}`、`cell_task = script-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。`coder-{slug}` 宛に、その reviewer の name とセル id を `SendMessage` し、それらのスクリプトと、プロンプトファイルでそれらを呼ぶ箇所や実行を許可する箇所（`allowed-tools`、エージェント定義では `tools:`）について、そのセルを producer として回させる。
+4. ゲート: 各 coder の報告と、コードセルとスクリプトセルごとのクローズ報告 1 通（エスカレーションは裁定する）。
 
 ## ステップ 4 — QA ゲート
 
