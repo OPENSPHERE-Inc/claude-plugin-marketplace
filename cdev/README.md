@@ -162,11 +162,8 @@ code cells, and QA gate as any other task, with these additions:
   - A procedure specified in more detail than the prompt's goal and contracts need draws new
     findings at every review, and each fix that adds detail gives the next review more to
     find.
-  - A contract is what another file, a script, or the consumer of an output depends on, such
-    as a command that must run in a given form, the format of a return value or an output, or
-    a variable or path exchanged with another file. A constraint or premise the AI needs for
-    judgment, such as a write scope or an instruction to treat untrusted input as data, is not
-    procedure and stays in a rewritten prompt.
+  - Whether a prompt is over-specified, and what its goal and contracts are, is judged by
+    `rules/prompt.md`.
   - A detail finding is a finding whose fix only adds to or refines a method that an AI knowing
     the goal and the contracts would already carry out correctly.
   - Reviewers raise over-specification in what the design or the run creates or changes in a
@@ -182,20 +179,6 @@ code cells, and QA gate as any other task, with these additions:
     file the design creates or edits, or of the whole file when the task covers all of it. They
     settle a gap or ambiguity in its method the same way, leaving to the AI what concerns
     neither.
-  - Where a prompt needs a strict command sequence, the design puts it in a new external
-    script, and the prompt holds only its invocation and the expected result. A run can
-    therefore add new script files to the repository.
-    - The design lists among the files it adds or changes the script, its tests, each prompt
-      file that invokes it, and the definition of each agent, skill, or command that runs those
-      prompts, and states the invocation and the expected result as contracts.
-    - The design lets the agent that runs the script run it without a permission prompt, while
-      letting nothing beyond the script's invocation run that way.
-      - Whether a script so allowed can still be misused is outside the rule.
-    - Team re-formation gives each file the design lists to a coder of its domain, moving it out
-      of the scope of a coder that may not hold it: a coder for the script's language writes the
-      script in an ordinary code cell, and a reviewer whose domain matches reviews it.
-    - Each code cell checks its own side of the invocation and of the definitions that run it
-      against the design.
   - A procedure the user's task explicitly asks for, and in the code cells also one the design
     specifies, is not over-specification: the prompt must satisfy it, and a missing one is
     added.
