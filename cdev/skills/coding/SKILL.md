@@ -79,7 +79,7 @@ Spawn each teammate with the Agent tool. Rather than copying an exact argument l
 Agent type (subagent_type):
 
 - Bundled agents are named with the plugin namespace: `cdev:dev-helper`, `cdev:comment-sensei`, `cdev:prompt-sensei`.
-- Reviewers use the registered name team-analysis returns (project `.claude/agents` / user `~/.claude/agents` agents keep their registered name).
+- Reviewers use the registered name team-analysis or the team re-formation returns (project `.claude/agents` / user `~/.claude/agents` agents keep their registered name).
 - Architects and coders always run as `general-purpose`. Some specialist agents emit tool calls as text and stall, so work cannot continue. A producer (architect / coder) works to its assigned scope and the project's conventions; domain correctness is enforced by the specialist reviewers in review.
 
 ## Spawn contract
@@ -111,6 +111,7 @@ The leader holds only the roster (each teammate's name → agentType), the pairi
 ```
 {tmp_dir} = .claude/tmp/cdev-coding-{timestamp}/
 {tmp_dir}/team.jsonl               ← team-analysis result (roster; read by the leader)
+{tmp_dir}/team-reassign.jsonl      ← team re-formation result (coders / reviewers; read by the leader)
 {tmp_dir}/baseline-tree            ← pre-coding working-tree snapshot (baseline for the QA diff)
 {tmp_dir}/changes.txt              ← diff since coding start (input to QA)
 {tmp_dir}/qa-result.jsonl          ← QA result
@@ -134,13 +135,17 @@ The design documents go to `{design_dir}/design-{slug}.md` (one design section p
 8. Spawn each roster member, naming it `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` and using the `name` team-analysis returns as the type (architects and coders use `general-purpose`). Hold the pairings and `{task_summary}`. A producer's paired reviewer is addressed as `reviewer-{the producer's reviewer slug}`.
 9. Console: the roster with each producer's paired reviewer and one-line reasons.
 
-## Step 2 — Design cells (設計)
+## Step 2 — Design cells and team re-formation (設計)
 
 1. Console: `## Step 2 — Design`.
 2. For each architect, start the design cell `design-{slug}` with two messages (addressed to roster names):
    - To `architect-{slug}`, `SendMessage` naming `templates/design.md` with `task = {task_summary}`, `assigned_scope = {its scope}`, `output_path = {design_dir}/design-{slug}.md`, `reviewer = {paired reviewer's name}`.
    - To the paired reviewer's name, `SendMessage` naming `templates/design-review.md` with `task = {task_summary}`, `design_path = {design_dir}/design-{slug}.md`, `producer = architect-{slug}`, `cell_task = design-{slug}`, `review_rounds = {--review-rounds}`.
 3. Gate: one closure report per design cell, arbitrating any escalation as it arrives. Collect the section paths as `{design_paths}`. When a design cell's closure report states that the design creates or edits an AI-facing prompt file, set `has_prompts` to true.
+4. Re-form the team so that Step 3 starts with a writer and a domain reviewer for every file, the files the design brings in included. Console: `## Step 2 — Team re-formation`. To `dev-helper`, `SendMessage` naming `templates/team-reassign.md` with `design_paths = {design_paths}`, `roster_path = {tmp_dir}/team.jsonl`, `taken_names = {the name of every teammate spawned in this session}`, `output_path = {tmp_dir}/team-reassign.jsonl`. On its completion report, Read `{tmp_dir}/team-reassign.jsonl`: `{coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`. An entry whose role name (`coder-{slug}` / `reviewer-{slug}`) is not in the roster is a new member.
+   - When any of the following holds, send the task back to `dev-helper` once, stating which: the file is missing or does not match that format; a roster coder or reviewer has no entry of the same `slug`, or its entry has a different `name` or (for a coder) `reviewer`; a new member's role name is already used in this session. If one still holds after that, start Step 3 with the Step 1 roster: show that on the console and retain it for the Step 5 report.
+   - Otherwise, spawn each new member as in Step 1 step 8 and record it in the roster, then replace each coder's scope and paired reviewer with the output's.
+   - Console: the roster as in Step 1 step 9, marking the members added and the coders whose scope changed.
 
 ## Step 3 — Code cells (コーディング)
 
@@ -148,8 +153,7 @@ The design documents go to `{design_dir}/design-{slug}.md` (one design section p
 2. For each coder, start the code cell `code-{slug}` with two messages (addressed to roster names):
    - To `coder-{slug}`, `SendMessage` naming `templates/code.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `assigned_scope = {its scope}`, `tdd = {has_test_suite}`, `feedback = (none)`, `reviewer = {paired reviewer's name}`, `comment_reviewer = comment-sensei`, `prompt_reviewer = {prompt-sensei when has_prompts is true, otherwise (none)}`.
    - To the paired reviewer's name, `SendMessage` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = coder-{slug}`, `cell_task = code-{slug}`, `review_rounds = {--review-rounds}`.
-3. When a coder's report marks a new external script it wrote, start the script cell `script-{slug}` on those scripts with two messages: to a roster reviewer whose domain matches the scripts' language, or, when none does, to a `general-purpose` reviewer spawned under a `reviewer-{slug}` name not already in the roster, `SendMessage` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = coder-{slug}`, `cell_task = script-{slug}`, `review_rounds = {--review-rounds}`; and to `coder-{slug}`, `SendMessage` that reviewer's name and the cell id, telling it to run that cell as the producer on those scripts and on the places in its prompt files that invoke them or allow running them (`allowed-tools`, or `tools:` in an agent definition).
-4. Gate: each coder's report, and one closure report per code cell and per script cell, arbitrating any escalation.
+3. Gate: one closure report per code cell, arbitrating any escalation.
 
 ## Step 4 — QA gate
 
@@ -175,4 +179,4 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 2. Stop the teammates: call `TaskStop` with each roster name as `task_id`, and go on to the next step without waiting for a reply or a notification. An idle teammate has no running task, so a failure saying it is not running means it is already stopped. Do not send `shutdown_request`: it gives the leader no completion signal to wait on.
 3. Remove the working directory: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 4. Under `--worktree`, run the teardown in § Worktree.
-5. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the prompt-review counts the coders reported, the QA result (`summary_line`, plus `workflow_warning` if any, and `prompt_summary_line` when `has_prompts` is true), any unfixed QA failure, stated as environmental when `environmental` is true, any prompt file still failing the interpretation test, any prompt file left untested with its reason, and any teammate whose `TaskStop` failed for a reason other than not running. Under `--worktree`, add the branch and any worktree the teardown kept.
+5. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, whether the team re-formation fell back to the Step 1 roster, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the prompt-review counts the coders reported, the QA result (`summary_line`, plus `workflow_warning` if any, and `prompt_summary_line` when `has_prompts` is true), any unfixed QA failure, stated as environmental when `environmental` is true, any prompt file still failing the interpretation test, any prompt file left untested with its reason, and any teammate whose `TaskStop` failed for a reason other than not running. Under `--worktree`, add the branch and any worktree the teardown kept.

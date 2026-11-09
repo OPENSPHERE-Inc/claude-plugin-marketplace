@@ -10,7 +10,7 @@ Task: `{{task}}`
 Design section: `{{design_path}}`
 Producer: `{{producer}}` | Cell task: `{{cell_task}}`
 
-Judge the design for correctness and completeness against the task, feasibility, missing edge cases / error handling, interface and data-shape soundness, testability, and risk to existing code. Read `{{plugin_root}}/rules/review.md` and follow it. Read `{{plugin_root}}/rules/divergence.md` and, following its § reviewer, detect divergence patterns. Restrict tool use to Read / Glob / Grep / Bash(grep/ls/find); do not edit anything.
+Judge the design for correctness and completeness against the task, feasibility, missing edge cases / error handling, interface and data-shape soundness, testability, and risk to existing code. Judge also whether its list of the files to add or change names every file the implementation needs, tests, documentation, and the files holding the entries that allow running a script (`allowed-tools`, or `tools:` in an agent definition) included: the team re-formation assigns coders only to the files in that list. Read `{{plugin_root}}/rules/review.md` and follow it. Read `{{plugin_root}}/rules/divergence.md` and, following its § reviewer, detect divergence patterns. Restrict tool use to Read / Glob / Grep / Bash(grep/ls/find); do not edit anything.
 
 Severity labels: Critical (design is wrong or will not meet the task) / Major (significant gap or risk) / Minor (improvement) / Info (note); actionable = Critical / Major.
 

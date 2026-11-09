@@ -64,7 +64,7 @@ claude-plugin-marketplace/
 ├── cdev/                         # Plugin: multi-agent coding workflow (active, English)
 │   ├── .claude-plugin/plugin.json
 │   ├── README.md / README_ja.md
-│   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, design, design-review, code, code-review, comment-review, prompt-review, prompt-test, qa)
+│   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, team-reassign, design, design-review, code, code-review, comment-review, prompt-review, prompt-test, qa)
 │   ├── agents/                   # comment-sensei.md, prompt-sensei.md, prompt-tester.md, dev-helper.md
 │   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, prompt.md, divergence.md
 │   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
