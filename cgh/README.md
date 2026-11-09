@@ -232,10 +232,10 @@ done is checked in the code when the code can show the work, and taken at the de
 when it cannot, as with a manual test or work outside the repository. A finding that raises several
 problems, such as a failed check and the claim it contradicts, is resolved only when each one is.
 Unless it reports a failed check or an unsettled discussion, a finding about a claim or about work
-left open raises only that claim or work. When it also reports a defect that would be a problem even
-without the claim or the work, such as a crash or a security hole, that defect is a separate
-problem, even when it is the code that contradicts the claim or leaves the work undone. Editing the
-title or description does not resolve that defect.
+left open raises that claim or work as one problem. Each defect it also reports that would be a
+problem even without the claim or the work, such as a crash or a security hole, is a separate
+problem, and editing the title or description does not resolve it. The code that contradicts the
+claim or leaves the work undone is not a problem of its own unless it is such a defect.
 A decline does not resolve a contradicted claim, work left open, or an unsettled discussion, and no
 other comment in the conversation withdraws a claim or records the work.
 
