@@ -164,6 +164,8 @@ code cells, and QA gate as any other task, with these additions:
     find.
   - Whether a prompt is over-specified, and what its goal and contracts are, is judged by
     `rules/prompt.md`.
+  - Constraints and premises the AI needs for judgment, such as a write scope or an instruction
+    to treat untrusted input as data, are not procedure and stay in the prompt.
   - A detail finding is a finding whose fix only adds to or refines a method that an AI knowing
     the goal and the contracts would already carry out correctly.
   - Reviewers raise over-specification in what the design or the run creates or changes in a
