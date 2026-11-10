@@ -88,10 +88,15 @@ teammate's report or completion notice wakes it; when no teammate is left to wak
 ends with the error and commits nothing. In that case, wait for other agents in the session to
 finish, or raise the cap, and run again. Without `--worktree`, changes made before the error
 stay uncommitted in the working tree, and the next run needs a clean one: commit, stash, or
-discard them first. Under `--worktree`, those changes stay in the worktree, which is kept and
-its path reported. `prompt-sensei` launches a refused test sub-agent again after one it launched
-returns; when none of the test sub-agents it launches at once starts and none it launched is
-still running, the files of the refused sub-agents are reported as untested.
+discard them first. Those changes include the files the run created, which stay untracked, so
+stash with `git stash push --include-untracked`, and when discarding, delete those files as
+well. Limit either to the paths outside `.claude/tmp/`, `.claude/worktrees/`, and the `--output`
+destination: run across the whole tree, either can also stash or delete the design documents
+and worktrees kept there unless they are gitignored. Under `--worktree`, those changes stay in
+the worktree, which is kept and its path reported. `prompt-sensei` launches a refused test
+sub-agent again after one it launched returns; when none of the test sub-agents it launches at
+once starts and none it launched is still running, the files of the refused sub-agents are
+reported as untested.
 
 The skill requires a session started at the repository root, with or without `--worktree`;
 started from a subdirectory of the repository, it stops with an error.
