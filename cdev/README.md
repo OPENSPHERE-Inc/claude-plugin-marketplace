@@ -85,9 +85,13 @@ Claude Code v2.1.217 or later caps the sub-agents running at once in a session
 `Concurrent subagent limit reached`. Teammates at work and the sub-agents of the interpretation
 test can count toward the cap. The leader spawns a refused teammate again the next time a
 teammate's report or completion notice wakes it; when no teammate is left to wake it, the run
-ends with the error and commits nothing. `prompt-sensei` launches a refused test sub-agent again
-after one it launched returns; when none of the test sub-agents it launches at once starts and
-none it launched is still running, the files of the refused sub-agents are reported as untested.
+ends with the error and commits nothing. In that case, wait for other agents in the session to
+finish, or raise the cap, and run again. Without `--worktree`, changes made before the error
+stay uncommitted in the working tree, and the next run needs a clean one: commit, stash, or
+discard them first. Under `--worktree`, those changes stay in the worktree, which is kept and
+its path reported. `prompt-sensei` launches a refused test sub-agent again after one it launched
+returns; when none of the test sub-agents it launches at once starts and none it launched is
+still running, the files of the refused sub-agents are reported as untested.
 
 The skill requires a session started at the repository root, with or without `--worktree`;
 started from a subdirectory of the repository, it stops with an error.
