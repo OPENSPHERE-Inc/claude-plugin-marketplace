@@ -74,9 +74,9 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 
 ## Agent 種別と起動要件
 
-teammate は Agent ツールで起動する。厳密な引数列を写経するのではなく、以下の要件を満たすこと: バックグラウンドの永続サブエージェントとして起動し（再メッセージで継続できる）、prompt に spawn 契約を渡し、`description` を指定し、`name` にロール識別子を設定し、その name を roster に記録する。
+teammate は Agent ツールで起動する。厳密な引数列を写経するのではなく、以下の要件を満たすこと: バックグラウンドの永続サブエージェントとして起動し（再メッセージで継続できる）、prompt に spawn 契約を渡し、`description` を指定し、`name` にロール識別子を設定し、spawn が通った時点でその name を roster に記録する。
 
-作業中の teammate は、セッション内で実行中のサブエージェントに対するランタイムの上限（`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`、既定 20）の数に入り、上限に達していると spawn は `Concurrent subagent limit reached` で拒否される。この拒否は、エラーが再試行しないよう告げていても失敗ではない。実行数が上限を下回れば spawn は再び成功するためである。このターンで送る他のメッセージを、保留中のエスカレーションへの裁定も含めて送った後に、リーダーを起こす報告か完了通知でまだ届いていないものがあるかを判断する。そうした報告や通知の送り手は、spawn した、またはメッセージを送った teammate でその後ターンを終えていないもの（spawn したばかりの teammate も含む）と、リーダーを待っていない開いているセルである。あれば、そのいずれかに起こされたときに、拒否された teammate を spawn し直す。なければリーダーを起こすイベントは来ないので、エラーを表示して Step 5 に進む。
+作業中の teammate は、セッション内で実行中のサブエージェントに対するランタイムの上限（`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`、既定 20）の数に入り、上限に達していると spawn は `Concurrent subagent limit reached` で拒否される。この拒否は、エラーが再試行しないよう告げていても失敗ではない。実行数が上限を下回れば spawn は再び成功するためである。拒否された teammate の spawn が通るまでは、その teammate 宛てのメッセージと、その name を別の teammate に渡すメッセージ（その name を `reviewer`、`producer`、`comment_reviewer`、`prompt_reviewer` として渡すセルの開始メッセージなど）を保留し、セルの開始メッセージは片方を保留するなら 2 通とも保留して、spawn が通った時点で保留したメッセージを送る。このターンで送る他のメッセージを、保留中のエスカレーションへの裁定も含めて送った後に、リーダーを起こす報告か完了通知でまだ届いていないものがあるかを判断する。そうした報告や通知の送り手は、spawn した、またはメッセージを送った teammate でその後ターンを終えていないもの（spawn したばかりの teammate も含む）と、リーダーを待っていない開いているセル（開始メッセージを保留しているセルは開いているセルに数えない）である。あれば、そのいずれかに起こされたときに、拒否された teammate を spawn し直す。なければリーダーを起こすイベントは来ないので、エラーを表示して Step 5 に進む。
 
 agent 種別（subagent_type）:
 
@@ -146,7 +146,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 3. ゲート: 設計セルごとにクローズ報告 1 通（届いたエスカレーションは随時裁定する）。セクションパスを `{design_paths}` として収集する。いずれかの設計セルのクローズ報告が、その設計で AI 向けプロンプトファイルを作成または編集すると述べた場合は、`has_prompts` を true にする。
 4. 設計が持ち込むファイルを含むすべてのファイルに書き手と領域の reviewer が付いた状態でステップ 3 を始めるよう、チームを再編成する。コンソールに表示する: `## Step 2 — Team re-formation`。`dev-helper` 宛に `templates/team-reassign.md` を指定し、`design_paths = {design_paths}`、`roster_path = {tmp_dir}/team.jsonl`、`taken_names = {このセッションで起動したすべての teammate の name}`、`output_path = {tmp_dir}/team-reassign.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team-reassign.jsonl` を Read する: `{coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`。ロール名（`coder-{slug}` / `reviewer-{slug}`）が roster にないエントリが新しいメンバーである。
    - 次のどれかにあたる場合は、どれにあたるかを示して `dev-helper` にタスクを 1 度だけ差し戻す: ファイルがないか上の形式に合わないこと、roster の coder / reviewer に同じ `slug` のエントリがないか、そのエントリの `name`（coder では `reviewer` も）が異なること、出力の `coders` 内か `reviewers` 内に同じ `slug` のエントリが 2 つあること、coder の `reviewer` が出力の `reviewers` のどのエントリの `slug` でもないこと。差し戻した後もどれかにあたる場合は、ステップ 1 の roster のままステップ 3 を始める: そのことをコンソールに示し、ステップ 5 の報告のために保持する。
-   - そうでなければ、新しいメンバーをステップ 1 の手順 8 と同じく起動して roster に記録し、各 coder のスコープとペアの reviewer を出力のものに置き換える。
+   - そうでなければ、新しいメンバーをステップ 1 の手順 8 と同じく起動し、各 coder のスコープとペアの reviewer を出力のものに置き換える。
    - コンソールに表示する: ステップ 1 の手順 9 と同じ形のロスター。追加したメンバーとスコープが変わった coder を示す。
 
 ## ステップ 3 — コードセル（コーディング）
@@ -181,4 +181,4 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 2. teammate を停止する: roster の各 name を `task_id` として `TaskStop` を呼び、応答や通知を待たずに次の手順へ進む。アイドルの teammate には稼働中のタスクがないため、稼働していない旨の失敗は停止済みとみなす。`shutdown_request` は送らない: リーダーが待てる完了の合図がない。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`。
 4. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
-5. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、チームの再編成がステップ 1 のロスターにフォールバックしたかどうか、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、coder が報告したプロンプトレビューの件数、QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、および稼働していない以外の理由で `TaskStop` が失敗した teammate。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
+5. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、チームの再編成がステップ 1 のロスターにフォールバックしたかどうか、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、coder が報告したプロンプトレビューの件数、ステップ 4 を実行した場合の QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、稼働していない以外の理由で `TaskStop` が失敗した teammate、および spawn の拒否でステップ 5 に来た場合は、中断したステップと、spawn が拒否されたままの teammate。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
