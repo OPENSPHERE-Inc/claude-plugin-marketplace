@@ -134,11 +134,18 @@ current head with `/creview:resolve`, reports them in the review body, and revie
 pull request again. To accept an earlier finding without a fix, tell the skill to waive it:
 later runs do not report it again. Earlier findings already verified are checked again: one that
 still holds is left out of the review body, and one that no longer holds counts as unverified
-again. An open item in the description is verified from the description: it is resolved once the item is
-gone or names an issue or a pull request. A claim of the title or description is verified from the
-code and the description: it is resolved once the code does what the claim says or the title and
-description no longer make the claim. A finding about a failed check or an unsettled discussion is
-not resolved by taking a claim out of the description.
+again.
+
+Each finding is verified against the code and the title and description together, since a problem
+can lie in either or in a mismatch between them. A claim the code contradicts is resolved once the
+code does what the claim says or the title and description no longer make it. Work the description
+leaves open is resolved once it is removed from the description, the description names an issue
+or a pull request that records it, or the description marks it done and it is done. Whether it is
+done is checked in the code when the code can show the work, and taken at the description's word
+when it cannot, as with a manual test or work outside the repository. A finding that raises several
+problems, such as a failed check and the claim it contradicts, is resolved only when each one is.
+A decline does not resolve a contradicted claim, work left open, or an unsettled discussion, and no
+other comment in the conversation withdraws a claim or records the work.
 
 With `--incremental`, the code stage reviews only the commits added since your latest gate review
 on the pull request, from the commit GitHub records for that review to the head. The review body
@@ -215,6 +222,28 @@ review body or an issue comment, the conversation outside threads.
 A decline counts only from the pull request's assignees or, with none, its author, and anyone
 else's word only when one of them can be taken to have stated it. Verification checks the facts a
 decline states against the code.
+
+Each finding is verified against the code and the title and description together, since a problem
+can lie in either or in a mismatch between them. A claim the code contradicts is resolved once the
+code does what the claim says or the title and description no longer make it. Work the description
+leaves open is resolved once it is removed from the description, the description names an issue
+or a pull request that records it, or the description marks it done and it is done. Whether it is
+done is checked in the code when the code can show the work, and taken at the description's word
+when it cannot, as with a manual test or work outside the repository. A finding that raises several
+problems, such as a failed check and the claim it contradicts, is resolved only when each one is.
+Unless it reports a failed check or an unsettled discussion, a finding about a claim or about work
+left open raises that claim or work as one problem. Each defect it also reports that would be a
+problem even without the claim or the work, such as a crash or a security hole, is a separate
+problem, and editing the title or description does not resolve it. The code that contradicts the
+claim or leaves the work undone is not a problem of its own unless it is such a defect.
+A decline does not resolve a contradicted claim, work left open, or an unsettled discussion, and no
+other comment in the conversation withdraws a claim or records the work.
+
+A finding that a discussion is unsettled is resolved once the code does what the discussion
+concluded or shows the problem absent, or once the conclusion is recorded: stated in a code comment
+or the description, or tracked in an issue or a pull request that the description, a code comment,
+or a comment by the author, an assignee, or you names. For a security problem, a comment counts
+only when it is by the author or an assignee.
 
 Findings verified earlier are checked again on every run, since a later change can undo a fix. One
 that still holds gets no reply; one that no longer holds gets a reply saying so. A decline stays
