@@ -70,13 +70,13 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 - リーダー宛は `to: "main"`。teammate どうしが DM する場合は、リーダーが各メッセージで相手の name を渡す。
 - `SendMessage` の `message` は常に散文の文字列で `summary` を添えて送る（dispatch も報告も）。構造化された結果はファイル経由で渡し、`message` には入れない。例外はプロトコルオブジェクトのみ（`${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` § ツール）。
 
-リーダーはイベント駆動で進行し、共有タスクリストを持たない: dispatch したらターンを終え、teammate からのメッセージ（`to: "main"`）で再起動される。roster（各 teammate の name → `agentType`）、ペアリング、各セルの状態を自身の作業状態で追跡し（`TodoWrite` でユーザーに可視化してよい）、ステップのゲート条件が満たされたら次のステップを開始する。
+リーダーはイベント駆動で進行し、共有タスクリストを持たない: dispatch したらターンを終え、teammate からのメッセージ（`to: "main"`）で再起動される。roster（各 teammate の name → `agentType`）、再 spawn 待ちの teammate、ペアリング、各セルの状態を自身の作業状態で追跡し（`TodoWrite` でユーザーに可視化してよい）、ステップのゲート条件が満たされたら次のステップを開始する。
 
 ## Agent 種別と起動要件
 
-teammate は Agent ツールで起動する。厳密な引数列を写経するのではなく、以下の要件を満たすこと: バックグラウンドの永続サブエージェントとして起動し（再メッセージで継続できる）、prompt に spawn 契約を渡し、`description` を指定し、`name` にロール識別子を設定し、spawn が通った時点でその name を roster に記録する。
+teammate は Agent ツールで起動する。厳密な引数列を写経するのではなく、以下の要件を満たすこと: バックグラウンドの永続サブエージェントとして起動し（再メッセージで継続できる）、prompt に spawn 契約を渡し、`description` を指定し、`name` にロール識別子を設定し、spawn が通った時点でその name を roster に記録する。それまでは、拒否された teammate の name・種別・ペアリングを再 spawn 待ちとして保持する。
 
-作業中の teammate は、セッション内で実行中のサブエージェントに対するランタイムの上限（`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`、既定 20）の数に入り、上限に達していると spawn は `Concurrent subagent limit reached` で拒否される。この拒否は、エラーが再試行しないよう告げていても失敗ではない。実行数が上限を下回れば spawn は再び成功するためである。拒否された teammate の spawn が通るまでは、その teammate 宛てのメッセージと、その name を別の teammate に渡すメッセージ（その name を `reviewer`、`producer`、`comment_reviewer`、`prompt_reviewer` として渡すセルの開始メッセージなど）を保留し、セルの開始メッセージは片方を保留するなら 2 通とも保留して、spawn が通った時点で保留したメッセージを送る。このターンで送る他のメッセージを、保留中のエスカレーションへの裁定も含めて送った後に、リーダーを起こす報告か完了通知でまだ届いていないものがあるかを判断する。そうした報告や通知の送り手は、spawn した、またはメッセージを送った teammate でその後ターンを終えていないもの（spawn したばかりの teammate も含む）と、リーダーを待っていない開いているセル（開始メッセージを保留しているセルは開いているセルに数えない）である。あれば、そのいずれかに起こされたときに、拒否された teammate を spawn し直す。なければリーダーを起こすイベントは来ないので、エラーを表示して Step 5 に進む。
+作業中の teammate は、セッション内で実行中のサブエージェントに対するランタイムの上限（`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`、既定 20）の数に入り、上限に達していると spawn は `Concurrent subagent limit reached` で拒否される。この拒否は、エラーが再試行しないよう告げていても失敗ではない。実行数が上限を下回れば spawn は再び成功するためである。拒否された teammate の spawn が通るまでは、その teammate 宛てのメッセージと、その name を別の teammate に渡すメッセージ（その name を `reviewer`、`producer`、`comment_reviewer`、`prompt_reviewer` として渡すセルの開始メッセージなど）を保留し、セルの開始メッセージは片方を保留するなら 2 通とも保留する。保留したメッセージは、そのメッセージが宛てるか name を渡す、拒否された teammate すべての spawn が通った時点で送り、セルの開始メッセージは 2 通ともそうなった時点でそろえて送る。このターンで送る他のメッセージを、保留中のエスカレーションへの裁定も含めて送った後に、リーダーを起こす報告か完了通知でまだ届いていないものがあるかを判断する。そうした報告や通知の送り手は、spawn した、またはメッセージを送った teammate でその後ターンを終えていないもの（spawn したばかりの teammate も含む）と、リーダーを待っていない開いているセル（開始メッセージを保留しているセルは開いているセルに数えない）である。あれば、そのいずれかに起こされたときに、拒否された teammate を spawn し直す。なければリーダーを起こすイベントは来ないので、エラーを表示して Step 5 に進む。
 
 agent 種別（subagent_type）:
 
@@ -106,7 +106,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 ## リーダーのスコープ（本体の隔離）
 
-リーダーが保持するのは、roster（各 teammate の name → agentType）、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA と解釈テストの結果のみ。設計本体・ソース・指摘本体は teammate 側に留まり、指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
+リーダーが保持するのは、roster（各 teammate の name → agentType）、再 spawn 待ちの teammate、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA と解釈テストの結果のみ。設計本体・ソース・指摘本体は teammate 側に留まり、指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
 
 ## 作業用ディレクトリ
 
@@ -144,7 +144,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
    - `architect-{slug}` 宛に `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`output_path = {design_dir}/design-{slug}.md`、`reviewer = {ペア reviewer の name}` を渡して `SendMessage`。
    - ペア reviewer の name 宛に `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {design_dir}/design-{slug}.md`、`producer = architect-{slug}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
 3. ゲート: 設計セルごとにクローズ報告 1 通（届いたエスカレーションは随時裁定する）。セクションパスを `{design_paths}` として収集する。いずれかの設計セルのクローズ報告が、その設計で AI 向けプロンプトファイルを作成または編集すると述べた場合は、`has_prompts` を true にする。
-4. 設計が持ち込むファイルを含むすべてのファイルに書き手と領域の reviewer が付いた状態でステップ 3 を始めるよう、チームを再編成する。コンソールに表示する: `## Step 2 — Team re-formation`。`dev-helper` 宛に `templates/team-reassign.md` を指定し、`design_paths = {design_paths}`、`roster_path = {tmp_dir}/team.jsonl`、`taken_names = {このセッションで起動したすべての teammate の name}`、`output_path = {tmp_dir}/team-reassign.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team-reassign.jsonl` を Read する: `{coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`。ロール名（`coder-{slug}` / `reviewer-{slug}`）が roster にないエントリが新しいメンバーである。
+4. 設計が持ち込むファイルを含むすべてのファイルに書き手と領域の reviewer が付いた状態でステップ 3 を始めるよう、チームを再編成する。コンソールに表示する: `## Step 2 — Team re-formation`。`dev-helper` 宛に `templates/team-reassign.md` を指定し、`design_paths = {design_paths}`、`roster_path = {tmp_dir}/team.jsonl`、`taken_names = {このセッションで起動したすべての teammate の name}`、`output_path = {tmp_dir}/team-reassign.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team-reassign.jsonl` を Read する: `{coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`。ロール名（`coder-{slug}` / `reviewer-{slug}`）が roster にも再 spawn 待ちの teammate にもないエントリが新しいメンバーである。
    - 次のどれかにあたる場合は、どれにあたるかを示して `dev-helper` にタスクを 1 度だけ差し戻す: ファイルがないか上の形式に合わないこと、roster の coder / reviewer に同じ `slug` のエントリがないか、そのエントリの `name`（coder では `reviewer` も）が異なること、出力の `coders` 内か `reviewers` 内に同じ `slug` のエントリが 2 つあること、coder の `reviewer` が出力の `reviewers` のどのエントリの `slug` でもないこと。差し戻した後もどれかにあたる場合は、ステップ 1 の roster のままステップ 3 を始める: そのことをコンソールに示し、ステップ 5 の報告のために保持する。
    - そうでなければ、新しいメンバーをステップ 1 の手順 8 と同じく起動し、各 coder のスコープとペアの reviewer を出力のものに置き換える。
    - コンソールに表示する: ステップ 1 の手順 9 と同じ形のロスター。追加したメンバーとスコープが変わった coder を示す。
@@ -168,7 +168,7 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 5. 手順 3〜4 の報告がそろったら、`success` と `prompt_pass` がともに true の場合はループを抜ける。
 6. 修正可能な失敗は、`success == false` かつ `environmental` が false の場合のビルド / テスト失敗と、`{prompt_failed_files}` が空でない場合の解釈テスト失敗である。`success == false` かつ `environmental` が true の場合は、`error_summary` を環境起因の失敗としてコンソールに提示し、この失敗には QA 修正セルを回さない。`{prompt_untested_files}` も同様に理由とともにコンソールに提示し、QA 修正セルを回さない。修正可能な失敗がない場合はステップ 5 へ進む。
 7. 試行回数が残っている場合、修正可能な失敗ごとに QA 修正セルを 1 つずつ並行して回す。ビルド / テスト失敗のファイル（`error_files`）と `{prompt_failed_files}` が同じファイルを含む場合は、代わりに 2 つの失敗を 1 つの QA 修正セルで回す: スコープは両者のファイルの和集合、フィードバックは手順 b の 2 つのフィードバックをつなげたもの、セル id は `code-qa-{n}`、reviewer はビルド / テスト失敗に合わせる。
-   a. 失敗スコープ — ビルド / テスト失敗のファイル、または `{prompt_failed_files}` — を `general-purpose` の coder と、失敗ドメインに一致するペア reviewer でカバーする（ビルド / テスト失敗では `{suggested_specialist}` をヒントとし、解釈テスト失敗のドメインは AI 向けプロンプト）。適合する roster のメンバーは再利用し（2 つのセルに同じ coder を充てない。`prompt-sensei` の teammate はそのセルのファイルのプロンプトレビューと解釈テストを担うので、セルの reviewer にしない）、いなければ roster にない `coder-{slug}` / `reviewer-{slug}` を name として起動する。新規に起動する reviewer の subagent_type は、ビルド / テスト失敗では `{suggested_specialist}` が § Agent 種別と起動要件 の登録名として存在すればそれを、解釈テスト失敗では `cdev:prompt-sensei` を、それ以外は `general-purpose` を用いる。
+   a. 失敗スコープ — ビルド / テスト失敗のファイル、または `{prompt_failed_files}` — を `general-purpose` の coder と、失敗ドメインに一致するペア reviewer でカバーする（ビルド / テスト失敗では `{suggested_specialist}` をヒントとし、解釈テスト失敗のドメインは AI 向けプロンプト）。適合する roster のメンバーは再利用し（2 つのセルに同じ coder を充てない。`prompt-sensei` の teammate はそのセルのファイルのプロンプトレビューと解釈テストを担うので、セルの reviewer にしない）、いなければ roster にも再 spawn 待ちの teammate にもない `coder-{slug}` / `reviewer-{slug}` を name として起動する。新規に起動する reviewer の subagent_type は、ビルド / テスト失敗では `{suggested_specialist}` が § Agent 種別と起動要件 の登録名として存在すればそれを、解釈テスト失敗では `cdev:prompt-sensei` を、それ以外は `general-purpose` を用いる。
    b. coder の name 宛に `templates/code.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {失敗したファイル}`、`tdd = {has_test_suite}`、`feedback = {その失敗のフィードバック}`、`reviewer = {ペア reviewer の name}`、`comment_reviewer = comment-sensei`、`prompt_reviewer = {ステップ 3 と同じ}` を渡して `SendMessage`。そして reviewer の name 宛に `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = {coder の name}`、`cell_task = {その失敗のセル id}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。失敗ごとの値:
       - ビルド / テスト: `feedback = QA failure — Read {tmp_dir}/qa-result.jsonl (failure section) and {tmp_dir}/build.log; fix the build/test error.`、セル id `code-qa-{n}`。
       - 解釈テスト: `feedback = Prompt interpretation test failure — Read {tmp_dir}/prompt-test.jsonl (the files whose pass is false and untested is null); make each unclear item answerable from the prompt.`、セル id `prompt-qa-{n}`。
