@@ -76,6 +76,8 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 
 teammate は Agent ツールで起動する。厳密な引数列を写経するのではなく、以下の要件を満たすこと: バックグラウンドの永続サブエージェントとして起動し（再メッセージで継続できる）、prompt に spawn 契約を渡し、`description` を指定し、`name` にロール識別子を設定し、その name を roster に記録する。
 
+作業中の teammate は、セッション内で実行中のサブエージェントに対するランタイムの上限（`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`、既定 20）の数に入り、上限に達していると spawn は `Concurrent subagent limit reached` で拒否される。この拒否は、エラーが再試行しないよう告げていても失敗ではない。実行数が上限を下回れば spawn は再び成功するためである。このターンで送る他のメッセージを、保留中のエスカレーションへの裁定も含めて送った後に、リーダーを起こす報告か完了通知でまだ届いていないものがあるかを判断する。そうした報告や通知の送り手は、spawn した、またはメッセージを送った teammate でその後ターンを終えていないもの（spawn したばかりの teammate も含む）と、リーダーを待っていない開いているセルである。あれば、そのいずれかに起こされたときに、拒否された teammate を spawn し直す。なければリーダーを起こすイベントは来ないので、エラーを表示して Step 5 に進む。
+
 agent 種別（subagent_type）:
 
 - 同梱エージェントはプラグイン名前空間付きで指定する: `cdev:dev-helper`、`cdev:comment-sensei`、`cdev:prompt-sensei`。

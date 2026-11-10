@@ -76,6 +76,8 @@ The leader runs event-driven and holds no shared task list: it dispatches, ends 
 
 Spawn each teammate with the Agent tool. Rather than copying an exact argument list, meet these requirements: launch it as a background, persistent subagent (so a follow-up message continues it), pass the spawn contract as its prompt, include a `description`, set `name` to its role label, and record that name in the roster.
 
+A working teammate counts toward the runtime's limit on the sub-agents running in the session (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, 20 by default), which refuses a spawn with `Concurrent subagent limit reached`. Such a refusal is not a failure, although the error says not to retry, since a spawn succeeds again once the running count drops below the limit. After sending the turn's other messages, an arbitration of a pending escalation included, judge whether a report or completion notification is still due to wake you: from a teammate you spawned or messaged that has not ended its turn since, one you just spawned included, or from an open cell that is not waiting on you. If one is due, spawn the refused teammate again when one wakes you. Otherwise no event will wake you: show the error and go to Step 5.
+
 Agent type (subagent_type):
 
 - Bundled agents are named with the plugin namespace: `cdev:dev-helper`, `cdev:comment-sensei`, `cdev:prompt-sensei`.

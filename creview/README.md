@@ -501,13 +501,27 @@ Nested sub-agent spawning is required
 - `/creview:triage` on its own — 2 or more. The triage sub-agent spawns
   the challenge sub-agents and the adjudication sub-agent.
 
-A long run also consumes many subagent slots — the challenge sub-agents alone
+A long run also launches many sub-agents: the challenge sub-agents alone
 number three per batch of eight findings, and a split review runs one reviewer
-per (scope, reviewer) pair — so raise
-`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
-session) when using a high `--max-rounds`. Sub-agents that run in parallel are
-launched at most 20 at a time, the default of
-`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`; the rest start as earlier ones finish.
+per (scope, reviewer) pair. Claude Code before v2.1.224 caps the total number
+of sub-agents launched in a session with
+`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200); on such a version,
+raise it when using a high `--max-rounds`. From v2.1.224 on, there is no such
+cap.
+
+Claude Code v2.1.217 or later also caps the sub-agents running at once with
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` (default 20), refusing a launch past it
+with `Concurrent subagent limit reached`. The cap counts every sub-agent
+running in the session, including those running outside the skill and those
+above the launcher: when the triage sub-agent launches the challenge
+sub-agents, the triage sub-agent itself, and under `/creview:rounds` its phase
+leader, count as well. Sub-agents that run in parallel are launched at most 20
+at a time, and a launch the cap refuses is made again after an earlier one
+finishes. When none of the launches made at once starts and none that the
+launcher made is still running, the refused launches count as failed launches:
+`/creview:start`, for example, stops with the error, and the triage sub-agent
+goes on without the challenges it could not launch. In that case, wait for
+other agents to finish, or raise the cap, and run again.
 
 ## Reviewer / fixer agents
 
