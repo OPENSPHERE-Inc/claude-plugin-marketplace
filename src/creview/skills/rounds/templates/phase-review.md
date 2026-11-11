@@ -25,4 +25,4 @@ template_id: 3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64
 
 レビュアープロンプトテンプレートの一部を省略すること、指摘数を調整する目的で指示を付け足すこと、レビュアーが提出したもの以外の指摘を追加することは禁止。
 
-戻り値: `{doc_path, findings_total, severity_counts: {critical, major, minor, info}, error, template_id}`。`error` は、スキルがステップ 1〜4 を最後まで実行した場合は警告付きでも null。スキルが中断・終了した場合、またはスクリプトの非ゼロ終了やサブエージェントの `template_id` 不一致が 2 回続くなど、先に進めない失敗でステップが止まった場合は、スキルが表示したエラーとし、スキルが表示しなかった場合は、止まったステップとそこで失敗した内容（コマンドの終了コードとエラー出力、または不一致の `template_id`）を記したメッセージを自分で書く。エラー時は `doc_path` を null、`findings_total` と各 severity の件数を 0 として報告する。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
+戻り値: `{doc_path, findings_total, severity_counts: {critical, major, minor, info}, error, template_id}`。`error` は、スキルがステップ 1〜4 を最後まで実行した場合は警告付きでも null。スキルが中断・終了した場合、またはスクリプトの非ゼロ終了や、サブエージェントの `template_id` 不一致の 2 回連続など、先に進めない失敗でステップが止まった場合は、スキルが表示したエラーとし、スキルが表示しなかった場合は、止まったステップとそこで失敗した内容（コマンドの終了コードとエラー出力、または不一致の `template_id`）を記したメッセージを自分で書く。エラー時は `doc_path` を null、`findings_total` と各 severity の件数を 0 として報告する。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
