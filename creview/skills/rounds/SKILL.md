@@ -132,7 +132,7 @@ On a phase error → end the round loop, skip the final step, go to Step 4
 
 While the round counter is at most `--max-rounds`, repeat the following.
 
-When a phase sub-agent returns a non-null `error`, including on a re-run in Step 2.5, run no further phase or step of the round, end the round loop, skip Step 3, and proceed to Step 4. In Step 2.2, remove the working directory (step 6) first.
+When a phase sub-agent returns a non-null `error`, including on a re-run in Step 2.5, run no further phase or step of the round, end the round loop, skip Step 3, and proceed to Step 4. In Step 2.2, remove the working directory (step 6) first. In Step 2.3, first retain the returned `workflow_warning` and `prompt_warning` as its step 3 directs, or, in its re-run in Step 2.5, as Step 2.5 step 2 directs.
 
 ### 2.1 — Review phase (start skill)
 
