@@ -32,7 +32,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 - フォーマット・ビルド・テスト検証サブエージェントへ: `build-format-detection.md の段階 2 は、{target_dir} 配下のファイルからではなく、{main_root}/CLAUDE.md、次に {main_root}/README.md から解決する。コマンドは通常どおり {target_dir} で実行する。`
 - `trust` が `off` のとき、select-fix-targets サブエージェントへ: `location または fix_plan が、{target_dir} に置いていないエージェントファイルのいずれかのパスを指す修正対象は、--trust なしでレビューしたためそのファイルをチェックアウトしていないという理由で not_ready へ移す。`
 
-`merge_base` が null でない場合は、解釈テストサブエージェントに次のオーバーライドを追加する。`{target_dir}` はその値で書く: `各テスト担当のプロンプトに次を加える: {target_dir} 配下のファイルだけを開く。プロンプトが指す {target_dir} 外のファイルや {target_dir} が除外しているファイルは利用できないものとし、そのようなファイルを読めないことだけを理由に項目を unclear と報告しない。`
+`merge_base` が null でない場合は、解釈テストサブエージェントに次のオーバーライドを追加する。`{target_dir}` はその値で書く: `各テスト担当のプロンプトに次を加える: {target_dir} 配下のファイルだけを開く。プロンプトが指す {target_dir} 外のファイルは利用できないものとし、利用できないファイルを読めないことだけを理由に項目を unclear と報告しない。` `pr_worktree` が true かつ `trust` が `off` の場合は、そのオーバーライドの末尾に次を加える: `{target_dir} 配下の CLAUDE.md、CLAUDE.local.md、AGENTS.md、.mcp.json、.claude も、大文字小文字を問わずどの深さでも利用できないものとする。{target_dir} はそれらを除外している。`
 
 ## レビュードキュメント形式
 
@@ -121,7 +121,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 ## ステップ 2 — 修正（専門家サブエージェントへ並列委譲）
 
-`by_assignee` の各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で修正サブエージェントを起動する。異なる assignee は並列起動する。同一 assignee 内の ids はテンプレートの並列化制約に従う。
+起動前に、`${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/baseline.txt` を実行する。`by_assignee` の各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で修正サブエージェントを起動する。異なる assignee は並列起動する。同一 assignee 内の ids はテンプレートの並列化制約に従う。
 
 テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path}, ...], template_id}` — `items` のみを集め、status 本文は読み込まない。
 
@@ -135,7 +135,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 comment-sensei が戻った後、プロンプトレビューを実行する。`{tmp_dir}/statuses/*.jsonl` の `files` 配列のみを読む（判定本文ではなく運用データである）。それらのファイルに拡張子 `.md` のものが無い場合は、プロンプトレビューをスキップし、空の `prompt_files` を保持する。そうでなければ `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` を再度実行し、`Agent(subagent_type="creview:prompt-sensei", prompt=...)` で起動する。Sub はそれらのファイルのうちどれが AI 向けプロンプトファイルかを判定する。
 
-テンプレート `prompt-review.md`、`template_id` `6be7d388-2c9d-41f1-a349-a47407e157f4`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`document_path = {document_path}`、オーバーライド `(該当なし)`。戻り値: `{prompt_files: [{path, created}], violations_detected, violations_fixed, compressed_count, added_files, remaining: [{location, rule}], template_id}`。すべて保持する。
+テンプレート `prompt-review.md`、`template_id` `6be7d388-2c9d-41f1-a349-a47407e157f4`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`baseline_path = {tmp_dir}/baseline.txt`、`document_path = {document_path}`、オーバーライド `(該当なし)`。戻り値: `{prompt_files: [{path, created}], violations_detected, violations_fixed, compressed_count, added_files, remaining: [{location, rule}], template_id}`。すべて保持する。
 
 ## ステップ 4 — フォーマット・ビルド・テスト検証と解釈テスト
 
@@ -146,11 +146,11 @@ comment-sensei が戻った後、プロンプトレビューを実行する。`{
 最大試行回数: 5。ビルド／テストと解釈テストで共有する。1 から始まる各試行 n について:
 
 1. `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` で現在の修正差分（作業ツリー）を取得し、フォーマット・ビルド・テスト検証 Sub を `Agent(subagent_type="creview:review-helper", prompt=...)` で起動する — テンプレート `format-build-verify.md`、`template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`attempt_num = {n}`、オーバーライド `(該当なし)`。
-   `prompt_files` が空でない場合は、同じメッセージで解釈テスト Sub を `Agent(subagent_type="creview:prompt-sensei", prompt=...)` で起動する — テンプレート `prompt-test.md`、`template_id` `a3d8a6e0-5eb4-4540-b28b-b1ef6a4bfb52`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`document_path = {document_path}`、`prompt_files = {prompt_files}`、`output_path = {tmp_dir}/prompt-test.jsonl`、`attempt_num = {n}`、`fixed_files = {fixed_files}`（試行 1 では `(none)`）、オーバーライド `(該当なし)`。
+   `prompt_files` が空でない場合は、同じメッセージで解釈テスト Sub を `Agent(subagent_type="creview:prompt-sensei", prompt=...)` で起動する — テンプレート `prompt-test.md`、`template_id` `a3d8a6e0-5eb4-4540-b28b-b1ef6a4bfb52`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/changes.txt`、`baseline_path = {tmp_dir}/baseline.txt`、`document_path = {document_path}`、`prompt_files = {prompt_files}`、`output_path = {tmp_dir}/prompt-test.jsonl`、`attempt_num = {n}`、`fixed_files = {fixed_files}`（試行 1 では `(none)`）、オーバーライド `(該当なし)`。
 2. 検証の戻り値（`{path, success, environmental, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`）から、`workflow_warning` を前の試行の値に代えてステップ 7 のために保持する。`success == false` かつ `environmental == true` の場合は、`{tmp_dir}/format-build-result.jsonl` の `failure` セクションから `error_summary` を Read し、保持する `workflow_warning` を「環境起因でビルド／テスト検証が完了しなかった: {error_summary}」に置き換え、ユーザーに `error_summary` を提示する。この失敗にはビルド／テスト修正 Sub を起動しない。
-3. 解釈テストの戻り値（`{path, attempt, pass, tested_count, failed_files, untested_files: [{path, reason}], summary_line, template_id}`）から、`failed_files`、`untested_files`、`summary_line` をそれぞれ `{prompt_failed_files}`、`{prompt_untested_files}`、`{prompt_summary_line}` として、前の試行の値に代えて保持する。戻り値にそれらが無い場合、または `attempt` が n でない場合は、`{prompt_failed_files}` を空とし、`prompt_files` の各パスを、解釈テストが結果を返さなかったという理由で `{prompt_untested_files}` として保持する。
+3. 解釈テストの戻り値（`{path, attempt, pass, tested_count, failed_files, untested_files: [{path, reason}], summary_line, template_id}`）から、`failed_files`、`untested_files`、`summary_line` をそれぞれ `{prompt_failed_files}`、`{prompt_untested_files}`、`{prompt_summary_line}` として、前の試行の値に代えて保持する。戻り値にそれらが無い場合、または `attempt` が n でない場合は、`{prompt_failed_files}` を空とし、`prompt_files` の各パスを、解釈テストが結果を返さなかったという理由で `{prompt_untested_files}` として保持し、`{prompt_summary_line}` には解釈テストが結果を返さなかった旨を保持する。
 4. ビルド／テストに `environmental == false` の失敗が無く、`{prompt_failed_files}` が空なら、ループを抜ける。
-5. n が 5 の場合は、残ったビルド／テスト失敗の `error_summary` と `{prompt_failed_files}` をユーザーに提示してループを抜ける。
+5. n が 5 の場合は、`{prompt_failed_files}` をユーザーに提示してループを抜ける。ビルド／テストが `environmental == false` で失敗していれば、`{tmp_dir}/format-build-result.jsonl` の `failure` セクションから `error_summary` を Read し、それもあわせて提示する。
 6. それ以外は、修正を順に行う。両方の修正が同じファイルを編集し得るためである:
    a. ビルド／テストが `environmental == false` で失敗した場合は、`{tmp_dir}/format-build-result.jsonl` を Read し、`failure` セクションから `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` を取得する（判定本文ではない運用データ。ただしソースコード本体は Read しない）。`Agent(subagent_type=suggested_specialist, prompt=...)` でビルド／テスト修正専門家 Sub を起動する — テンプレート `build-fix.md`、`template_id` `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{description, template_id}`。
    b. `{prompt_failed_files}` が空でない場合は、プロンプト修正 Sub を `Agent(subagent_type="creview:prompt-sensei", prompt=...)` で起動する — テンプレート `prompt-fix.md`、`template_id` `cbbd9597-ca26-4308-a6d1-67cb18498aff`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`tmp_dir = {tmp_dir}`、`document_path = {document_path}`、`result_path = {tmp_dir}/prompt-test.jsonl`、オーバーライド `(該当なし)`。戻り値: `{files, template_id}`。

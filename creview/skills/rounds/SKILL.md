@@ -175,7 +175,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
 2. Launch the phase sub-agent with `templates/phase-respond.md` (`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`).
    - Variables: `document_path`, `commit_flag` (`--commit` state), `adr_flag` (`--adr` state)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists. In a round where the user instructed a fix policy in Step 2.2, add that instruction
-3. Hold only the return value (`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line}`) in context. When `workflow_warning` or `prompt_warning` is non-null, retain it for this round's record.
+3. Hold only the return value (`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line}`) in context. When `workflow_warning` is non-null, retain it for this round's record. When `prompt_warning` is non-null, retain it for this round's record with the source `Step 3`.
 
 ### 2.4 — Resolve phase (resolve skill)
 
@@ -195,7 +195,7 @@ From the Step 2.4 return value (`feedback_count`), determine whether findings th
 Each attempt re-runs 2.2 → 2.3 → 2.4, passing the text below as the phase sub-agent's `overrides` variable:
 
 1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.`, adding the fix policy of Step 2.2 step 9 in a round where the user instructed one.
-2. When 2.2 decided to skip the respond phase, skip this step and proceed to step 3. Otherwise display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` and re-run 2.3 with the override `Feedback re-fix pass: the fix targets are the findings whose Verification is 💬 Feedback; re-fix based on that feedback content.` Do not scope this override to a named sub-agent — the fix-target selection sub-agent must receive it too. When the returned `workflow_warning` or `prompt_warning` is non-null, update that value in this round's record (last write wins).
+2. When 2.2 decided to skip the respond phase, skip this step and proceed to step 3. Otherwise display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` and re-run 2.3 with the override `Feedback re-fix pass: the fix targets are the findings whose Verification is 💬 Feedback; re-fix based on that feedback content.` Do not scope this override to a named sub-agent — the fix-target selection sub-agent must receive it too. When the returned `workflow_warning` is non-null, update that value in this round's record (last write wins). When the returned `prompt_warning` is non-null, add it to this round's record with the source `Step 5.2 attempt {M}`, keeping the values retained before it.
 3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run 2.4 with the fix policy of Step 2.2 step 9 as its overrides in a round where the user instructed one, and with overrides `(none)` otherwise.
 4. If feedback remains, return to step 1. If not resolved within 3 attempts, end the round (remaining 💬 Feedback are counted as "unresolved" in 2.6).
 
@@ -214,7 +214,7 @@ Record the round's results. Each counter is obtained from phase sub-agent return
 - Feedback attempts: the number of Step 2.5 attempts performed in this round
 - Round start revision: this round's `{this_round_rev}`
 - workflow_warning: the `workflow_warning` retained in 2.3 / 2.5 (only for rounds where the format / build procedure was unresolved or the build / test verification did not complete for an environmental cause; null otherwise)
-- prompt_warning: the `prompt_warning` retained in 2.3 / 2.5 (only for rounds where an AI-facing prompt file was left failing the interpretation test or untested; null otherwise)
+- prompt_warning: every `prompt_warning` retained in 2.3 / 2.5, each with its source, joined into one value (only for rounds where an AI-facing prompt file was left failing the interpretation test or untested; null otherwise)
 
 Condition for proceeding to the next round: only when **all** of the following are met, set `{prev_round_rev}` to this round's `{this_round_rev}`, increment the round counter, and return to Step 2.1:
 

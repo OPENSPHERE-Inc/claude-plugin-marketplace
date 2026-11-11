@@ -8,7 +8,7 @@ The target range is what the fixes of this run created or changed in AI-facing p
 
 Input:
 
-- Target files: the files in the `files` arrays of `{{tmp_dir}}/statuses/*.jsonl` that still exist and are AI-facing prompt files as `prompt.md` defines them. A file absent from HEAD counts as created, and its whole content is the target range. For any other file, `{{diff_path}}` (`fetch-diff.sh` output against HEAD) shows the changed parts.
+- Target files: the files in the `files` arrays of `{{tmp_dir}}/statuses/*.jsonl` that still exist and are AI-facing prompt files as `prompt.md` defines them. `{{diff_path}}` is `fetch-diff.sh` output against HEAD after the fixes, and `{{baseline_path}}` the same output taken before them. A file `{{diff_path}}` shows as added or lists under Untracked Files, and `{{baseline_path}}` does not show, counts as created, and its whole content is the target range. For any other file `{{diff_path}}` shows, the target range is what `{{diff_path}}` shows beyond what `{{baseline_path}}` shows (in a hunk both show, the lines that differ). For a file `{{diff_path}}` does not show, such as a gitignored one, the target range is the parts the `description` of each fix listing it in `{{tmp_dir}}/statuses/*.jsonl` points to.
 - Review document `{{document_path}}`: the findings each fix addressed (description, location, Triage / Estimate metadata), for the intent a fix or a compression must keep.
 
 Steps:
@@ -28,7 +28,7 @@ Edit only the target files and the template files step 2 adds.
 
 Return value: `{prompt_files: [{path, created}], violations_detected, violations_fixed, compressed_count, added_files: [path], remaining: [{location, rule}], template_id}`. Paths are repository-relative.
 
-- `prompt_files`: the target files, `created` true for a file absent from HEAD. With no target file, it is `[]`, every count is 0, and every array is empty.
+- `prompt_files`: the target files, `created` true for a file Input counts as created. With no target file, it is `[]`, every count is 0, and every array is empty.
 - `compressed_count`: the number of target files compression changed.
 - `added_files`: the template files step 2 added.
 - `remaining`: each violation left after step 2, `location` as `path:line` and `rule` as the `prompt.md` item it breaks.
