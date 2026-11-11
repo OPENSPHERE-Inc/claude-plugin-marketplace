@@ -31,7 +31,8 @@ This repo is intentionally bilingual; the rule is **not** "English only":
 - **Active plugin files** (everything under `creview/`, `cdev/`, and `cgh/` except their
   `README_ja.md`) are **English**. This includes SKILL.md, templates, bundled rules, and
   `agents/review-helper.md`.
-- **`src/**`** is the **Japanese master** — every file there is Japanese.
+- **`src/**`** is the **Japanese master**. Every Markdown file there is Japanese; each
+  script there is a byte-identical copy of the active script and stays English.
 - **`README_ja.md`** files are Japanese translations of the sibling `README.md`.
 - All other top-level docs (`README.md`, this `CLAUDE.md`, `AGENTS.md`) are English.
 
@@ -86,7 +87,7 @@ claude-plugin-marketplace/
 │
 └── .claude/rules/                # Discipline rules for editing THIS repo
     ├── comment.md  commit.md  development.md
-    ├── document.md  prompt.md  review.md
+    ├── document.md  paired-files.md  prompt.md  review.md
 ```
 
 `src/<plugin>/X` corresponds 1:1 to `<plugin>/X` (e.g.
@@ -107,6 +108,11 @@ When changing a plugin:
 3. Keep `src/<plugin>/X` and `<plugin>/X` structurally 1:1 (same headings, steps,
    `template_id`, JSON schemas, emoji, tokens). Only natural-language prose differs by
    language.
+
+`.claude/rules/paired-files.md` defines the files that change together: these translation
+pairs, the byte-identical copies, and the README pairs. Every edit extends to the
+counterparts of the files it changes, including an edit a skill's procedure confines to
+the files it names.
 
 ### The plugin transformations (master → active)
 
@@ -561,7 +567,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 - **`template_id` must match.** The SKILL step's hard-coded UUID and the template's
   frontmatter `template_id` must be identical, or the leader will loop relaunching.
 - **src ↔ active parity is a contract.** Do not edit one side only. A structural
-  divergence breaks the documented localization workflow.
+  divergence breaks the documented localization workflow. This holds for the edits a skill
+  makes as well, even when its procedure names one side only; see
+  `.claude/rules/paired-files.md`.
 - **`src/` is not shipped.** It sits outside the plugin `source` dirs on purpose. Do not
   move plugin runtime files under `src/` or reference `src/...` from active skills.
 - **Resolve reviewers/fixers by detection; hardcode only bundled agents.** Active skills resolve
@@ -624,7 +632,7 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 
 - Respond to the user in the language they use (Japanese ↔ English).
 - Content written into the repo follows the **Language Policy** section (active = English,
-  `src/**` = Japanese, `*_ja.md` = Japanese).
+  `src/**` = Japanese Markdown and byte-identical English scripts, `*_ja.md` = Japanese).
 
 ### Team leader policy
 
