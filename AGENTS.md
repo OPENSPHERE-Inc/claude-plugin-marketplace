@@ -71,7 +71,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
    byte-identical copy of `cdev/rules/prompt.md`, and `src/creview/rules/prompt.md` of
    `src/cdev/rules/prompt.md`; unlike the scripts, these `src/` copies are Japanese and each
    active copy stays translation-paired with its `src/` mirror, so change all four files
-   together. `tests/scratch-guard-test.sh` fails on any drift.
+   together. `tests/scratch-guard-test.sh` fails when either byte-identical pair drifts but
+   does not check the translation pairing.
 3. **Token-placement invariant.** The token follows who opens the file.
    `${CLAUDE_PLUGIN_ROOT}` only in files Claude Code loads itself (SKILL.md
    bodies/`allowed-tools`, bundled `agents/*.md`); `{{plugin_root}}` only in files opened
