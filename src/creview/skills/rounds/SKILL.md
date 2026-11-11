@@ -175,7 +175,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 2. `templates/phase-respond.md`（`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`）でフェーズ Sub を起動する。
    - 変数: `document_path`、`commit_flag`（`--commit` の状態）、`adr_flag`（`--adr` の状態）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの。ステップ 2.2 でユーザーが修正方針を指示したラウンドでは、その指示を加える
-3. 戻り値（`{fix_count, fixed_count, code_changed, workflow_warning, summary_line}`）のみ context に保持する。`workflow_warning` が非 null の場合は本ラウンドの記録用に保持する。
+3. 戻り値（`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line}`）のみ context に保持する。`workflow_warning` と `prompt_warning` のそれぞれについて、非 null の場合は本ラウンドの記録用に保持する。
 
 ### 2.4 — 検証フェーズ（resolve スキル）
 
@@ -195,7 +195,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 各 attempt は 2.2 → 2.3 → 2.4 を再実行し、以下のテキストをフェーズ Sub の `overrides` 変数として渡す:
 
 1. `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)` を表示。2.2 をオーバーライド `トリアージサブエージェント: stage が "feedback" の指摘を優先的にトリアージする（current_meta.verification に Feedback 詳細あり）。` および `見積サブエージェント: current_meta.verification の Feedback 内容を踏まえて見積。コストが膨らむ場合は Downgrade を検討。` で再実行する。ユーザーが修正方針を指示したラウンドでは、ステップ 2.2 手順 9 の修正方針もオーバーライドに加える。
-2. 2.2 が対応フェーズのスキップを決めた場合、この手順をスキップして手順 3 へ進む。そうでなければ `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` を表示し、2.3 をオーバーライド `フィードバック再修正パス: 修正対象は Verification が 💬 Feedback の指摘。そのフィードバック内容を踏まえて再修正する。` で再実行する。このオーバーライドを特定のサブエージェントに名指しで限定しない — 修正対象を選定するサブエージェントにも届く必要がある。戻り値の `workflow_warning` が非 null の場合は本ラウンドの記録値を更新する（後勝ち）。
+2. 2.2 が対応フェーズのスキップを決めた場合、この手順をスキップして手順 3 へ進む。そうでなければ `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` を表示し、2.3 をオーバーライド `フィードバック再修正パス: 修正対象は Verification が 💬 Feedback の指摘。そのフィードバック内容を踏まえて再修正する。` で再実行する。このオーバーライドを特定のサブエージェントに名指しで限定しない — 修正対象を選定するサブエージェントにも届く必要がある。戻り値の `workflow_warning` と `prompt_warning` のそれぞれについて、非 null の場合は本ラウンドの記録値を更新する（後勝ち）。
 3. `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)` を表示。ユーザーが修正方針を指示したラウンドではステップ 2.2 手順 9 の修正方針を、それ以外ではオーバーライド `(該当なし)` を渡して 2.4 を再実行。
 4. フィードバックが残っていれば手順 1 に戻る。3 回で解消しない場合はラウンドを終了する（残った 💬 Feedback は 2.6 で「未解決」としてカウント）。
 
@@ -214,6 +214,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 - フィードバック試行回数: 本ラウンドで実施したステップ 2.5 の試行回数
 - ラウンド開始リビジョン: 今ラウンドの `{this_round_rev}`
 - workflow_warning: 2.3 / 2.5 で保持した `workflow_warning`（フォーマット／ビルド手順未解決、または環境起因でビルド／テスト検証が完了しなかったラウンドのみ。それ以外は null）
+- prompt_warning: 2.3 / 2.5 で保持した `prompt_warning`（AI 向けプロンプトファイルが解釈テストに不合格のまま残ったか未テストだったラウンドのみ。それ以外は null）
 
 次のラウンドに進む条件: 以下の**すべて**を満たす場合に限り、`{prev_round_rev}` を今ラウンドの `{this_round_rev}` に設定し、ラウンドカウンターをインクリメントしてステップ 2.1 へ戻る:
 
@@ -231,7 +232,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 1. `Agent(subagent_type="creview:review-helper", prompt=...)` で `templates/final-report-compile.md`（`template_id`: `4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16`）のサブエージェントを起動する。
    - 変数:
      - `round_doc_paths`: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
-     - `round_stats`: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...（workflow_warning が非 null のラウンドは末尾に workflow_warning="..." を付す）
+     - `round_stats`: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...（workflow_warning が非 null のラウンドは末尾に workflow_warning="..." を、prompt_warning が非 null のラウンドは末尾に prompt_warning="..." を付す）
      - `template_path`: {template_path}
      - `report_path`: {report_path}
      - `language`: ユーザーのチャット言語

@@ -57,8 +57,8 @@ claude-plugin-marketplace/
 │   │   ├── resolve/              # /creview:resolve (from review-resolve)
 │   │   └── rounds/               # /creview:rounds  (from review-rounds)
 │   │       └── <skill>/SKILL.md + templates/*.md (+ scripts/compile-review.py for triage/respond/resolve)
-│   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md, pr-description-reviewer.md, pr-comment-compiler.md
-│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md, pr-comment-doc.md, contract-style-prompts.md
+│   ├── agents/                   # review-helper.md, comment-sensei.md, review-leader.md, pr-description-reviewer.md, pr-comment-compiler.md, prompt-sensei.md, prompt-tester.md
+│   ├── rules/                    # comment.md, document.md, review.md, wontfix.md, sub-agent.md, agents-detection.md, build-format-detection.md, doc-worktree.md, pr-comment-doc.md, contract-style-prompts.md, prompt.md
 │   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, compile-pr-comments.py, lib/scratch-guard.py
 │
 ├── cdev/                         # Plugin: multi-agent coding workflow (active, English)
@@ -137,14 +137,18 @@ When changing a plugin:
   results in `/creview:start`'s PR mode, and `pr-comment-compiler`, the fixed-role extractor of
   findings from a pull request's comments in the PR mode of `/creview:triage` / `resolve`,
   bundled so that their `tools:` keep the untrusted pull request text away from a
-  shell and the network. Launch a bundled agent by its
+  shell and the network. creview also bundles `prompt-sensei`, the prompt specialist
+  `/creview:respond` runs in fixed roles on the AI-facing prompt files its fixes create or
+  change, and `prompt-tester`, the context-free interpretation tester `prompt-sensei`
+  launches, whose `tools:` hold Read, Glob, and Grep only. Launch a bundled agent by its
   namespaced name (`creview:review-helper`, `cdev:dev-helper`); a bare name resolves only
   to a project or user agent of that name. The detection rules and `scope-analysis.md`
   likewise return the namespaced name for an agent they pick from the plugin bundle.
   In creview, the detection rule and `scope-analysis.md` leave the fixed-role bundled
-  agents (`review-helper`, `review-leader`, `pr-description-reviewer`, `pr-comment-compiler`)
-  out of the
-  candidates, so `comment-sensei` is the only bundled candidate. cdev bundles `dev-helper`,
+  agents (`review-helper`, `review-leader`, `pr-description-reviewer`, `pr-comment-compiler`,
+  `prompt-tester`) out of the candidates, so `comment-sensei` and `prompt-sensei` are the
+  only bundled candidates, and `/creview:start` can pick `prompt-sensei` as a reviewer of
+  AI-facing prompt files. cdev bundles `dev-helper`,
   two specialists its skill also runs as fixed-role teammates, `comment-sensei` and
   `prompt-sensei`, and `prompt-tester`, the context-free interpretation tester `prompt-sensei`
   launches, whose `tools:` hold Read, Glob, and Grep only; the detection rule leaves out only
@@ -208,7 +212,10 @@ python3 tests/gh-review-test.py
 
 Then exercise `/creview:start`, `/creview:triage`, `/creview:respond`, `/creview:resolve`
 in a project that has its own `.claude/agents/` (or none, to test the `general-purpose`
-fallback), `/creview:start` with a pull request URL (both with HEAD at the pull request's
+fallback), `/creview:respond` on a document whose fixes edit an AI-facing prompt file (which
+runs the prompt review and the interpretation test; the test needs nested sub-agent spawning
+of depth 2, or reports the files as untested), `/creview:start` with a pull request URL (both
+with HEAD at the pull request's
 head and elsewhere, which reviews in a worktree; needs an authenticated `gh`), the
 `/creview:triage` / `respond` / `resolve` on that review document with HEAD elsewhere
 (which work in a worktree of the pull request), `/creview:triage` and `/creview:resolve` with
@@ -265,7 +272,11 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     → the skill runs on that doc; resolve verifies each finding with no
                     metadata against the code
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
-                    format&build-verify ⇄ build-fix loop → compile → persist status
+                    comment-review Sub → prompt-review Sub (when the fixes changed a
+                    Markdown file; it reviews only the AI-facing prompt files among them)
+                    → format&build-verify Sub + prompt-test Sub (when the prompt review
+                    returned prompt files; it launches one prompt-tester per file) ⇄
+                    build-fix / prompt-fix loop → compile → persist status
 /creview:resolve → analyze + verify Subs → compile → persist verification
                     (triage / respond / resolve invoked directly follow
                     rules/doc-worktree.md: gh-pr.py doc-checkout reads the doc's PR /
@@ -401,10 +412,10 @@ the variables their templates name, as absolute paths, with no `plugin_root`, `m
 `target_dir`, or Round-specific overrides, since those templates read no bundled rule and the
 agent has Read and Write only. A cgh launch that goes beyond that passes all three.
 
-The launches of cdev's `prompt-tester` are an exception as well: so that the tester carries no
-context of the run, `prompt-sensei` launches it with an inline prompt, with no external
-template, no `template_id`, and no `plugin_root`, `main_root`, or `target_dir`. The agent has
-Read, Glob, and Grep only.
+The launches of `prompt-tester`, in cdev and in creview, are an exception as well: so that the
+tester carries no context of the run, the same plugin's `prompt-sensei` launches it with an
+inline prompt, with no external template, no `template_id`, and no `plugin_root`, `main_root`,
+or `target_dir`. The agent has Read, Glob, and Grep only.
 
 ---
 
@@ -448,7 +459,8 @@ Read, Glob, and Grep only.
 2. Use `${CLAUDE_PLUGIN_ROOT}/...` in the SKILL body / `allowed-tools`; use
    `{{plugin_root}}/...` inside templates and the bundled rules they point to, and pass
    `plugin_root`, `main_root`, and `target_dir` in every launch prompt (cgh's
-   `comment-writer` and cdev's `prompt-tester` excepted; see Sub-agent launch contract) —
+   `comment-writer` and the `prompt-tester` of cdev and creview excepted; see Sub-agent
+   launch contract) —
    `main_root` is the
    main working tree's root under `--worktree` or the value an upper flow passed, and
    `(none)` otherwise; `target_dir` is the work target (see Sub-agent launch contract).
@@ -530,8 +542,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   sub-agent's scope (the leader resolves it and passes it in the launch prompt; in cdev, the
   spawn contract). Never put `${CLAUDE_PLUGIN_ROOT}` in a template or a bundled rule; never
   put `{{plugin_root}}` in a SKILL. (`agents/review-helper.md` / `agents/review-leader.md` /
-  `agents/pr-description-reviewer.md` / `agents/pr-comment-compiler.md` mention
-  `{{plugin_root}}` only to name that template variable.)
+  `agents/pr-description-reviewer.md` / `agents/pr-comment-compiler.md` /
+  `creview/agents/prompt-sensei.md` mention `{{plugin_root}}` only to name that template
+  variable.)
   `rules/sub-agent.md`, `rules/teammate.md`, and the detection rules carry
   `{{target_dir}}` on the same basis: every launch passes `target_dir`.
   `rules/wontfix.md` carries `{{previous_round_doc_paths}}` on the same basis: every
@@ -555,8 +568,10 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `general-purpose` fallback. Re-introducing hardcoded names of destination-project agents
   (`*-sensei` and the like) breaks portability. Apart from the built-in `general-purpose`, the
   only agents a skill names directly are bundled ones, by their namespaced names, in the fixed
-  roles it runs them in, such as `creview:comment-sensei` and `cdev:prompt-sensei` (the prompt
-  teammate, and the reviewer a QA-fix cell spawns for a prompt-test failure).
+  roles it runs them in, such as `creview:comment-sensei`, `creview:prompt-sensei` (the prompt
+  review, the interpretation test, and the fix of its failures in `/creview:respond`), and
+  `cdev:prompt-sensei` (the prompt teammate, and the reviewer a QA-fix cell spawns for a
+  prompt-test failure).
 - **CRLF line endings** in skill/template files are inherited from upstream. Avoid global
   reflow/`autocrlf` churn so diffs stay reviewable.
 - **Bundled rule cross-references resolve relative to the file.** `creview/rules/sub-agent.md`
@@ -574,13 +589,18 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `creview/scripts/gh-pr.py`, and
   `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` are likewise each
   byte-identical with its own `src/` mirror.
-- **`creview/rules/contract-style-prompts.md` restates part of `cdev/rules/prompt.md`.** It
+- **`creview/rules/prompt.md` is a byte-identical copy of `cdev/rules/prompt.md`**, and
+  `src/creview/rules/prompt.md` of `src/cdev/rules/prompt.md`: `/creview:respond` applies the
+  same prompt discipline as `/cdev:coding`, and each plugin ships its own copy. No test checks
+  this, so when you change one copy, change the other.
+- **`creview/rules/contract-style-prompts.md` restates part of `cdev/rules/prompt.md`** and
+  of its copy `creview/rules/prompt.md`. It
   rephrases § Contract-style prompts and the definition of an AI-facing prompt file as the
   criteria of the `/creview:rounds` divergence gate. The over-specified prompt pattern of
   `cdev/rules/divergence.md` judges by `cdev/rules/prompt.md` without restating it, and its
-  detail finding matches the procedure-detail finding of `contract-style-prompts.md`. None of
-  them is a byte-identical copy, so no test catches drift: when you change one, check the
-  others.
+  detail finding matches the procedure-detail finding of `contract-style-prompts.md`.
+  `contract-style-prompts.md` and `divergence.md` are not byte-identical copies of the prompt
+  rule, so no test catches their drift: when you change one, check the others.
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
   `SUMMARY`, `FINDINGS`, or `ANALYSIS`** (case-insensitive, basename only). Claude Code's
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output

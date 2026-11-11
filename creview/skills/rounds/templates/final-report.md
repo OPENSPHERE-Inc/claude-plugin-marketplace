@@ -29,6 +29,15 @@ Column definitions:
 | Round N | Automatic verification skipped because `.claude/rules/build-format.md` etc. was undeclared (visual check only) |
 | Round N | Build / test verification did not complete for an environmental cause: <error summary> |
 
+## Prompt interpretation test notes
+
+`<No AI-facing prompt file was left failing or untested in any round / AI-facing prompt files were left failing or untested in the rounds below>`
+
+| Round | Detail |
+|-------|--------|
+| Round N | Still failing the interpretation test after <n> attempts: `<path>`, ... |
+| Round N | Left untested: `<path>` — <reason> |
+
 ## Full findings list and response status
 
 ### Resolved
