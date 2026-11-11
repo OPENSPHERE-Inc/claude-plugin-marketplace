@@ -632,7 +632,7 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
 
 - Respond to the user in the language they use (Japanese ↔ English).
 - Content written into the repo follows the **Language Policy** section (active = English,
-  `src/**` = Japanese, `*_ja.md` = Japanese).
+  `src/**` = Japanese Markdown and byte-identical English scripts, `*_ja.md` = Japanese).
 
 ### Team leader policy
 

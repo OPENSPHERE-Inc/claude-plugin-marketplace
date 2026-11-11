@@ -61,20 +61,17 @@ see **[CLAUDE.md](CLAUDE.md)**.
    `src/**` = Japanese master, whose scripts stay byte-identical English copies;
    `*_ja.md` = Japanese. Top-level docs = English.
 2. **`src/` is the editing master.** Edit `src/<plugin>/X` and active `<plugin>/X` as a
-   translation-paired change; keep them structurally 1:1. Exception:
-   `scripts/lib/scratch-guard.py` / `scripts/del-tmp.sh` are byte-identical across all six
-   copies (`creview/`, `cdev/`, `cgh/`, and their `src/` mirrors), `scripts/check-jsonl.py`
-   across all four (`creview/`, `cdev/`, and their mirrors),
-   `scripts/worktree.sh` across all four (`creview/`, `cdev/`, and their mirrors), and
-   `scripts/fetch-diff.sh` (`creview/`, `cdev/`), `creview/scripts/gh-pr.py`, and
-   `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` each with its own
-   `src/` mirror — the `src/`
-   copies stay English; see CLAUDE.md. Separately, `creview/rules/prompt.md` is a
-   byte-identical copy of `cdev/rules/prompt.md`, and `src/creview/rules/prompt.md` of
-   `src/cdev/rules/prompt.md`; unlike the scripts, these `src/` copies are Japanese and each
-   active copy stays translation-paired with its `src/` mirror, so change all four files
-   together. `tests/scratch-guard-test.sh` fails when either byte-identical pair drifts but
-   does not check the translation pairing. Every edit extends to the counterparts of the
+   translation-paired change; keep them structurally 1:1. Exception: every `src/` script is
+   a byte-identical copy of its active script (item 1). `scripts/lib/scratch-guard.py` /
+   `scripts/del-tmp.sh` are also byte-identical across all six copies (`creview/`, `cdev/`,
+   `cgh/`, and their `src/` mirrors), and `scripts/check-jsonl.py` and `scripts/worktree.sh`
+   across all four (`creview/`, `cdev/`, and their mirrors); see CLAUDE.md. Separately,
+   `creview/rules/prompt.md` is a byte-identical copy of `cdev/rules/prompt.md`, and
+   `src/creview/rules/prompt.md` of `src/cdev/rules/prompt.md`; unlike the scripts, these
+   `src/` copies are Japanese and each active copy stays translation-paired with its `src/`
+   mirror, so change all four files together. `tests/scratch-guard-test.sh` compares only the
+   copies listed for it under Key Files, not the other `src/` scripts, and does not check the
+   translation pairing. Every edit extends to the counterparts of the
    files it changes, including an edit a skill's procedure confines to the files it names
    (the fixes, compression, and prompt-fix of `/creview:respond`; the edits of the coders
    and QA-fix cells of `/cdev:coding`); see `.claude/rules/paired-files.md`.
