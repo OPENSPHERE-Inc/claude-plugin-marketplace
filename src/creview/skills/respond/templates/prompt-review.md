@@ -8,7 +8,7 @@ template_id: 6be7d388-2c9d-41f1-a349-a47407e157f4
 
 入力:
 
-- 対象ファイル: `{{tmp_dir}}/statuses/*.jsonl` の `files` 配列に挙がるファイルのうち、現存し、`prompt.md` の定義で AI 向けプロンプトファイルに当たるもの。`{{diff_path}}` は修正後の HEAD に対する `fetch-diff.sh` 出力、`{{baseline_path}}` は修正前に取得した同じ出力である。`{{diff_path}}` が追加として示すか Untracked Files に挙げ、`{{baseline_path}}` が示さないファイルは作成されたものとし、その内容全体を対象範囲とする。`{{diff_path}}` が示すそれ以外のファイルの対象範囲は、`{{diff_path}}` が示すもののうち `{{baseline_path}}` が示さない部分（両方が示すハンクでは異なる行）とする。gitignore 済みのファイルなど `{{diff_path}}` に現れないファイルの対象範囲は、`{{tmp_dir}}/statuses/*.jsonl` でそのファイルを挙げる各修正の `description` が指す箇所とする。
+- 対象ファイル: `{{tmp_dir}}/statuses/*.jsonl` の `files` 配列に挙がるファイルのうち、現存し、`prompt.md` の定義で AI 向けプロンプトファイルに当たるもの。`{{diff_path}}` は修正後の HEAD に対する `fetch-diff.sh` 出力、`{{baseline_path}}` は修正前に取得した同じ出力である。`{{diff_path}}` が追加、または rename / copy の宛先として示すか、Untracked Files に挙げ、`{{baseline_path}}` が示さないファイルは作成されたものとし、その内容全体を対象範囲とする。`{{diff_path}}` か `{{baseline_path}}` が示すそれ以外のファイルの対象範囲は、両者が異なる部分とする: `{{diff_path}}` が示すもののうち `{{baseline_path}}` が示さない部分（両方が示すハンクでは異なる行）と、`{{baseline_path}}` だけが示す各ハンク（修正が元に戻した、修正前からの変更）について、そのコンテキスト行と `-` 行に当たる現在のファイルの行（どちらも無いハンクでは、その `+` 行があった位置の前後の行）である。gitignore 済みのファイルなど、どちらにも現れないファイルの対象範囲は、`{{tmp_dir}}/statuses/*.jsonl` でそのファイルを挙げる各修正の `description` が指す箇所とする。
 - レビュードキュメント `{{document_path}}`: 各修正が対応した指摘（description、location、Triage / Estimate メタデータ）。修正や圧縮が保つべき趣旨を把握する。
 
 手順:

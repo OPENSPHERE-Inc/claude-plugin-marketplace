@@ -175,7 +175,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
 2. Launch the phase sub-agent with `templates/phase-respond.md` (`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`).
    - Variables: `document_path`, `commit_flag` (`--commit` state), `adr_flag` (`--adr` state)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists. In a round where the user instructed a fix policy in Step 2.2, add that instruction
-3. Hold only the return value (`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line}`) in context. When `workflow_warning` is non-null, retain it for this round's record. When `prompt_warning` is non-null, retain it for this round's record with the source `Step 3`.
+3. Hold only the return value (`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line}`) in context. When `workflow_warning` is non-null, retain it for this round's record. When `prompt_warning` is non-null, retain it for this round's record with the source `Step 3` outside the feedback loop, and as Step 2.5 step 2 directs inside it.
 
 ### 2.4 — Resolve phase (resolve skill)
 

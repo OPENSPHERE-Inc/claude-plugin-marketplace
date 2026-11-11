@@ -175,7 +175,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 2. `templates/phase-respond.md`（`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`）でフェーズ Sub を起動する。
    - 変数: `document_path`、`commit_flag`（`--commit` の状態）、`adr_flag`（`--adr` の状態）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの。ステップ 2.2 でユーザーが修正方針を指示したラウンドでは、その指示を加える
-3. 戻り値（`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line}`）のみ context に保持する。`workflow_warning` が非 null の場合は本ラウンドの記録用に保持する。`prompt_warning` が非 null の場合は、出所 `Step 3` を付けて本ラウンドの記録用に保持する。
+3. 戻り値（`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line}`）のみ context に保持する。`workflow_warning` が非 null の場合は本ラウンドの記録用に保持する。`prompt_warning` が非 null の場合は、フィードバックループ外では出所 `Step 3` を付けて本ラウンドの記録用に保持し、ループ内ではステップ 2.5 手順 2 に従う。
 
 ### 2.4 — 検証フェーズ（resolve スキル）
 
