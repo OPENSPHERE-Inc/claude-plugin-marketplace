@@ -114,6 +114,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
   └─ ...（--incremental: Round 1 が追加したコミットのみをレビュー）
 最終ステップ
   └─ [最終レポート編纂 Sub] 全 round{N}.md + テンプレート → final-report.md
+フェーズの error → ラウンドループを終了し、最終ステップを飛ばしてステップ 4 へ
 ```
 
 ## ステップ 1 — 初期化
@@ -131,6 +132,8 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 ラウンドカウンターが `--max-rounds` 以下の間、以下を繰り返す。
 
+フェーズ Sub が、ステップ 2.5 での再実行を含め、非 null の `error` を返した場合は、今ラウンドの以降のフェーズとステップを実行せず、ラウンドループを終了し、ステップ 3 を飛ばしてステップ 4 へ進む。ステップ 2.2 では、先に作業用ディレクトリを削除する（手順 6）。
+
 ### 2.1 — レビューフェーズ（start スキル）
 
 1. コンソールに表示: `## Round {N} — Step 1: Review`
@@ -141,7 +144,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 4. `templates/phase-review.md`（`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`）でフェーズ Sub を起動する。
    - 変数: `round_num`（ラウンドカウンター）、`base`（`{review_base}`）、`review_range`（`{review_range}`）、`document_path`（今ラウンドのファイルパス）、`language`（ユーザーのチャット言語）、`adversarial`（`--adversarial` の状態）
    - オーバーライド: (該当なし)
-5. 戻り値（`{doc_path, findings_total, severity_counts}`）のみ context に保持する。
+5. 戻り値（`{doc_path, findings_total, severity_counts, error}`）のみ context に保持する。
 
 ### 2.2 — トリアージ&見積フェーズ（triage スキル）
 
@@ -160,11 +163,11 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 5. ユーザー確認: 以下のいずれかに該当する場合、該当するものをまとめてユーザーに提示し、続行の指示を待つ。
    - 今回の手順 4 が発散を 1 件以上検出した（`--confirm` の状態に寄らない）: 発散パターンを検出した旨と、`report_path` を Read した内容。
    - `--confirm` が有効で、`error` が null かつ Maintain / Alternative が 1 件以上ある: `summary_path` を Read した内容。
-6. `summary_path` を含むフェーズの作業用ディレクトリを削除する（`del-tmp.sh` は削除済みのターゲットを読み飛ばすため、`error` 経路も個別扱いは不要）:
+6. `tmp_dir` が非 null の場合、`summary_path` を含むフェーズの作業用ディレクトリを削除する（`del-tmp.sh` は削除済みのターゲットを読み飛ばすため、`error` 経路も個別扱いは不要）:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
-7. `error` が非 null の場合は 2.3 以降に進まず、失敗をユーザーに報告してラウンドループを終了する。
+7. `error` が非 null の場合は、ステップ 2 冒頭のフェーズの error の扱いに従う。
 8. 手順 5 でユーザーがループの停止を指示した場合は、以降のフェーズを実行せず 2.6 で今ラウンドの結果を記録し、次ラウンドへ進まずステップ 3 へ進む。
 9. 手順 5 でユーザーが続行とともに修正方針を指示した場合は、その指示の原文を、参照先としての `report_path`、および指摘の Triage や Estimate と異なる箇所では方針を優先する旨の注記とともに、今ラウンドの 2.3 と 2.4、およびステップ 2.5 での 2.2 / 2.3 / 2.4 の再実行のオーバーライドに加える。
 10. 対応フェーズのスキップ判定: `will_fix_count` が 0、または `maintain_count` と `alternative_count` がともに 0 の場合、2.3 をスキップして 2.4 に進む（Won't Fix / Downgrade の指摘は 2.4 で検証を受ける）。
@@ -175,7 +178,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 2. `templates/phase-respond.md`（`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`）でフェーズ Sub を起動する。
    - 変数: `document_path`、`commit_flag`（`--commit` の状態）、`adr_flag`（`--adr` の状態）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの。ステップ 2.2 でユーザーが修正方針を指示したラウンドでは、その指示を加える
-3. 戻り値（`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line}`）のみ context に保持する。`workflow_warning` が非 null の場合は本ラウンドの記録用に保持する。`prompt_warning` が非 null の場合は、フィードバックループ外では出所 `Step 3` を付けて本ラウンドの記録用に保持し、ループ内ではステップ 2.5 手順 2 に従う。
+3. 戻り値（`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line, error}`）のみ context に保持する。`workflow_warning` が非 null の場合は本ラウンドの記録用に保持する。`prompt_warning` が非 null の場合は、フィードバックループ外では出所 `Step 3` を付けて本ラウンドの記録用に保持し、ループ内ではステップ 2.5 手順 2 に従う。
 
 ### 2.4 — 検証フェーズ（resolve スキル）
 
@@ -183,7 +186,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 2. `templates/phase-resolve.md`（`template_id`: `2f9c6a1e-7b53-4d84-8e2b-5a1f9d3c7b26`）でフェーズ Sub を起動する。
    - 変数: `document_path`、`base`（今ラウンドの `{review_base}`）
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの。ステップ 2.2 でユーザーが修正方針を指示したラウンドでは、その指示を加える
-3. 戻り値（`{summary_line, resolved_count, feedback_count, unresolved_count}`）のみ context に保持する。
+3. 戻り値（`{summary_line, resolved_count, feedback_count, unresolved_count, error}`）のみ context に保持する。
 
 ### 2.5 — フィードバック確認と再修正ループ
 
@@ -246,4 +249,4 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 ## ステップ 4 — 完了報告
 
 1. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
-2. 最終レポートのパスをユーザーに報告し、主要な統計（総指摘数、解決数、未解決数）を簡潔に伝える。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
+2. フェーズの `error` でラウンドループを終えた場合は、その `error`、中断したラウンドとフェーズ、各ラウンドのレビュードキュメントのパス（レビューフェーズが返した非 null の `doc_path` すべて）をユーザーに報告する。それ以外の場合は、最終レポートのパスをユーザーに報告し、主要な統計（総指摘数、解決数、未解決数）を簡潔に伝える。どちらの場合も、`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。

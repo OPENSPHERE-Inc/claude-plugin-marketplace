@@ -496,6 +496,20 @@ to the round's respond and resolve phases, and to the triage, respond, and
 resolve phases the feedback re-fix loop re-runs; where it differs from a
 finding's triage or estimate, the policy prevails.
 
+When a phase stops on an error, `/creview:rounds` stops there and writes no
+final report. Such an error is, for example, a script that fails or a sub-agent
+that returns the wrong `template_id` twice in a row. The run reports the error,
+the round and phase that stopped, and the review document each round's review
+produced. The review documents keep only what was completed: the stopped phase
+leaves no metadata on the findings it did not finish. A fix of the respond
+phase counts as completed once the phase's verification loop has ended,
+whatever its result: the format, build, and test verification together with
+the interpretation test of the AI-facing prompt files the fixes changed. Such
+a fix gets its Status even when the phase stops after that, for example at the
+commit, unless writing the Status itself fails, which the reported error then
+says. A phase that finishes with a warning, such as a workflow warning, does
+not stop the run.
+
 `/creview:rounds` takes a `--worktree[=branch]` option (default OFF) that runs
 every round in a separate git worktree under `.claude/worktrees/`, so the
 fixes never touch the main working tree's sources. The worktree checks out

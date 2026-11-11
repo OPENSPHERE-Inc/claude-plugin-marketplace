@@ -25,4 +25,4 @@ What to do:
 
 Do not omit parts of a reviewer prompt template, add instructions to it to adjust the finding count, or add findings other than those the reviewers submit.
 
-Return value: `{doc_path, findings_total, severity_counts: {critical, major, minor, info}, template_id}`. Include `template_id` exactly as Read from this template's frontmatter.
+Return value: `{doc_path, findings_total, severity_counts: {critical, major, minor, info}, error, template_id}`. `error` is null when the skill ran through its Steps 1-4, warnings included. When the skill aborted or terminated, or stopped at a step that failed with no way on, such as a script exiting non-zero or a sub-agent's `template_id` mismatching twice in a row, `error` is the error the skill showed, or, when it showed none, a message you write naming the step it stopped at and what failed there: a command's exit code and error output, or the mismatched `template_id`. On an error, report `doc_path` as null and `findings_total` and every severity count as 0. Include `template_id` exactly as Read from this template's frontmatter.
