@@ -24,10 +24,12 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `creview/agents/` — bundled mechanical agents: `review-helper.md`,
   `comment-sensei.md`, `review-leader.md` (the `/creview:rounds` phase leader), and the
   tool-restricted `pr-description-reviewer.md` (`/creview:start`'s PR mode) and
-  `pr-comment-compiler.md` (the PR mode of `/creview:triage` / `resolve`).
+  `pr-comment-compiler.md` (the PR mode of `/creview:triage` / `resolve`), plus
+  `prompt-sensei.md` (the prompt review and interpretation test of `/creview:respond`) and
+  the tool-restricted `prompt-tester.md` (the interpretation tester `prompt-sensei` launches).
 - `creview/rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
   `adr-format.md`, `agents-detection.md`, `build-format-detection.md`, `doc-worktree.md`,
-  `pr-comment-doc.md`, `contract-style-prompts.md` (rules referenced by skills;
+  `pr-comment-doc.md`, `contract-style-prompts.md`, `prompt.md` (rules referenced by skills;
   `doc-worktree.md` is read by the `/creview:triage` / `respond` / `resolve` leaders,
   `pr-comment-doc.md` by the `/creview:triage` / `resolve` leaders in PR mode).
 - `creview/scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`, `check-jsonl.py`,
@@ -44,7 +46,9 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `tests/scratch-guard-test.sh` — repo-level self-test: containment, `worktree.sh`, and
   byte-parity of the shared `lib/scratch-guard.py` / `del-tmp.sh` / `check-jsonl.py` /
   `worktree.sh` copies and of `fetch-diff.sh`, `gh-pr.py`, `compile-pr-comments.py`, and
-  `gh-review.py` with their `src/` mirrors (not shipped).
+  `gh-review.py` with their `src/` mirrors, and of `creview/rules/prompt.md` with
+  `cdev/rules/prompt.md` and `src/creview/rules/prompt.md` with `src/cdev/rules/prompt.md`
+  (not shipped).
 - `tests/gh-review-test.py` — self-test of `cgh/scripts/gh-review.py` with GitHub and git
   faked (not shipped).
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
@@ -63,7 +67,12 @@ see **[CLAUDE.md](CLAUDE.md)**.
    `scripts/fetch-diff.sh` (`creview/`, `cdev/`), `creview/scripts/gh-pr.py`, and
    `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` each with its own
    `src/` mirror — the `src/`
-   copies stay English; see CLAUDE.md.
+   copies stay English; see CLAUDE.md. Separately, `creview/rules/prompt.md` is a
+   byte-identical copy of `cdev/rules/prompt.md`, and `src/creview/rules/prompt.md` of
+   `src/cdev/rules/prompt.md`; unlike the scripts, these `src/` copies are Japanese and each
+   active copy stays translation-paired with its `src/` mirror, so change all four files
+   together. `tests/scratch-guard-test.sh` fails when either byte-identical pair drifts but
+   does not check the translation pairing.
 3. **Token-placement invariant.** The token follows who opens the file.
    `${CLAUDE_PLUGIN_ROOT}` only in files Claude Code loads itself (SKILL.md
    bodies/`allowed-tools`, bundled `agents/*.md`); `{{plugin_root}}` only in files opened
@@ -78,10 +87,11 @@ see **[CLAUDE.md](CLAUDE.md)**.
    the destination project's `.claude/agents/`, falling back to `general-purpose`, and
    name a bundled agent only by its namespaced name. Only the mechanical helpers are
    bundled (`creview`: `review-helper`, `comment-sensei`, `review-leader`; `cdev`:
-   `dev-helper`, `comment-sensei`), plus cdev's prompt specialist `prompt-sensei`, which
-   `/cdev:coding` runs in fixed roles and team formation can also pick as a reviewer,
-   creview's tool-restricted `pr-description-reviewer` and `pr-comment-compiler`, cdev's
-   tool-restricted `prompt-tester`, and cgh's tool-restricted `comment-writer`.
+   `dev-helper`, `comment-sensei`), plus the prompt specialist `prompt-sensei` of cdev and
+   creview, which `/cdev:coding` and `/creview:respond` run in fixed roles and which team
+   formation and creview's agent detection can also pick as a reviewer, creview's
+   tool-restricted `pr-description-reviewer` and `pr-comment-compiler`, the tool-restricted
+   `prompt-tester` of cdev and creview, and cgh's tool-restricted `comment-writer`.
 6. **review-respond split**: `/creview:triage` persists `triage`+`estimate` into the
    review doc; `/creview:respond` reads them back from the doc. The split is the review
    gate — no `--no-confirm`. The handoff is the document, not a shared temp dir.

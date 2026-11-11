@@ -10,7 +10,7 @@ Fix once: `{timestamp}` (`YYYYMMDD-HHMMSS`); `{tmp_dir}`, the absolute path of `
 
 Before creating `{tmp_dir}`, run `{{plugin_root}}/scripts/del-tmp.sh --dry '{tmp_dir}'`, which refuses a symlinked `.claude`; on a non-zero exit, show its error and terminate the skill. Create it with `mkdir -p '{tmp_dir}'`.
 
-Keep at most 20 of the agents you launch running at once, the runtime's default limit (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`): launch the rest of a larger set as agents you launched finish. When a launch is refused for that limit, launch it again after an agent you launched finishes; when it is refused while no agent you launched is running, abort with that error.
+The runtime refuses a launch with `Concurrent subagent limit reached` while the sub-agents running in the session are at its limit (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, 20 by default). It counts every running sub-agent, whoever launched it, so a launch can be refused while fewer than 20 of yours are running. Launch a larger set in messages of at most 20 launches, whatever the limit. A refusal for that limit is not a failure, although the error says not to retry, since a launch succeeds again once the running count drops below the limit: launch the refused agent again in a later message, after the agents you launched return. When none of a message's launches goes through and no agent you launched is running, abort with that error.
 
 ## Running a creview skill
 

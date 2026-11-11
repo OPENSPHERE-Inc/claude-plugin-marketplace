@@ -15,7 +15,7 @@ Input:
 
 What to do:
 
-1. Invoke the `creview:respond` skill with the argument `{{document_path}}`, appending `--commit` when `{{commit_flag}}` is on and `--adr` when `{{adr_flag}}` is on. Then act as its respond leader through its Steps 1-6, including the format / build / test verification ⇄ build-fix re-execution loop, the commit step, and the compile step.
+1. Invoke the `creview:respond` skill with the argument `{{document_path}}`, appending `--commit` when `{{commit_flag}}` is on and `--adr` when `{{adr_flag}}` is on. Then act as its respond leader through its Steps 1-6, including the format / build / test verification and interpretation test ⇄ fix loop, the commit step, and the compile step.
 2. Add each entry in `{{overrides}}` to the "Round-specific overrides" section of the launch prompt of the sub-agent it names, or of every sub-agent when it names none.
 
-Return value: `{fix_count, fixed_count, code_changed, workflow_warning, summary_line, template_id}`. `workflow_warning` is the value respond retained in its Step 4: non-null when the format / build procedure could not be resolved or when the build / test verification did not complete for an environmental cause, null otherwise. Include `template_id` exactly as Read from this template's frontmatter.
+Return value: `{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line, template_id}`. `workflow_warning` is the value respond retained in its Step 4: non-null when the format / build procedure could not be resolved or when the build / test verification did not complete for an environmental cause, null otherwise. `prompt_warning` is the value respond held after its Step 4: non-null when an AI-facing prompt file was left failing the interpretation test or untested, null otherwise. Include `template_id` exactly as Read from this template's frontmatter.

@@ -1,6 +1,6 @@
 ---
 name: respond
-description: Fix the Will-Fix / Maintain / Alternative review findings, verify the build, and reflect the fix status into the review document. Use proactively when a review document carrying triage / estimate metadata exists and the user wants the findings addressed (e.g. "fix the review findings").
+description: Fix the Will-Fix / Maintain / Alternative review findings, verify the build, and reflect the fix status into the review document. AI-facing prompt files the fixes create or change also get a prompt-discipline self-check, compression, and an interpretation test. Use proactively when a review document carrying triage / estimate metadata exists and the user wants the findings addressed (e.g. "fix the review findings").
 allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(mkdir:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(git status:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render-review.py:*)
 ---
 
@@ -31,6 +31,8 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md`, with its `plugin_root` var
 
 - For the format / build / test verification sub-agent: `Resolve stage 2 of build-format-detection.md from {main_root}/CLAUDE.md, then {main_root}/README.md, not from the files under {target_dir}; run the commands in {target_dir} as usual.`
 - For the select-fix-targets sub-agent, when `trust` is `off`: `Move each fix target whose location or fix_plan names a path in one of the agent files {target_dir} leaves out to not_ready, with the reason that the file is not checked out because the review ran without --trust.`
+
+When `merge_base` is not null, add this override for the interpretation-test sub-agent, writing `{target_dir}` as its value: `Add to each tester's prompt: Open only files under {target_dir}. Treat a file the prompt points to outside {target_dir} as unavailable, and do not report an item as unclear only because an unavailable file cannot be read.` When `pr_worktree` is true and `trust` is `off`, append to the end of that override: `Treat as unavailable as well any CLAUDE.md, CLAUDE.local.md, AGENTS.md, .mcp.json, or .claude under {target_dir}, in any letter case and at every depth: {target_dir} leaves them out.`
 
 ## Review document format
 
@@ -83,7 +85,7 @@ Verify each returned `template_id` against the UUID its step names; on mismatch,
 
 ### Specialist agent resolution
 
-This skill does not bundle specialist agents. Each finding's assignee is read from its `Triage:` metadata (`(assignee: {specialist})`), written by `/creview:triage` against the **destination project's** `.claude/agents/`. The leader passes those assignee names through to `subagent_type` verbatim. When an assignee is absent or unresolvable, use `general-purpose`. The build/test-fix specialist is resolved by the format / build / test verification Sub from the destination project's `.claude/agents/` (or `general-purpose`).
+The skill runs two bundled agents in fixed roles: `creview:comment-sensei` (Step 3) and `creview:prompt-sensei` (Steps 3–4), which launches `creview:prompt-tester`. Each finding's assignee is read from its `Triage:` metadata (`(assignee: {specialist})`), written by `/creview:triage` against the **destination project's** `.claude/agents/`. The leader passes those assignee names through to `subagent_type` verbatim. When an assignee is absent or unresolvable, use `general-purpose`. The build/test-fix specialist is resolved by the format / build / test verification Sub from the destination project's `.claude/agents/` (or `general-purpose`).
 
 ## Internal processing (intermediate files)
 
@@ -95,6 +97,7 @@ Each decision is written to an intermediate file, and `compile-review.py` compil
 {tmp_dir} = .claude/tmp/creview-respond-{timestamp}/
 {tmp_dir}/targets.jsonl        ← output of the select-fix-targets sub-agent
 {tmp_dir}/statuses/{id}.jsonl  ← output of the fix sub-agents (one file per finding)
+{tmp_dir}/prompt-test.jsonl    ← output of the interpretation-test sub-agent (Step 4)
 {tmp_dir}/events.jsonl         ← output of compile-review.py (input to render-review.py)
 ```
 
@@ -118,11 +121,11 @@ When `fix_count == 0`, skip Steps 2–5 and proceed to Step 6 (compile; nothing 
 
 ## Step 2 — Fix (parallel delegation to specialist sub-agents)
 
-For each `{assignee, ids}` in `by_assignee`, launch a fix sub-agent via `Agent(subagent_type=assignee, prompt=...)`. Different assignees launch in parallel; ids within the same assignee follow the parallelization constraint in the template.
+Before launching, run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/baseline.txt`; on a non-zero exit, abort with its error. For each `{assignee, ids}` in `by_assignee`, launch a fix sub-agent via `Agent(subagent_type=assignee, prompt=...)`. Different assignees launch in parallel; ids within the same assignee follow the parallelization constraint in the template.
 
 Template `fix.md`, `template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `ids = {ids}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, `adr_flag = {on|off, per --adr}`, `timestamp = {timestamp}`, overrides `(none)`. Return value per agent: `{items: [{id, path}, ...], template_id}` — collect only `items`; do not load the status body.
 
-## Step 3 — Comment review (delegate to the comment-sensei sub-agent)
+## Step 3 — Comment review and prompt review (delegate to the comment-sensei and prompt-sensei sub-agents)
 
 Have comment-sensei review whether comments added or modified by the fix sub-agents violate the discipline in `${CLAUDE_PLUGIN_ROOT}/rules/comment.md` and fix any violations. Pass comment-sensei the current fix diff (`fetch-diff.sh` output) and the review document (`{document_path}`) so it sees the changed comments and adjusts them only within bounds that do not distort each finding's intent. If no added or modified comments exist, the sub-agent may finish without making any changes.
 
@@ -130,30 +133,37 @@ Before launching, the leader runs `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh H
 
 Template `comment-review.md`, `template_id` `4a8e2d6f-9b15-4c73-8a2d-7f1e5c9b3d68`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `document_path = {document_path}`, overrides `(none)`. Return value: `{reviewed_paths, fix_count, template_id}`.
 
-## Step 4 — Format / build / test verification
+After comment-sensei returns, run the prompt review. Read only the `files` arrays of `{tmp_dir}/statuses/*.jsonl` (operational data, not decision body). When none of those files has the `.md` extension, skip the prompt review and hold an empty `prompt_files`. Otherwise run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` again and launch via `Agent(subagent_type="creview:prompt-sensei", prompt=...)`. The Sub decides which of those files are AI-facing prompt files.
 
-The leader (you) does not run the formatter or build commands directly and does not read source code. The format / build / test verification Sub resolves the destination project's format / build / test workflow via the procedure in `${CLAUDE_PLUGIN_ROOT}/rules/build-format-detection.md` (recursively search for a `build-format.md` descriptor across project → user → plugin-bundled scopes, else `CLAUDE.md` → `README.md`), then performs only a single pass of format, build, and test (test only when a test procedure is resolved; if none can be resolved, it performs a visual check only and returns a warning). The Sub is given the current fix diff (`fetch-diff.sh` output) and may skip a stage when the changes cannot affect its outcome (e.g. comments only). On build or test failure, it reads the code, identifies the responsible specialist, and returns the result (it does not fix the code itself). The leader launches a specialist Sub to perform the fix, and orchestrates a loop that alternately relaunches the verification Sub and the specialist Sub until build and test pass.
+Template `prompt-review.md`, `template_id` `6be7d388-2c9d-41f1-a349-a47407e157f4`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `baseline_path = {tmp_dir}/baseline.txt`, `document_path = {document_path}`, overrides `(none)`. Return value: `{prompt_files: [{path, created}], violations_detected, violations_fixed, compressed_count, added_files, remaining: [{location, rule}], template_id}`; hold all of it.
+
+## Step 4 — Format / build / test verification and interpretation test
+
+The leader (you) does not run the formatter or build commands directly and does not read source code. The format / build / test verification Sub resolves the destination project's format / build / test workflow via the procedure in `${CLAUDE_PLUGIN_ROOT}/rules/build-format-detection.md` (recursively search for a `build-format.md` descriptor across project → user → plugin-bundled scopes, else `CLAUDE.md` → `README.md`), then performs only a single pass of format, build, and test (test only when a test procedure is resolved; if none can be resolved, it performs a visual check only and returns a warning). The Sub is given the current fix diff (`fetch-diff.sh` output) and may skip a stage when the changes cannot affect its outcome (e.g. comments only). On build or test failure, it reads the code, identifies the responsible specialist, and returns the result (it does not fix the code itself). The leader launches a specialist Sub to perform the fix, and orchestrates a loop that alternately relaunches the verification Sub and the specialist Sub until build and test pass. When Step 3 held a non-empty `prompt_files`, each attempt also runs the interpretation test, and the loop fixes the files with unclear items as it fixes build / test failures.
 
 ### Loop control (leader)
 
-Maximum attempts: 5. Repeat the following up to the maximum:
+Maximum attempts: 5, shared by the build / test and the interpretation test. For each attempt n, starting at 1:
 
-1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the current fix diff (working tree), then launch the format / build / test verification Sub via `Agent(subagent_type="creview:review-helper", prompt=...)` — template `format-build-verify.md`, `template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {attempt_num}`, overrides `(none)`.
-2. Receive the return value (`{path, success, environmental, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`). If `workflow_warning` is non-null, retain it for presentation in Step 7.
-3. If `success == true`, exit the loop.
-4. If `success == false` and `environmental == true`, do not launch the build/test-fix specialist Sub. Read `error_summary` from the `failure` section of `{tmp_dir}/format-build-result.jsonl`, set the retained `workflow_warning` to "Build / test verification did not complete for an environmental cause: {error_summary}", present `error_summary` to the user, exit the loop, and proceed to Step 5.
-5. If `success == false` and `environmental == false`:
-   a. Read `{tmp_dir}/format-build-result.jsonl` and obtain `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` from its `failure` section (operational data, not decision body; do not Read source code itself).
-   b. Launch the build/test-fix specialist Sub via `Agent(subagent_type=suggested_specialist, prompt=...)` — template `build-fix.md`, `template_id` `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{description, template_id}`.
-   c. Return to the top of the loop (format must be rechecked because code changed).
-6. If the build or test still fails after the maximum attempts, present `error_summary` to the user, exit the loop, and proceed to Step 5.
+1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/changes.txt` to capture the current fix diff (working tree), then launch the format / build / test verification Sub via `Agent(subagent_type="creview:review-helper", prompt=...)` — template `format-build-verify.md`, `template_id` `9d3c5f8a-2b71-4e94-a8c5-1f7d3b9e2c46`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `attempt_num = {n}`, overrides `(none)`.
+   When `prompt_files` is non-empty, launch the interpretation-test Sub in the same message via `Agent(subagent_type="creview:prompt-sensei", prompt=...)` — template `prompt-test.md`, `template_id` `a3d8a6e0-5eb4-4540-b28b-b1ef6a4bfb52`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/changes.txt`, `baseline_path = {tmp_dir}/baseline.txt`, `document_path = {document_path}`, `prompt_files = {prompt_files}`, `output_path = {tmp_dir}/prompt-test.jsonl`, `attempt_num = {n}`, `fixed_files = {fixed_files}` (`(none)` on attempt 1), overrides `(none)`.
+2. From the verification return value (`{path, success, environmental, format_violations_fixed, workflow_source, workflow_warning, summary_line, template_id}`), hold `workflow_warning` for Step 7 in place of an earlier attempt's. When `success == false` and `environmental == true`, read `error_summary` from the `failure` section of `{tmp_dir}/format-build-result.jsonl`, replace the held `workflow_warning` with "Build / test verification did not complete for an environmental cause: {error_summary}", and present `error_summary` to the user; such a failure gets no build/test-fix Sub.
+3. From the interpretation-test return value (`{path, attempt, pass, tested_count, failed_files, untested_files: [{path, reason}], summary_line, template_id}`), hold `failed_files`, `untested_files`, and `summary_line` as `{prompt_failed_files}`, `{prompt_untested_files}`, and `{prompt_summary_line}` in place of an earlier attempt's. When the return value lacks them or its `attempt` is not n, hold an empty `{prompt_failed_files}`, every path in `prompt_files` as `{prompt_untested_files}` with the reason that the interpretation test returned no result, and a `{prompt_summary_line}` stating that the interpretation test returned no result.
+4. When the build / test has no failure with `environmental == false` and `{prompt_failed_files}` is empty, exit the loop.
+5. When n is 5, present `{prompt_failed_files}` to the user and exit the loop. When the build / test failed with `environmental == false`, also Read `error_summary` from the `failure` section of `{tmp_dir}/format-build-result.jsonl` and present it together.
+6. Otherwise fix, one after the other, since both fixes can edit the same file:
+   a. When the build / test failed with `environmental == false`, Read `{tmp_dir}/format-build-result.jsonl` and obtain `suggested_specialist` / `error_summary` / `error_files` / `fix_guidance` / `log_path` from its `failure` section (operational data, not decision body; do not Read source code itself). Launch the build/test-fix specialist Sub via `Agent(subagent_type=suggested_specialist, prompt=...)` — template `build-fix.md`, `template_id` `6e2a9f5c-1d83-4b74-9c2e-5a8d3f1b7e29`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, overrides `(none)`. Return value: `{description, template_id}`.
+   b. When `{prompt_failed_files}` is non-empty, launch the prompt-fix Sub via `Agent(subagent_type="creview:prompt-sensei", prompt=...)` — template `prompt-fix.md`, `template_id` `cbbd9597-ca26-4308-a6d1-67cb18498aff`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `tmp_dir = {tmp_dir}`, `document_path = {document_path}`, `result_path = {tmp_dir}/prompt-test.jsonl`, overrides `(none)`. Return value: `{files, template_id}`.
+   c. Set `{fixed_files}` to the union of the paths in a's `error_files` without line numbers and b's `files`, and start attempt n + 1.
+
+After the loop, set `{prompt_warning}`: when `{prompt_failed_files}` or `{prompt_untested_files}` is non-empty, a string naming each file left failing the interpretation test, with the number of attempts run, and each untested file, with its reason; otherwise, and when the interpretation test never ran, null.
 
 ## Step 5 — Commit (`--commit` only)
 
-Skip this step when `--commit` is off. The source code is final here: the fixes, comment-sensei's adjustments, and any build / test fixes are all in the working tree.
+Skip this step when `--commit` is off. The source code is final here: the fixes, comment-sensei's adjustments, the prompt review's edits, and any build / test and prompt fixes are all in the working tree.
 
 1. A Step 1 `by_assignee` group owns the union of `files` across its ids in `{tmp_dir}/statuses/*.jsonl` (read only the `files` arrays — operational data, not decision body). For each group, stage and commit the files it owns that no other group also owns.
-2. Commit whatever remains changed in the working tree as one final commit — the files two groups share, and the comment-sensei and build-fix edits to files no group owns. Skip it when nothing remains.
+2. Commit whatever remains changed in the working tree as one final commit — the files two groups share, the comment-sensei, prompt-sensei, and build-fix edits to files no group owns, and the template files the prompt review added (Step 3's `added_files`). Skip it when nothing remains.
 3. Never `git add -A`, and never stage `{document_path}` or anything under `{tmp_dir}`, `.claude/tmp/`, or `.claude/worktrees/`.
 4. Commit message: 1–3 lines describing what the code now does. Do not include finding ids (`C-1`, `M-1`, etc.). Example: `fix: Add null check before accessing output pointer`
 5. Commit even when Step 4 exited on a build or test failure. The user has already been shown `error_summary`, and work left uncommitted falls outside every later round's commit range.
@@ -177,6 +187,6 @@ The leader (you) does not load decision bodies into context. The fix `status` is
 
 ## Step 7 — Summary
 
-The leader prints the `summary_line` received in Step 6 to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. If Step 1's `not_ready` is non-empty, present its ids and reasons together with the `summary_line` as findings left unfixed, including when `fix_count == 0` skipped Steps 2–5. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.
+The leader prints the `summary_line` received in Step 6 to the console. If a `workflow_warning` was received in Step 4, present it as a warning line together with the `summary_line`. If Step 1's `not_ready` is non-empty, present its ids and reasons together with the `summary_line` as findings left unfixed, including when `fix_count == 0` skipped Steps 2–5. When Step 3 held a non-empty `prompt_files`, present as well the prompt review's counts (files reviewed, violations detected / fixed, files compressed), its `added_files`, the `location` and `rule` of each `remaining` violation, and `{prompt_summary_line}`; present a non-null `{prompt_warning}` as a warning line, as `workflow_warning` is. Only when a detailed table is needed, Read the updated `{document_path}` and present it following the `${CLAUDE_PLUGIN_ROOT}/skills/respond/templates/respond-summary.md` format.
 
 In a worktree, run the teardown (§ Worktree) and report the branch the fixes were committed to.

@@ -10,7 +10,7 @@ A multi-agent parallel code review workflow for Claude Code.
 |---------|-----------|---------|
 | `/creview:start` | `parallel-review` | Run a parallel code review of local changes or a GitHub pull request; produce a review document with metadata markers. |
 | `/creview:triage` | `review-respond` (triage + estimate) | Triage and estimate the findings of a review document or of a GitHub pull request's comments; persist `triage` / `estimate` into the document. |
-| `/creview:respond` | `review-respond` (fix) | Fix Will-Fix / Maintain / Alternative findings; verify the build; persist `status`. |
+| `/creview:respond` | `review-respond` (fix) | Fix Will-Fix / Maintain / Alternative findings; review the AI-facing prompt files the fixes create or change; verify the build and test how those prompt files are interpreted; persist `status`. |
 | `/creview:resolve` | `review-resolve` | Verify the resolutions of a review document's findings or of a GitHub pull request's comments against the source; persist `verification`. |
 | `/creview:rounds` | `review-rounds` | Automatically iterate start → triage → respond → resolve across rounds. |
 
@@ -410,6 +410,48 @@ arises during implementation. A later round that revisits the same location
 updates or supersedes the existing ADR instead of duplicating it.
 `/creview:rounds` accepts the same flag and passes it through to both phases.
 
+When the fixes of `/creview:respond` create or change an AI-facing prompt file,
+two more stages check that file; otherwise the skill runs without them. An
+AI-facing prompt file is an agent definition, a SKILL.md, a slash command, a
+rule, or a prompt template a skill has an agent read. `CLAUDE.md`, `AGENTS.md`,
+Markdown output templates, prompt strings embedded in source code, and READMEs
+are not. The two stages start only when the fixes change at least one `.md`
+file, so a fix that changes only prompt templates in other formats gets neither
+of them. Once started, they check every AI-facing prompt file the fixes created
+or changed, whatever its format.
+
+- After the bundled `comment-sensei` reviews the comments the fixes added or
+  changed, the bundled `prompt-sensei` checks the parts of those files that the
+  fixes created or changed against the bundled rule
+  `rules/prompt.md`, fixes the violations it finds, and compresses the text.
+  - It keeps what each prompt asks an agent to do and what each fix established,
+    including a FIXME an Alternative fix inserted.
+  - The only file it may add is a skill's Markdown output template that it moves
+    out of the SKILL.md into the skill's `templates/`.
+- Alongside the format, build, and test verification, an interpretation test runs
+  on each of those files. The bundled `prompt-tester`, which has Read, Glob, and
+  Grep only and no context of the run, answers a checklist about the file from
+  the prompt alone.
+  - An item it cannot answer fails the test. A sub-agent then edits the file so
+    that the prompt answers the item, in the same loop that fixes build and test
+    failures.
+  - The loop makes at most five attempts, shared by the build, the tests, and the
+    interpretation test. After the first attempt, only the files that did not pass
+    or were fixed since are tested again.
+- A file is reported as untested when its tester cannot run, for example when the
+  nested sub-agent spawning depth is too small or the concurrent sub-agent cap
+  refuses every launch, or when no result comes back.
+- The summary gives the prompt review's counts and the interpretation test's
+  result, and a warning lists the files left failing or untested.
+- For a review document of a pull request, each tester is told to open only files
+  under the work target, and not to report an item as unclear only because a file
+  outside it, or one left out of it, cannot be read. This is an instruction, not
+  enforcement, and like the rule on the paths sub-agents open, it does not prevent
+  following a symbolic link inside the work target when working in place, or
+  reading a gitignored file such as `.env`.
+- Under `/creview:rounds`, the warning is kept in the round's record and listed in
+  the final report's "Prompt interpretation test notes" section.
+
 `/creview:rounds` takes an `--incremental` option (default OFF) that makes each
 round after the first review only the commits added since the previous round
 started, instead of re-reviewing the whole branch diff every round. Round 1 is
@@ -497,17 +539,35 @@ Nested sub-agent spawning is required
 - `/creview:rounds` — 3 or more. Each phase runs in a phase leader
   sub-agent, which spawns that phase's own sub-agents, and the triage
   sub-agent spawns the challenge sub-agents and the adjudication
-  sub-agent.
+  sub-agent. In the respond phase, the interpretation-test sub-agent
+  spawns the testers.
 - `/creview:triage` on its own — 2 or more. The triage sub-agent spawns
   the challenge sub-agents and the adjudication sub-agent.
+- `/creview:respond` on its own — 2 or more when its fixes change an
+  AI-facing prompt file. The interpretation-test sub-agent spawns the
+  testers; with a smaller depth, those files are reported as untested.
 
-A long run also consumes many subagent slots — the challenge sub-agents alone
+A long run also launches many sub-agents: the challenge sub-agents alone
 number three per batch of eight findings, and a split review runs one reviewer
-per (scope, reviewer) pair — so raise
-`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200, cumulative over the
-session) when using a high `--max-rounds`. Sub-agents that run in parallel are
-launched at most 20 at a time, the default of
-`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`; the rest start as earlier ones finish.
+per (scope, reviewer) pair. Claude Code before v2.1.224 caps the total number
+of sub-agents launched in a session with
+`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (default 200); on such a version,
+raise it when using a high `--max-rounds`. From v2.1.224 on, there is no such
+cap.
+
+Claude Code v2.1.217 or later also caps the sub-agents running at once with
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` (default 20), refusing a launch past it
+with `Concurrent subagent limit reached`. The cap counts every sub-agent
+running in the session, including those running outside the skill and those
+above the launcher: when the triage sub-agent launches the challenge
+sub-agents, the triage sub-agent itself, and under `/creview:rounds` its phase
+leader, count as well. Sub-agents that run in parallel are launched at most 20
+at a time, and a launch the cap refuses is made again after an earlier one
+finishes. When none of the launches made at once starts and none that the
+launcher made is still running, the refused launches count as failed launches:
+`/creview:start`, for example, stops with the error, and the triage sub-agent
+goes on without the challenges it could not launch. In that case, wait for
+other agents to finish, or raise the cap, and run again.
 
 ## Reviewer / fixer agents
 
@@ -522,19 +582,26 @@ scope, and adds `general-purpose` to a scope whose picks all cover a narrower
 concern than the code's behavior, such as comments alone). With no match, they
 fall back to `general-purpose`. The
 bundled agents are `review-helper` (mechanical aggregation / verification),
-`comment-sensei` (comment-discipline review), `review-leader` (the
-`/creview:rounds` phase leader), `pr-description-reviewer` (the pull
-request description and CI reviewer of `/creview:start`'s PR mode), and
-`pr-comment-compiler` (the extractor of findings from a pull request's comments in
-`/creview:triage`'s and `/creview:resolve`'s PR mode), the last two bundled so that their tools stay
-restricted. Only `comment-sensei` is a selection candidate; the skills launch
-the other four by name.
+`comment-sensei` (comment-discipline review), `prompt-sensei`
+(prompt-discipline review, and the prompt review and interpretation test of
+`/creview:respond`), `review-leader` (the `/creview:rounds` phase leader),
+`pr-description-reviewer` (the pull request description and CI reviewer of
+`/creview:start`'s PR mode), `pr-comment-compiler` (the extractor of findings
+from a pull request's comments in `/creview:triage`'s and `/creview:resolve`'s
+PR mode), and `prompt-tester` (the interpretation tester `prompt-sensei`
+launches), the last three bundled so that their tools stay restricted.
+The skills launch five of them by name. The other two, `comment-sensei` and
+`prompt-sensei`, are selection candidates as well as the specialists
+`/creview:respond` runs in fixed roles. As a candidate, the bundled
+`prompt-sensei` can be picked as a reviewer by `/creview:start` for a change that
+includes AI-facing prompt files, unless the destination project or user scope
+has an agent of the same name, which takes precedence.
 
 ## Bundled support files
 
 - `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,
-  `adr-format.md`, `doc-worktree.md`, `pr-comment-doc.md`, `contract-style-prompts.md`
-  (only the rules the skills reference).
+  `adr-format.md`, `doc-worktree.md`, `pr-comment-doc.md`, `contract-style-prompts.md`,
+  `prompt.md` (only the rules the skills reference).
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`,
   `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it),
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by

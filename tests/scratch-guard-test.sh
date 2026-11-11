@@ -48,6 +48,8 @@ same creview/scripts/fetch-diff.sh src/creview/scripts/fetch-diff.sh
 same creview/scripts/gh-pr.py src/creview/scripts/gh-pr.py
 same creview/scripts/compile-pr-comments.py src/creview/scripts/compile-pr-comments.py
 same cgh/scripts/gh-review.py src/cgh/scripts/gh-review.py
+same cdev/rules/prompt.md creview/rules/prompt.md
+same src/cdev/rules/prompt.md src/creview/rules/prompt.md
 for d in src/cdev creview src/creview; do
     same cdev/scripts/worktree.sh "${d}/scripts/worktree.sh"
 done

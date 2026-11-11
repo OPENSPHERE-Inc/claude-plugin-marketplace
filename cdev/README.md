@@ -80,6 +80,23 @@ of a one-shot, stateless agent design. The interpretation test of AI-facing prom
 teammate, `prompt-sensei`, launch sub-agents with the `Agent` tool; where a teammate cannot,
 the test reports those files as untested.
 
+Claude Code v2.1.217 or later caps the sub-agents running at once in a session
+(`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, default 20) and refuses a launch past it with
+`Concurrent subagent limit reached`. Teammates at work and the sub-agents of the interpretation
+test can count toward the cap. The leader spawns a refused teammate again the next time a
+teammate's report or completion notice wakes it; when no teammate is left to wake it, the run
+ends with the error and commits nothing. In that case, wait for other agents in the session to
+finish, or raise the cap, and run again. Without `--worktree`, changes made before the error
+stay uncommitted in the working tree, and the files the run created stay untracked. The next
+run's clean-working-tree check counts untracked files as well and ignores `.claude/tmp/`,
+`.claude/worktrees/`, and the `--output` destination, so commit, stash, or discard the changes
+outside those places first. Under `--worktree`, those changes stay in the worktree, which is
+kept and its path reported.
+
+`prompt-sensei` launches a refused test sub-agent again after one it launched returns; when
+none of the test sub-agents it launches at once starts and none it launched is still running,
+the files of the refused sub-agents are reported as untested.
+
 The skill requires a session started at the repository root, with or without `--worktree`;
 started from a subdirectory of the repository, it stops with an error.
 
