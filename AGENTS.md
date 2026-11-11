@@ -52,12 +52,14 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `tests/gh-review-test.py` — self-test of `cgh/scripts/gh-review.py` with GitHub and git
   faked (not shipped).
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
-- `.claude/rules/*.md` — Discipline rules for editing this repo (prompt/document/comment/…).
+- `.claude/rules/*.md` — Discipline rules for editing this repo
+  (prompt/document/comment/…); `paired-files.md` defines the files that change together.
 
 ## Essential Rules
 
 1. **Language policy is not "English only".** Active plugin files = English;
-   `src/**` = Japanese master; `*_ja.md` = Japanese. Top-level docs = English.
+   `src/**` = Japanese master, whose scripts stay byte-identical English copies;
+   `*_ja.md` = Japanese. Top-level docs = English.
 2. **`src/` is the editing master.** Edit `src/<plugin>/X` and active `<plugin>/X` as a
    translation-paired change; keep them structurally 1:1. Exception:
    `scripts/lib/scratch-guard.py` / `scripts/del-tmp.sh` are byte-identical across all six
@@ -72,7 +74,10 @@ see **[CLAUDE.md](CLAUDE.md)**.
    `src/cdev/rules/prompt.md`; unlike the scripts, these `src/` copies are Japanese and each
    active copy stays translation-paired with its `src/` mirror, so change all four files
    together. `tests/scratch-guard-test.sh` fails when either byte-identical pair drifts but
-   does not check the translation pairing.
+   does not check the translation pairing. Every edit extends to the counterparts of the
+   files it changes, including an edit a skill's procedure confines to the files it names
+   (the fixes, compression, and prompt-fix of `/creview:respond`; the edits of the coders
+   and QA-fix cells of `/cdev:coding`); see `.claude/rules/paired-files.md`.
 3. **Token-placement invariant.** The token follows who opens the file.
    `${CLAUDE_PLUGIN_ROOT}` only in files Claude Code loads itself (SKILL.md
    bodies/`allowed-tools`, bundled `agents/*.md`); `{{plugin_root}}` only in files opened
