@@ -46,7 +46,9 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - `tests/scratch-guard-test.sh` — repo-level self-test: containment, `worktree.sh`, and
   byte-parity of the shared `lib/scratch-guard.py` / `del-tmp.sh` / `check-jsonl.py` /
   `worktree.sh` copies and of `fetch-diff.sh`, `gh-pr.py`, `compile-pr-comments.py`, and
-  `gh-review.py` with their `src/` mirrors (not shipped).
+  `gh-review.py` with their `src/` mirrors, and of `creview/rules/prompt.md` with
+  `cdev/rules/prompt.md` and `src/creview/rules/prompt.md` with `src/cdev/rules/prompt.md`
+  (not shipped).
 - `tests/gh-review-test.py` — self-test of `cgh/scripts/gh-review.py` with GitHub and git
   faked (not shipped).
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
@@ -65,7 +67,11 @@ see **[CLAUDE.md](CLAUDE.md)**.
    `scripts/fetch-diff.sh` (`creview/`, `cdev/`), `creview/scripts/gh-pr.py`, and
    `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` each with its own
    `src/` mirror — the `src/`
-   copies stay English; see CLAUDE.md.
+   copies stay English; see CLAUDE.md. Separately, `creview/rules/prompt.md` is a
+   byte-identical copy of `cdev/rules/prompt.md`, and `src/creview/rules/prompt.md` of
+   `src/cdev/rules/prompt.md`; unlike the scripts, these `src/` copies are Japanese and each
+   active copy stays translation-paired with its `src/` mirror, so change all four files
+   together. `tests/scratch-guard-test.sh` fails on any drift.
 3. **Token-placement invariant.** The token follows who opens the file.
    `${CLAUDE_PLUGIN_ROOT}` only in files Claude Code loads itself (SKILL.md
    bodies/`allowed-tools`, bundled `agents/*.md`); `{{plugin_root}}` only in files opened
