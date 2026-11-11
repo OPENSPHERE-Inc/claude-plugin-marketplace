@@ -194,7 +194,8 @@ for f in creview/skills/rounds/SKILL.md src/creview/skills/rounds/SKILL.md; do
 done
 
 # Scratch-guard self-test: containment behavior, worktree.sh, and byte-parity of the
-# shared script copies across creview/cdev/cgh and their src/ mirrors
+# shared script copies across creview/cdev/cgh and their src/ mirrors, and of the
+# creview/cdev rules/prompt.md copies
 bash tests/scratch-guard-test.sh
 
 # cgh's GitHub script, with GitHub and git faked
@@ -273,7 +274,8 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     metadata against the code
 /creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
                     comment-review Sub → prompt-review Sub (when the fixes changed a
-                    Markdown file; it reviews only the AI-facing prompt files among them)
+                    .md file; it then reviews every AI-facing prompt file they changed,
+                    whatever its format)
                     → format&build-verify Sub + prompt-test Sub (when the prompt review
                     returned prompt files; it launches one prompt-tester per file) ⇄
                     build-fix / prompt-fix loop → compile → persist status
@@ -591,8 +593,8 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   byte-identical with its own `src/` mirror.
 - **`creview/rules/prompt.md` is a byte-identical copy of `cdev/rules/prompt.md`**, and
   `src/creview/rules/prompt.md` of `src/cdev/rules/prompt.md`: `/creview:respond` applies the
-  same prompt discipline as `/cdev:coding`, and each plugin ships its own copy. No test checks
-  this, so when you change one copy, change the other.
+  same prompt discipline as `/cdev:coding`, and each plugin ships its own copy. Edit one copy
+  and replicate to the other; `tests/scratch-guard-test.sh` fails on any drift.
 - **`creview/rules/contract-style-prompts.md` restates part of `cdev/rules/prompt.md`** and
   of its copy `creview/rules/prompt.md`. It
   rephrases § Contract-style prompts and the definition of an AI-facing prompt file as the
