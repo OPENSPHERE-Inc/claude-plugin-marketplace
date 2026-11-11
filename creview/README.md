@@ -415,8 +415,10 @@ two more stages check that file; otherwise the skill runs without them. An
 AI-facing prompt file is an agent definition, a SKILL.md, a slash command, a
 rule, or a prompt template a skill has an agent read. `CLAUDE.md`, `AGENTS.md`,
 Markdown output templates, prompt strings embedded in source code, and READMEs
-are not. Only Markdown files count, so a fix that changes only a prompt template
-in another format gets neither stage.
+are not. The two stages start only when the fixes change at least one `.md`
+file, so a fix that changes only prompt templates in other formats gets neither
+of them. Once started, they check every AI-facing prompt file the fixes created
+or changed, whatever its format.
 
 - After the bundled `comment-sensei` reviews the comments the fixes added or
   changed, the bundled `prompt-sensei` checks the parts of those files that the
