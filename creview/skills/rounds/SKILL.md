@@ -114,6 +114,7 @@ Round 2 start (do not pass the previous round's review document)
   └─ ... (--incremental: review only the commits Round 1 added)
 Final step
   └─ [final report aggregator Sub] all round{N}.md + template → final-report.md
+On a phase error → end the round loop, skip the final step, go to Step 4
 ```
 
 ## Step 1 — Initialization
@@ -131,6 +132,8 @@ Final step
 
 While the round counter is at most `--max-rounds`, repeat the following.
 
+When a phase sub-agent returns a non-null `error`, including on a re-run in Step 2.5, run no further phase or step of the round, end the round loop, skip Step 3, and proceed to Step 4. In Step 2.2, remove the working directory (step 6) first. In Step 2.3, first retain the returned `workflow_warning` and `prompt_warning` as its step 3 directs, or, in its re-run in Step 2.5, as Step 2.5 step 2 directs.
+
 ### 2.1 — Review phase (start skill)
 
 1. Display in console: `## Round {N} — Step 1: Review`
@@ -141,7 +144,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
 4. Launch the phase sub-agent with `templates/phase-review.md` (`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`).
    - Variables: `round_num` (the round counter), `base` (`{review_base}`), `review_range` (`{review_range}`), `document_path` (this round's file path), `language` (user's chat language), `adversarial` (`--adversarial` state)
    - Overrides: (none)
-5. Hold only the return value (`{doc_path, findings_total, severity_counts}`) in context.
+5. Hold only the return value (`{doc_path, findings_total, severity_counts, error}`) in context.
 
 ### 2.2 — Triage & estimate phase (triage skill)
 
@@ -160,11 +163,11 @@ While the round counter is at most `--max-rounds`, repeat the following.
 5. User confirmation: when any of the following applies, present the applicable ones to the user together and wait for their instruction to continue.
    - This run's step 4 detected one or more divergences (regardless of the `--confirm` state): the fact that a divergence pattern was detected, and the content Read from `report_path`.
    - `--confirm` is enabled, `error` is null, and at least one Maintain / Alternative exists: the content Read from `summary_path`.
-6. Remove the phase's working directory, which holds `summary_path` (`del-tmp.sh` skips an already-removed target, so the `error` path needs no separate handling):
+6. When `tmp_dir` is non-null, remove the phase's working directory, which holds `summary_path` (`del-tmp.sh` skips an already-removed target, so the `error` path needs no separate handling):
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
-7. When `error` is non-null, do not proceed to 2.3 or beyond: report the failure to the user and end the round loop.
+7. When `error` is non-null, proceed as the start of Step 2 directs for a phase error.
 8. When the user instructs to stop the loop at step 5, run no further phase, record this round's results in 2.6, and proceed to Step 3 without advancing to the next round.
 9. When the user instructs a fix policy along with continuing at step 5, add that instruction verbatim, together with `report_path` as its reference and a note that the policy prevails where it differs from a finding's Triage or Estimate, to the overrides of this round's 2.3 and 2.4 and of the re-runs of 2.2, 2.3, and 2.4 in Step 2.5.
 10. Respond phase skip decision: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4 (Won't Fix / Downgrade findings receive their verification in 2.4).
@@ -175,7 +178,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
 2. Launch the phase sub-agent with `templates/phase-respond.md` (`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`).
    - Variables: `document_path`, `commit_flag` (`--commit` state), `adr_flag` (`--adr` state)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists. In a round where the user instructed a fix policy in Step 2.2, add that instruction
-3. Hold only the return value (`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line}`) in context. When `workflow_warning` is non-null, retain it for this round's record. When `prompt_warning` is non-null, retain it for this round's record with the source `Step 3` outside the feedback loop, and as Step 2.5 step 2 directs inside it.
+3. Hold only the return value (`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line, error}`) in context. When `workflow_warning` is non-null, retain it for this round's record. When `prompt_warning` is non-null, retain it for this round's record with the source `Step 3` outside the feedback loop, and as Step 2.5 step 2 directs inside it.
 
 ### 2.4 — Resolve phase (resolve skill)
 
@@ -183,7 +186,7 @@ While the round counter is at most `--max-rounds`, repeat the following.
 2. Launch the phase sub-agent with `templates/phase-resolve.md` (`template_id`: `2f9c6a1e-7b53-4d84-8e2b-5a1f9d3c7b26`).
    - Variables: `document_path`, `base` (this round's `{review_base}`)
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists. In a round where the user instructed a fix policy in Step 2.2, add that instruction
-3. Hold only the return value (`{summary_line, resolved_count, feedback_count, unresolved_count}`) in context.
+3. Hold only the return value (`{summary_line, resolved_count, feedback_count, unresolved_count, error}`) in context.
 
 ### 2.5 — Feedback confirmation and re-fix loop
 
@@ -246,4 +249,4 @@ Template: `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/final-report.md` (the f
 ## Step 4 — Completion report
 
 1. Under `--worktree`, run the teardown in § Worktree.
-2. Report the final report path to the user, and concisely convey key statistics (total findings, resolved count, unresolved count). Under `--worktree`, add the branch and any worktree the teardown kept.
+2. When a phase's `error` ended the round loop, report to the user that `error`, the round and phase that stopped, each round's review document path (every non-null `doc_path` a review phase returned), and every `workflow_warning` and `prompt_warning` retained for a round's record in 2.3 / 2.5, the stopped round's included, each with its round and, for a `prompt_warning`, its source. Otherwise report the final report path to the user, and concisely convey key statistics (total findings, resolved count, unresolved count). In either case, under `--worktree`, add the branch and any worktree the teardown kept.
