@@ -513,13 +513,14 @@ the edits it made so far stay uncommitted and their findings get no new
 Status. They remain in the main working tree without `--worktree`, and with it
 in the worktree, which is then kept and its path reported. Running
 `/creview:respond` on that review document selects those findings again, so
-check or discard those edits first. The working tree can also hold other
-uncommitted changes, such as changes made before the run and, without
-`--commit`, the fixes of earlier phases. Discard only the edits the stopped
-phase made. They are for the findings `/creview:respond` selects again: those
-with no Status or, when the phase stopped in the feedback re-fix loop, the
-`💬 Feedback` findings. A phase that finishes with a warning, such as a
-workflow warning, does not stop the run.
+check or discard those edits first. The working tree can also hold changes
+made before the run and, without `--commit`, the fixes of earlier phases, which
+can lie on the same lines as those edits. The run does not record which of the
+uncommitted changes the stopped phase made, so check the content of each change
+before discarding it. With `--commit`, which `--worktree` and `--incremental`
+enable, the earlier phases' fixes are committed and stay out of the uncommitted
+changes. A phase that finishes with a warning, such as a workflow warning, does
+not stop the run.
 
 `/creview:rounds` takes a `--worktree[=branch]` option (default OFF) that runs
 every round in a separate git worktree under `.claude/worktrees/`, so the
