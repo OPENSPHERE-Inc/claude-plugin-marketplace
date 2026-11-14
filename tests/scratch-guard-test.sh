@@ -1156,8 +1156,9 @@ grep -qF "$(printf 'A\t%s' "${QNAME}")" "${PRQ}/.claude/tmp/quote.txt" 2>/dev/nu
     && grep -qF "Binary files /dev/null and b/${QNAME} differ" "${PRQ}/.claude/tmp/quote.txt" \
     || { note "FAIL: creview fetch-diff octal-escaped a non-ASCII path"; fail=1; }
 
-# --- restore.sh: one restore-list entry from a turning point, refusing untracked files -
+# --- restore.sh: one restore-list entry from a turning point, losing no untracked file -
 RSD="${SANDBOX}/restore"
+RSQ=$'\xc3\xa9'
 rsd_git() {
     git -C "${RSD}" -c user.email=test@test -c user.name=test -c commit.gpgsign=false \
         -c core.autocrlf=false "$@"
@@ -1168,47 +1169,92 @@ rs() { # <expected-rc> <name> <restore.sh args...>
     (cd "${RSD}" && bash "${RS}" "$@") >/dev/null 2>&1 || rc=$?
     check "restore.sh ${name}" "${want}" "${rc}"
 }
+rse() { # <stderr-substring> <name> <restore.sh args...>: expects rc=1
+    local want="$1" name="$2" rc=0 err
+    shift 2
+    err="$( (cd "${RSD}" && bash "${RS}" "$@") 2>&1 >/dev/null )" || rc=$?
+    check "restore.sh ${name}" 1 "${rc}"
+    [[ "${err}" == *"${want}"* ]] \
+        || { note "FAIL: restore.sh ${name} printed '${err}'"; fail=1; }
+}
 has() { # <repo-relative-file> <content>
     [[ "$(cat "${RSD}/$1" 2>/dev/null)" == "$2" ]] \
         || { note "FAIL: restore.sh left $1 without '$2'"; fail=1; }
 }
-mkdir -p "${RSD}/d/x" "${RSD}/app/[id]" "${RSD}/app/i" "${RSD}/u/c" "${RSD}/ig" \
+mkdir -p "${RSD}/d/x" "${RSD}/app/[id]" "${RSD}/app/i" "${RSD}/u/c" "${RSD}/ig" "${RSD}/t" \
+        "${RSD}/k" "${RSD}/q" \
     && rsd_git init -q \
     && echo old > "${RSD}/d/m" && echo y > "${RSD}/d/x/y" \
     && echo id-old > "${RSD}/app/[id]/page" && echo i-old > "${RSD}/app/i/page" \
     && echo a > "${RSD}/u/a" && echo d > "${RSD}/u/c/d" && echo s > "${RSD}/ig/s" \
+    && echo f > "${RSD}/t/f" && echo a > "${RSD}/k/a" && echo q > "${RSD}/q/${RSQ}" \
     && rsd_git add -A && rsd_git commit -qm tp && RS_TP="$(rsd_git rev-parse HEAD)" \
     && echo new > "${RSD}/d/m" && echo n > "${RSD}/d/n" \
     && echo id-new > "${RSD}/app/[id]/page" && echo i-new > "${RSD}/app/i/page" \
-    && rsd_git rm -rq u ig && echo ig/ > "${RSD}/.gitignore" \
+    && rsd_git rm -rq u ig t k q && echo t-head > "${RSD}/t" && echo ig/ > "${RSD}/.gitignore" \
     && rsd_git add -A && rsd_git commit -qm head && RS_HEAD="$(rsd_git rev-parse HEAD)" \
     || { note "FAIL: restore.sh repository setup"; fail=1; }
-mkdir -p "${RSD}/u" "${RSD}/ig"
-echo local-a > "${RSD}/u/a"
-echo local-c > "${RSD}/u/c"
-echo local-s > "${RSD}/ig/s"
-rs 1 "untracked file at a tracked path refused" "${RS_TP}" u
+mkdir -p "${RSD}/u" && echo local-a > "${RSD}/u/a" && echo local-c > "${RSD}/u/c"
+rs 1 "untracked file at a path the commit tracks refused" "${RS_TP}" u/a
 has u/a local-a
+rs 1 "untracked file at a parent path refused" "${RS_TP}" u/c/d
 has u/c local-c
-rm "${RSD}/u/a"
-rs 1 "untracked file where the commit has a directory refused" "${RS_TP}" u
+rs 1 "untracked file where the commit has a directory refused" "${RS_TP}" u/c
 has u/c local-c
-rs 1 "ignored file refused" "${RS_TP}" ig
-has ig/s local-s
+rm "${RSD}/u/c" && rsd_git init -q u/c && echo local-d > "${RSD}/u/c/d"
+rs 1 "untracked repository where the commit has a directory refused" "${RS_TP}" u/c
+has u/c/d local-d
+rm "${RSD}/u/a" && mkdir "${RSD}/u/a" && echo z > "${RSD}/u/a/z"
+rs 1 "untracked directory where the commit has a file refused" "${RS_TP}" u/a
+has u/a/z z
+rm -rf "${RSD}/u"
+mkdir -p "${RSD}/k" && echo local-A > "${RSD}/k/A"
+# A file system that ignores case refuses this restore; one that does not keeps both names.
+(cd "${RSD}" && bash "${RS}" "${RS_TP}" k/a) >/dev/null 2>&1 || :
+has k/A local-A
+rm -rf "${RSD}/k"
+mkdir -p "${RSD}/q" && echo local-q > "${RSD}/q/${RSQ}"
+rs 1 "untracked file at a quoted path refused" "${RS_TP}" q
+has "q/${RSQ}" local-q
+rm -rf "${RSD}/q"
+rse "would change these paths outside it" "tracked file at a parent path refused" \
+    "${RS_TP}" t/f
+has t t-head
+echo local-m > "${RSD}/d/m"
+rs 1 "tracked file with a local change refused" "${RS_TP}" d
+has d/m local-m
+echo new > "${RSD}/d/m" && echo local-y > "${RSD}/d/x/y"
+rs 1 "tracked file with a local change the commit keeps refused" "${RS_TP}" d
+has d/x/y local-y
+echo y > "${RSD}/d/x/y"
+mkdir -p "${RSD}/ig" && echo local-s > "${RSD}/ig/s" && echo local-keep > "${RSD}/ig/keep"
+rc=0; (cd "${RSD}" && bash "${RS}" "${RS_TP}" ig) >/dev/null 2>&1 || rc=$?
+# Depending on its version, git overwrites an ignored file at a path the commit tracks or
+# refuses to.
+if [[ "${rc}" -eq 0 ]]; then has ig/s s; else has ig/s local-s; fi
+has ig/keep local-keep
 rs 0 "directory restore" "${RS_TP}" d
 has d/m old
 has d/x/y y
 [[ ! -e "${RSD}/d/n" ]] || { note "FAIL: restore.sh kept a path the commit lacks"; fail=1; }
-rs 0 "bracketed directory restore" "${RS_TP}" 'app/[id]'
+: > "${RSD}/.git/index.lock"
+rs 0 "bracketed directory restore with the index locked" "${RS_TP}" 'app/[id]'
+rm -f "${RSD}/.git/index.lock"
 has 'app/[id]/page' id-old
 has app/i/page i-new
-for bad in '' /d 'C:d' 'd\x' -d :d . ./d d/. d/.. ../d; do
-    rs 1 "path '${bad}' refused" "${RS_TP}" "${bad}"
+rse "is in neither" "path in neither the commit nor HEAD refused" "${RS_TP}" no-such
+for bad in '' /d 'C:d' 'd\x' -d :d; do
+    rse "not a repository-relative path" "path '${bad}' refused" "${RS_TP}" "${bad}"
 done
-rs 1 "unresolved commit refused" no-such-commit d
-rs 1 "option-like commit refused" -x d
+for bad in . ./d d/. d/.. ../d; do
+    rse "path has a . or .. component" "path '${bad}' refused" "${RS_TP}" "${bad}"
+done
+rse "not a commit" "unresolved commit refused" no-such-commit d
+rse "not a commit" "option-like commit refused" -x d
 [[ "$(rsd_git rev-parse HEAD)" == "${RS_HEAD}" ]] && rsd_git diff --cached --quiet \
     || { note "FAIL: restore.sh moved HEAD or changed the index"; fail=1; }
+! compgen -G "${RSD}/.git/restore.*" >/dev/null \
+    || { note "FAIL: restore.sh left its indexes in the git directory"; fail=1; }
 
 # --- worktree.sh + scratch dir of another working tree ----------------------------
 MAIN="$(git rev-parse --show-toplevel)"

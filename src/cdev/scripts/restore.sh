@@ -4,10 +4,12 @@
 # Usage: <path>/restore.sh <commit> <path>
 #
 # <path> is repository-relative. The restore also deletes the tracked paths under it that
-# <commit> lacks. Refuses an absolute path, a backslash, a . or .. component, a leading
-# - or :, a commit that does not resolve, and an entry whose restore would overwrite or
-# delete an untracked or ignored file, which it lists on stderr. Changes no index, branch,
-# or HEAD.
+# <commit> lacks. Refuses an absolute path, a backslash, a . or .. component, a leading - or :,
+# a commit that does not resolve, a path in neither <commit> nor HEAD, and an entry whose
+# restore would overwrite or delete an untracked file or a tracked file that differs from HEAD,
+# or would change a path outside the entry, giving the reason on stderr. Like a git checkout,
+# it may overwrite an ignored file at a path <commit> tracks, so /cdev:coding calls it only in
+# the worktree a run under --worktree created. Changes no index, branch, or HEAD.
 
 set -euo pipefail
 
@@ -42,45 +44,48 @@ esac
 cd "$(git rev-parse --show-toplevel)"
 lgit() { git --literal-pathspecs -c core.quotePath=true "$@"; }
 
-TRACKED="$(lgit ls-tree -r --name-only "${SHA}" -- "${ENTRY}")"
-OTHERS="$(lgit ls-files --others -- "${ENTRY}")"
+HEAD_SHA="$(git rev-parse --verify "HEAD^{commit}")"
+TMP="$(mktemp -d "$(git rev-parse --absolute-git-dir)/restore.XXXXXX")"
+trap 'rm -rf -- "${TMP}"' EXIT
+trap 'exit 1' HUP INT TERM
+# The script's own indexes keep the shared index and its lock out of the restore.
+NEW_INDEX="${TMP}/new"
+WT_INDEX="${TMP}/worktree"
 
-# git restore overwrites an untracked or ignored file at a path the commit tracks, replaces
-# one where the commit has a directory, and removes an untracked directory where the commit
-# has a file, all without a warning. Both lists use git's quoting, so they compare as is.
-CONFLICTS="$(
-    {
-        printf '%s\n' "${TRACKED}" | sed 's/^/T /'
-        printf '%s\n' "${OTHERS}" | sed 's/^/O /'
-    } | awk '
-        function unquote(s) {
-            if (s ~ /^".*"$/) s = substr(s, 2, length(s) - 2)
-            return s
-        }
-        length($0) <= 2 { next }
-        {
-            tag = substr($0, 1, 1)
-            raw = substr($0, 3)
-            p = unquote(raw)
-        }
-        tag == "T" {
-            tracked[p] = 1
-            while (sub("/[^/]*$", "", p)) parent[p] = 1
-            next
-        }
-        {
-            sub("/$", "", p)
-            hit = (p in tracked) || (p in parent)
-            while (!hit && sub("/[^/]*$", "", p)) hit = (p in tracked)
-            if (hit) print raw
-        }
-    '
-)"
-if [[ -n "${CONFLICTS}" ]]; then
-    echo "Error: restoring ${ENTRY} from ${COMMIT} would overwrite or delete these untracked" \
-        "or ignored files; nothing was restored:" >&2
-    printf '%s\n' "${CONFLICTS}" >&2
+# NEW: the tree of HEAD with the entry replaced by its content at <commit>.
+lgit ls-tree -r -z "${SHA}" -- "${ENTRY}" > "${TMP}/entry"
+GIT_INDEX_FILE="${NEW_INDEX}" git read-tree "${HEAD_SHA}"
+GIT_INDEX_FILE="${NEW_INDEX}" lgit rm -r -q --cached --ignore-unmatch -- "${ENTRY}"
+GIT_INDEX_FILE="${NEW_INDEX}" git update-index -z --index-info < "${TMP}/entry"
+NEW="$(GIT_INDEX_FILE="${NEW_INDEX}" git write-tree)"
+if [[ ! -s "${TMP}/entry" && "${NEW}" == "$(git rev-parse "${HEAD_SHA}^{tree}")" ]]; then
+    echo "Error: ${ENTRY} is in neither ${COMMIT} nor HEAD; nothing was restored" >&2
     exit 1
 fi
 
-lgit restore --source="${SHA}" --worktree -- "${ENTRY}"
+# A path added under a file of HEAD replaces that file.
+OUTSIDE="$(git -c core.quotePath=true diff-tree -r --name-only --no-renames "${HEAD_SHA}" \
+    "${NEW}" -- ":(exclude,literal)${ENTRY}")"
+if [[ -n "${OUTSIDE}" ]]; then
+    echo "Error: restoring ${ENTRY} from ${COMMIT} would change these paths outside it;" \
+        "nothing was restored:" >&2
+    printf '%s\n' "${OUTSIDE}" >&2
+    exit 1
+fi
+
+GIT_INDEX_FILE="${WT_INDEX}" git read-tree "${HEAD_SHA}"
+# read-tree -m takes an index entry without stat information for a local change.
+GIT_INDEX_FILE="${WT_INDEX}" git update-index -q --refresh || :
+# read-tree -m keeps a local change where HEAD and <commit> agree, so it is refused here.
+CHANGED="$(GIT_INDEX_FILE="${WT_INDEX}" lgit diff-files --name-only -- "${ENTRY}")"
+if [[ -n "${CHANGED}" ]]; then
+    echo "Error: these tracked files under ${ENTRY} differ from HEAD; nothing was restored:" >&2
+    printf '%s\n' "${CHANGED}" >&2
+    exit 1
+fi
+# The two-way merge refuses, before it writes, to lose an untracked file or a local change.
+if ! GIT_INDEX_FILE="${WT_INDEX}" git read-tree -m -u "${HEAD_SHA}" "${NEW}"; then
+    echo "Error: git refused to restore ${ENTRY} from ${COMMIT}; its message above gives" \
+        "the reason" >&2
+    exit 1
+fi
