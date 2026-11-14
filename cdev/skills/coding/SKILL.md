@@ -41,7 +41,7 @@ The user supplies a coding task: a feature to implement, a change to make, or a 
 
 ### Result file (`--result`)
 
-Write the file with the Write tool as one JSON object, replacing an existing file and creating its parent directory if missing; when the file exists, Read it first, since Write refuses to replace a file this session has not Read. Write it in Step 5 step 5, and also before ending at every exit that does not reach Step 5 — the aborts under § Requirements and § Trust premise, and each termination in Step 1 but the one on the refusal of step 5's `del-tmp.sh` — after the teardown when the exit follows the worktree setup. If the write fails, show the error on the console and change nothing else.
+Write the file with the Write tool as one JSON object, replacing an existing file and creating its parent directory if missing; when the file exists, Read it first, since Write refuses to replace a file this session has not Read. Write it in Step 5 step 5, and also before ending at every exit that does not reach Step 5 — the aborts under § Requirements and § Trust premise, and each termination in Step 1 — after the teardown when the exit follows the worktree setup. Write nothing while `.claude` or `.claude/tmp` is a symlink: at an exit before the `del-tmp.sh` of Step 1 step 5 has passed, run `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry {tmp_dir}` first, fixing `{timestamp}` at that point when the exit comes before Step 1, and write only when it exits zero, otherwise showing its error on the console and ending. If the write fails, show the error on the console and change nothing else.
 
 ```json
 {"committed": true, "commit": "<sha>", "branch": "<name>",

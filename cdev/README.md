@@ -154,7 +154,8 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
   the QA and interpretation-test results, the numbers of `FIXME:`s left and of escalations,
   whether team re-formation fell back to the original roster, the step and reason when the
   run stopped early, and the worktree kept, if any. It is written as well when the run ends
-  before the commit step, such as on an invalid option or an unmet requirement.
+  before the commit step, such as on an invalid option or an unmet requirement. It is not
+  written when `.claude` or `.claude/tmp` is a symbolic link.
 
 The design documents (`design-{slug}.md`, one per architect) are kept after the run; every
 other intermediate file is deleted. `--commit` never stages them, nor the `--handoff` and
