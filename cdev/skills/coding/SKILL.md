@@ -29,7 +29,7 @@ The user supplies a coding task: a feature to implement, a change to make, or a 
 - `--commit` (default OFF) — After QA passes, commit the implementation in one commit (concise message, no finding IDs).
 - `--worktree[=branch]` (default OFF) — Run the task in a separate git worktree on `branch` (§ Worktree). Without `=branch`, a new branch `cdev-coding-{timestamp}` is created from the current HEAD. Enables `--commit`.
 - `--output {dir}` — Specify the output directory for the design documents (`{design_dir}`).
-- `--handoff {path}` (default unset) — A handoff for this run: a Markdown file in any format. Team analysis, the architects, and the design reviewers Read it; it ranks after the task in the judgment priority (§ Review cell protocol), and a design may restore files to a turning point it names.
+- `--handoff {path}` (default unset) — A handoff for this run: a Markdown file in any format. Team analysis, the architects, and the design reviewers Read it; it ranks after the task in the judgment priority (§ Review cell protocol), and, under `--worktree`, a design may restore files to a turning point it names.
 - `--team-tag {tag}` (default unset) — Append `-{tag}` to every teammate name (§ Team model). `tag` is 1–16 letters, digits, or hyphens and begins with a letter or digit. The caller ensures that no earlier run in the session used the tag; the skill does not check it.
 - `--commit-always` (default OFF) — Implies `--commit`, and commits in Step 5 whatever QA and the interpretation test found, once the run has entered Step 4.
 - `--result {path}` (default unset) — Write the run's result to `path` as JSON (§ Result file).
@@ -46,6 +46,7 @@ Write the file with the Write tool as one JSON object, replacing an existing fil
 ```json
 {"committed": true, "commit": "<sha>", "branch": "<name>",
  "design_paths": ["<abs path>"], "restored_from": ["<turning point name>"],
+ "restore_refused": [{"turning_point": "<name>", "path": "<path>", "reason": "<reason>"}],
  "qa": {"passed": true, "environmental": false, "summary": "<summary_line>"},
  "prompt_test": {"passed": true, "failed": ["<path>"],
                  "untested": [{"path": "<path>", "reason": "<reason>"}]},
@@ -57,6 +58,7 @@ Write the file with the Write tool as one JSON object, replacing an existing fil
 - `branch`: the branch the sources are on — `branch=` of `worktree.sh` under `--worktree`, otherwise `{start_branch}`; null on a detached `HEAD` or when the run ended before the value was known.
 - `design_paths`: `{design_paths}` as absolute paths; empty when the run did not pass the gate of Step 2 step 3.
 - `restored_from`: `{restored_from}`; empty when there is none.
+- `restore_refused`: `{restore_refused}`; empty when there is none.
 - `qa`: the last QA attempt's `success`, `environmental`, and `{summary_line}`; `false`, `false`, and null when Step 4 got no QA report.
 - `prompt_test`: the last Step 4 attempt's `{prompt_pass}`, `{prompt_failed_files}`, and `{prompt_untested_files}`, each untested file with its reason, and one entry with a null `path` when the interpretation test wrote no result; `false` with empty arrays when no Step 4 attempt set them.
 - `fixme_count`: the `FIXME:`s left for unresolved items — those that cells closed at the round cap report at unresolved `Critical`s, and those you had inserted for escalations you could not decide — not a count from the code.
@@ -138,7 +140,7 @@ When a reviewer escalates a `Critical` disagreement, the leader arbitrates by th
 
 ## Leader scope (body isolation)
 
-The leader holds only the roster (each teammate's name → agentType), the teammates awaiting a respawn, the pairings, each cell's status, severity counts, file paths, the QA and interpretation-test results, the names of the turning points the designs restore from, and the counts of escalations and of the `FIXME:`s left for unresolved items. Design bodies, source, and finding bodies stay with the teammates; findings travel producer ⇄ reviewer by `SendMessage`.
+The leader holds only the roster (each teammate's name → agentType), the teammates awaiting a respawn, the pairings, each cell's status, severity counts, file paths, the QA and interpretation-test results, the names of the turning points the designs restore from, the restore entries the coders report as refused, and the counts of escalations and of the `FIXME:`s left for unresolved items. Design bodies, source, and finding bodies stay with the teammates; findings travel producer ⇄ reviewer by `SendMessage`.
 
 ## Working directory
 
@@ -187,7 +189,7 @@ The design documents go to `{design_dir}/design-{slug}.md` (one design section p
 2. For each coder, start the code cell `code-{slug}` with two messages (addressed to roster names):
    - To `coder-{slug}`, `SendMessage` naming `templates/code.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `assigned_scope = {its scope}`, `tdd = {has_test_suite}`, `feedback = (none)`, `reviewer = {paired reviewer's name}`, `comment_reviewer = comment-sensei`, `prompt_reviewer = {prompt-sensei when has_prompts is true, otherwise (none)}`.
    - To the paired reviewer's name, `SendMessage` naming `templates/code-review.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `producer = coder-{slug}`, `cell_task = code-{slug}`, `review_rounds = {--review-rounds}`.
-3. Gate: one closure report per code cell, arbitrating any escalation.
+3. Gate: for each code cell, both its closure report and its coder's report to you, in either order, arbitrating any escalation. Collect the restore entries the coders' reports list as refused, each with its turning point, path, and reason, as `{restore_refused}`.
 
 ## Step 4 — QA gate
 
@@ -214,4 +216,4 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 3. Remove the working directory: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 4. Under `--worktree`, run the teardown in § Worktree.
 5. Under `--result`, write the result file (§ Result file).
-6. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, whether the team re-formation fell back to the Step 1 roster, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the prompt-review counts the coders reported, the QA result when Step 4 ran (`summary_line`, plus `workflow_warning` if any, and `prompt_summary_line` when `has_prompts` is true), any unfixed QA failure, stated as environmental when `environmental` is true, any prompt file still failing the interpretation test, any prompt file left untested with its reason, any teammate whose `TaskStop` failed for a reason other than not running, and, when the run came to Step 5 on a refused spawn, the step it stopped in and each teammate whose spawn was still refused. Add, when `--commit-always` committed with QA or the interpretation test not passing, that fact; any commit skipped because the branch or `HEAD` moved; and, under `--result`, the result file's path or that writing it failed. Under `--worktree`, add the branch and any worktree the teardown kept.
+6. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, whether the team re-formation fell back to the Step 1 roster, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, any restore entry the coders reported as refused, with its turning point, path, and reason, the prompt-review counts the coders reported, the QA result when Step 4 ran (`summary_line`, plus `workflow_warning` if any, and `prompt_summary_line` when `has_prompts` is true), any unfixed QA failure, stated as environmental when `environmental` is true, any prompt file still failing the interpretation test, any prompt file left untested with its reason, any teammate whose `TaskStop` failed for a reason other than not running, and, when the run came to Step 5 on a refused spawn, the step it stopped in and each teammate whose spawn was still refused. Add, when `--commit-always` committed with QA or the interpretation test not passing, that fact; any commit skipped because the branch or `HEAD` moved; and, under `--result`, the result file's path or that writing it failed. Under `--worktree`, add the branch and any worktree the teardown kept.

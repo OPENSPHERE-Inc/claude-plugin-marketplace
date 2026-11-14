@@ -29,7 +29,7 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 - `--commit`（デフォルト OFF）— QA 通過後、実装を 1 コミットにまとめてコミットする（簡潔なメッセージ、finding ID なし）。
 - `--worktree[=branch]`（デフォルト OFF）— タスクを `branch` 上の別の git ワークツリーで実行する（§ ワークツリー）。`=branch` を省略すると、現在の HEAD から新しいブランチ `cdev-coding-{timestamp}` を作成する。`--commit` を有効にする。
 - `--output {dir}` — 設計ドキュメントの出力先ディレクトリ（`{design_dir}`）を指定する。
-- `--handoff {path}`（デフォルト 未指定）— この実行への申し送り。書式を問わない Markdown ファイル。team-analysis、architect、設計 reviewer がこれを Read する。判断優先度ではタスクの次に位置し（§ レビューセルプロトコル）、設計はこれが挙げるターニングポイントへファイルを復元してよい。
+- `--handoff {path}`（デフォルト 未指定）— この実行への申し送り。書式を問わない Markdown ファイル。team-analysis、architect、設計 reviewer がこれを Read する。判断優先度ではタスクの次に位置し（§ レビューセルプロトコル）、`--worktree` 指定時は、設計はこれが挙げるターニングポイントへファイルを復元してよい。
 - `--team-tag {tag}`（デフォルト 未指定）— すべての teammate の name に `-{tag}` を付ける（§ チームモデル）。`tag` は英数字とハイフンからなる 1〜16 文字で、英数字で始まる。このタグをセッション内の以前の実行が使っていないことは呼び出し側が保証し、スキルは検証しない。
 - `--commit-always`（デフォルト OFF）— `--commit` を含意し、実行がステップ 4 に入っていれば、QA と解釈テストの結果にかかわらずステップ 5 でコミットする。
 - `--result {path}`（デフォルト 未指定）— 実行の結果を JSON で `path` に書く（§ 結果ファイル）。
@@ -46,6 +46,7 @@ Write ツールで 1 つの JSON オブジェクトとして書く。既存の�
 ```json
 {"committed": true, "commit": "<sha>", "branch": "<name>",
  "design_paths": ["<abs path>"], "restored_from": ["<turning point name>"],
+ "restore_refused": [{"turning_point": "<name>", "path": "<path>", "reason": "<reason>"}],
  "qa": {"passed": true, "environmental": false, "summary": "<summary_line>"},
  "prompt_test": {"passed": true, "failed": ["<path>"],
                  "untested": [{"path": "<path>", "reason": "<reason>"}]},
@@ -57,6 +58,7 @@ Write ツールで 1 つの JSON オブジェクトとして書く。既存の�
 - `branch`: ソースが載るブランチ — `--worktree` 指定時は `worktree.sh` の `branch=`、それ以外は `{start_branch}`。detached `HEAD` の場合と、その値が分かる前に実行が終わった場合は null。
 - `design_paths`: `{design_paths}` を絶対パスで。ステップ 2 の手順 3 のゲートを通過しなかった場合は空配列。
 - `restored_from`: `{restored_from}`。ない場合は空配列。
+- `restore_refused`: `{restore_refused}`。ない場合は空配列。
 - `qa`: 最後の QA 試行の `success`、`environmental`、`{summary_line}`。ステップ 4 が QA の報告を 1 つも受けなかった場合は `false`、`false`、null。
 - `prompt_test`: ステップ 4 の最後の試行の `{prompt_pass}`、`{prompt_failed_files}`、`{prompt_untested_files}`（未テストのファイルはそれぞれ理由を添え、解釈テストが結果を書かなかった場合は `path` を null とした要素 1 つとする）。ステップ 4 のどの試行もこれらを設定しなかった場合は `false` と空配列。
 - `fixme_count`: 未解決項目のために残した `FIXME:` の数 — ラウンド上限でクローズしたセルが未解決の `Critical` に残したと報告したものと、裁定できなかったエスカレーションのために挿入させたもの。コードから数えた数ではない。
@@ -138,7 +140,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 ## リーダーのスコープ（本体の隔離）
 
-リーダーが保持するのは、roster（各 teammate の name → agentType）、再 spawn 待ちの teammate、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA と解釈テストの結果、設計が復元元とするターニングポイントの名前、エスカレーションの数と未解決項目のために残した `FIXME:` の数のみ。設計本体・ソース・指摘本体は teammate 側に留まり、指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
+リーダーが保持するのは、roster（各 teammate の name → agentType）、再 spawn 待ちの teammate、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA と解釈テストの結果、設計が復元元とするターニングポイントの名前、coder が拒否されたと報告する復元エントリ、エスカレーションの数と未解決項目のために残した `FIXME:` の数のみ。設計本体・ソース・指摘本体は teammate 側に留まり、指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
 
 ## 作業用ディレクトリ
 
@@ -187,7 +189,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 2. 各 coder について、コードセル `code-{slug}` を 2 つのメッセージで開始する（宛先は roster の name）:
    - `coder-{slug}` 宛に `templates/code.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {そのスコープ}`、`tdd = {has_test_suite}`、`feedback = (none)`、`reviewer = {ペア reviewer の name}`、`comment_reviewer = comment-sensei`、`prompt_reviewer = {has_prompts が true なら prompt-sensei、それ以外は (none)}` を渡して `SendMessage`。
    - ペア reviewer の name 宛に `templates/code-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`producer = coder-{slug}`、`cell_task = code-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
-3. ゲート: コードセルごとにクローズ報告 1 通（エスカレーションは裁定する）。
+3. ゲート: コードセルごとに、そのクローズ報告と、その coder からあなたへの報告の両方（届く順序は問わない。エスカレーションは裁定する）。coder の報告が拒否されたと挙げる復元エントリを、それぞれのターニングポイント、パス、理由とともに `{restore_refused}` として収集する。
 
 ## ステップ 4 — QA ゲート
 
@@ -214,4 +216,4 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`。
 4. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
 5. `--result` 指定時は、結果ファイルを書く（§ 結果ファイル）。
-6. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、チームの再編成がステップ 1 のロスターにフォールバックしたかどうか、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、coder が報告したプロンプトレビューの件数、ステップ 4 を実行した場合の QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、稼働していない以外の理由で `TaskStop` が失敗した teammate、および spawn の拒否でステップ 5 に来た場合は、中断したステップと、spawn が拒否されたままの teammate。加えて、`--commit-always` が QA か解釈テストの未通過のままコミットした場合はそのこと、ブランチか `HEAD` が動いたためにコミットしなかった場合はそのこと、`--result` 指定時は結果ファイルのパスか、その書き出しに失敗したことを示す。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
+6. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、チームの再編成がステップ 1 のロスターにフォールバックしたかどうか、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、coder が拒否されたと報告した復元エントリ（ターニングポイント、パス、理由）、coder が報告したプロンプトレビューの件数、ステップ 4 を実行した場合の QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、稼働していない以外の理由で `TaskStop` が失敗した teammate、および spawn の拒否でステップ 5 に来た場合は、中断したステップと、spawn が拒否されたままの teammate。加えて、`--commit-always` が QA か解釈テストの未通過のままコミットした場合はそのこと、ブランチか `HEAD` が動いたためにコミットしなかった場合はそのこと、`--result` 指定時は結果ファイルのパスか、その書き出しに失敗したことを示す。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
