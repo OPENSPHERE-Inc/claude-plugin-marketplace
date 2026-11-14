@@ -237,10 +237,14 @@ a pull request URL (which compile a review document from its comments; `/creview
 leaves out threads resolved on GitHub and `/creview:resolve` keeps them; needs an
 authenticated `gh`), and `/cdev:coding` (in a runtime with background subagents and
 inter-agent messaging) on a task without AI-facing prompt files, on one that edits them
-(which needs a teammate to be able to launch sub-agents), and on one whose design adds a file
+(which needs a teammate to be able to launch sub-agents), on one whose design adds a file
 no coder of the Step 1 team can hold, such as a new script for prompt files to invoke when
 the task edits only prompt files (which the team re-formation after the design gives to a new
-coder, paired with a reviewer of its domain), and `/cdev:loop --max-sendbacks 0
+coder, paired with a reviewer of its domain), and on one run with `--worktree` and given a
+`--handoff` that names a turning point, a branch with its commit, and asks to return a file to
+it (which a coder teammate restores with the installed plugin's `restore.sh`; check that the
+working tree holds the file's content at that commit and that the coder reports no refused
+entry), and `/cdev:loop --max-sendbacks 0
 --max-generations 1` on a small task (which needs what `/cdev:coding` and `/creview:rounds`
 need, and runs one cycle and a post-mortem; check that the branches `{branch}`,
 `{branch}-g1`, and `{branch}-tp/*` and the run directory with `state.json`,
