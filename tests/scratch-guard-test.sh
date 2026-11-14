@@ -1189,7 +1189,7 @@ mkdir -p "${RSD}/d/x" "${RSD}/app/[id]" "${RSD}/app/i" "${RSD}/u/c" "${RSD}/ig" 
     && echo a > "${RSD}/u/a" && echo d > "${RSD}/u/c/d" && echo s > "${RSD}/ig/s" \
     && echo f > "${RSD}/t/f" && echo a > "${RSD}/k/a" && echo q > "${RSD}/q/${RSQ}" \
     && rsd_git add -A && rsd_git commit -qm tp && RS_TP="$(rsd_git rev-parse HEAD)" \
-    && echo new > "${RSD}/d/m" && echo n > "${RSD}/d/n" \
+    && echo new > "${RSD}/d/m" && echo n > "${RSD}/d/n" && echo h > "${RSD}/head-only" \
     && echo id-new > "${RSD}/app/[id]/page" && echo i-new > "${RSD}/app/i/page" \
     && rsd_git rm -rq u ig t k q && echo t-head > "${RSD}/t" && echo ig/ > "${RSD}/.gitignore" \
     && rsd_git add -A && rsd_git commit -qm head && RS_HEAD="$(rsd_git rev-parse HEAD)" \
@@ -1242,6 +1242,10 @@ rs 0 "bracketed directory restore with the index locked" "${RS_TP}" 'app/[id]'
 rm -f "${RSD}/.git/index.lock"
 has 'app/[id]/page' id-old
 has app/i/page i-new
+has d/m old
+[[ ! -e "${RSD}/d/n" ]] || { note "FAIL: restore.sh restored d/n outside the entry"; fail=1; }
+rs 0 "restore of a path only HEAD has" "${RS_TP}" head-only
+[[ ! -e "${RSD}/head-only" ]] || { note "FAIL: restore.sh kept a path only HEAD has"; fail=1; }
 rse "is in neither" "path in neither the commit nor HEAD refused" "${RS_TP}" no-such
 for bad in '' /d 'C:d' 'd\x' -d :d; do
     rse "not a repository-relative path" "path '${bad}' refused" "${RS_TP}" "${bad}"
