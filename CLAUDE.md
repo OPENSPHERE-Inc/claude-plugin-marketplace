@@ -12,7 +12,8 @@ under the MIT license. It publishes three first-party plugins:
   prompt-discipline self-check, compression, and an interpretation test. Requires background
   subagents and inter-agent messaging. `loop` runs `coding` and creview's `rounds` inline as
   one unattended pipeline, sending the work back to `coding` on a review divergence and
-  starting over after a post-mortem, each within a limit. Depends on creview.
+  letting a post-mortem decide whether to finish or start over, each within a limit. Depends
+  on creview.
 - **cgh** — a GitHub pull request workflow on top of creview (`review`, `gate`, `respond`,
   `resolve`, each taking a pull request URL). Depends on creview; posts only on the user's
   instruction and never approves or merges.
@@ -399,10 +400,11 @@ messages, and handing `/creview:rounds` to a sub-agent would nest it one level d
 leader designs, codes, and reviews nothing itself and reads no body; it keeps only its state
 file, paths, counts, end reasons, and verdicts.
 
-A cycle is one `/cdev:coding --worktree={branch}-g{g} --team-tag g{g}c{c} --commit-always
---result ...` followed by one `/creview:rounds --worktree={branch}-g{g} --incremental --base
-{branch}-tp/g{g}c1-coding-start --on-divergence stop --result ...`, where `{branch}` is the
-`--branch` value. A generation is the series of cycles on one work branch `{branch}-g{g}`,
+A cycle is one `/cdev:coding --worktree={branch}-g{g} --team-tag g{g}c{c}-{hhmmss}
+--commit-always --result ...` followed by one `/creview:rounds --worktree={branch}-g{g}
+--incremental --base {branch}-tp/g{g}c1-coding-start --on-divergence stop --result ...`, where
+`{branch}` is the `--branch` value and `{hhmmss}` the time part of the run's timestamp, which
+keeps the teammate names apart from an earlier run's in the same session. A generation is the series of cycles on one work branch `{branch}-g{g}`,
 created at the starting commit, the main working tree's HEAD at the start. The turning points
 `{branch}-tp/g{g}c{c}-coding-start` and `-coding-done` are branches made with `git branch`
 right before and after each `/cdev:coding`, never moved or deleted, and no work branch's
@@ -417,8 +419,10 @@ points as restore candidates, and starts the next cycle with `--handoff` on the 
 the end of a generation, the leader launches the post-mortem sub-agent (`general-purpose`,
 `templates/postmortem.md`, with a `template_id` the SKILL checks), which writes
 `postmortem.md` and `postmortem.json` and, on `redo`, the next generation's handoff; a `redo`
-with generations left is a grand reset from the starting commit. On `finish`, the output branch
-`{branch}` is created at the tip of the adopted generation's work branch.
+with generations left is a grand reset from the starting commit. On a normal end (`finish`, or
+`redo` with no generations left, which adopts the last generation), the output branch
+`{branch}` is created at the tip of the adopted generation's work branch; a failure to create
+it is recorded as a warning and the end stays normal.
 
 The run directory holds `state.json`, the source of truth for progress, which the leader
 updates at every step and re-reads after context compaction, never repeating a side effect it
@@ -426,9 +430,10 @@ records, and each cycle's `coding-result.json` (`/cdev:coding --result`) and
 `rounds-result.json` (`/creview:rounds --result`), on which every branch decision rests. The
 loop stops only when its starting checks fail, `/cdev:coding` ends abnormally (no result file,
 `aborted`, or `kept_worktree`), `/creview:rounds` ends in `error` (or the result file is
-missing), a worktree is left behind, a branch cannot be created, the session cannot return to
-the repository root, or `state.json` cannot be written or made valid; an error stop creates
-no output branch and keeps the turning points and work branches made so far.
+missing), a worktree is left behind, a work branch or turning point cannot be created, the
+session cannot return to the repository root, or `state.json` cannot be written or made valid;
+an error stop creates no output branch and keeps the turning points and work branches made so
+far.
 
 ### Sub-agent launch contract
 

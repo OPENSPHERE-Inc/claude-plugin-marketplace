@@ -539,14 +539,21 @@ not stop the run.
 end reason, the number of rounds, the commit each round started from, the paths
 of the final report, of the latest divergence investigation report, and of each
 round's review document, the workflow and interpretation test warnings, the
-error, and the worktree left behind, if any. A relative path resolves against
-the repository root, which under `--worktree` is the main working tree's root,
-and under `--worktree` the paths in the file are absolute. The file is written
-whenever the run gets past its check that the session started at the repository
-root, including when a phase stops on an error and when the run fails during
-initialization, such as when the worktree cannot be created. A run that ends
-before that check writes no file, so a caller should treat a missing file as an
-error. The end reason is one of:
+error, and the worktree left behind, if any. A relative `--result` path
+resolves against the repository root, which under `--worktree` is the main
+working tree's root. The paths in the file are absolute under `--worktree`;
+without it, they are relative to the repository root, or absolute when the
+output path given as the run's argument is absolute.
+
+The run writes the file whenever it gets past its checks that the session
+started at the repository root and that `.claude` and `.claude/tmp` are not
+symbolic links, including when a phase stops on an error and when the run fails
+during initialization, such as when the worktree cannot be created, unless
+writing the file itself fails, which the completion report then states. A run
+that ends before those checks, or is interrupted before its end, writes no
+file. In none of these cases does the run remove a file already at the path, so
+pass a path where no file exists, or delete the file before the run, and treat
+a missing file as an error. The end reason is one of:
 
 - `converged` — a round's fixes changed no source code, which includes a round
   with no findings, or, under `--incremental`, the previous round left no new
@@ -554,8 +561,9 @@ error. The end reason is one of:
 - `max-rounds` — the last round still changed source code when the run reached
   `--max-rounds`.
 - `divergence` — `--on-divergence stop` stopped the loop on a divergence.
-- `user-stop` — you told the loop to stop, at the divergence gate's pause or at
-  a `--confirm-round` wait.
+- `user-stop` — you told the loop to stop while it waited for you: at the
+  divergence gate's pause, at the `--confirm` estimate summary before a round's
+  fixes, or at the `--confirm-round` wait before the next round starts.
 - `error` — the run stopped on an error, in a phase as described above, in the
   divergence gate or the final report's compilation, or during initialization.
   The run then writes no final report.

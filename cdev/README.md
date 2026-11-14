@@ -93,13 +93,16 @@ Claude Code v2.1.217 or later caps the sub-agents running at once in a session
 `Concurrent subagent limit reached`. Teammates at work and the sub-agents of the interpretation
 test can count toward the cap. The leader spawns a refused teammate again the next time a
 teammate's report or completion notice wakes it; when no teammate is left to wake it, the run
-ends with the error and commits nothing. In that case, wait for other agents in the session to
-finish, or raise the cap, and run again. Without `--worktree`, changes made before the error
-stay uncommitted in the working tree, and the files the run created stay untracked. The next
-run's clean-working-tree check counts untracked files as well and ignores `.claude/tmp/`,
-`.claude/worktrees/`, the `--output` destination, and the `--handoff` and `--result` files, so
-commit, stash, or discard the changes outside those places first. Under `--worktree`, those
-changes stay in the worktree, which is kept and its path reported.
+ends with the error. In that case, wait for other agents in the session to finish, or raise the
+cap, and run again. The run commits nothing, unless `--commit-always` is on and the refusal
+came during the QA gate, after every code cell had closed: the run then commits as that option
+describes, and what follows about uncommitted changes and a kept worktree does not apply.
+Without `--worktree`, changes made before the error stay uncommitted in the working tree, and
+the files the run created stay untracked. The next run's clean-working-tree check counts
+untracked files as well and ignores `.claude/tmp/`, `.claude/worktrees/`, the `--output`
+destination, and the `--handoff` and `--result` files, so commit, stash, or discard the changes
+outside those places first. Under `--worktree`, those changes stay in the worktree, which is
+kept and its path reported.
 
 `prompt-sensei` launches a refused test sub-agent again after one it launched returns; when
 none of the test sub-agents it launches at once starts and none it launched is still running,
@@ -277,6 +280,8 @@ bounded, so the run always ends. It never pushes or opens a pull request.
 - **Send-back**: when the review stops on a divergence, the loop writes a handoff that has
   `/cdev:coding` follow the sources and fix proposals of the divergence investigation report,
   and starts the next cycle on the same branch.
+  - From the second generation on, the handoff also carries over the policy of the
+    post-mortem's handoff that started the generation, and what that handoff says to avoid.
   - By default, the new work goes on top of the branch's tip, keeping the earlier review
     fixes, most of which have nothing to do with the divergence.
   - The design may instead restore files to the content of a turning point of the same
@@ -307,9 +312,10 @@ bounded, so the run always ends. It never pushes or opens a pull request.
     branch, with a handoff the post-mortem writes, up to `--max-generations`. With no
     generation left, the verdict is `finish`.
 - **Adopted generation**: on `finish`, the post-mortem picks the generation to deliver: the
-  last one, unless an earlier one is clearly better in unresolved Critical and Major findings
-  and `FIXME:`s, in QA, and in divergence. The loop creates the output branch at the tip of
-  that generation's work branch.
+  last one, unless an earlier one surpasses it, being no worse in each of unresolved Critical
+  and Major findings, `FIXME:`s, QA, and unresolved divergence, and better in at least one.
+  When several earlier ones do, it picks the latest of those that no other of them surpasses.
+  The loop creates the output branch at the tip of that generation's work branch.
 
 ### Options
 
@@ -387,7 +393,8 @@ In the names below, `{branch}` is the `--branch` value, `g` the generation, and 
   the session's context is compacted. It does not resume a run in another session.
 - `loop-summary.md`, written at the end, lists each cycle's end reasons, the send-backs, the
   post-mortem verdicts and the adopted generation, the turning points and how to delete them,
-  and the QA, build, and interpretation-test warnings and any worktree left behind.
+  the warnings, and any worktree left behind. The warnings include, for example, those of QA,
+  the build, and the interpretation test, and a failure to create the output branch.
 
 ### When it stops
 
@@ -398,22 +405,28 @@ The loop stops and reports to you only when:
   ends without a summary.
 - `/cdev:coding` ends abnormally: it writes no result, stops early, or keeps its worktree.
 - `/creview:rounds` ends on an error.
-- A worktree is left with uncommitted changes, so the next phase cannot check out the work
-  branch.
-- A branch cannot be created, the session cannot return to the repository root after an inner
-  skill, or `state.json` cannot be written or made valid.
+- `/creview:rounds` keeps its worktree, for example one left with uncommitted changes or
+  initialized submodules, so the next phase cannot check out the work branch.
+- A work branch or turning point cannot be created, the session cannot return to the
+  repository root after an inner skill, or `state.json` cannot be written or made valid.
 
 Otherwise it decides and goes on without asking. An error stop creates no output branch; the
 turning points and work branches made so far remain, and the report names the step that
-stopped, the error, the last work branch, and `loop-summary.md`.
+stopped, the error, the last work branch, and `loop-summary.md`. When creating the output
+branch at the end fails, the run still ends normally, with a warning: the adopted generation's
+work branch `{branch}-g{g}` holds the same commit, and `loop-summary.md` records the failure.
 
 ### Requirements and cost
 
 - The loop needs what `/cdev:coding` and `/creview:rounds` need: background subagents and
   `SendMessage`, nested sub-agent spawning of depth 3 or more
   (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), a repository you trust, and a session started at
-  the repository root. It also needs the creview plugin, which Claude Code installs with cdev
-  as a dependency.
+  the repository root. It also needs the creview plugin, version 0.22.0 or later, which Claude
+  Code installs with cdev as a dependency.
+- The project's configure, build, and test steps must leave in the worktree neither initialized
+  submodules nor untracked files that `.gitignore` does not cover. Git refuses to remove such a
+  worktree, the inner skill keeps it, and the loop stops after that phase, typically the first
+  coding phase.
 - A run makes at most `(1 + max_sendbacks) × max_generations` cycles, 9 with the defaults.
   Each cycle runs `/cdev:coding` from team formation to QA and up to `--max-rounds` review
   rounds, and every send-back has the next review's Round 1 cover the whole generation again.
