@@ -50,11 +50,11 @@ Hold `{end_reason}`, how the run ended, as one of:
 - `max-rounds` — the last round met the conditions for proceeding, and the round counter exceeded `--max-rounds`.
 - `divergence` — Step 2.2 step 8 stopped the round loop on a divergence under `--on-divergence stop`.
 - `user-stop` — the user instructed to stop the loop, at Step 2.2 step 5 or at the `--confirm-round` wait in 2.6.
-- `error` — a phase `error` ended the run (the start of Step 2, including what § Phase sub-agent launch treats as one), or the skill terminated in Step 1 after step 2.
+- `error` — a phase `error` ended the run (the start of Step 2, including what § Phase sub-agent launch treats as one), or the skill terminated in Step 1 after step 3.
 
 ## Result file (`--result`)
 
-Under `--result`, every run that passes Step 1 step 2 leaves the result file at `{result_path}`: write it in Step 4, and, when the skill terminates in Step 1, before terminating, after the teardown when one runs. Write one JSON object with Write, replacing any existing file, and validate it with `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {result_path}`; on an error, fix it and validate once more. Writing it failed when the write fails or that second validation fails too; whatever is then at `{result_path}`, an earlier run's file or the invalid one, is not this run's result: leave it, and state that along with the failure in the completion report. A failure to write it changes neither `{end_reason}` nor the completion report beyond stating the failure.
+Under `--result`, every run that passes Step 1 step 3 leaves the result file at `{result_path}`: write it in Step 4, and, when the skill terminates in Step 1 after step 3, before terminating, after the teardown when one runs. Write one JSON object on a single line with Write, replacing any existing file; when `{result_path}` exists, Read it first, since Write refuses to replace a file this session has not Read. Validate it with `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {result_path}`; on an error, fix it and validate once more. Writing it failed when the write fails or that second validation fails too; whatever is then at `{result_path}`, an earlier run's file or the invalid one, is not this run's result: leave it, and state that along with the failure in the completion report. A failure to write it changes neither `{end_reason}` nor the completion report beyond stating the failure.
 
 ```json
 {"end_reason": "converged", "rounds": 3,

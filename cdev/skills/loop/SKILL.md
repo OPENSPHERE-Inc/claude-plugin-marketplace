@@ -1,12 +1,12 @@
 ---
 name: loop
 description: Run a coding task through /cdev:coding and /creview:rounds as one pipeline without asking the user for decisions. When the review detects a divergence, the task goes back to /cdev:coding on the same branch; after the review, a post-mortem decides whether to finish or to start over from the start commit. Send-backs and restarts each stay within a limit. Use when the user names this skill or asks to take a coding task from implementation through review unattended. Requires the creview plugin, a runtime with background subagents (Agent run_in_background) and inter-agent messaging (SendMessage), and nested sub-agent spawning of depth 3 or more.
-allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git check-ref-format:*), Bash(git status:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
+allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git check-ref-format:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
 # Coding Loop
 
-As the **loop leader**, you run a coding task through cycles of `/cdev:coding` and `/creview:rounds`. When the review detects a divergence, you send the task back to `/cdev:coding` in the same generation; at a generation's end, a post-mortem sub-agent judges whether to finish or to start a new generation from the start commit. You do not design, write, review, or fix code. You hold only the state file, paths, counts, end reasons, verdicts, and short warnings, and do not Read the body of a design, review, divergence report, post-mortem, or handoff the post-mortem writes.
+As the **loop leader**, you run a coding task through cycles of `/cdev:coding` and `/creview:rounds`. When the review detects a divergence, you send the task back to `/cdev:coding` in the same generation; at a generation's end, a post-mortem sub-agent judges whether to finish or to start a new generation from the start commit. You do not design, write, review, or fix code. You hold only the state file, paths, counts, end reasons, verdicts, and short warnings, and do not Read the body of a design, review, divergence report, post-mortem, or handoff the post-mortem writes. The one exception is an escalation you arbitrate as the `/cdev:coding` leader (§ Running an inner skill): its § Escalation lets you Read that cycle's handoff, and with a send-back handoff, the post-mortem handoff it references.
 
 ## Requirements
 
@@ -45,6 +45,7 @@ Show an error and terminate on a value out of range, and on any of these options
 - `{loop_branch}`: the `--branch` value or its default. The inner skills use `{branch}` for a variable of their own.
 - `{repo_root}`: the output of `git rev-parse --show-toplevel` in Step 1, the main working tree's root.
 - `{loop_dir}`: an absolute path; resolve a relative `--output` against `{repo_root}`.
+- `{hhmmss}`: the time part of `{timestamp}`.
 - Work branch of generation g: `{loop_branch}-g{g}`.
 - Turning points (TPs) of cycle c of generation g: TP-A `{loop_branch}-tp/g{g}c{c}-coding-start` and TP-B `{loop_branch}-tp/g{g}c{c}-coding-done`.
 - Output branch: `{loop_branch}`.
@@ -102,15 +103,16 @@ Write:
 - `end`: written in Step 6, `{"kind": "normal"|"error", "step": "<the step it stopped in>", "error": "<string>"|null, "output_branch": "<name>"|null}`.
 - `warnings`: only short warning texts. From `coding-result.json`: an unpassed QA, stating whether it is environmental; the files the interpretation test failed or left untested; a team re-formation fallback. From `rounds-result.json`: its `workflow_warnings` and `prompt_warnings`. Your own: a missing divergence report, a post-mortem fallback, a failed output branch creation. `source` is `coding`, `review`, `postmortem`, or `finish`.
 
-When you cannot tell your position from context, Read this file and the `SKILL.md` in its top-level `skill_dir`, and continue from `position`:
+When you cannot tell your position from context, Read this file and the `SKILL.md` in its top-level `skill_dir`. `${CLAUDE_PLUGIN_ROOT}` stays unexpanded in a `SKILL.md` you Read: take it as the directory two levels above the `skill_dir` you Read it from, for this skill and for an inner skill alike. Continue from `position`:
 
 - Do not repeat a side effect the file records.
-- When a work branch or TP to create already exists at the commit it should point to, record it without creating it; when it points elsewhere, end as an error.
+- When a work branch, TP, or the output branch to create already exists at the commit it should point to, record it without creating it. When a work branch or TP points elsewhere, end as an error; when the output branch does, handle it as a failed creation in Step 6 step 2.
 - When `position.step` is `coding` or `review` and that cycle's `started` is true:
   - With no `skill_dir` recorded, the inner skill had not entered its first step: invoke it again.
   - When the cycle's result file exists, the inner skill has ended: continue from the Step's handling of the result file.
   - When it does not exist and the context shows the inner skill ended, by its closing report or an early termination, treat it as an abnormal end with no result file.
   - Otherwise the inner skill is still running in this session: do not invoke it again; continue as its leader, Reading `{skill_dir}/SKILL.md` when its instructions are not in context.
+- When `position.step` is `sendback`, Step 4 step 1 is done: continue from its step 2.
 - When the generation's `postmortem` records a verdict, continue from Step 5 step 5 with it. Writing a handoff and launching a post-mortem whose verdict is not recorded only overwrite their outputs: redo them.
 
 ## Handoff
@@ -120,11 +122,11 @@ A handoff is Markdown in `{doc_lang}` with these sections, in this order, their 
 You write the send-back handoff, only with what you can write without Reading a body:
 
 - Starting point: the work branch and its head commit. The task is already implemented on it; design and implement the change that removes the divergence's sources.
-- Why and policy: the divergence report's path, with the instruction to follow each `D-n`'s Source and its recommended Fix proposal.
-- Keep: the existing implementation and review fixes the divergence does not involve.
-- Avoid: bringing back a form the report names as a source.
+- Why and policy: the divergence report's path, with the instruction to follow each `D-n`'s Source and its recommended Fix proposal. Add that the proposal, written for `/creview:rounds`, is to be read as follows: take the change to the code or prompts it describes, whatever carrier finding or fix sub-agent it names. Where it treats findings as Won't Fix or leaves a decision to the user, decide that in the design and state the accepted scope and its premises in the code or documentation the next review reads, since no triage decision carries over to that review.
+- Keep: the existing implementation and review fixes the divergence does not involve and, from generation 2 on, the policy of the post-mortem handoff in the references.
+- Avoid: bringing back a form the report names as a source and, from generation 2 on, what the post-mortem handoff says to avoid.
 - Candidate return points: every TP of this generation so far, each with its name, its commit, and what it holds. The TP-A of g{g}c1 holds the start commit, before implementation; the TP-B of g{g}c{k} holds cycle k after `/cdev:coding`, before its review fixes; the TP-A of g{g}c{k} for k > 1 holds the code after cycle k-1's review. State that building on the current head is the default, and that returning means restoring a TP's content into files and committing forward, which `/cdev:coding` does, never rewriting history.
-- References: the divergence report, and for each cycle of this generation, the design documents (`design_paths` of `coding-result.json`), the review documents (`doc_paths` of `rounds-result.json`), and the final report (`final_report_path` of `rounds-result.json`). Read only these paths from the result files.
+- References: the divergence report; from generation 2 on, the post-mortem handoff (the `handoff` of the generation's first cycle in the state file); and for each cycle of this generation, the design documents (`design_paths` of `coding-result.json`), the review documents (`doc_paths` of `rounds-result.json`), and the final report (`final_report_path` of `rounds-result.json`). Read only these paths from the result files.
 
 ## Step 1 — Initialization
 
@@ -149,7 +151,7 @@ Never change the main working tree's sources. Between phases, stay at `{repo_roo
 4. Create `{loop_dir}/g{g}c{c}/` and run `cdev:coding` (§ Running an inner skill) with these arguments, adding `--handoff` in every cycle but g1c1:
 
    ```
-   cdev:coding --worktree={loop_branch}-g{g} --output {loop_dir}/g{g}c{c}/design --result {loop_dir}/g{g}c{c}/coding-result.json --team-tag g{g}c{c} --commit-always [--handoff {loop_dir}/g{g}c{c}/handoff.md] [{coding_args}] {task}
+   cdev:coding --worktree={loop_branch}-g{g} --output {loop_dir}/g{g}c{c}/design --result {loop_dir}/g{g}c{c}/coding-result.json --team-tag g{g}c{c}-{hhmmss} --commit-always [--handoff {loop_dir}/g{g}c{c}/handoff.md] [{coding_args}] {task}
    ```
 
 5. Once it returns, Read `coding-result.json`.

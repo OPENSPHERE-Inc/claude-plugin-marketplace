@@ -1,12 +1,12 @@
 ---
 name: loop
 description: コーディングタスクを /cdev:coding と /creview:rounds の 1 本のパイプラインとして、ユーザーの判断を仰がずに実行する。レビューが発散を検出したら、同じブランチでタスクを /cdev:coding に差し戻す。レビューの後はポストモーテムが、終了するか、開始コミットからやり直すかを決める。差し戻しとやり直しは、それぞれ上限の回数の内で行う。ユーザーがこのスキルを名指ししたとき、またはコーディングタスクを実装からレビューまで無人で通すよう求めたときに使用する。creview プラグイン、バックグラウンドのサブエージェント（Agent の run_in_background）とエージェント間メッセージング（SendMessage）が利用可能なランタイム、深さ 3 以上のサブエージェントのネスト起動を要する。
-allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git check-ref-format:*), Bash(git status:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
+allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git check-ref-format:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
 # コーディングループ
 
-あなたは**ループリーダー**として、コーディングタスクを `/cdev:coding` と `/creview:rounds` のサイクルに通す。レビューが発散を検出したら、同じ世代のうちにタスクを `/cdev:coding` へ差し戻す。世代の終わりには、ポストモーテムのサブエージェントが、終了するか、開始コミットから新しい世代を始めるかを判定する。あなたは設計・コード記述・レビュー・修正を行わない。保持するのは状態ファイル、パス、件数、終了理由、判定、短い警告文だけであり、設計、レビュー、発散調査レポート、ポストモーテム、ポストモーテムが書く申し送りの本文は Read しない。
+あなたは**ループリーダー**として、コーディングタスクを `/cdev:coding` と `/creview:rounds` のサイクルに通す。レビューが発散を検出したら、同じ世代のうちにタスクを `/cdev:coding` へ差し戻す。世代の終わりには、ポストモーテムのサブエージェントが、終了するか、開始コミットから新しい世代を始めるかを判定する。あなたは設計・コード記述・レビュー・修正を行わない。保持するのは状態ファイル、パス、件数、終了理由、判定、短い警告文だけであり、設計、レビュー、発散調査レポート、ポストモーテム、ポストモーテムが書く申し送りの本文は Read しない。唯一の例外は、`/cdev:coding` のリーダーとして裁定するエスカレーション（§ 内側スキルの実行）である: その § エスカレーション に従い、そのサイクルの申し送りを Read してよく、差し戻しの申し送りなら、それが参照するポストモーテムの申し送りも Read してよい。
 
 ## 動作要件
 
@@ -45,6 +45,7 @@ allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*),
 - `{loop_branch}`: `--branch` の値、またはそのデフォルト。内側スキルは `{branch}` を自身の変数に使う。
 - `{repo_root}`: ステップ 1 での `git rev-parse --show-toplevel` の出力。メイン作業ツリーのルートである。
 - `{loop_dir}`: 絶対パス。相対パスの `--output` は `{repo_root}` を基点に解決する。
+- `{hhmmss}`: `{timestamp}` の時刻部。
 - 世代 g の作業ブランチ: `{loop_branch}-g{g}`。
 - 世代 g のサイクル c のターニングポイント（TP）: TP-A `{loop_branch}-tp/g{g}c{c}-coding-start` と TP-B `{loop_branch}-tp/g{g}c{c}-coding-done`。
 - 成果物ブランチ: `{loop_branch}`。
@@ -102,15 +103,16 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 - `end`: ステップ 6 で書く。`{"kind": "normal"|"error", "step": "<止まったステップ>", "error": "<文字列>"|null, "output_branch": "<名前>"|null}`。
 - `warnings`: 短い警告文だけを書く。`coding-result.json` からは、未通過の QA（環境起因かどうかを添える）、解釈テストが未通過または未テストとしたファイル、チーム再編成のフォールバック。`rounds-result.json` からは、その `workflow_warnings` と `prompt_warnings`。あなた自身のものとしては、発散調査レポートの欠落、ポストモーテムの代替判定、成果物ブランチの作成失敗。`source` は `coding`、`review`、`postmortem`、`finish` のいずれか。
 
-コンテキストから自分の位置が分からない場合は、このファイルと、そのトップレベルの `skill_dir` にある `SKILL.md` を Read し、`position` から続ける:
+コンテキストから自分の位置が分からない場合は、このファイルと、そのトップレベルの `skill_dir` にある `SKILL.md` を Read する。Read した `SKILL.md` の `${CLAUDE_PLUGIN_ROOT}` は展開されないまま残る: Read した元の `skill_dir` の 2 階層上のディレクトリとみなす。このスキルでも内側スキルでも同じとする。`position` から続ける:
 
 - ファイルが記録している副作用は繰り返さない。
-- 作成しようとする作業ブランチや TP が、指すべきコミットに既にある場合は、作成せずに記録だけをする。別のコミットを指している場合は、エラー終了とする。
+- 作成しようとする作業ブランチ、TP、成果物ブランチが、指すべきコミットに既にある場合は、作成せずに記録だけをする。作業ブランチや TP が別のコミットを指している場合は、エラー終了とする。成果物ブランチが別のコミットを指している場合は、ステップ 6 の手順 2 の作成の失敗として扱う。
 - `position.step` が `coding` か `review` で、そのサイクルの `started` が true の場合:
   - `skill_dir` が記録されていなければ、内側スキルは最初の手順に入っていない: 起動し直す。
   - そのサイクルの結果ファイルがあれば、内側スキルは終わっている: そのステップの結果ファイルの扱いから続ける。
   - 結果ファイルがなく、内側スキルが終わったこと（完了報告、または途中での終了）がコンテキストにあれば、結果ファイルがない異常終了として扱う。
   - それ以外では、内側スキルはこのセッションでまだ実行中である: 起動し直さず、そのリーダーとして続ける。その指示がコンテキストにない場合は `{skill_dir}/SKILL.md` を Read する。
+- `position.step` が `sendback` なら、ステップ 4 の手順 1 は済んでいる: 手順 2 から続ける。
 - その世代の `postmortem` に判定が記録されていれば、その判定でステップ 5 の手順 5 から続ける。申し送りの書き込みと、判定が記録されていないポストモーテムの起動は、出力を上書きするだけである: やり直す。
 
 ## 申し送り
@@ -120,11 +122,11 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 差し戻しの申し送りはあなたが書く。本文を Read せずに書ける内容に限る:
 
 - 起点: 作業ブランチとその先頭のコミット。タスクはこのブランチに実装済みであり、発散の源泉を取り除く変更を設計・実装する。
-- やり直す理由と方針: 発散調査レポートのパスと、各 `D-n` の Source とその推奨の Fix proposal に従うという指示。
-- 維持すること: 発散に関わらない既存の実装とレビューでの修正。
-- 避けること: レポートが源泉として挙げた形を再び持ち込むこと。
+- やり直す理由と方針: 発散調査レポートのパスと、各 `D-n` の Source とその推奨の Fix proposal に従うという指示。推奨案は `/creview:rounds` 向けに書かれているので、次のように読み替えるよう添える: 推奨案が carrier 指摘や修正サブエージェントを挙げていても、推奨案が記述するコードやプロンプトの変更内容を採る。推奨案が指摘を Won't Fix とする箇所や、判断をユーザーに委ねる箇所は、設計で判断し、受容する範囲とその前提を次のレビューが読むコードかドキュメントに明記する。トリアージの判断はそのレビューに引き継がれないからである。
+- 維持すること: 発散に関わらない既存の実装とレビューでの修正。世代 2 以降では、参照資料にあるポストモーテムの申し送りの方針も維持する。
+- 避けること: レポートが源泉として挙げた形を再び持ち込むこと。世代 2 以降では、ポストモーテムの申し送りが避けるとしたことも避ける。
 - 戻り先の候補: この世代でこれまでに作ったすべての TP を、名前、コミット、その時点で保持する内容とともに挙げる。g{g}c1 の TP-A は開始コミットで、実装前である。g{g}c{k} の TP-B は、サイクル k の `/cdev:coding` の後で、そのレビュー修正の前である。k > 1 の g{g}c{k} の TP-A は、サイクル k-1 のレビューの後のコードである。現在の先頭に積むことが既定であること、戻す場合は TP の内容をファイルに復元して前方へコミットし（コミットは `/cdev:coding` が行う）、履歴は書き換えないことを併記する。
-- 参照資料: 発散調査レポートと、この世代の各サイクルの設計ドキュメント（`coding-result.json` の `design_paths`）、レビュードキュメント（`rounds-result.json` の `doc_paths`）、最終レポート（`rounds-result.json` の `final_report_path`）。結果ファイルからはこれらのパスだけを Read する。
+- 参照資料: 発散調査レポート、世代 2 以降ではポストモーテムの申し送り（状態ファイルにある、その世代の最初のサイクルの `handoff`）、この世代の各サイクルの設計ドキュメント（`coding-result.json` の `design_paths`）、レビュードキュメント（`rounds-result.json` の `doc_paths`）、最終レポート（`rounds-result.json` の `final_report_path`）。結果ファイルからはこれらのパスだけを Read する。
 
 ## ステップ 1 — 初期化
 
@@ -149,7 +151,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 4. `{loop_dir}/g{g}c{c}/` を作成し、次の引数で `cdev:coding` を実行する（§ 内側スキルの実行）。g1c1 以外のすべてのサイクルで `--handoff` を加える:
 
    ```
-   cdev:coding --worktree={loop_branch}-g{g} --output {loop_dir}/g{g}c{c}/design --result {loop_dir}/g{g}c{c}/coding-result.json --team-tag g{g}c{c} --commit-always [--handoff {loop_dir}/g{g}c{c}/handoff.md] [{coding_args}] {task}
+   cdev:coding --worktree={loop_branch}-g{g} --output {loop_dir}/g{g}c{c}/design --result {loop_dir}/g{g}c{c}/coding-result.json --team-tag g{g}c{c}-{hhmmss} --commit-always [--handoff {loop_dir}/g{g}c{c}/handoff.md] [{coding_args}] {task}
    ```
 
 5. 戻ったら `coding-result.json` を Read する。
