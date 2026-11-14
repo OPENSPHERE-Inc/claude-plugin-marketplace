@@ -1,7 +1,7 @@
 ---
 name: coding
 description: ペアレビューセルを用いて、設計セルステップ・コーディングセルステップ・QA ゲートでコーディングタスクをエンドツーエンドに統括する、常駐エージェントチーム方式のワークフロー。AI 向けプロンプトファイルには、コーディングセルでのプロンプト規律セルフチェックと圧縮、QA ゲートでの解釈テストも行う。reviewer は対象プロジェクトのエージェントから自動選定する。ユーザーがリポジトリ内での機能の実装・変更の構築・コーディングタスクの遂行を求めたとき、リポジトリ内の AI 向けプロンプトファイル（エージェント定義・SKILL.md・ルール・スラッシュコマンド・プロンプトテンプレート）の作成や修正を含め、能動的に使用する。リポジトリ外のファイル（`~/.claude/` 配下など）、1 体のエージェントで直接済む小さな編集（ルールへの 1 項目の追記など）、ファイルになっていないプロンプトの起草、`--worktree` なしでの未コミットの変更がある作業ツリーには使わない。バックグラウンドのサブエージェント（Agent の run_in_background）とエージェント間メッセージング（SendMessage）が利用可能なランタイムを要する。
-allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git restore:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/restore.sh:*)
 ---
 
 # マルチエージェントコーディング
