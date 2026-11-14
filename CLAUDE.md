@@ -404,8 +404,9 @@ A cycle is one `/cdev:coding --worktree={branch}-g{g} --team-tag g{g}c{c}-{hhmms
 --commit-always --result ...` followed by one `/creview:rounds --worktree={branch}-g{g}
 --incremental --base {branch}-tp/g{g}c1-coding-start --on-divergence stop --result ...`, where
 `{branch}` is the `--branch` value and `{hhmmss}` the time part of the run's timestamp, which
-keeps the teammate names apart from an earlier run's in the same session. A generation is the series of cycles on one work branch `{branch}-g{g}`,
-created at the starting commit, the main working tree's HEAD at the start. The turning points
+keeps the teammate names apart from an earlier run's in the same session. A generation is the
+series of cycles on one work branch `{branch}-g{g}`, created at the starting commit, the main
+working tree's HEAD at the start. The turning points
 `{branch}-tp/g{g}c{c}-coding-start` and `-coding-done` are branches made with `git branch`
 right before and after each `/cdev:coding`, never moved or deleted, and no work branch's
 history is rewritten; they live under `{branch}-tp/` because `refs/heads/{branch}` cannot
