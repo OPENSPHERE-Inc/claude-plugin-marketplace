@@ -139,8 +139,14 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
   - Judgment priority becomes the user's task, then the handoff, then the design intent.
   - When the handoff names turning points — branches given with their commits — to return
     to, an architect can choose to restore files of its area to a turning point's content.
-    Only the file contents are restored: the branch and HEAD stay where they are, and the
-    restored content counts as a change of this run.
+    - Only a run with `--worktree` restores, so that a restore cannot overwrite ignored files
+      of the main working tree, such as `.env`. Without it, the design builds on the current
+      code even when the handoff names turning points.
+    - Only the file contents are restored: the branch and HEAD stay where they are, and the
+      restored content counts as a change of this run.
+    - A path whose restore would overwrite or delete an untracked file or a tracked file with
+      local changes, or would change a path outside it, is refused and left as it is. The run
+      goes on without it, and the final report and the result file list it with the reason.
   - The run does not commit when the branch or HEAD has moved since the start.
 - `--team-tag {tag}` (default none) — appends `-{tag}` to every teammate name, e.g.
   `coder-backend-g1c2`, so that a second or later run in the same session does not reuse the
@@ -150,12 +156,13 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
   closed, even when QA or the interpretation test has not passed. The result file and the
   final report say what did not pass.
 - `--result {path}` (default none) — write a JSON result at the end: whether the run committed
-  and the commit, the branch, the design document paths, the turning points restored from,
-  the QA and interpretation-test results, the numbers of `FIXME:`s left and of escalations,
-  whether team re-formation fell back to the original roster, the step and reason when the
-  run stopped early, and the worktree kept, if any. It is written as well when the run ends
-  before the commit step, such as on an invalid option or an unmet requirement. It is not
-  written when `.claude` or `.claude/tmp` is a symbolic link.
+  and the commit, the branch, the design document paths, the turning points the designs
+  restore from, the refused restores with their reasons, the QA and interpretation-test
+  results, the numbers of `FIXME:`s left and of escalations, whether team re-formation fell
+  back to the original roster, the step and reason when the run stopped early, and the
+  worktree kept, if any. It is written as well when the run ends before the commit step, such
+  as on an invalid option or an unmet requirement. It is not written when `.claude` or
+  `.claude/tmp` is a symbolic link.
   - When the run writes no file, whether for that reason, on an interruption, or on a failed
     write, a file already at the path stays and can be mistaken for this run's result. Pass a
     path where no file exists, or delete the file before the run, and treat a missing file as
@@ -287,9 +294,9 @@ bounded, so the run always ends. It never pushes or opens a pull request.
   and starts the next cycle on the same branch.
   - From the second generation on, the handoff also carries over the policy of the
     post-mortem's handoff that started the generation, and what that handoff says to avoid.
-    These prevail over the investigation report's fix proposals: a source that lies in the
-    policy itself stays, and after at most `--max-sendbacks` send-backs, it goes to the
-    generation's post-mortem.
+    These prevail over the investigation report's fix proposals: a source that cannot be
+    removed without departing from them stays, and after at most `--max-sendbacks`
+    send-backs, it goes to the generation's post-mortem.
   - By default, the new work goes on top of the branch's tip, keeping the earlier review
     fixes, most of which have nothing to do with the divergence.
   - The design may instead restore files to the content of a turning point of the same
@@ -485,7 +492,9 @@ same agent pool by the same rules.
   `python3` — see Requirements), `worktree.sh` (creates and removes the `--worktree`
   worktree), and `restore.sh` (restores an entry of a design's restore list from its turning
   point commit into the working tree, refusing an entry whose restore would overwrite or
-  delete an untracked or ignored file). The skill invokes them via
+  delete an untracked file or a tracked file with local changes, or would change a path
+  outside the entry; it may overwrite ignored files, as a git checkout does, so it is used
+  only in the worktree of a `--worktree` run). The skill invokes them via
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`; teammates receive the resolved path through the
   `{{plugin_root}}` variable.
 
