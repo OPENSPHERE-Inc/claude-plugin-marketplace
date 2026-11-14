@@ -243,8 +243,9 @@ the task edits only prompt files (which the team re-formation after the design g
 coder, paired with a reviewer of its domain), and on one run with `--worktree` and given a
 `--handoff` that names a turning point, a branch with its commit, and asks to return a file to
 it (which a coder teammate restores with the installed plugin's `restore.sh`; check that the
-working tree holds the file's content at that commit and that the coder reports no refused
-entry), and `/cdev:loop --max-sendbacks 0
+file has its content at the turning point's commit in the worktree the teardown kept, or on
+the branch the run reports when it kept none, and that the coder reports no refused entry), and
+`/cdev:loop --max-sendbacks 0
 --max-generations 1` on a small task (which needs what `/cdev:coding` and `/creview:rounds`
 need, and runs one cycle and a post-mortem; check that the branches `{branch}`,
 `{branch}-g1`, and `{branch}-tp/*` and the run directory with `state.json`,
