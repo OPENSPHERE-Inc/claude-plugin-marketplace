@@ -156,6 +156,10 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
   run stopped early, and the worktree kept, if any. It is written as well when the run ends
   before the commit step, such as on an invalid option or an unmet requirement. It is not
   written when `.claude` or `.claude/tmp` is a symbolic link.
+  - When the run writes no file, whether for that reason, on an interruption, or on a failed
+    write, a file already at the path stays and can be mistaken for this run's result. Pass a
+    path where no file exists, or delete the file before the run, and treat a missing file as
+    an error.
 
 The design documents (`design-{slug}.md`, one per architect) are kept after the run; every
 other intermediate file is deleted. `--commit` never stages them, nor the `--handoff` and
@@ -283,6 +287,9 @@ bounded, so the run always ends. It never pushes or opens a pull request.
   and starts the next cycle on the same branch.
   - From the second generation on, the handoff also carries over the policy of the
     post-mortem's handoff that started the generation, and what that handoff says to avoid.
+    These prevail over the investigation report's fix proposals: a source that lies in the
+    policy itself stays, and after at most `--max-sendbacks` send-backs, it goes to the
+    generation's post-mortem.
   - By default, the new work goes on top of the branch's tip, keeping the earlier review
     fixes, most of which have nothing to do with the divergence.
   - The design may instead restore files to the content of a turning point of the same
@@ -475,8 +482,10 @@ same agent pool by the same rules.
   `--dry`, it only runs the containment check, which the skill does before creating that
   directory), `check-jsonl.py` (teammates validate the `.jsonl` they wrote with it), and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by both; requires
-  `python3` — see Requirements), and `worktree.sh` (creates and removes the `--worktree`
-  worktree). The skill invokes them via
+  `python3` — see Requirements), `worktree.sh` (creates and removes the `--worktree`
+  worktree), and `restore.sh` (restores an entry of a design's restore list from its turning
+  point commit into the working tree, refusing an entry whose restore would overwrite or
+  delete an untracked or ignored file). The skill invokes them via
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`; teammates receive the resolved path through the
   `{{plugin_root}}` variable.
 

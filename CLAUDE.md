@@ -73,7 +73,7 @@ claude-plugin-marketplace/
 │   │   └── loop/                 # /cdev:loop (SKILL.md + templates/postmortem.md)
 │   ├── agents/                   # comment-sensei.md, prompt-sensei.md, prompt-tester.md, dev-helper.md
 │   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, prompt.md, divergence.md
-│   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
+│   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, restore.sh, lib/scratch-guard.py
 │
 ├── cgh/                          # Plugin: GitHub pull request workflow on top of creview (active, English)
 │   ├── .claude-plugin/plugin.json  # declares the dependency on creview
@@ -206,9 +206,9 @@ for f in creview/skills/rounds/SKILL.md src/creview/skills/rounds/SKILL.md \
     && echo "ok $f" || echo "BAD $f"
 done
 
-# Scratch-guard self-test: containment behavior, worktree.sh, and byte-parity of the
-# shared script copies across creview/cdev/cgh and their src/ mirrors, and of the
-# creview/cdev rules/prompt.md copies
+# Scratch-guard self-test: containment behavior, worktree.sh, cdev's restore.sh, and
+# byte-parity of the shared script copies across creview/cdev/cgh and their src/ mirrors,
+# and of the creview/cdev rules/prompt.md copies
 bash tests/scratch-guard-test.sh
 
 # cgh's GitHub script, with GitHub and git faked
@@ -397,8 +397,10 @@ adds. `post` reads back what it sent.
 `/cdev:loop` runs `/cdev:coding` and `/creview:rounds` inline with the Skill tool, in the main
 session: `/cdev:coding`'s leader must be the session that receives its teammates' `to: "main"`
 messages, and handing `/creview:rounds` to a sub-agent would nest it one level deeper. The loop
-leader designs, codes, and reviews nothing itself and reads no body; it keeps only its state
-file, paths, counts, end reasons, and verdicts.
+leader designs, codes, and reviews nothing itself and reads no body, except that, when it
+arbitrates an escalation as `/cdev:coding`'s leader, it may Read that cycle's handoff and, for a
+send-back handoff, the post-mortem handoff it references; it keeps only its state file, paths,
+counts, end reasons, and verdicts.
 
 A cycle is one `/cdev:coding --worktree={branch}-g{g} --team-tag g{g}c{c}-{hhmmss}
 --commit-always --result ...` followed by one `/creview:rounds --worktree={branch}-g{g}
@@ -661,9 +663,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   because plugins install independently. Edit one copy and replicate to the others;
   `tests/scratch-guard-test.sh` fails on any drift. `scripts/worktree.sh` is likewise
   byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors).
-  `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `creview/scripts/gh-pr.py`, and
-  `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` are likewise each
-  byte-identical with its own `src/` mirror.
+  `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `cdev/scripts/restore.sh`,
+  `creview/scripts/gh-pr.py`, and `creview/scripts/compile-pr-comments.py`, and
+  `cgh/scripts/gh-review.py` are likewise each byte-identical with its own `src/` mirror.
 - **`creview/rules/prompt.md` is a byte-identical copy of `cdev/rules/prompt.md`**, and
   `src/creview/rules/prompt.md` of `src/cdev/rules/prompt.md`: `/creview:respond` applies the
   same prompt discipline as `/cdev:coding`, and each plugin ships its own copy. Edit one copy
