@@ -8,7 +8,9 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - **Content**: Markdown (AI-facing prompts), Bash, Python ≥ 3.9 (helper scripts)
 - **Distribution**: Claude Code plugin marketplace (git-based), `name: opensphere-inc`
 - **Plugins**: `creview` (code review workflow), `cdev` (team-native coding workflow,
-  AI-facing prompts included), `cgh` (GitHub pull request workflow on top of `creview`)
+  AI-facing prompts included, plus the `loop` orchestrator that runs it with
+  `/creview:rounds`; depends on `creview`), `cgh` (GitHub pull request workflow on top of
+  `creview`)
 - **License**: MIT
 - **Maintainer**: OPENSPHERE Inc.
 - **No build step. No CI yet.** Validation = consistency checks +
@@ -18,7 +20,7 @@ see **[CLAUDE.md](CLAUDE.md)**.
 
 - `.claude-plugin/marketplace.json` — Marketplace listing (creview, cdev, cgh).
 - `{creview,cdev,cgh}/.claude-plugin/plugin.json` — Plugin manifests (each carries its
-  own semver).
+  own semver; `cdev` and `cgh` declare their dependency on `creview`).
 - `creview/skills/{start,triage,respond,resolve,rounds}/SKILL.md` — The 5 creview skills.
 - `creview/skills/*/templates/*.md` — Sub-agent prompt templates (each has a `template_id`).
 - `creview/agents/` — bundled mechanical agents: `review-helper.md`,
@@ -39,6 +41,7 @@ see **[CLAUDE.md](CLAUDE.md)**.
   worktree checkout for `/creview:triage` / `respond` / `resolve`), `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
 - `cdev/skills/coding/SKILL.md` (+ `templates/`) — The `/cdev:coding` team-native skill (10 teammate task templates, each with a `template_id`).
+- `cdev/skills/loop/SKILL.md` (+ `templates/postmortem.md`) — The `/cdev:loop` skill, which runs `/cdev:coding` and `/creview:rounds` inline, and its one sub-agent template, the post-mortem, with a `template_id`.
 - `cdev/agents/` (bundled) — `comment-sensei.md`, `prompt-sensei.md`, `dev-helper.md`, and the tool-restricted `prompt-tester.md` (the interpretation tester `prompt-sensei` launches). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`, `prompt.md`, `divergence.md`. `cdev/scripts/` — `fetch-diff.sh`, `del-tmp.sh`, `check-jsonl.py`, `worktree.sh`, `lib/scratch-guard.py`.
 - `cgh/skills/{review,gate,respond,resolve}/SKILL.md` — The 4 `/cgh:*` skills, which run the creview skills inline. `cgh/agents/comment-writer.md` (tool-restricted). `cgh/rules/` — `leader.md` (read by the leaders), `gate-focus-pr.md` and `gate-focus-code.md` (read by the reviewers, triage, and estimate of the gate's pull request stage and code stage). `cgh/scripts/` — `gh-review.py` (the leaders' own reads and writes on GitHub), `del-tmp.sh`, `lib/scratch-guard.py`.
 - `src/<plugin>/...` — **Japanese master**, mirrors each plugin's tree 1:1 (minus

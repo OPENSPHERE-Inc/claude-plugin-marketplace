@@ -1,7 +1,7 @@
 ---
 name: coding
 description: ペアレビューセルを用いて、設計セルステップ・コーディングセルステップ・QA ゲートでコーディングタスクをエンドツーエンドに統括する、常駐エージェントチーム方式のワークフロー。AI 向けプロンプトファイルには、コーディングセルでのプロンプト規律セルフチェックと圧縮、QA ゲートでの解釈テストも行う。reviewer は対象プロジェクトのエージェントから自動選定する。ユーザーがリポジトリ内での機能の実装・変更の構築・コーディングタスクの遂行を求めたとき、リポジトリ内の AI 向けプロンプトファイル（エージェント定義・SKILL.md・ルール・スラッシュコマンド・プロンプトテンプレート）の作成や修正を含め、能動的に使用する。リポジトリ外のファイル（`~/.claude/` 配下など）、1 体のエージェントで直接済む小さな編集（ルールへの 1 項目の追記など）、ファイルになっていないプロンプトの起草、`--worktree` なしでの未コミットの変更がある作業ツリーには使わない。バックグラウンドのサブエージェント（Agent の run_in_background）とエージェント間メッセージング（SendMessage）が利用可能なランタイムを要する。
-allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # マルチエージェントコーディング
@@ -29,11 +29,42 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 - `--commit`（デフォルト OFF）— QA 通過後、実装を 1 コミットにまとめてコミットする（簡潔なメッセージ、finding ID なし）。
 - `--worktree[=branch]`（デフォルト OFF）— タスクを `branch` 上の別の git ワークツリーで実行する（§ ワークツリー）。`=branch` を省略すると、現在の HEAD から新しいブランチ `cdev-coding-{timestamp}` を作成する。`--commit` を有効にする。
 - `--output {dir}` — 設計ドキュメントの出力先ディレクトリ（`{design_dir}`）を指定する。
+- `--handoff {path}`（デフォルト 未指定）— この実行への申し送り。書式を問わない Markdown ファイル。team-analysis、architect、設計 reviewer がこれを Read する。判断優先度ではタスクの次に位置し（§ レビューセルプロトコル）、設計はこれが挙げるターニングポイントへファイルを復元してよい。
+- `--team-tag {tag}`（デフォルト 未指定）— すべての teammate の name に `-{tag}` を付ける（§ チームモデル）。`tag` は英数字とハイフンからなる 1〜16 文字で、英数字で始まる。このタグをセッション内の以前の実行が使っていないことは呼び出し側が保証し、スキルは検証しない。
+- `--commit-always`（デフォルト OFF）— `--commit` を含意し、実行がステップ 4 に入っていれば、QA と解釈テストの結果にかかわらずステップ 5 でコミットする。
+- `--result {path}`（デフォルト 未指定）— 実行の結果を JSON で `path` に書く（§ 結果ファイル）。
 
 ### 出力先（`{design_dir}`）
 
 - `--output` 指定があればその値。
 - 指定がない場合のデフォルト: `.claude/tmp/cdev-coding-{timestamp}-design/`。`{tmp_dir}` 配下には置かない（ステップ 5 で削除されるため）。
+
+### 結果ファイル（`--result`）
+
+Write ツールで 1 つの JSON オブジェクトとして書く。既存のファイルは置き換え、親ディレクトリがなければ作る。ステップ 5 の手順 5 で書くほか、ステップ 5 に至らないあらゆる終了 — § 動作要件 と § 信頼前提 による中止、およびステップ 1 での各終了 — でも、終了する前に書く。ワークツリーのセットアップ後の終了では、ティアダウンの後に書く。書き出しに失敗した場合は、エラーをコンソールに表示し、それ以外は何も変えない。
+
+```json
+{"committed": true, "commit": "<sha>", "branch": "<name>",
+ "design_paths": ["<abs path>"], "restored_from": ["<turning point name>"],
+ "qa": {"passed": true, "environmental": false, "summary": "<summary_line>"},
+ "prompt_test": {"passed": true, "failed": ["<path>"],
+                 "untested": [{"path": "<path>", "reason": "<reason>"}]},
+ "fixme_count": 0, "escalations": 0, "team_fallback": false,
+ "aborted": null, "kept_worktree": null}
+```
+
+- `committed`: ステップ 5 の手順 1 でコミットした場合に true。`commit`: そのコミットの SHA。それ以外は null。
+- `branch`: ソースが載るブランチ — `--worktree` 指定時は `worktree.sh` の `branch=`、それ以外は `{start_branch}`。detached `HEAD` の場合と、その値が分かる前に実行が終わった場合は null。
+- `design_paths`: `{design_paths}` を絶対パスで。ステップ 2 の手順 3 のゲートを通過しなかった場合は空配列。
+- `restored_from`: `{restored_from}`。ない場合は空配列。
+- `qa`: 最後の QA 試行の `success`、`environmental`、`{summary_line}`。ステップ 4 が QA の報告を 1 つも受けなかった場合は `false`、`false`、null。
+- `prompt_test`: ステップ 4 の最後の試行の `{prompt_pass}`、`{prompt_failed_files}`、`{prompt_untested_files}`（未テストのファイルはそれぞれ理由を添え、解釈テストが結果を書かなかった場合は `path` を null とした要素 1 つとする）。ステップ 4 のどの試行もこれらを設定しなかった場合は `false` と空配列。
+- `fixme_count`: 未解決項目のために残した `FIXME:` の数 — ラウンド上限でクローズしたセルが未解決の `Critical` に残したと報告したものと、裁定できなかったエスカレーションのために挿入させたもの。コードから数えた数ではない。
+- `escalations`: 受けたエスカレーションの数。
+- `team_fallback`: チームの再編成がステップ 1 のロスターにフォールバックした場合に true。
+- `aborted`: ステップ 4 を終えてステップ 5 に来た場合は null。それ以外は `{"step": <1-4>, "reason": "<string>"}` で、実行が止まったステップを示す。§ 動作要件 と § 信頼前提 による中止はステップ 1 とする。
+- `kept_worktree`: ティアダウンで残したワークツリーのパス。それ以外は null。
+- `reason` と `summary` は `{doc_lang}` で書く。
 
 ## 出力言語
 
@@ -52,7 +83,7 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 1. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
 2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に spawn する teammate はそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。ティアダウンまでは、ほかに素の `cd` を実行しない: セッション全体と以降に起動するサブエージェントの作業ディレクトリが動く。別のディレクトリにはコマンド自身のオプション（例: `git -C dir`）かサブシェルで到達する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外（メイン作業ツリーの `.claude/tmp/` を含む）への Write / Edit を拒否する。
 
-パスの基点: `{tmp_dir}`、デフォルトの `{design_dir}`、相対パスの `--output` は `{main_root}` を基点に解決する。タスク指定はそのまま team-analysis へ渡す。teammate は `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` に従ってそのパスを `{target_dir}` 基準で解決し、`{target_dir}` 外の絶対パスは読み取り専用の参照とする。`--worktree` を指定しない場合、`{main_root}` は `(none)` で、これらのパスは作業ディレクトリ基準とする。
+パスの基点: `{tmp_dir}`、デフォルトの `{design_dir}`、相対パスの `--output`・`--handoff`・`--result` は `{main_root}` を基点に解決する。ステップ 1 手順 1 の `--handoff` の確認や、そこでの終了時に書く結果ファイルなど、セットアップより前は作業ディレクトリを基点に解決する。作業ディレクトリはリポジトリのルートであり、セットアップが `main_root=` として出力するパスと同じである。タスク指定はそのまま team-analysis へ渡す。teammate は `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` に従ってそのパスを `{target_dir}` 基準で解決し、`{target_dir}` 外の絶対パスは読み取り専用の参照とする。`--worktree` を指定しない場合、`{main_root}` は `(none)` で、これらのパスは作業ディレクトリ基準とする。
 
 ティアダウン — セットアップ後のあらゆる終了経路で、起動した teammate を停止（Step 5 の手順 2）してから実行する:
 
@@ -67,6 +98,7 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 
 - teammate の宛先は起動時に付けた **name**、すなわちロール識別子 `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` / `dev-helper` / `comment-sensei` / `prompt-sensei`。name は teammate が idle になっても完了しても解決し続け、送信によりトランスクリプトから再開される。
 - 同名は最後に起動したものが勝つため、1 セッション内で同じ name を 2 体に付けない。
+- `--team-tag` 指定時、teammate の name はロール識別子の後ろに `-{tag}` を付けたもの（例: `coder-backend-{tag}`、`dev-helper-{tag}`）であり、あなたが扱う name はすべてこのタグ付きの name である: spawn する name、宛先、teammate に渡す name（`reviewer`、`producer`、`comment_reviewer`、`prompt_reviewer` の各変数を含む）、roster と再 spawn 待ちに記録する name、照合する name（ステップ 2 の手順 4 の新しいメンバーの判定、ステップ 4 の手順 7a の name の選択）、`taken_names` に挙げる name、`TaskStop` で止める name。subagent_type にはタグを付けない。本スキルがほかの箇所に書くロール識別子（`dev-helper`、`architect-{slug}` など）は、タグ付きの name を表す。
 - リーダー宛は `to: "main"`。teammate どうしが DM する場合は、リーダーが各メッセージで相手の name を渡す。
 - `SendMessage` の `message` は常に散文の文字列で `summary` を添えて送る（dispatch も報告も）。構造化された結果はファイル経由で渡し、`message` には入れない。例外はプロトコルオブジェクトのみ（`${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` § ツール）。
 
@@ -98,15 +130,15 @@ agent 種別（subagent_type）:
 
 クローズでゲートする: 各セルは `to: "main"` 宛のクローズ報告 1 通（セル id を明記）で終わる — resolve、またはラウンド上限到達によるクローズ（未解決の `Critical` には `FIXME:` が残る）。`Critical` の不一致はそのクローズより前にエスカレーションとしてリーダーへ届く。
 
-triage と裁定の判断優先度: (1) ユーザーの元のタスク指示、次に (2) 上流の設計意図。
+triage と裁定の判断優先度: (1) ユーザーの元のタスク指示、次に (2) `--handoff` 指定時はその申し送り、次に (3) 上流の設計意図。
 
 ## エスカレーション
 
-reviewer が `Critical` の不一致をエスカレーションした場合、リーダーは上記の判断優先度で裁定する。リーダーもいずれとも判断できない場合、対立をユーザーへ要約して提示し、producer に当該箇所へ `FIXME:` を挿入させる（producer の name 宛 `SendMessage` で依頼）。ユーザーの回答は待たずに進行し、未解決項目として下流の権威あるレビューのために記録する。
+reviewer が `Critical` の不一致をエスカレーションした場合、リーダーは上記の判断優先度で裁定する。`--handoff` 指定時、リーダーは裁定のために申し送りを Read してよい: 申し送りはタスクの入力であり、§ リーダーのスコープ が teammate 側に留める本体ではない。リーダーもいずれとも判断できない場合、対立をユーザーへ要約して提示し、producer に当該箇所へ `FIXME:` を挿入させる（producer の name 宛 `SendMessage` で依頼）。ユーザーの回答は待たずに進行し、未解決項目として下流の権威あるレビューのために記録する。
 
 ## リーダーのスコープ（本体の隔離）
 
-リーダーが保持するのは、roster（各 teammate の name → agentType）、再 spawn 待ちの teammate、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA と解釈テストの結果のみ。設計本体・ソース・指摘本体は teammate 側に留まり、指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
+リーダーが保持するのは、roster（各 teammate の name → agentType）、再 spawn 待ちの teammate、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA と解釈テストの結果、設計が復元元とするターニングポイントの名前、エスカレーションの数と未解決項目のために残した `FIXME:` の数のみ。設計本体・ソース・指摘本体は teammate 側に留まり、指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
 
 ## 作業用ディレクトリ
 
@@ -127,13 +159,13 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 ## ステップ 1 — チーム編成とペアリング
 
-1. `git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。
+1. `git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。続いて、`--team-tag` が § オプション の示す形式でないか、`--handoff` が既存のファイルでない場合は、エラーを表示してスキルを終了する。
 2. `--worktree` 指定時は § ワークツリー のセットアップを実行する。
 3. すべての teammate が受け取る作業対象 `{target_dir}` を確定する: `--worktree` 指定時は `{worktree_path}`、それ以外は `git rev-parse --show-toplevel` の出力。
-4. 本スキルはクリーンな作業ツリーでのみ動作する: `git status --porcelain -uall` を実行し、`.claude/tmp/` 配下、`.claude/worktrees/` 配下、`--output` の指定先配下を除く出力が非空（ステージ済み・未ステージ・未追跡のいずれかが存在）ならエラーメッセージをコンソールに表示してスキルを終了する。これらには過去の実行の設計ドキュメントと `--worktree` 実行のワークツリーが残るため除外する。
-5. `{tmp_dir}` と `{design_dir}` を確定する。作成する前に、シンボリックリンクの `.claude` を拒否する `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry {tmp_dir}` を実行し、非ゼロ終了の場合はそのエラーを表示してスキルを終了する。両者を作成する（`mkdir -p`）。続いてコーディング開始前のベースラインを記録する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`。
+4. 本スキルはクリーンな作業ツリーでのみ動作する: `git status --porcelain -uall` を実行し、`.claude/tmp/` 配下、`.claude/worktrees/` 配下、`--output` の指定先配下、`--handoff` と `--result` のファイルを除く出力が非空（ステージ済み・未ステージ・未追跡のいずれかが存在）ならエラーメッセージをコンソールに表示してスキルを終了する。これらには過去の実行の設計ドキュメントと `--worktree` 実行のワークツリーが残るため除外する。
+5. `{tmp_dir}` と `{design_dir}` を確定する。作成する前に、シンボリックリンクの `.claude` を拒否する `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry {tmp_dir}` を実行し、非ゼロ終了の場合はそのエラーを表示してスキルを終了する。両者を作成する（`mkdir -p`）。続いてコーディング開始前のベースラインを記録する: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`。あわせて、`HEAD` のコミットを `{start_head}`、現在のブランチを `{start_branch}`（detached `HEAD` ではなし）として記録する。
 6. コンソールに表示する: `## Step 1 — Team formation`。
-7. `dev-helper`（種別 `cdev:dev-helper`、name `dev-helper`）を起動する。`dev-helper` 宛に `templates/team-analysis.md` を指定し `task = {タスク指定}`、`output_path = {tmp_dir}/team.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team.jsonl` を Read する: `{task_summary, target_languages, has_test_suite, has_prompts, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`（`name` は起動時の subagent_type）。各 producer の `reviewer` はペアの reviewer の `slug`（1 人の reviewer が複数の producer とペアになることもあるが、ドメインが一致する範囲に限る）。
+7. `dev-helper`（種別 `cdev:dev-helper`、name `dev-helper`）を起動する。`dev-helper` 宛に `templates/team-analysis.md` を指定し `task = {タスク指定}`、`handoff_path = {--handoff のファイルの絶対パス、または (none)}`、`output_path = {tmp_dir}/team.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team.jsonl` を Read する: `{task_summary, target_languages, has_test_suite, has_prompts, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`（`name` は起動時の subagent_type）。各 producer の `reviewer` はペアの reviewer の `slug`（1 人の reviewer が複数の producer とペアになることもあるが、ドメインが一致する範囲に限る）。
 8. ロスターの各メンバーを起動する。name は `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}`、種別は team-analysis が返す `name` を用いる（architect と coder は `general-purpose`）。ペアリングと `{task_summary}` を保持する。producer のペア reviewer の宛先は `reviewer-{その producer の reviewer slug}`。
 9. コンソールに表示する: 各 producer のペアの reviewer と一行の理由を含むロスター。
 
@@ -141,10 +173,10 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 1. コンソールに表示する: `## Step 2 — Design`。
 2. 各 architect について、設計セル `design-{slug}` を 2 つのメッセージで開始する（宛先は roster の name）:
-   - `architect-{slug}` 宛に `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`output_path = {design_dir}/design-{slug}.md`、`reviewer = {ペア reviewer の name}` を渡して `SendMessage`。
-   - ペア reviewer の name 宛に `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {design_dir}/design-{slug}.md`、`producer = architect-{slug}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
-3. ゲート: 設計セルごとにクローズ報告 1 通（届いたエスカレーションは随時裁定する）。セクションパスを `{design_paths}` として収集する。いずれかの設計セルのクローズ報告が、その設計で AI 向けプロンプトファイルを作成または編集すると述べた場合は、`has_prompts` を true にする。
-4. 設計が持ち込むファイルを含むすべてのファイルに書き手と領域の reviewer が付いた状態でステップ 3 を始めるよう、チームを再編成する。コンソールに表示する: `## Step 2 — Team re-formation`。`dev-helper` 宛に `templates/team-reassign.md` を指定し、`design_paths = {design_paths}`、`roster_path = {tmp_dir}/team.jsonl`、`taken_names = {このセッションで起動したすべての teammate の name}`、`output_path = {tmp_dir}/team-reassign.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team-reassign.jsonl` を Read する: `{coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`。ロール名（`coder-{slug}` / `reviewer-{slug}`）が roster にも再 spawn 待ちの teammate にもないエントリが新しいメンバーである。
+   - `architect-{slug}` 宛に `templates/design.md` を指定し、`task = {task_summary}`、`assigned_scope = {そのスコープ}`、`handoff_path = {ステップ 1 の手順 7 と同じ}`、`output_path = {design_dir}/design-{slug}.md`、`reviewer = {ペア reviewer の name}` を渡して `SendMessage`。
+   - ペア reviewer の name 宛に `templates/design-review.md` を指定し、`task = {task_summary}`、`design_path = {design_dir}/design-{slug}.md`、`handoff_path = {ステップ 1 の手順 7 と同じ}`、`producer = architect-{slug}`、`cell_task = design-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
+3. ゲート: 設計セルごとにクローズ報告 1 通（届いたエスカレーションは随時裁定する）。セクションパスを `{design_paths}` として、クローズ報告が設計の復元元と述べるターニングポイントの名前を重複なく `{restored_from}` として収集する。いずれかの設計セルのクローズ報告が、その設計で AI 向けプロンプトファイルを作成または編集すると述べた場合は、`has_prompts` を true にする。
+4. 設計が持ち込むファイルを含むすべてのファイルに書き手と領域の reviewer が付いた状態でステップ 3 を始めるよう、チームを再編成する。コンソールに表示する: `## Step 2 — Team re-formation`。`dev-helper` 宛に `templates/team-reassign.md` を指定し、`design_paths = {design_paths}`、`roster_path = {tmp_dir}/team.jsonl`、`taken_names = {このセッションで起動したすべての teammate の name}`、`team_tag = {--team-tag の値、または (none)}`、`output_path = {tmp_dir}/team-reassign.jsonl` を渡して `SendMessage`。完了報告を受けたら `{tmp_dir}/team-reassign.jsonl` を Read する: `{coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`。ロール名（`coder-{slug}` / `reviewer-{slug}`）が roster にも再 spawn 待ちの teammate にもないエントリが新しいメンバーである。
    - 次のどれかにあたる場合は、どれにあたるかを示して `dev-helper` にタスクを 1 度だけ差し戻す: ファイルがないか上の形式に合わないこと、roster の coder / reviewer に同じ `slug` のエントリがないか、そのエントリの `name`（coder では `reviewer` も）が異なること、出力の `coders` 内か `reviewers` 内に同じ `slug` のエントリが 2 つあること、coder の `reviewer` が出力の `reviewers` のどのエントリの `slug` でもないこと。差し戻した後もどれかにあたる場合は、ステップ 1 の roster のままステップ 3 を始める: そのことをコンソールに示し、ステップ 5 の報告のために保持する。
    - そうでなければ、新しいメンバーをステップ 1 の手順 8 と同じく起動し、各 coder のスコープとペアの reviewer を出力のものに置き換える。
    - コンソールに表示する: ステップ 1 の手順 9 と同じ形のロスター。追加したメンバーとスコープが変わった coder を示す。
@@ -177,8 +209,9 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 
 ## ステップ 5 — クリーンアップと報告
 
-1. `--commit` が ON で、かつステップ 4 のループが QA と解釈テストの双方の通過で抜けた場合、実装をコミットする: 変更されたソースファイルのみをステージし（`.claude/tmp`、`.claude/worktrees`、`{design_dir}` は除く）、簡潔なメッセージで 1 回コミットする（finding ID なし）。
+1. `--commit` が ON でステップ 4 のループが QA と解釈テストの双方の通過で抜けた場合、または `--commit-always` が ON で実行がステップ 4 に入っていた場合（QA と解釈テストの結果は問わず、ステップ 4 での spawn の拒否でステップ 5 に来た実行も含む）は、実装をコミットする。`--handoff` 指定時は、先に現在のブランチと `HEAD` のコミットがまだ `{start_branch}` と `{start_head}` であることを確かめ、そうでなければコミットせず、そのことを報告のために保持する。コミットでは、変更されたソースファイルのみをステージし（`.claude/tmp`、`.claude/worktrees`、`{design_dir}`、`--handoff` と `--result` のファイルは除く）、簡潔なメッセージで 1 回コミットする（finding ID なし）。ステージするものがなければコミットしない。
 2. teammate を停止する: roster の各 name を `task_id` として `TaskStop` を呼び、応答や通知を待たずに次の手順へ進む。アイドルの teammate には稼働中のタスクがないため、稼働していない旨の失敗は停止済みとみなす。`shutdown_request` は送らない: リーダーが待てる完了の合図がない。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`。
 4. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
-5. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、チームの再編成がステップ 1 のロスターにフォールバックしたかどうか、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、coder が報告したプロンプトレビューの件数、ステップ 4 を実行した場合の QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、稼働していない以外の理由で `TaskStop` が失敗した teammate、および spawn の拒否でステップ 5 に来た場合は、中断したステップと、spawn が拒否されたままの teammate。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
+5. `--result` 指定時は、結果ファイルを書く（§ 結果ファイル）。
+6. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、チームの再編成がステップ 1 のロスターにフォールバックしたかどうか、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、coder が報告したプロンプトレビューの件数、ステップ 4 を実行した場合の QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、稼働していない以外の理由で `TaskStop` が失敗した teammate、および spawn の拒否でステップ 5 に来た場合は、中断したステップと、spawn が拒否されたままの teammate。加えて、`--commit-always` が QA か解釈テストの未通過のままコミットした場合はそのこと、ブランチか `HEAD` が動いたためにコミットしなかった場合はそのこと、`--result` 指定時は結果ファイルのパスか、その書き出しに失敗したことを示す。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。

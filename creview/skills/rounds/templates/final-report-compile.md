@@ -13,12 +13,15 @@ Input:
 - Report template: `{{template_path}}`
 - Output path: `{{report_path}}`
 - Language: `{{language}}`
+- End reason: `{{end_reason}}`
+- Divergence investigation report: `{{divergence_report_path}}`
 
 What to do:
 
 1. Read the template markdown to grasp the structure (`<...>` placeholders, table structure, and the subsection examples in the future-recommendations section).
 2. From each round's md `<!-- METADATA(id) --> ... <!-- /METADATA(id) -->`, extract Triage / Estimate / Status / Verification values to obtain per-finding details (severity / location / summary / response / whether a separate-PR recommendation is attached, etc.).
 3. Fill the template's statistics summary, full findings list, future recommendations, and review document list, and Write to `{{report_path}}`.
+   - Fill End reason from `{{end_reason}}`: `converged` as "converged with zero findings" when the last round in `{{round_stats}}` has `findings=0` and as "converged with no source code changes" otherwise, `max-rounds` as "reached max rounds N" with N the number of rounds in `{{round_stats}}`, `user-stop` as "round loop stopped by user", and `divergence` as "round loop stopped on divergence ({{divergence_report_path}})", leaving out the parenthesized path when it is `(none)`.
    - If one or more rounds in `{{round_stats}}` have a `workflow_warning`, record the relevant rounds and the warning content in the template's "Build / format verification notes" section. If there are none, write that section as "Automatic verification was performed in all rounds".
    - If one or more rounds in `{{round_stats}}` have a `prompt_warning`, record the relevant rounds and each of their warnings with its source in the template's "Prompt interpretation test notes" section. If there are none, write that section as "No AI-facing prompt file was left failing or untested in any round".
    - Aggregation rules for the "Recommended future actions" section:

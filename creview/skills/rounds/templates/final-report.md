@@ -5,7 +5,7 @@
 **Branch:** `<branch-name>`
 **Date:** `YYYY-MM-DD`
 **Rounds executed:** `<N>`
-**End reason:** `<converged with zero findings / converged with no source code changes / round loop stopped by user / reached max rounds N>`
+**End reason:** `<converged with zero findings / converged with no source code changes / round loop stopped by user / reached max rounds N / round loop stopped on divergence (<divergence report path>)>`
 
 ## Statistics summary
 

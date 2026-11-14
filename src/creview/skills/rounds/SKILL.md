@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: レビュー・トリアージ・対応・検証を複数ラウンド自動で繰り返し、対応すべき指摘がなくなるまで反復する
-allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # レビューラウンド自動実行
@@ -23,6 +23,8 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Ba
 - `--base {branch}`（デフォルト `main` または `master`）— ベースブランチを指定する（review フェーズに渡される）。`--incremental` は Round 2 以降これを上書きする。
 - `--adversarial`（デフォルト OFF）— review フェーズを敵対的モードで実行する（review フェーズにそのまま渡す）。
 - `--worktree[=branch]`（デフォルト OFF）— 全ラウンドを `branch` 上の別の git ワークツリーで実行する（§ ワークツリー）。`=branch` を省略すると、現在の HEAD から新しいブランチ `creview-rounds-{YYYYMMDD-HHMMSS}`（開始時刻）を作成する。`--commit` を有効にする。
+- `--on-divergence {ask|stop}`（デフォルト `ask`）— ステップ 2.2 の発散パターン検出ゲートが発散を検出したときの扱い。`ask`: 発散調査レポートを提示してユーザーの続行の指示を待つ。`stop`: 何も提示せずラウンドループを止める（ステップ 2.2 手順 8）。
+- `--result {path}`（デフォルトなし）— 実行の終わりに結果ファイル（§ 結果ファイル）を書く。
 
 ## ワークツリー（`--worktree`）
 
@@ -33,12 +35,48 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Ba
 1. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` を実行する（`{branch}`: オプションの値またはそのデフォルト）。出力される `main_root=` / `worktree_path=` / `branch=` の各行を 3 つとも保持する。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。
 2. Bash の `cd {worktree_path}` でセッションをワークツリーへ移す。以降に起動するサブエージェントはそこで作業する。続けて別の Bash 呼び出しで `git rev-parse --show-toplevel` が `{worktree_path}` を出力することを確認し、出力しない場合は作業ディレクトリが持続していないので、ティアダウンを実行して終了する。ティアダウンまでは、ほかに素の `cd` を実行しない: セッション全体と以降に起動するサブエージェントの作業ディレクトリが動く。別のディレクトリにはコマンド自身のオプション（例: `git -C dir`）かサブシェルで到達する。`EnterWorktree` / `ExitWorktree` は使わない: その隔離はワークツリー外（メイン作業ツリーの `.claude/tmp/` を含む）への Write / Edit を拒否する。
 
-パスの基点: 出力ベースパス（デフォルトの `.claude/tmp/`、またはユーザーが指定した相対パス）は `{main_root}` を基点に解決する。`--worktree` を指定しない場合、`{main_root}` は `(該当なし)` で、すべてのパスは作業ディレクトリ基準とする。
+パスの基点: 出力ベースパス（デフォルトの `.claude/tmp/`、またはユーザーが指定した相対パス）は `{main_root}` を基点に解決する。`--worktree` を指定しない場合、`{main_root}` は `(該当なし)` で、すべてのパスは作業ディレクトリ基準とする。相対の `--result` のパスは、ステップ 1 手順 2 が保持するリポジトリのルートを基点に解決する。`--worktree` 指定時、このルートは `{main_root}` と一致する。
 
 ティアダウン — セットアップ後のあらゆる終了経路で、稼働中のサブエージェントがなくなってから実行する:
 
 1. Bash の `cd {main_root}` でセッションを戻す。
 2. `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}` を実行する。未コミットの変更があるワークツリーは残して非ゼロ終了するので、その場合はそのワークツリーのパスを報告する。
+
+## 終了理由
+
+実行の終わり方 `{end_reason}` を、次のいずれかとして保持する:
+
+- `converged` — 2.6 が条件 2 を満たさないと判定した。または、前ラウンドがコミットを残していないため、ステップ 2.1 手順 3 がラウンドループを終了した。
+- `max-rounds` — 最終ラウンドが次のラウンドに進む条件を満たし、ラウンドカウンターが `--max-rounds` を超えた。
+- `divergence` — `--on-divergence stop` で、ステップ 2.2 手順 8 が発散によりラウンドループを止めた。
+- `user-stop` — ステップ 2.2 手順 5、または 2.6 の `--confirm-round` の待機で、ユーザーがループの停止を指示した。
+- `error` — フェーズの `error` で実行を終えた（ステップ 2 冒頭。§ フェーズサブエージェントの起動 がそれとして扱うものを含む）。または、ステップ 1 の手順 2 より後でスキルが終了した。
+
+## 結果ファイル（`--result`）
+
+`--result` 指定時、ステップ 1 手順 2 を通過した実行は `{result_path}` に結果ファイルを残す: ステップ 4 で書き、ステップ 1 でスキルが終了する場合は終了の前に、ティアダウンを実行するならその後に書く。1 つの JSON オブジェクトを Write で書き（既存のファイルは置き換える）、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {result_path}` で検証する。エラーなら修正して、もう 1 度だけ検証する。書き込みが失敗するか、その 2 度目の検証も失敗した場合を、書き出しの失敗とする。そのとき `{result_path}` にあるもの（以前の実行のファイル、または不正なファイル）は、この実行の結果ではない: そのまま残し、失敗とともにその旨を完了報告に述べる。書き出しに失敗しても、`{end_reason}` と完了報告は、失敗した旨を加える以外に変えない。
+
+```json
+{"end_reason": "converged", "rounds": 3,
+ "round_start_revs": ["<sha>", "<sha>", "<sha>"],
+ "final_report_path": "...", "divergence_report_path": null,
+ "doc_paths": ["...", "...", "..."],
+ "workflow_warnings": [{"round": 2, "warning": "..."}],
+ "prompt_warnings": [{"round": 2, "source": "Step 5.2 attempt 1", "warning": "..."}],
+ "error": null, "kept_worktree": null}
+```
+
+- `end_reason`: `{end_reason}`。
+- `rounds`: レビューフェーズを起動したラウンドの数。ステップ 1 でスキルが終了した場合は 0。
+- `round_start_revs`: それらの各ラウンドの `{this_round_rev}`（完全なハッシュ）をラウンド順に並べたもの。
+- `final_report_path`: ステップ 3 の `report_path`。ステップ 3 がレポートを作らなかった場合は null。
+- `divergence_report_path`: `{divergence_report_path}`（`--on-divergence` の値に寄らない）。レポートを返した調査がない場合は null。
+- `doc_paths`: レビューフェーズが返した非 null の `doc_path` すべてをラウンド順に並べたもの。
+- `workflow_warnings` / `prompt_warnings`: 2.3 / 2.5 で各ラウンドの記録用に保持した（中断したラウンドの分を含む）`workflow_warning` ごとの `{round, warning}` と、`prompt_warning` ごとの `{round, source, warning}`。ない場合は `[]`。
+- `error`: `{end_reason}` が `error` でなければ null。`error` なら `{round, phase, message}`。`round` は実行が止まったラウンドで、`final-report` では最終ラウンド、`init` では null。`phase` は、フェーズの error（ステップ 2.5 での再実行を含む）では `review`、`triage`、`respond`、`resolve` のいずれか、ステップ 2.2 の検出・調査サブエージェントでは `divergence`、ステップ 3 のサブエージェントでは `final-report`、ステップ 1 での終了では `init`。`message` は返された `error`、または表示したエラー。
+- `kept_worktree`: ティアダウンが残したワークツリーのパス。それ以外は null。
+
+パスはすべて実行が解決した形で書く（`--worktree` 指定時は絶対パス）。
 
 ## レビュードキュメントのファイル命名
 
@@ -67,10 +105,11 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Ba
 - **オーケストレーター（あなた自身）が直接担うのは以下に限定する**:
   - コンソール見出しの表示、ラウンドループ制御、フィードバック再修正ループ。
   - フェーズサブエージェントの起動と戻り値（カウンタ・パス・1 行サマリ）の集約。
-  - `--confirm` / `--confirm-round` / 発散パターン検出ゲートのユーザー対話。フェーズ Sub はユーザーに到達できないため、続行の指示待ちはすべてフェーズ間のここで行う。
+  - `--confirm` / `--confirm-round` / `--on-divergence ask` での発散パターン検出ゲートのユーザー対話。フェーズ Sub はユーザーに到達できないため、続行の指示待ちはすべてフェーズ間のここで行う。
   - triage フェーズの作業用ディレクトリの削除（ステップ 2.2）。このディレクトリはフェーズ Sub より長く生存する。
   - ワークツリーのセットアップとティアダウン（§ ワークツリー）。
   - ユーザーへの最終的なサマリ提示。
+  - `--result` 指定時の結果ファイルの書き出し（§ 結果ファイル）。
 - **オーケストレーターはレビュー指摘や判定の本文を context に載せない**。ファイルパス・カウンタ・リビジョンハッシュのみを保持し、詳細は各フェーズ内に留める。
 - 各ラウンドの指摘と判定は**レビュードキュメントのみ**を通じて次ステップ／次ラウンドに引き継ぐ。ラウンドループ自身が持ち越す値は `{prev_round_rev}` だけ。
 - 起動時に `model="..."` 指定は行わない（モデルは各 agent 定義の frontmatter に従う）。
@@ -94,7 +133,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Ba
 戻り値に template_id（テンプレートの frontmatter から Read）を含める。
 ```
 
-戻り値の `template_id` が各ステップの指定 UUID と一致することを確認し、不一致の場合はフェーズ Sub を再起動する。ステップ 2.2 の発散パターン検出サブエージェント・発散調査サブエージェントとステップ 3 のサブエージェントも、同じ起動プロンプトと同じ確認に従う。`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動プロンプトの完全性を参照。
+戻り値の `template_id` が各ステップの指定 UUID と一致することを確認し、不一致の場合はフェーズ Sub を再起動する。ステップ 2.2 の発散パターン検出サブエージェント・発散調査サブエージェントとステップ 3 のサブエージェントも、同じ起動プロンプトと同じ確認に従う。`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動プロンプトの完全性を参照。同ルールの中止に該当した場合は、スキルを終了せず、一致しなかった `template_id` をメッセージに含むフェーズの `error`（ステップ 2 冒頭）として扱う。最終レポートは作らずにステップ 4 へ進む。
 
 ## フロー概要
 
@@ -102,7 +141,7 @@ allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Ba
 Round 1 開始
   ├─ 2.1 review          [フェーズ Sub] creview:start   → round1.md
   ├─ 2.2 triage+estimate  [フェーズ Sub] creview:triage  → トリアージ／見積を永続化
-  │     ↳ Round 2 以降: [発散パターン検出 Sub] → 発散あり: [発散調査 Sub] → divergence-round{N}.md を提示し続行の指示を待つ
+  │     ↳ Round 2 以降: [発散パターン検出 Sub] → 発散あり: [発散調査 Sub] → divergence-round{N}.md を提示し続行の指示を待つ（--on-divergence stop: 何も提示せずラウンドループを止め、最終ステップへ）
   │     ↳ --confirm: 見積サマリを提示し続行の指示を待つ
   ├─ 2.3 respond / fix    [フェーズ Sub] creview:respond → status を永続化
   │     ↳ Maintain / Alternative の対象がなければスキップ
@@ -120,7 +159,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 ## ステップ 1 — 初期化
 
 1. オプションを解析する。
-2. `git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。
+2. `git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。そうでなければ `git rev-parse --show-toplevel` の出力をリポジトリのルートとして保持し、`--result` 指定時は `{result_path}` を保持する: `--result` の値で、相対パスならそのルートを基点に解決したもの。
 3. `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry .claude/tmp/creview-rounds-{YYYYMMDD-HHMMSS}`（開始時刻）を実行する。シンボリックリンクの `.claude` または `.claude/tmp` はこれで拒否される。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。出力ディレクトリではなくこのパスを渡す: del-tmp.sh は `.claude/tmp/` の外のパスを拒否する。
 4. `--worktree` 指定時は § ワークツリー のセットアップを実行する。
 5. すべてのサブエージェントが受け取る作業対象 `{target_dir}` を確定する: `--worktree` 指定時は `{worktree_path}`、それ以外は `git rev-parse --show-toplevel` の出力。
@@ -157,10 +196,10 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
    1. 検出: `Agent(subagent_type="creview:review-helper", prompt=...)` で `templates/divergence-check.md`（`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`）のサブエージェントを起動し、戻り値（`{divergence_count, investigator}`）のみ context に保持する。
       - 変数: `document_path`（今ラウンドのファイルパス）、`previous_round_doc_paths`（Round 1〜N-1 の doc_path）、`output_path`（`{tmp_dir}/divergence.jsonl`）
       - オーバーライド: (該当なし)
-   2. 調査: `divergence_count` が 1 以上の場合、`Agent(subagent_type="{investigator}", prompt=...)` で `templates/divergence-investigate.md`（`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`）のサブエージェントを起動し、戻り値（`{report_path}`）のみ context に保持する。
+   2. 調査: `divergence_count` が 1 以上の場合、`Agent(subagent_type="{investigator}", prompt=...)` で `templates/divergence-investigate.md`（`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`）のサブエージェントを起動し、戻り値（`{report_path}`）のみを `{divergence_report_path}` として context に保持する（後のラウンドのレポートで置き換える）。
       - 変数: `divergence_path`（`{tmp_dir}/divergence.jsonl`）、`document_path`、`previous_round_doc_paths`、`template_path`（`${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/divergence-report.md`）、`report_path`（`{base-path}/{branch-dir}/divergence-round{N}.md`）、`language`（ユーザーのチャット言語）
       - オーバーライド: (該当なし)
-5. ユーザー確認: 以下のいずれかに該当する場合、該当するものをまとめてユーザーに提示し、続行の指示を待つ。
+5. ユーザー確認: `--on-divergence stop` で手順 4 が発散を検出したラウンドでは、何も提示せず、何も待たない。それ以外では、以下のいずれかに該当する場合、該当するものをまとめてユーザーに提示し、続行の指示を待つ。
    - 今回の手順 4 が発散を 1 件以上検出した（`--confirm` の状態に寄らない）: 発散パターンを検出した旨と、`report_path` を Read した内容。
    - `--confirm` が有効で、`error` が null かつ Maintain / Alternative が 1 件以上ある: `summary_path` を Read した内容。
 6. `tmp_dir` が非 null の場合、`summary_path` を含むフェーズの作業用ディレクトリを削除する（`del-tmp.sh` は削除済みのターゲットを読み飛ばすため、`error` 経路も個別扱いは不要）:
@@ -168,7 +207,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
 7. `error` が非 null の場合は、ステップ 2 冒頭のフェーズの error の扱いに従う。
-8. 手順 5 でユーザーがループの停止を指示した場合は、以降のフェーズを実行せず 2.6 で今ラウンドの結果を記録し、次ラウンドへ進まずステップ 3 へ進む。
+8. 手順 5 でユーザーがループの停止を指示した場合、または `--on-divergence stop` で手順 4 が発散を検出した場合は、以降のフェーズを実行せず 2.6 で今ラウンドの結果を記録し、次ラウンドへ進まずステップ 3 へ進む。
 9. 手順 5 でユーザーが続行とともに修正方針を指示した場合は、その指示の原文を、参照先としての `report_path`、および指摘の Triage や Estimate と異なる箇所では方針を優先する旨の注記とともに、今ラウンドの 2.3 と 2.4、およびステップ 2.5 での 2.2 / 2.3 / 2.4 の再実行のオーバーライドに加える。
 10. 対応フェーズのスキップ判定: `will_fix_count` が 0、または `maintain_count` と `alternative_count` がともに 0 の場合、2.3 をスキップして 2.4 に進む（Won't Fix / Downgrade の指摘は 2.4 で検証を受ける）。
 
@@ -224,7 +263,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 1. ラウンドカウンターが `--max-rounds` 以下である。
 2. 今ラウンドの対応フェーズ実行（ステップ 2.3、またはステップ 2.5 の attempt の手順 2）のいずれかが `code_changed` を true で返した。対応フェーズが 1 度も実行されなかった場合は false として扱う。
 
-条件を満たし、かつ `--confirm-round` が有効な場合は、ステップ 2.1 へ戻る前にユーザーの続行の指示を待つ。
+条件を満たし、かつ `--confirm-round` が有効な場合は、ステップ 2.1 へ戻る前にユーザーの続行の指示を待つ。ユーザーが代わりにループの停止を指示した場合は、次のラウンドを始めずステップ 3 へ進む。
 
 満たさない場合は最終レポート生成へ進む。
 
@@ -239,6 +278,8 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
      - `template_path`: {template_path}
      - `report_path`: {report_path}
      - `language`: ユーザーのチャット言語
+     - `end_reason`: `{end_reason}`
+     - `divergence_report_path`: `{divergence_report_path}`。null の場合は `(該当なし)`
    - オーバーライド: (該当なし)
 2. オーケストレーターは戻り値（`{report_path, template_id}`）を受け取り、`report_path` のみを context に保持する。
 
@@ -249,4 +290,5 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 ## ステップ 4 — 完了報告
 
 1. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
-2. フェーズの `error` でラウンドループを終えた場合は、その `error`、中断したラウンドとフェーズ、各ラウンドのレビュードキュメントのパス（レビューフェーズが返した非 null の `doc_path` すべて）と、2.3 / 2.5 で各ラウンドの記録用に保持した `workflow_warning` / `prompt_warning` すべて（中断したラウンドの分を含め、それぞれにラウンドを、`prompt_warning` には出所も付ける）をユーザーに報告する。それ以外の場合は、最終レポートのパスをユーザーに報告し、主要な統計（総指摘数、解決数、未解決数）を簡潔に伝える。どちらの場合も、`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
+2. `--result` 指定時は結果ファイルを書く（§ 結果ファイル）。
+3. `{end_reason}` が `error` の場合は、その `error`、中断したラウンドとフェーズ、各ラウンドのレビュードキュメントのパス（レビューフェーズが返した非 null の `doc_path` すべて）と、2.3 / 2.5 で各ラウンドの記録用に保持した `workflow_warning` / `prompt_warning` すべて（中断したラウンドの分を含め、それぞれにラウンドを、`prompt_warning` には出所も付ける）をユーザーに報告する。それ以外の場合は、`{end_reason}`（`divergence` では `{divergence_report_path}` を添える）と最終レポートのパスをユーザーに報告し、主要な統計（総指摘数、解決数、未解決数）を簡潔に伝える。どちらの場合も、`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加え、`--result` 指定時は結果ファイルのパス（書き出しに失敗した場合はその旨）を加える。

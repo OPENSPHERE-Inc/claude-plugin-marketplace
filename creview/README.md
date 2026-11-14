@@ -496,6 +496,19 @@ to the round's respond and resolve phases, and to the triage, respond, and
 resolve phases the feedback re-fix loop re-runs; where it differs from a
 finding's triage or estimate, the policy prevails.
 
+`--on-divergence {ask|stop}` (default `ask`) sets what the gate does once it
+detects a divergence. With `ask`, the loop pauses and waits as described above.
+With `stop`, the investigation still runs and writes its report, but the loop
+presents nothing and waits for nothing, not even for the `--confirm` estimate
+summary of that round. It stops as it does when you tell it to stop at the
+pause: it runs neither the respond nor the resolve phase of that round and
+writes the final report. The report's end reason is a stop on divergence and
+names the investigation report, and the round's findings to be fixed are listed
+under "Recommended future actions" as left unfixed. `stop` suits a calling
+workflow that decides for itself how to act on a divergence: `/cdev:loop` of
+the cdev plugin runs `/creview:rounds` this way and sends the work back to
+`/cdev:coding` with the investigation report.
+
 When a phase stops on an error, `/creview:rounds` stops there and writes no
 final report. Such an error is, for example, a script that fails or a sub-agent
 that returns the wrong `template_id` twice in a row. The run reports the error,
@@ -521,6 +534,31 @@ before discarding it. With `--commit`, which `--worktree` and `--incremental`
 enable, the earlier phases' fixes are committed and stay out of the uncommitted
 changes. A phase that finishes with a warning, such as a workflow warning, does
 not stop the run.
+
+`--result {path}` has the run write a JSON file at its end. The file holds the
+end reason, the number of rounds, the commit each round started from, the paths
+of the final report, of the latest divergence investigation report, and of each
+round's review document, the workflow and interpretation test warnings, the
+error, and the worktree left behind, if any. A relative path resolves against
+the repository root, which under `--worktree` is the main working tree's root,
+and under `--worktree` the paths in the file are absolute. The file is written
+whenever the run gets past its check that the session started at the repository
+root, including when a phase stops on an error and when the run fails during
+initialization, such as when the worktree cannot be created. A run that ends
+before that check writes no file, so a caller should treat a missing file as an
+error. The end reason is one of:
+
+- `converged` — a round's fixes changed no source code, which includes a round
+  with no findings, or, under `--incremental`, the previous round left no new
+  commit to review.
+- `max-rounds` — the last round still changed source code when the run reached
+  `--max-rounds`.
+- `divergence` — `--on-divergence stop` stopped the loop on a divergence.
+- `user-stop` — you told the loop to stop, at the divergence gate's pause or at
+  a `--confirm-round` wait.
+- `error` — the run stopped on an error, in a phase as described above, in the
+  divergence gate or the final report's compilation, or during initialization.
+  The run then writes no final report.
 
 `/creview:rounds` takes a `--worktree[=branch]` option (default OFF) that runs
 every round in a separate git worktree under `.claude/worktrees/`, so the

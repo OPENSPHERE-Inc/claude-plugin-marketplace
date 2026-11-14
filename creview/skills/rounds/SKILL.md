@@ -1,7 +1,7 @@
 ---
 name: rounds
 description: Automatically iterate review, triage, respond, and resolve across multiple rounds until no actionable findings remain
-allowed-tools: Agent, Read, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls:*), Bash(find:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(mkdir:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # Automatic Review Round Execution
@@ -23,6 +23,8 @@ The user may optionally specify an output base path. When the argument is `$ARGU
 - `--base {branch}` (default `main` or `master`) — Specify the base branch (passed to the review phase). `--incremental` overrides it from Round 2 on.
 - `--adversarial` (default OFF) — Run the review phase in adversarial mode (passed through to the review phase).
 - `--worktree[=branch]` (default OFF) — Run every round in a separate git worktree on `branch` (§ Worktree). Without `=branch`, a new branch `creview-rounds-{YYYYMMDD-HHMMSS}` (the start time) is created from the current HEAD. Enables `--commit`.
+- `--on-divergence {ask|stop}` (default `ask`) — What happens when the Step 2.2 divergence pattern detection gate detects a divergence. `ask`: present the divergence investigation report and wait for the user's instruction to continue. `stop`: present nothing and stop the round loop (Step 2.2 step 8).
+- `--result {path}` (default none) — Write the result file (§ Result file) when the run ends.
 
 ## Worktree (`--worktree`)
 
@@ -33,12 +35,48 @@ Setup:
 1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
 2. Move the session into the worktree with a Bash `cd {worktree_path}`; sub-agents launched afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Until the teardown, run no other bare `cd`: it moves the working directory of the whole session and of every sub-agent launched afterwards. Reach another directory through a command's own option (e.g. `git -C dir`) or a subshell. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree, including the main working tree's `.claude/tmp/`.
 
-Path base: resolve the output base path (the default `.claude/tmp/` or a relative one the user gave) against `{main_root}`. Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory.
+Path base: resolve the output base path (the default `.claude/tmp/` or a relative one the user gave) against `{main_root}`. Without `--worktree`, `{main_root}` is `(none)` and every path is relative to the working directory. A relative `--result` path resolves against the repository root Step 1 step 2 holds, which under `--worktree` equals `{main_root}`.
 
 Teardown — on every exit after setup, once no sub-agent is running:
 
 1. Return the session with a Bash `cd {main_root}`.
 2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh remove {worktree_path}`. It keeps a worktree with uncommitted changes and exits non-zero; report that worktree's path then.
+
+## End reason
+
+Hold `{end_reason}`, how the run ended, as one of:
+
+- `converged` — 2.6 found condition 2 unmet, or Step 2.1 step 3 ended the round loop because the previous round left no commit.
+- `max-rounds` — the last round met the conditions for proceeding, and the round counter exceeded `--max-rounds`.
+- `divergence` — Step 2.2 step 8 stopped the round loop on a divergence under `--on-divergence stop`.
+- `user-stop` — the user instructed to stop the loop, at Step 2.2 step 5 or at the `--confirm-round` wait in 2.6.
+- `error` — a phase `error` ended the run (the start of Step 2, including what § Phase sub-agent launch treats as one), or the skill terminated in Step 1 after step 2.
+
+## Result file (`--result`)
+
+Under `--result`, every run that passes Step 1 step 2 leaves the result file at `{result_path}`: write it in Step 4, and, when the skill terminates in Step 1, before terminating, after the teardown when one runs. Write one JSON object with Write, replacing any existing file, and validate it with `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {result_path}`; on an error, fix it and validate once more. Writing it failed when the write fails or that second validation fails too; whatever is then at `{result_path}`, an earlier run's file or the invalid one, is not this run's result: leave it, and state that along with the failure in the completion report. A failure to write it changes neither `{end_reason}` nor the completion report beyond stating the failure.
+
+```json
+{"end_reason": "converged", "rounds": 3,
+ "round_start_revs": ["<sha>", "<sha>", "<sha>"],
+ "final_report_path": "...", "divergence_report_path": null,
+ "doc_paths": ["...", "...", "..."],
+ "workflow_warnings": [{"round": 2, "warning": "..."}],
+ "prompt_warnings": [{"round": 2, "source": "Step 5.2 attempt 1", "warning": "..."}],
+ "error": null, "kept_worktree": null}
+```
+
+- `end_reason`: `{end_reason}`.
+- `rounds`: the number of rounds that launched a review phase; 0 when the skill terminated in Step 1.
+- `round_start_revs`: the `{this_round_rev}` (full hash) of each of those rounds, in round order.
+- `final_report_path`: Step 3's `report_path`; null when Step 3 produced no report.
+- `divergence_report_path`: `{divergence_report_path}`, under either `--on-divergence` value; null when no investigation returned a report.
+- `doc_paths`: every non-null `doc_path` a review phase returned, in round order.
+- `workflow_warnings` / `prompt_warnings`: `{round, warning}` for each `workflow_warning`, and `{round, source, warning}` for each `prompt_warning`, retained for a round's record in 2.3 / 2.5, the stopped round's included; `[]` when none.
+- `error`: null unless `{end_reason}` is `error`; then `{round, phase, message}`. `round` is the round the run stopped in, the last round for `final-report`, and null for `init`. `phase` is `review`, `triage`, `respond`, or `resolve` for a phase error (a Step 2.5 re-run included), `divergence` for the Step 2.2 detection or investigation sub-agent, `final-report` for the Step 3 sub-agent, or `init` for a termination in Step 1. `message` is the returned `error` or the error shown.
+- `kept_worktree`: the worktree path the teardown kept; null otherwise.
+
+Write every path as the run resolved it (absolute under `--worktree`).
 
 ## Review document file naming
 
@@ -67,10 +105,11 @@ Write the review document in the user's chat language.
 - **What you handle directly is limited to the following:**
   - Console headings, round loop control, and the feedback re-fix loop.
   - Phase sub-agent launch and aggregation of their return values (counters, paths, one-line summaries).
-  - User interaction for `--confirm` / `--confirm-round` / the divergence pattern detection gate. A phase sub-agent cannot reach the user, so every wait for the user's instruction to continue happens here, between phases.
+  - User interaction for `--confirm` / `--confirm-round` / the divergence pattern detection gate under `--on-divergence ask`. A phase sub-agent cannot reach the user, so every wait for the user's instruction to continue happens here, between phases.
   - Removal of the triage phase's working directory (Step 2.2), which outlives its phase sub-agent.
   - Worktree setup and teardown (§ Worktree).
   - Final summary presentation to the user.
+  - Writing the result file under `--result` (§ Result file).
 - **Do not put review finding bodies or judgment bodies into context.** Hold only file paths, counters, and revision hashes; the details stay inside each phase.
 - Each round's findings and judgments are passed to the next Step / next round **only through the review document**. `{prev_round_rev}` is the one value the round loop itself carries forward.
 - Do not specify `model="..."` when launching (the model follows each agent definition's frontmatter).
@@ -94,7 +133,7 @@ Round-specific overrides (apply after following the template's instructions):
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
-Verify that the returned `template_id` matches the UUID the Step specifies; relaunch the phase sub-agent on mismatch. The Step 2.2 divergence pattern detection and divergence investigation sub-agents and the Step 3 sub-agent use the same launch prompt and the same verification; see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch prompt completeness.
+Verify that the returned `template_id` matches the UUID the Step specifies; relaunch the phase sub-agent on mismatch. The Step 2.2 divergence pattern detection and divergence investigation sub-agents and the Step 3 sub-agent use the same launch prompt and the same verification; see `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch prompt completeness. When that rule's abort applies, do not terminate the skill: treat it as a phase `error` (the start of Step 2) whose message names the mismatching `template_id`; Step 4 follows without a final report.
 
 ## Flow overview
 
@@ -102,7 +141,7 @@ Verify that the returned `template_id` matches the UUID the Step specifies; rela
 Round 1 start
   ├─ 2.1 review          [phase Sub] creview:start   → round1.md
   ├─ 2.2 triage+estimate  [phase Sub] creview:triage  → persists triage / estimate
-  │     ↳ Round 2 on: [divergence pattern detection Sub] → on divergence: [divergence investigation Sub] → present divergence-round{N}.md, wait for the instruction to continue
+  │     ↳ Round 2 on: [divergence pattern detection Sub] → on divergence: [divergence investigation Sub] → present divergence-round{N}.md, wait for the instruction to continue (--on-divergence stop: present nothing, stop the round loop, go to the final step)
   │     ↳ --confirm: present the estimate summary, wait for the instruction to continue
   ├─ 2.3 respond / fix    [phase Sub] creview:respond → persists status
   │     ↳ skipped when there is no Maintain / Alternative target
@@ -120,7 +159,7 @@ On a phase error → end the round loop, skip the final step, go to Step 4
 ## Step 1 — Initialization
 
 1. Parse options.
-2. If `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill.
+2. If `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill. Otherwise hold the output of `git rev-parse --show-toplevel` as the repository root and, under `--result`, hold `{result_path}`: the `--result` value, a relative one resolved against that root.
 3. Run `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry .claude/tmp/creview-rounds-{YYYYMMDD-HHMMSS}` (the start time), which refuses a symlinked `.claude` or `.claude/tmp`; on a non-zero exit, show its error and terminate the skill. Pass this path rather than the output directory: del-tmp.sh refuses a path outside `.claude/tmp/`.
 4. Under `--worktree`, run the setup in § Worktree.
 5. Fix `{target_dir}`, the work target every sub-agent receives: `{worktree_path}` under `--worktree`, otherwise the output of `git rev-parse --show-toplevel`.
@@ -157,10 +196,10 @@ When a phase sub-agent returns a non-null `error`, including on a re-run in Step
    1. Detection: launch the sub-agent via `Agent(subagent_type="creview:review-helper", prompt=...)` with `templates/divergence-check.md` (`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`) and hold only the return value (`{divergence_count, investigator}`) in context.
       - Variables: `document_path` (this round's file path), `previous_round_doc_paths` (doc_paths of Round 1..N-1), `output_path` (`{tmp_dir}/divergence.jsonl`)
       - Overrides: (none)
-   2. Investigation: when `divergence_count` is at least 1, launch the sub-agent via `Agent(subagent_type="{investigator}", prompt=...)` with `templates/divergence-investigate.md` (`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`) and hold only the return value (`{report_path}`) in context.
+   2. Investigation: when `divergence_count` is at least 1, launch the sub-agent via `Agent(subagent_type="{investigator}", prompt=...)` with `templates/divergence-investigate.md` (`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`) and hold only the return value (`{report_path}`) in context, as `{divergence_report_path}` (a later round's report replaces it).
       - Variables: `divergence_path` (`{tmp_dir}/divergence.jsonl`), `document_path`, `previous_round_doc_paths`, `template_path` (`${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/divergence-report.md`), `report_path` (`{base-path}/{branch-dir}/divergence-round{N}.md`), `language` (user's chat language)
       - Overrides: (none)
-5. User confirmation: when any of the following applies, present the applicable ones to the user together and wait for their instruction to continue.
+5. User confirmation: in a round where step 4 detected a divergence under `--on-divergence stop`, present nothing and wait for nothing. Otherwise, when any of the following applies, present the applicable ones to the user together and wait for their instruction to continue.
    - This run's step 4 detected one or more divergences (regardless of the `--confirm` state): the fact that a divergence pattern was detected, and the content Read from `report_path`.
    - `--confirm` is enabled, `error` is null, and at least one Maintain / Alternative exists: the content Read from `summary_path`.
 6. When `tmp_dir` is non-null, remove the phase's working directory, which holds `summary_path` (`del-tmp.sh` skips an already-removed target, so the `error` path needs no separate handling):
@@ -168,7 +207,7 @@ When a phase sub-agent returns a non-null `error`, including on a re-run in Step
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
 7. When `error` is non-null, proceed as the start of Step 2 directs for a phase error.
-8. When the user instructs to stop the loop at step 5, run no further phase, record this round's results in 2.6, and proceed to Step 3 without advancing to the next round.
+8. When the user instructs to stop the loop at step 5, or when step 4 detected a divergence under `--on-divergence stop`, run no further phase, record this round's results in 2.6, and proceed to Step 3 without advancing to the next round.
 9. When the user instructs a fix policy along with continuing at step 5, add that instruction verbatim, together with `report_path` as its reference and a note that the policy prevails where it differs from a finding's Triage or Estimate, to the overrides of this round's 2.3 and 2.4 and of the re-runs of 2.2, 2.3, and 2.4 in Step 2.5.
 10. Respond phase skip decision: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4 (Won't Fix / Downgrade findings receive their verification in 2.4).
 
@@ -224,7 +263,7 @@ Condition for proceeding to the next round: only when **all** of the following a
 1. The round counter is at most `--max-rounds`.
 2. The respond phase returned `code_changed` true at least once in this round (Step 2.3, or a Step 2.5 attempt's step 2). Treat it as false when no respond phase ran in the round.
 
-When the conditions are met and `--confirm-round` is enabled, wait for the user's instruction to continue before returning to Step 2.1.
+When the conditions are met and `--confirm-round` is enabled, wait for the user's instruction to continue before returning to Step 2.1. When the user instructs to stop the loop instead, proceed to Step 3 without starting the next round.
 
 If not met, proceed to final report generation.
 
@@ -239,6 +278,8 @@ Final report path: `{base-path}/{branch-dir}/final-report.md`
      - `template_path`: {template_path}
      - `report_path`: {report_path}
      - `language`: user's chat language
+     - `end_reason`: `{end_reason}`
+     - `divergence_report_path`: `{divergence_report_path}`, or `(none)` when it is null
    - Overrides: (none)
 2. The orchestrator receives the return value (`{report_path, template_id}`) and holds only `report_path` in context.
 
@@ -249,4 +290,5 @@ Template: `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/final-report.md` (the f
 ## Step 4 — Completion report
 
 1. Under `--worktree`, run the teardown in § Worktree.
-2. When a phase's `error` ended the round loop, report to the user that `error`, the round and phase that stopped, each round's review document path (every non-null `doc_path` a review phase returned), and every `workflow_warning` and `prompt_warning` retained for a round's record in 2.3 / 2.5, the stopped round's included, each with its round and, for a `prompt_warning`, its source. Otherwise report the final report path to the user, and concisely convey key statistics (total findings, resolved count, unresolved count). In either case, under `--worktree`, add the branch and any worktree the teardown kept.
+2. Under `--result`, write the result file (§ Result file).
+3. When `{end_reason}` is `error`, report to the user that `error`, the round and phase that stopped, each round's review document path (every non-null `doc_path` a review phase returned), and every `workflow_warning` and `prompt_warning` retained for a round's record in 2.3 / 2.5, the stopped round's included, each with its round and, for a `prompt_warning`, its source. Otherwise report `{end_reason}` to the user, with `{divergence_report_path}` when it is `divergence`, and the final report path, and concisely convey key statistics (total findings, resolved count, unresolved count). In either case, under `--worktree`, add the branch and any worktree the teardown kept, and under `--result`, the result file path, or that writing it failed.

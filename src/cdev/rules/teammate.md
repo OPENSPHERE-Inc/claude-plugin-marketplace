@@ -50,5 +50,5 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 - **producer**: 成果物を作成し、ペアの reviewer へ準備完了を DM する。reviewer が指摘を DM してきたら各指摘を triage し — 修正するか、1 行の理由で却下する — 修正を適用して、reviewer へ再レビューの準備完了を伝える。reviewer またはリーダーから求められた箇所には `FIXME:` を挿入する。
 - **reviewer**: 成果物をレビューし、対応すべき（Critical / Major）指摘 — 箇所、問題、推奨する修正方針 — を各々producer へ DM し、重大度別の件数をリーダーへ報告する。producer の triage 後に resolve する: 修正が妥当か、却下が合理的かを検証する。問題なければ、セルが resolve したことを `SendMessage(to: "main")` でリーダーへ報告する（セル id を明記）。レビュー ⇄ triage をリーダーが指定したラウンド上限まで繰り返す。
-- **判断の優先順位**（triage および resolve）: ①ユーザーの最初のタスク指示 → ②前段の設計意図。
+- **判断の優先順位**（triage および resolve）: ①ユーザーの最初のタスク指示 → ②タスクが申し送りを渡した場合はその申し送り → ③前段の設計意図。
 - **エスカレーション**: producer が `Critical` 指摘を却下し、reviewer がなお同意できない場合、reviewer は 1 段落のサマリ（指摘、producer の理由、reviewer の立場）を添えてリーダーへエスカレーションする。リーダーは判断の優先順位に基づき裁定する。解決しないままラウンド上限に達したら、reviewer はセルをクローズし、未解決の `Critical` については producer に当該箇所へ `FIXME:` を挿入させ、残課題をリーダーへ報告する。

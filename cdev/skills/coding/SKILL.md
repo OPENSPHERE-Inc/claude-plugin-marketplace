@@ -1,7 +1,7 @@
 ---
 name: coding
 description: Orchestrate a coding task end to end with a standing agent team using paired review cells — a design cell step, a coding cell step, and a QA gate. AI-facing prompt files also get a prompt-discipline self-check and compression in the coding cell and an interpretation test in the QA gate. Reviewers are auto-selected from the destination project agents. Use proactively when the user asks to implement a feature, build a change, or carry out a coding task in the repository, including creating or modifying an AI-facing prompt file in it (agent definition, SKILL.md, rule, slash command, or prompt template). Do not use it for a file outside the repository (such as under `~/.claude/`), for a small edit one agent can make directly (such as adding one item to a rule), for drafting a prompt that is not a file, or, without `--worktree`, on a working tree with uncommitted changes. Requires a runtime with background subagents (Agent run_in_background) and inter-agent messaging (SendMessage).
-allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
+allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*)
 ---
 
 # Multi-Agent Coding
@@ -29,11 +29,42 @@ The user supplies a coding task: a feature to implement, a change to make, or a 
 - `--commit` (default OFF) — After QA passes, commit the implementation in one commit (concise message, no finding IDs).
 - `--worktree[=branch]` (default OFF) — Run the task in a separate git worktree on `branch` (§ Worktree). Without `=branch`, a new branch `cdev-coding-{timestamp}` is created from the current HEAD. Enables `--commit`.
 - `--output {dir}` — Specify the output directory for the design documents (`{design_dir}`).
+- `--handoff {path}` (default unset) — A handoff for this run: a Markdown file in any format. Team analysis, the architects, and the design reviewers Read it; it ranks after the task in the judgment priority (§ Review cell protocol), and a design may restore files to a turning point it names.
+- `--team-tag {tag}` (default unset) — Append `-{tag}` to every teammate name (§ Team model). `tag` is 1–16 letters, digits, or hyphens and begins with a letter or digit. The caller ensures that no earlier run in the session used the tag; the skill does not check it.
+- `--commit-always` (default OFF) — Implies `--commit`, and commits in Step 5 whatever QA and the interpretation test found, once the run has entered Step 4.
+- `--result {path}` (default unset) — Write the run's result to `path` as JSON (§ Result file).
 
 ### Output destination (`{design_dir}`)
 
 - When `--output` is given, that value.
 - Default when not given: `.claude/tmp/cdev-coding-{timestamp}-design/`. Do not place it under `{tmp_dir}` (that is removed in Step 5).
+
+### Result file (`--result`)
+
+Write the file with the Write tool as one JSON object, replacing an existing file and creating its parent directory if missing. Write it in Step 5 step 5, and also before ending at every exit that does not reach Step 5 — the aborts under § Requirements and § Trust premise, and each termination in Step 1 — after the teardown when the exit follows the worktree setup. If the write fails, show the error on the console and change nothing else.
+
+```json
+{"committed": true, "commit": "<sha>", "branch": "<name>",
+ "design_paths": ["<abs path>"], "restored_from": ["<turning point name>"],
+ "qa": {"passed": true, "environmental": false, "summary": "<summary_line>"},
+ "prompt_test": {"passed": true, "failed": ["<path>"],
+                 "untested": [{"path": "<path>", "reason": "<reason>"}]},
+ "fixme_count": 0, "escalations": 0, "team_fallback": false,
+ "aborted": null, "kept_worktree": null}
+```
+
+- `committed`: true when Step 5 step 1 committed. `commit`: that commit's SHA, otherwise null.
+- `branch`: the branch the sources are on — `branch=` of `worktree.sh` under `--worktree`, otherwise `{start_branch}`; null on a detached `HEAD` or when the run ended before the value was known.
+- `design_paths`: `{design_paths}` as absolute paths; empty when the run did not pass the gate of Step 2 step 3.
+- `restored_from`: `{restored_from}`; empty when there is none.
+- `qa`: the last QA attempt's `success`, `environmental`, and `{summary_line}`; `false`, `false`, and null when Step 4 got no QA report.
+- `prompt_test`: the last Step 4 attempt's `{prompt_pass}`, `{prompt_failed_files}`, and `{prompt_untested_files}`, each untested file with its reason, and one entry with a null `path` when the interpretation test wrote no result; `false` with empty arrays when no Step 4 attempt set them.
+- `fixme_count`: the `FIXME:`s left for unresolved items — those that cells closed at the round cap report at unresolved `Critical`s, and those you had inserted for escalations you could not decide — not a count from the code.
+- `escalations`: the number of escalations received.
+- `team_fallback`: true when the team re-formation fell back to the Step 1 roster.
+- `aborted`: null when the run came to Step 5 after finishing Step 4; otherwise `{"step": <1-4>, "reason": "<string>"}` with the step the run stopped in, the aborts under § Requirements and § Trust premise counting as step 1.
+- `kept_worktree`: the path of the worktree the teardown kept, otherwise null.
+- Write `reason` and `summary` in `{doc_lang}`.
 
 ## Output language
 
@@ -52,7 +83,7 @@ Setup:
 1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh create {branch}` (`{branch}`: the option's value or its default). It prints `main_root=` / `worktree_path=` / `branch=` lines; hold all three. On a non-zero exit, show its error and terminate the skill.
 2. Move the session into the worktree with a Bash `cd {worktree_path}`; teammates spawned afterwards work there. Then, in a separate Bash call, confirm that `git rev-parse --show-toplevel` prints `{worktree_path}`; if it does not, the working directory did not persist — run the teardown and terminate. Until the teardown, run no other bare `cd`: it moves the working directory of the whole session and of every sub-agent launched afterwards. Reach another directory through a command's own option (e.g. `git -C dir`) or a subshell. Do not use `EnterWorktree` / `ExitWorktree`: their isolation rejects Write / Edit outside the worktree, including the main working tree's `.claude/tmp/`.
 
-Path base: resolve `{tmp_dir}`, the default `{design_dir}`, and a relative `--output` against `{main_root}`. Pass the task specification to team-analysis as given; teammates resolve its paths against `{target_dir}` per `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md`, where an absolute path outside `{target_dir}` stays a read-only reference. Without `--worktree`, `{main_root}` is `(none)` and those paths are relative to the working directory.
+Path base: resolve `{tmp_dir}`, the default `{design_dir}`, and a relative `--output`, `--handoff`, or `--result` against `{main_root}`. Before the setup, as in the `--handoff` check of Step 1 step 1 and a result file written on an exit there, resolve them against the working directory, the repository root, which is the path the setup prints as `main_root=`. Pass the task specification to team-analysis as given; teammates resolve its paths against `{target_dir}` per `${CLAUDE_PLUGIN_ROOT}/rules/teammate.md`, where an absolute path outside `{target_dir}` stays a read-only reference. Without `--worktree`, `{main_root}` is `(none)` and those paths are relative to the working directory.
 
 Teardown — on every exit after setup, after stopping the spawned teammates (Step 5 step 2):
 
@@ -67,6 +98,7 @@ Addressing contract:
 
 - A teammate is addressed by the **name** it was spawned with — its role label `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` / `dev-helper` / `comment-sensei` / `prompt-sensei`. A name keeps resolving after the teammate goes idle or completes; the send resumes it from its transcript.
 - The newest holder of a name wins, so never spawn two teammates under the same name in a session.
+- Under `--team-tag`, a teammate's name is its role label with `-{tag}` appended (e.g. `coder-backend-{tag}`, `dev-helper-{tag}`), and every name you handle is that tagged name: the name you spawn with, address, or hand to a teammate (the `reviewer`, `producer`, `comment_reviewer`, and `prompt_reviewer` variables included), record in the roster or among those awaiting a respawn, compare (a new member in Step 2 step 4, a name chosen in Step 4 step 7a), list in `taken_names`, or stop with `TaskStop`. The subagent_type takes no tag. The role labels this skill writes elsewhere (`dev-helper`, `architect-{slug}`, and the rest) stand for the tagged names.
 - The leader is reached at `to: "main"`. When teammates DM each other, the leader hands each the other's name in the dispatch message.
 - Every `SendMessage` `message` is a string of prose sent with a `summary` (dispatches and reports alike); structured results travel as files, never inside `message`. The protocol objects are the only exception (`${CLAUDE_PLUGIN_ROOT}/rules/teammate.md` § Tools).
 
@@ -98,15 +130,15 @@ A cell pairs a producer (an architect or a coder) with one reviewer, who run the
 
 Gate on closure: every cell ends in one closure report to `to: "main"` naming the cell id — resolved, or closed on round-cap exhaustion with a `FIXME:` left at any unresolved `Critical`. A `Critical` disagreement reaches the leader as an escalation before that closure.
 
-Triage and arbitration judgment priority: (1) the user's original task instructions, then (2) the upstream design intent.
+Triage and arbitration judgment priority: (1) the user's original task instructions, then (2) the handoff when `--handoff` is given, then (3) the upstream design intent.
 
 ## Escalation
 
-When a reviewer escalates a `Critical` disagreement, the leader arbitrates by the judgment priority above. If the leader cannot decide either, it presents a summary of the dispute to the user and has the producer insert a `FIXME:` at the location (requested via `SendMessage` to the producer's name). It proceeds without waiting for the user's reply; the unresolved item is recorded for the downstream authoritative review.
+When a reviewer escalates a `Critical` disagreement, the leader arbitrates by the judgment priority above. Under `--handoff`, the leader may Read the handoff to arbitrate: it is an input of the task, not a body § Leader scope keeps with the teammates. If the leader cannot decide either, it presents a summary of the dispute to the user and has the producer insert a `FIXME:` at the location (requested via `SendMessage` to the producer's name). It proceeds without waiting for the user's reply; the unresolved item is recorded for the downstream authoritative review.
 
 ## Leader scope (body isolation)
 
-The leader holds only the roster (each teammate's name → agentType), the teammates awaiting a respawn, the pairings, each cell's status, severity counts, file paths, and the QA and interpretation-test results. Design bodies, source, and finding bodies stay with the teammates; findings travel producer ⇄ reviewer by `SendMessage`.
+The leader holds only the roster (each teammate's name → agentType), the teammates awaiting a respawn, the pairings, each cell's status, severity counts, file paths, the QA and interpretation-test results, the names of the turning points the designs restore from, and the counts of escalations and of the `FIXME:`s left for unresolved items. Design bodies, source, and finding bodies stay with the teammates; findings travel producer ⇄ reviewer by `SendMessage`.
 
 ## Working directory
 
@@ -127,13 +159,13 @@ The design documents go to `{design_dir}/design-{slug}.md` (one design section p
 
 ## Step 1 — Form the team and pair
 
-1. If `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill.
+1. If `git rev-parse --show-prefix` prints a non-empty value (the session is in a subdirectory of the repository), show an error that the skill requires a session started at the repository root and terminate the skill. Then, when `--team-tag` is not of the form § Options gives or `--handoff` is not an existing file, show an error and terminate the skill.
 2. Under `--worktree`, run the setup in § Worktree.
 3. Fix `{target_dir}`, the work target every teammate receives: `{worktree_path}` under `--worktree`, otherwise the output of `git rev-parse --show-toplevel`.
-4. This skill operates only on a clean working tree: run `git status --porcelain -uall`, and if the output outside `.claude/tmp/`, outside `.claude/worktrees/`, and outside the `--output` destination is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill. These are excluded because design documents of past runs and the worktrees of `--worktree` runs remain there.
-5. Fix `{tmp_dir}` and `{design_dir}`. Before creating them, run `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry {tmp_dir}`, which refuses a symlinked `.claude`; on a non-zero exit, show its error and terminate the skill. Create them (`mkdir -p`). Then record the pre-coding baseline: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`.
+4. This skill operates only on a clean working tree: run `git status --porcelain -uall`, and if the output outside `.claude/tmp/`, outside `.claude/worktrees/`, outside the `--output` destination, and other than the `--handoff` and `--result` files is non-empty (staged, unstaged, or untracked entries exist), display an error message on the console and terminate the skill. These are excluded because design documents of past runs and the worktrees of `--worktree` runs remain there.
+5. Fix `{tmp_dir}` and `{design_dir}`. Before creating them, run `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry {tmp_dir}`, which refuses a symlinked `.claude`; on a non-zero exit, show its error and terminate the skill. Create them (`mkdir -p`). Then record the pre-coding baseline: `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh snapshot {tmp_dir}/baseline-tree`, and with it `{start_head}`, the `HEAD` commit, and `{start_branch}`, the current branch (none on a detached `HEAD`).
 6. Console: `## Step 1 — Team formation`.
-7. Spawn `dev-helper` (type `cdev:dev-helper`, name `dev-helper`). To it, `SendMessage` naming `templates/team-analysis.md` with `task = {task specification}`, `output_path = {tmp_dir}/team.jsonl`. On its completion report, Read `{tmp_dir}/team.jsonl`: `{task_summary, target_languages, has_test_suite, has_prompts, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).
+7. Spawn `dev-helper` (type `cdev:dev-helper`, name `dev-helper`). To it, `SendMessage` naming `templates/team-analysis.md` with `task = {task specification}`, `handoff_path = {the --handoff file as an absolute path, or (none)}`, `output_path = {tmp_dir}/team.jsonl`. On its completion report, Read `{tmp_dir}/team.jsonl`: `{task_summary, target_languages, has_test_suite, has_prompts, architects:[{name, slug, scope, reviewer, reason}], coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}` (`name` is the subagent_type to spawn). Each producer's `reviewer` is the paired reviewer's `slug` (one reviewer may be paired to several producers, but only within the same domain).
 8. Spawn each roster member, naming it `architect-{slug}` / `coder-{slug}` / `reviewer-{slug}` and using the `name` team-analysis returns as the type (architects and coders use `general-purpose`). Hold the pairings and `{task_summary}`. A producer's paired reviewer is addressed as `reviewer-{the producer's reviewer slug}`.
 9. Console: the roster with each producer's paired reviewer and one-line reasons.
 
@@ -141,10 +173,10 @@ The design documents go to `{design_dir}/design-{slug}.md` (one design section p
 
 1. Console: `## Step 2 — Design`.
 2. For each architect, start the design cell `design-{slug}` with two messages (addressed to roster names):
-   - To `architect-{slug}`, `SendMessage` naming `templates/design.md` with `task = {task_summary}`, `assigned_scope = {its scope}`, `output_path = {design_dir}/design-{slug}.md`, `reviewer = {paired reviewer's name}`.
-   - To the paired reviewer's name, `SendMessage` naming `templates/design-review.md` with `task = {task_summary}`, `design_path = {design_dir}/design-{slug}.md`, `producer = architect-{slug}`, `cell_task = design-{slug}`, `review_rounds = {--review-rounds}`.
-3. Gate: one closure report per design cell, arbitrating any escalation as it arrives. Collect the section paths as `{design_paths}`. When a design cell's closure report states that the design creates or edits an AI-facing prompt file, set `has_prompts` to true.
-4. Re-form the team so that Step 3 starts with a writer and a domain reviewer for every file, the files the design brings in included. Console: `## Step 2 — Team re-formation`. To `dev-helper`, `SendMessage` naming `templates/team-reassign.md` with `design_paths = {design_paths}`, `roster_path = {tmp_dir}/team.jsonl`, `taken_names = {the name of every teammate spawned in this session}`, `output_path = {tmp_dir}/team-reassign.jsonl`. On its completion report, Read `{tmp_dir}/team-reassign.jsonl`: `{coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`. An entry whose role name (`coder-{slug}` / `reviewer-{slug}`) is neither in the roster nor that of a teammate awaiting a respawn is a new member.
+   - To `architect-{slug}`, `SendMessage` naming `templates/design.md` with `task = {task_summary}`, `assigned_scope = {its scope}`, `handoff_path = {as in Step 1 step 7}`, `output_path = {design_dir}/design-{slug}.md`, `reviewer = {paired reviewer's name}`.
+   - To the paired reviewer's name, `SendMessage` naming `templates/design-review.md` with `task = {task_summary}`, `design_path = {design_dir}/design-{slug}.md`, `handoff_path = {as in Step 1 step 7}`, `producer = architect-{slug}`, `cell_task = design-{slug}`, `review_rounds = {--review-rounds}`.
+3. Gate: one closure report per design cell, arbitrating any escalation as it arrives. Collect the section paths as `{design_paths}`, and the turning-point names the closure reports state the designs restore from, without duplicates, as `{restored_from}`. When a design cell's closure report states that the design creates or edits an AI-facing prompt file, set `has_prompts` to true.
+4. Re-form the team so that Step 3 starts with a writer and a domain reviewer for every file, the files the design brings in included. Console: `## Step 2 — Team re-formation`. To `dev-helper`, `SendMessage` naming `templates/team-reassign.md` with `design_paths = {design_paths}`, `roster_path = {tmp_dir}/team.jsonl`, `taken_names = {the name of every teammate spawned in this session}`, `team_tag = {the --team-tag value, or (none)}`, `output_path = {tmp_dir}/team-reassign.jsonl`. On its completion report, Read `{tmp_dir}/team-reassign.jsonl`: `{coders:[{name, slug, scope, reviewer, reason}], reviewers:[{name, slug, reason}], rationale}`. An entry whose role name (`coder-{slug}` / `reviewer-{slug}`) is neither in the roster nor that of a teammate awaiting a respawn is a new member.
    - When any of the following holds, send the task back to `dev-helper` once, stating which: the file is missing or does not match that format; a roster coder or reviewer has no entry of the same `slug`, or its entry has a different `name` or (for a coder) `reviewer`; two entries of the output's `coders`, or two of its `reviewers`, share a `slug`; a coder's `reviewer` is not the `slug` of an entry of the output's `reviewers`. If one still holds after that, start Step 3 with the Step 1 roster: show that on the console and retain it for the Step 5 report.
    - Otherwise, spawn each new member as in Step 1 step 8, then replace each coder's scope and paired reviewer with the output's.
    - Console: the roster as in Step 1 step 9, marking the members added and the coders whose scope changed.
@@ -177,8 +209,9 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 
 ## Step 5 — Clean up and report
 
-1. If `--commit` is on and the loop of Step 4 exited with both QA and the interpretation test passing, commit the implementation: stage only the changed source files (not `.claude/tmp`, `.claude/worktrees`, or `{design_dir}`), and commit once with a concise message (no finding IDs).
+1. Commit the implementation if `--commit` is on and the loop of Step 4 exited with both QA and the interpretation test passing, or if `--commit-always` is on and the run entered Step 4, whatever QA and the interpretation test found, a run that came to Step 5 on a refused spawn in Step 4 included. Under `--handoff`, first confirm that the current branch and the `HEAD` commit are still `{start_branch}` and `{start_head}`; if not, do not commit, and retain that for the report. To commit, stage only the changed source files (not `.claude/tmp`, `.claude/worktrees`, `{design_dir}`, or the `--handoff` and `--result` files), and commit once with a concise message (no finding IDs); with nothing to stage, do not commit.
 2. Stop the teammates: call `TaskStop` with each roster name as `task_id`, and go on to the next step without waiting for a reply or a notification. An idle teammate has no running task, so a failure saying it is not running means it is already stopped. Do not send `shutdown_request`: it gives the leader no completion signal to wait on.
 3. Remove the working directory: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 4. Under `--worktree`, run the teardown in § Worktree.
-5. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, whether the team re-formation fell back to the Step 1 roster, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the prompt-review counts the coders reported, the QA result when Step 4 ran (`summary_line`, plus `workflow_warning` if any, and `prompt_summary_line` when `has_prompts` is true), any unfixed QA failure, stated as environmental when `environmental` is true, any prompt file still failing the interpretation test, any prompt file left untested with its reason, any teammate whose `TaskStop` failed for a reason other than not running, and, when the run came to Step 5 on a refused spawn, the step it stopped in and each teammate whose spawn was still refused. Under `--worktree`, add the branch and any worktree the teardown kept.
+5. Under `--result`, write the result file (§ Result file).
+6. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, whether the team re-formation fell back to the Step 1 roster, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the prompt-review counts the coders reported, the QA result when Step 4 ran (`summary_line`, plus `workflow_warning` if any, and `prompt_summary_line` when `has_prompts` is true), any unfixed QA failure, stated as environmental when `environmental` is true, any prompt file still failing the interpretation test, any prompt file left untested with its reason, any teammate whose `TaskStop` failed for a reason other than not running, and, when the run came to Step 5 on a refused spawn, the step it stopped in and each teammate whose spawn was still refused. Add, when `--commit-always` committed with QA or the interpretation test not passing, that fact; any commit skipped because the branch or `HEAD` moved; and, under `--result`, the result file's path or that writing it failed. Under `--worktree`, add the branch and any worktree the teardown kept.

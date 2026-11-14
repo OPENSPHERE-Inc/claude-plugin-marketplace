@@ -9,7 +9,7 @@ A Claude Code plugin marketplace maintained by OPENSPHERE Inc.
 | Plugin | Description |
 |--------|-------------|
 | `creview` | Multi-agent parallel code review workflow: start → triage → respond → resolve, plus an automatic multi-round driver. |
-| `cdev` | Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. AI-facing prompts also get a prompt-discipline self-check, compression, and an interpretation test. |
+| `cdev` | Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. AI-facing prompts also get a prompt-discipline self-check, compression, and an interpretation test. A loop skill runs the coding workflow and `creview`'s multi-round review as one unattended pipeline, sending the work back to coding on a review divergence and starting over after a post-mortem, each within a limit. |
 | `cgh` | GitHub pull request workflow on top of `creview`: post a triaged review, run a merge gate, answer posted reviews, and verify the fixes of your own review. |
 
 ## Installation
@@ -23,8 +23,8 @@ Add this marketplace, then install the plugins:
 /plugin install cgh@opensphere-inc
 ```
 
-`creview` and `cdev` are self-contained. `cgh` depends on `creview`, which Claude Code
-installs with it.
+`creview` is self-contained. `cdev` and `cgh` depend on `creview`, which Claude Code
+installs with them.
 
 ## Skill commands
 
@@ -36,6 +36,7 @@ installs with it.
 | `/creview:resolve` | Verify the findings of a review document or of a GitHub pull request's comments against the source; persist `verification`. |
 | `/creview:rounds` | Automatically iterate the four phases across multiple rounds. |
 | `/cdev:coding` | Implement a coding task end to end, AI-facing prompts included: design and coding as paired review cells, then a QA gate. |
+| `/cdev:loop` | Take a coding task through `/cdev:coding` and `/creview:rounds` unattended: send it back to coding on a review divergence and start over after a post-mortem, each within a limit. |
 | `/cgh:review` | Review a pull request and, on your instruction, post the findings as a Request Changes or Comment review. |
 | `/cgh:gate` | Judge whether a self-reviewed pull request can merge as it stands and, on your instruction, post PASS or BLOCK. Run it again until it passes. |
 | `/cgh:respond` | Triage a pull request's reviews, fix them on your confirmation (`--no-confirm` skips it) and, after you push and instruct it, reply with what was done and the commit. |
