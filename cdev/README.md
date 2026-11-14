@@ -144,9 +144,10 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
       code even when the handoff names turning points.
     - Only the file contents are restored: the branch and HEAD stay where they are, and the
       restored content counts as a change of this run.
-    - A path whose restore would overwrite or delete an untracked file or a tracked file with
-      local changes, or would change a path outside it, is refused and left as it is. The run
-      goes on without it, and the final report and the result file list it with the reason.
+    - A restore that would do either of the following is refused, and the path it would
+      restore is left as it is: overwrite or delete an untracked file or a tracked file with
+      local changes, or change a path outside the path it restores. The run goes on, and the
+      final report and the result file list each refused path with its reason.
   - The run does not commit when the branch or HEAD has moved since the start.
 - `--team-tag {tag}` (default none) — appends `-{tag}` to every teammate name, e.g.
   `coder-backend-g1c2`, so that a second or later run in the same session does not reuse the
