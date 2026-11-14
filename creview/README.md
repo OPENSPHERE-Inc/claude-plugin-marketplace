@@ -543,7 +543,9 @@ error, and the worktree left behind, if any. A relative `--result` path
 resolves against the repository root, which under `--worktree` is the main
 working tree's root. The paths in the file are absolute under `--worktree`;
 without it, they are relative to the repository root, or absolute when the
-output path given as the run's argument is absolute.
+output base path is absolute. The output base path is the run's positional
+argument, `.claude/tmp/` by default, and the run writes its review documents
+and reports under it.
 
 The run writes the file whenever it gets past its checks that the session
 started at the repository root and that `.claude` and `.claude/tmp` are not
