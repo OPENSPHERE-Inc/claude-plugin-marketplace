@@ -60,13 +60,15 @@ Which of them hold findings of --kind is judged by whoever reads the batches. An
 its comment or thread, location, text, the replies in its thread, and, when it is in a thread,
 review_opening, the opening of its review's visible body, and, for a reply in someone else's thread,
 thread_root, that thread's first comment in the form of a reply. A batch's metadata line holds
-viewer and the pull request's author and assignees, by whom an answer is weighed, and kind; its item
-records follow, and then, when it holds an item with no thread or kind is gate, conversation
-records, the conversation outside threads, with the key of each entry. items.jsonl also records
-backed: whether the user replied in the item's thread, or wrote a review body or an issue comment
-after it other than the one holding it, and marks, by finding ID, whether the user's comments
-outside dismissed reviews last showed it as blocking, in the form this script posts at the start of
-a line.
+viewer and the pull request's author and assignees, by whom an answer is weighed, and kind. Its item
+records follow, without replies and thread_root, which follow them one comment a line, each with
+item, the key of its item: the thread_root records, of each item that has one, and then the reply
+records, each item's replies in item order, oldest first. Then, when it holds an item with no thread
+or kind is gate, come conversation records, the conversation outside threads, with the key of each
+entry. items.jsonl also records backed: whether the user replied in the item's thread, or wrote a
+review body or an issue comment after it other than the one holding it, and marks, by finding ID,
+whether the user's comments outside dismissed reviews last showed it as blocking, in the form this
+script posts at the start of a line.
 
 prior: reads the judgment of each batch from <tmp_dir>/posted/extract-<n>.jsonl, a single object,
 and names any file that is missing or malformed, removing a malformed one: a key must be an item of
@@ -303,7 +305,8 @@ OPENING_LIMIT = 300
 BATCH_CHARS = 40000
 # The lists of each record file, in line order, each with the type of its records.
 OWN_BATCH = (("comments", "comment"), ("others", "other"), ("own_outside", "own_outside"))
-POSTED_BATCH = (("items", "item"), ("conversation", "conversation"))
+POSTED_BATCH = (("items", "item"), ("thread_roots", "thread_root"), ("replies", "reply"),
+                ("conversation", "conversation"))
 RAISED_BATCH = (("comments", "comment"),)
 CONVERSATION = (("conversation", "conversation"),)
 COMMENTS = (("review_comments", "review_comment"), ("reviews", "review"),
@@ -1136,10 +1139,14 @@ def cmd_collect(pr_url, tmp_dir, kind):
                                         + len(i.get("thread_root", {}).get("text", ""))))
     write_json(os.path.join(directory, "items.jsonl"),
                {"items": items, "batches": len(batches), "marks": marks})
-    shown = ("key", "earlier_ids", "location", "text", "replies", "review_opening", "thread_root")
+    shown = ("key", "earlier_ids", "location", "text", "review_opening")
     for n, batch in enumerate(batches, 1):
         data = {**people, "kind": kind,
-                "items": [{k: item[k] for k in shown if k in item} for item in batch]}
+                "items": [{k: item[k] for k in shown if k in item} for item in batch],
+                "thread_roots": [{"item": item["key"], **item["thread_root"]}
+                                 for item in batch if "thread_root" in item],
+                "replies": [{"item": item["key"], **reply}
+                            for item in batch for reply in item["replies"]]}
         if kind == "gate" or any(item["target"]["kind"] != "thread" for item in batch):
             data["conversation"] = outside
         write_records(os.path.join(directory, f"batch-{n}.jsonl"), data, POSTED_BATCH)

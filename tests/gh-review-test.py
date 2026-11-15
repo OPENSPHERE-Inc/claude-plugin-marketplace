@@ -157,7 +157,8 @@ def read_text(path):
 # kept apart from the module so that these tests read and write the files on their own.
 RECORD_LISTS = {
     "own": (("comments", "comment"), ("others", "other"), ("own_outside", "own_outside")),
-    "posted": (("items", "item"), ("conversation", "conversation")),
+    "posted": (("items", "item"), ("thread_roots", "thread_root"), ("replies", "reply"),
+               ("conversation", "conversation")),
     "raised": (("comments", "comment"),),
     "conversation.jsonl": (("conversation", "conversation"),),
     "comments.jsonl": (("review_comments", "review_comment"), ("reviews", "review"),
@@ -1232,9 +1233,18 @@ class PriorBase(Base):
             self.add_ids(f"thread:{comment_id}", fid)
 
     def collect(self, kind="review"):
+        """Each batch with the thread_root and reply records put back on their items."""
         result = mod.cmd_collect(URL, self.dir, kind)
         batches = [load(os.path.join(result["directory"], f"batch-{n}.jsonl"))
                    for n in range(1, result["batches"] + 1)]
+        for batch in batches:
+            items = {item["key"]: item for item in batch["items"]}
+            for item in batch["items"]:
+                item["replies"] = []
+            for root in batch.pop("thread_roots"):
+                items[root.pop("item")]["thread_root"] = root
+            for reply in batch.pop("replies"):
+                items[reply.pop("item")]["replies"].append(reply)
         return result, batches
 
     def judged(self, kind, states, hand):
@@ -2774,6 +2784,36 @@ class PostedContext(PriorBase):
                          {"key", "earlier_ids", "location", "text", "replies", "review_opening"})
         items = load(os.path.join(result["directory"], "items.jsonl"))["items"]
         self.assertFalse(items[0]["backed"])
+
+    def test_a_batch_holds_one_comment_a_line(self):
+        gh = self.finding()
+        self.reply(gh, "later", login="rev", stamp="02")
+        self.reply(gh, "earlier", stamp="01")
+        mod.cmd_collect(URL, self.dir, "review")
+        path = os.path.join(self.dir, "posted", "batch-1.jsonl")
+        self.assertEqual(line_types(path), ["meta", "item", "reply", "reply"])
+        _, item, *replies = json_lines(path)
+        self.assertFalse({"replies", "thread_root"} & set(item))
+        self.assertEqual([(r["item"], r["author"], r["text"]) for r in replies],
+                         [(item["key"], "me", "earlier"), (item["key"], "rev", "later")])
+        items = load(os.path.join(self.dir, "posted", "items.jsonl"))["items"]
+        self.assertEqual([r["text"] for r in items[0]["replies"]], ["earlier", "later"])
+
+    def test_a_reply_in_a_thread_of_another_author_has_its_first_comment_on_a_line(self):
+        gh = self.fake()
+        self.local(gh)
+        gh.reviews.append({"id": 1, "state": "COMMENTED", "user": {"login": "me"}, "body": ""})
+        gh.review_comments.append({
+            "id": self.ROOT, "user": {"login": "rev"}, "pull_request_review_id": 1,
+            "path": "src/a.py", "line": 10, "in_reply_to_id": None, "body": "It leaks."})
+        self.reply(gh, "Agreed.", comment_id=70)
+        mod.cmd_collect(URL, self.dir, "review")
+        path = os.path.join(self.dir, "posted", "batch-1.jsonl")
+        self.assertEqual(line_types(path), ["meta", "item", "thread_root"])
+        _, item, root = json_lines(path)
+        self.assertFalse({"replies", "thread_root"} & set(item))
+        self.assertEqual((root["item"], root["author"], root["own"], root["text"]),
+                         (item["key"], "rev", False, "It leaks."))
 
     def test_a_tag_of_anyone_reaches_no_batch(self):
         gh = self.fake()
