@@ -24,6 +24,8 @@ SPEC.loader.exec_module(mod)
 URL = "https://github.com/acme/app/pull/7"
 HEAD = "a" * 40
 BASE = "b" * 40
+CHECK_JSONL = os.path.join(ROOT, "creview", "scripts", "check-jsonl.py")
+SEPARATORS = "\u2028\u2029\u0085"
 
 DOCUMENT = f"""# Parallel Code Review Report
 
@@ -149,6 +151,76 @@ def view(head=HEAD, author="author", viewer="me", mergeable="MERGEABLE", state="
 def read_text(path):
     with open(path, encoding="utf-8") as f:
         return f.read()
+
+
+# The lists of each record file of gh-review.py, in line order, each with the type of its records,
+# kept apart from the module so that these tests read and write the files on their own.
+RECORD_LISTS = {
+    "own": (("comments", "comment"), ("others", "other"), ("own_outside", "own_outside")),
+    "posted": (("items", "item"), ("conversation", "conversation")),
+    "raised": (("comments", "comment"),),
+    "conversation.jsonl": (("conversation", "conversation"),),
+    "comments.jsonl": (("review_comments", "review_comment"), ("reviews", "review"),
+                       ("issue_comments", "issue_comment")),
+    "fix-commits.jsonl": (("commits", "commit"),),
+    "draft.jsonl": (("findings", "finding"), ("prior", "prior"), ("waived", "waived")),
+    "replies.jsonl": (("replies", "reply"),),
+    "r.jsonl": (("replies", "reply"),),
+}
+
+
+def record_lists(path):
+    """The lists of the record file at path, or None for a single-object file."""
+    name = os.path.basename(path)
+    if name.startswith("batch-"):
+        return RECORD_LISTS[os.path.basename(os.path.dirname(path))]
+    return RECORD_LISTS.get(name)
+
+
+def json_lines(path):
+    """The value of each line of a JSON Lines file, blank lines left out."""
+    with open(path, encoding="utf-8", newline="") as f:
+        lines = f.read().split("\n")
+    return [json.loads(line[:-1] if line.endswith("\r") else line)
+            for line in lines if line.strip()]
+
+
+def line_types(path):
+    return [value.get("type") for value in json_lines(path)]
+
+
+def load(path):
+    """What a file holds: its one object, or the fields of its metadata line with its lists."""
+    values = json_lines(path)
+    lists = record_lists(path)
+    if lists is None:
+        if len(values) != 1 or not isinstance(values[0], dict):
+            raise AssertionError(f"{path} holds {len(values)} lines, not one object")
+        return values[0]
+    meta, *records = values
+    if meta.get("type") != "meta":
+        raise AssertionError(f"{path} opens with {meta!r}, not its metadata line")
+    data = {key: value for key, value in meta.items() if key != "type"}
+    data.update((key, []) for key, _ in lists)
+    of_type = {kind: key for key, kind in lists}
+    for record in records:
+        if record.get("type") not in of_type:
+            raise AssertionError(f"{path} holds a record of type {record.get('type')!r}")
+        data[of_type[record["type"]]].append(
+            {key: value for key, value in record.items() if key != "type"})
+    return data
+
+
+def dump(path, data):
+    """Writes data in the layout of its file, as a leader writes it."""
+    lists = record_lists(path)
+    lines = [data]
+    if lists is not None:
+        listed = {key for key, _ in lists}
+        lines = [{"type": "meta", **{k: v for k, v in data.items() if k not in listed}}]
+        lines += [{"type": kind, **entry} for key, kind in lists for entry in data.get(key, [])]
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.writelines(json.dumps(line, ensure_ascii=False) + "\n" for line in lines)
 
 
 class FakeGitHub:
@@ -371,8 +443,7 @@ class Base(unittest.TestCase):
               since=None):
         result = mod.cmd_draft(URL, self.dir, self.doc, kind, lang, prior_doc, blocking,
                                force_comment, since)
-        with open(os.path.join(self.dir, "draft.jsonl"), encoding="utf-8") as f:
-            draft = json.load(f)
+        draft = load(os.path.join(self.dir, "draft.jsonl"))
         draft["comment_lang"] = lang
         for finding in draft["findings"]:
             finding["worded"] = True
@@ -387,8 +458,7 @@ class Base(unittest.TestCase):
 
     def save(self, data, name="draft.jsonl"):
         path = os.path.join(self.dir, name)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+        dump(path, data)
         return path
 
     def reply_file(self, *entries):
@@ -398,7 +468,7 @@ class Base(unittest.TestCase):
     def worded_replies(self):
         """replies.jsonl as replies wrote it, after wording."""
         path = os.path.join(self.dir, "replies.jsonl")
-        self.save({**json.loads(read_text(path)), "comment_lang": "en"}, "replies.jsonl")
+        self.save({**load(path), "comment_lang": "en"}, "replies.jsonl")
         return path
 
     def preview(self, path):
@@ -702,7 +772,7 @@ class ReviewPosting(Base):
         path = os.path.join(self.dir, "draft.jsonl")
         result, text = self.preview(path)
         self.assertEqual(result["event"], "COMMENT")
-        self.assertNotIn("verdict_labels", json.loads(read_text(path)))
+        self.assertNotIn("verdict_labels", load(path))
         self.assertEqual(mod.cmd_post(URL, path, None)["event"], "COMMENT")
         self.assertEqual(gh.named("submitPullRequestReview")[0]["event"], "COMMENT")
 
@@ -820,7 +890,7 @@ class Gate(Base):
         self.assertIn("## Merge gate: No blocking findings\n",
                       read_text(result["post_preview_path"]))
         self.assertEqual(result["post_differs"], [])
-        self.assertEqual(json.loads(read_text(path))["previewed_verdict"], "PASS")
+        self.assertEqual(load(path)["previewed_verdict"], "PASS")
         post = mod.cmd_post(URL, path, None)
         self.assertEqual((post["verdict"], post["event"]), ("PASS", "COMMENT"))
         body = gh.named("submitPullRequestReview")[0]["body"]
@@ -872,7 +942,7 @@ class Gate(Base):
 
     def test_force_comment_sends_a_block_as_comment(self):
         gh, path = self.gate_draft(selected=("M-1",), force_comment=True)
-        self.assertTrue(json.loads(read_text(path))["force_comment"])
+        self.assertTrue(load(path)["force_comment"])
         result = mod.cmd_post(URL, path, None)
         self.assertEqual((result["verdict"], result["event"]), ("BLOCK", "COMMENT"))
         self.assertEqual(gh.named("submitPullRequestReview")[0]["event"], "COMMENT")
@@ -885,7 +955,7 @@ class Gate(Base):
 
     def test_without_force_comment_the_draft_records_none(self):
         _, path = self.gate_draft()
-        self.assertNotIn("force_comment", json.loads(read_text(path)))
+        self.assertNotIn("force_comment", load(path))
 
     def test_document_without_findings_passes(self):
         gh = self.fake()
@@ -1074,7 +1144,7 @@ class Gate(Base):
         gh, path = self.gate_draft()
         result, _ = self.preview(path)
         self.assertEqual(result["verdict"], "PASS")
-        self.assertEqual(json.loads(read_text(path))["previewed_verdict"], "PASS")
+        self.assertEqual(load(path)["previewed_verdict"], "PASS")
         gh.view = view(mergeable="CONFLICTING")
         with self.assertRaisesRegex(mod.Error, "preview"):
             mod.cmd_post(URL, path, None)
@@ -1127,8 +1197,7 @@ class Gate(Base):
 
     def test_waived_prior_passes(self):
         gh, path = self.gate_draft([("M-7", "💬 Feedback — still broken")])
-        with open(path, encoding="utf-8") as f:
-            draft = json.load(f)
+        draft = load(path)
         draft["prior"][0]["state"] = "waived"
         self.preview(self.save(draft))
         result = mod.cmd_post(URL, path, None)
@@ -1141,7 +1210,7 @@ class Gate(Base):
 class PriorBase(Base):
     def add_ids(self, key=None, *ids, used=()):
         """Records in finding-ids.jsonl what the ids subcommand would."""
-        known = json.loads(read_text(os.path.join(self.dir, "finding-ids.jsonl")))
+        known = load(os.path.join(self.dir, "finding-ids.jsonl"))
         if key:
             held = known["comments"].setdefault(key, [])
             held.extend(fid for fid in ids if fid not in held)
@@ -1164,7 +1233,7 @@ class PriorBase(Base):
 
     def collect(self, kind="review"):
         result = mod.cmd_collect(URL, self.dir, kind)
-        batches = [json.loads(read_text(os.path.join(result["directory"], f"batch-{n}.jsonl")))
+        batches = [load(os.path.join(result["directory"], f"batch-{n}.jsonl"))
                    for n in range(1, result["batches"] + 1)]
         return result, batches
 
@@ -1191,8 +1260,7 @@ class PriorBase(Base):
         doc = os.path.join(self.dir, "prior.md")
         self.judged(kind, states, hand)
         result = mod.cmd_prior(URL, self.dir, kind, doc, trust)
-        with open(os.path.join(self.dir, "prior.jsonl"), encoding="utf-8") as f:
-            return result, json.load(f), doc
+        return result, load(os.path.join(self.dir, "prior.jsonl")), doc
 
     def local(self, gh, at="head"):
         gh.git = {"rev-parse": HEAD + "\n" if at == "head" else "e" * 40 + "\n",
@@ -1510,8 +1578,7 @@ class ResolveReplies(Base):
 
     def replies(self):
         result = mod.cmd_replies(URL, self.dir, self.doc, "en")
-        with open(os.path.join(self.dir, "replies.jsonl"), encoding="utf-8") as f:
-            return result, json.load(f)["replies"]
+        return result, load(os.path.join(self.dir, "replies.jsonl"))["replies"]
 
     def test_detail_only_when_the_fix_differs(self):
         self.fake()
@@ -1669,7 +1736,7 @@ class Replies(Base):
         ])
         with self.assertRaises(mod.Error):
             mod.cmd_post(URL, path, None)
-        saved = json.loads(read_text(path))["replies"]
+        saved = load(path)["replies"]
         self.assertEqual([e["posted"] for e in saved], [True, False])
         self.assertEqual(len(gh.posts), 1)
         gh.objects["repos/acme/app/pulls/comments/2"] = {"id": 2, **comment}
@@ -1687,7 +1754,7 @@ class Replies(Base):
         path = self.replies_file([entry])
         with self.assertRaisesRegex(mod.Error, f"post {failure}"):
             mod.cmd_post(URL, path, None)
-        saved = json.loads(read_text(path))["replies"][0]
+        saved = load(path)["replies"][0]
         self.assertEqual((saved["attempted"], saved["posted"]), (True, False))
         return gh, path
 
@@ -1699,7 +1766,7 @@ class Replies(Base):
             self.assertEqual(result["posted"], 1)
             self.assertIn("#landed", result["urls"][0])
             self.assertEqual(len(gh.posts), 1)
-            self.assertTrue(json.loads(read_text(path))["replies"][0]["posted"])
+            self.assertTrue(load(path)["replies"][0]["posted"])
             self.assertEqual(mod.cmd_post(URL, path, None)["posted"], 0)
 
     def test_a_rerun_sends_a_reply_that_did_not_land(self):
@@ -1766,7 +1833,7 @@ class Replies(Base):
         with self.assertRaisesRegex(mod.Error, "limit"):
             mod.cmd_post(URL, path, None)
         self.assertEqual(gh.posts, [])
-        self.assertNotIn("attempted", json.loads(read_text(path))["replies"][0])
+        self.assertNotIn("attempted", load(path)["replies"][0])
 
     def test_malformed_entry_is_refused(self):
         self.fake()
@@ -1915,7 +1982,7 @@ class FindingIds(Base):
     def own(self):
         result = mod.cmd_own(URL, self.dir)
         self.assertEqual(result["directory"], os.path.join(self.dir, "own"))
-        return result, [json.loads(read_text(os.path.join(self.dir, "own", f"batch-{n}.jsonl")))
+        return result, [load(os.path.join(self.dir, "own", f"batch-{n}.jsonl"))
                         for n in range(1, result["batches"] + 1)]
 
     def extract(self, data, n=1):
@@ -1924,7 +1991,7 @@ class FindingIds(Base):
     def ids(self):
         result = mod.cmd_ids(URL, self.dir)
         self.assertEqual(result["path"], os.path.join(self.dir, "finding-ids.jsonl"))
-        return result, json.loads(read_text(result["path"]))
+        return result, load(result["path"])
 
     def everyone(self, gh):
         me, rev = {"login": "me"}, {"login": "rev"}
@@ -1949,7 +2016,7 @@ class FindingIds(Base):
         self.everyone(self.fake())
         result, batches = self.own()
         self.assertEqual(result["batches"], 1)
-        self.assertEqual(json.loads(read_text(os.path.join(self.dir, "own", "keys.jsonl"))),
+        self.assertEqual(load(os.path.join(self.dir, "own", "keys.jsonl")),
                          {"batches": 1})
         self.assertEqual(batches[0]["viewer"], "me")
         self.assertEqual(batches[0]["comments"], [
@@ -1972,13 +2039,15 @@ class FindingIds(Base):
         _, batches = self.own()
         self.assertEqual([[c["key"] for c in b["comments"]] for b in batches],
                          [["thread:1"], ["issue_comment:2"]])
-        self.assertNotIn("others", batches[0])
+        self.assertEqual(batches[0]["others"], [])
         self.assertEqual([o["key"] for o in batches[1]["others"]], ["issue_comment:3"])
 
-    def test_a_batch_outside_threads_holds_others_even_with_none(self):
+    def test_a_batch_holds_a_line_of_each_kind_only_for_what_it_lists(self):
         gh = self.fake()
         gh.issue_comments = [{"id": 2, "user": {"login": "me"}, "body": "Issue."}]
-        self.assertEqual(self.own()[1][0]["others"], [])
+        self.own()
+        self.assertEqual(line_types(os.path.join(self.dir, "own", "batch-1.jsonl")),
+                         ["meta", "comment", "own_outside"])
 
     def own_outside_in_two_batches(self):
         self.addCleanup(setattr, mod, "BATCH_CHARS", mod.BATCH_CHARS)
@@ -2003,7 +2072,7 @@ class FindingIds(Base):
         gh = self.fake()
         gh.review_comments = [{"id": 1, "user": {"login": "me"}, "body": "Inline."}]
         gh.issue_comments = [{"id": 2, "user": {"login": "me"}, "body": "Issue."}]
-        self.assertNotIn("own_outside", self.own()[1][0])
+        self.assertEqual(self.own()[1][0]["own_outside"], [])
 
     def test_ids_records_an_id_under_a_viewers_comment_of_another_batch(self):
         self.own_outside_in_two_batches()
@@ -2125,7 +2194,8 @@ class FindingIds(Base):
         tmp = os.path.join(self.dir, "compile")
         os.makedirs(os.path.join(tmp, "pr-comments"))
         with open(os.path.join(tmp, "pr-comments", "batch-1.jsonl"), "w", encoding="utf-8") as f:
-            json.dump({}, f)
+            f.write(json.dumps({"type": "issue_comment", "id": 1, "author": "alice",
+                                "body": "x"}) + "\n")
         with open(os.path.join(tmp, "pr-comments", "extract-1.jsonl"), "w", encoding="utf-8") as f:
             json.dump({"findings": [
                 {"severity": "Major", "location": "a.py:1", "authors": ["me"],
@@ -2280,7 +2350,7 @@ class PostConfirmation(Base):
         with self.assertRaisesRegex(mod.Error, pattern):
             mod.cmd_post(URL, path, None)
         self.assertEqual(len(gh.posts), 1)
-        self.assertTrue(json.loads(read_text(path))["replies"][0]["posted"])
+        self.assertTrue(load(path)["replies"][0]["posted"])
         self.assertEqual(mod.cmd_post(URL, path, None)["posted"], 0)
         self.assertEqual(len(gh.posts), 1)
 
@@ -2343,7 +2413,7 @@ class PostConfirmation(Base):
         path = os.path.join(self.dir, "draft.jsonl")
         with self.assertRaisesRegex(mod.Error, pattern):
             mod.cmd_post(URL, path, None)
-        self.assertTrue(json.loads(read_text(path))["posted"])
+        self.assertTrue(load(path)["posted"])
         with self.assertRaisesRegex(mod.Error, "already posted"):
             mod.cmd_post(URL, path, None)
 
@@ -2377,8 +2447,7 @@ class Fixes(Base):
         log = next(c for c in gh.calls if "log" in c)
         self.assertEqual(log[:4], ["git", "-c", "core.quotePath=off", "log"])
         self.assertIn(f"{HEAD}..creview-pr-7", log)
-        with open(os.path.join(self.dir, "fix-commits.jsonl"), encoding="utf-8") as f:
-            commits = json.load(f)["commits"]
+        commits = load(os.path.join(self.dir, "fix-commits.jsonl"))["commits"]
         self.assertEqual(commits[0]["files"], ["src/a.py", "src/b.py"])
 
     def test_head_when_no_branch_bullet(self):
@@ -2416,8 +2485,7 @@ class Comments(Base):
                                "path": "a", "line": 2, "in_reply_to_id": None, "body": "p"}]
         gh.issue_comments = [{"id": 8, "user": {"login": "i"}, "body": "d"}]
         mod.cmd_comments(URL, self.dir)
-        with open(os.path.join(self.dir, "comments.jsonl"), encoding="utf-8") as f:
-            data = json.load(f)
+        data = load(os.path.join(self.dir, "comments.jsonl"))
         self.assertEqual([c["id"] for c in data["review_comments"]], [1])
         self.assertEqual([r["id"] for r in data["reviews"]], [3])
         self.assertEqual(data["issue_comments"][0]["id"], 8)
@@ -2466,7 +2534,7 @@ class GateRecheck(Base):
 
     def test_a_broken_verification_can_be_waived(self):
         gh, path = self.rechecked("💬 Feedback — broken again")
-        draft = json.loads(read_text(path))
+        draft = load(path)
         draft["prior"][0]["state"] = "waived"
         self.preview(self.save(draft))
         self.assertEqual(mod.cmd_post(URL, path, None)["verdict"], "PASS")
@@ -2704,7 +2772,7 @@ class PostedContext(PriorBase):
         result, batches = self.collect()
         self.assertEqual(set(batches[0]["items"][0]),
                          {"key", "earlier_ids", "location", "text", "replies", "review_opening"})
-        items = json.loads(read_text(os.path.join(result["directory"], "items.jsonl")))["items"]
+        items = load(os.path.join(result["directory"], "items.jsonl"))["items"]
         self.assertFalse(items[0]["backed"])
 
     def test_a_tag_of_anyone_reaches_no_batch(self):
@@ -2924,7 +2992,7 @@ class PostedContext(PriorBase):
         key = f"thread:{self.ROOT}"
         self.judged("review", None, {key: []})
         path = os.path.join(self.dir, "posted", "extract-1.jsonl")
-        data = json.loads(read_text(path))
+        data = load(path)
         data["skipped"] = [{**entry, "key": entry.get("key", key)} for entry in skipped]
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f)
@@ -2933,7 +3001,7 @@ class PostedContext(PriorBase):
     def test_prior_writes_the_description_for_the_verification(self):
         result = self.prior_with_skipped([{"reason": "other_kind"}])
         self.assertEqual(result["pr_body_path"], os.path.join(self.dir, "pr-body.jsonl"))
-        self.assertEqual(sorted(json.loads(read_text(result["pr_body_path"]))), ["body", "title"])
+        self.assertEqual(sorted(load(result["pr_body_path"])), ["body", "title"])
 
     def test_a_comment_of_the_other_kind_only_counts(self):
         result = self.prior_with_skipped([{"reason": "other_kind"}])
@@ -3198,7 +3266,7 @@ class PostedContext(PriorBase):
         self.assertEqual((item["thread_root"]["author"], item["thread_root"]["text"]),
                          ("rev", "It leaks."))
         self.assertEqual(item["replies"], [])
-        items = json.loads(read_text(os.path.join(self.dir, "posted", "items.jsonl")))["items"]
+        items = load(os.path.join(self.dir, "posted", "items.jsonl"))["items"]
         self.assertFalse(items[0]["backed"])
 
     def test_a_reply_in_a_thread_of_another_author_is_an_item(self):
@@ -3391,7 +3459,7 @@ class PostedContext(PriorBase):
         gh = self.finding()
         gh.issue_comments.append({"id": 8, "user": {"login": "rev"}, "body": "x"})
         _, batches = self.collect()
-        self.assertNotIn("conversation", batches[0])
+        self.assertEqual(batches[0]["conversation"], [])
 
     def test_a_gate_run_always_gets_the_conversation(self):
         gh = self.finding()
@@ -3433,7 +3501,7 @@ class PostedContext(PriorBase):
 
     def replies(self, doc):
         result = mod.cmd_replies(URL, self.dir, doc, "en")
-        return result, json.loads(read_text(os.path.join(self.dir, "replies.jsonl")))["replies"]
+        return result, load(os.path.join(self.dir, "replies.jsonl"))["replies"]
 
     def rendered(self, doc, value, fid="M-1"):
         events = os.path.join(self.dir, "events.jsonl")
@@ -3498,7 +3566,7 @@ class Backing(PriorBase):
 
     def backed(self):
         result = mod.cmd_collect(URL, self.dir, "review")
-        items = json.loads(read_text(os.path.join(result["directory"], "items.jsonl")))["items"]
+        items = load(os.path.join(result["directory"], "items.jsonl"))["items"]
         return {item["key"]: item["backed"] for item in items}
 
     def thread_item_backed(self):
@@ -3604,7 +3672,7 @@ class Backing(PriorBase):
 class Raised(Base):
     def batches(self):
         result = mod.cmd_raised(URL, self.dir)
-        return result, [json.loads(read_text(os.path.join(self.dir, "raised", f"batch-{n}.jsonl")))
+        return result, [load(os.path.join(self.dir, "raised", f"batch-{n}.jsonl"))
                         for n in range(1, result["batches"] + 1)]
 
     def comment(self, cid, body, login="rev", reply_to=None, review=3):
@@ -3724,7 +3792,7 @@ class Raised(Base):
 
     def discussion_batches(self):
         result = mod.cmd_raised(URL, self.dir, discussion=True)
-        return result, [json.loads(read_text(os.path.join(self.dir, "raised", f"batch-{n}.jsonl")))
+        return result, [load(os.path.join(self.dir, "raised", f"batch-{n}.jsonl"))
                         for n in range(1, result["batches"] + 1)]
 
     def test_a_discussion_keeps_resolved_threads(self):
@@ -3772,7 +3840,7 @@ class Raised(Base):
         self.assertGreater(result["batches"], 1)
         self.assertEqual(result["conversation_path"],
                          os.path.join(self.dir, "raised", "conversation.jsonl"))
-        conversation = json.loads(read_text(result["conversation_path"]))["conversation"]
+        conversation = load(result["conversation_path"])["conversation"]
         self.assertEqual([c["text"] for c in conversation], ["earlier", "later"])
         for batch in batches:
             self.assertEqual(list(batch), ["viewer", "author", "assignees", "comments"])
@@ -3815,7 +3883,7 @@ class Raised(Base):
 class CommentsContext(Base):
     def data(self):
         mod.cmd_comments(URL, self.dir)
-        return json.loads(read_text(os.path.join(self.dir, "comments.jsonl")))
+        return load(os.path.join(self.dir, "comments.jsonl"))
 
     def test_carries_who_asks_and_when_each_comment_was_written(self):
         gh = self.fake()
@@ -3868,8 +3936,7 @@ class CreviewContract(PriorBase):
         render = os.path.join(ROOT, "creview", "scripts", "render-review.py")
         subprocess.run([sys.executable, render, doc, events, doc], check=True)
         mod.cmd_replies(URL, self.dir, doc, "en")
-        with open(os.path.join(self.dir, "replies.jsonl"), encoding="utf-8") as f:
-            reply = json.load(f)["replies"][0]
+        reply = load(os.path.join(self.dir, "replies.jsonl"))["replies"][0]
         self.assertEqual((reply["kind"], reply["target_id"], reply["verified"]),
                          ("thread", 5, ["M-1"]))
         self.assertIn("moved to the caller", reply["body"])
@@ -3879,7 +3946,8 @@ class CreviewContract(PriorBase):
         tmp = os.path.join(self.dir, "compile")
         os.makedirs(os.path.join(tmp, "pr-comments"))
         with open(os.path.join(tmp, "pr-comments", "batch-1.jsonl"), "w", encoding="utf-8") as f:
-            json.dump({}, f)
+            f.write(json.dumps({"type": "issue_comment", "id": 1, "author": "alice",
+                                "body": "x"}) + "\n")
         with open(os.path.join(tmp, "pr-comments", "extract-1.jsonl"), "w", encoding="utf-8") as f:
             json.dump({"findings": [{"severity": "Major", "categories": ["Bug"],
                                      "location": "src/a.py:10", "authors": ["rev"],
@@ -3960,7 +4028,7 @@ class PostFailure(Base):
         gh = self.fake()
         self.draft()
         path = os.path.join(self.dir, "draft.jsonl")
-        draft = json.loads(read_text(path))
+        draft = load(path)
         draft["review_id"] = "R_1"
         self.save(draft)
         return gh, path
@@ -3969,21 +4037,21 @@ class PostFailure(Base):
         gh = self.fake()
         self.draft()
         path = os.path.join(self.dir, "draft.jsonl")
-        real_write = mod.write_json
+        real_write = mod.write_post_file
 
         def write(target, data):
             if data.get("posted"):
                 raise OSError("disk full")
             real_write(target, data)
 
-        with mock.patch.object(mod, "write_json", write):
+        with mock.patch.object(mod, "write_post_file", write):
             with self.assertRaisesRegex(OSError, "disk full"):
                 mod.cmd_post(URL, path, None)
-        self.assertEqual(json.loads(read_text(path))["review_id"], "R_1")
+        self.assertEqual(load(path)["review_id"], "R_1")
         with self.assertRaisesRegex(mod.Error, "already.*pullrequestreview-1"):
             mod.cmd_post(URL, path, None)
         self.assertEqual(len(gh.named("submitPullRequestReview")), 1)
-        self.assertTrue(json.loads(read_text(path))["posted"])
+        self.assertTrue(load(path)["posted"])
 
     def test_a_rerun_clears_the_pending_review_of_a_stopped_run(self):
         gh, path = self.interrupted()
@@ -4008,7 +4076,7 @@ class PostFailure(Base):
             with self.assertRaisesRegex(mod.Error, "unknown"):
                 mod.cmd_post(URL, path, None)
             self.assertEqual(gh.mutations, [])
-            self.assertFalse(json.loads(read_text(path))["posted"])
+            self.assertFalse(load(path)["posted"])
 
     def test_a_rerun_sends_nothing_on_a_refusal_other_than_not_found(self):
         for types in ({"UNPROCESSABLE"}, {"NOT_FOUND", "UNPROCESSABLE"}, set()):
@@ -4017,8 +4085,8 @@ class PostFailure(Base):
             with self.assertRaisesRegex(mod.Error, "unknown"):
                 mod.cmd_post(URL, path, None)
             self.assertEqual(gh.mutations, [])
-            self.assertFalse(json.loads(read_text(path))["posted"])
-            self.assertEqual(json.loads(read_text(path))["review_id"], "R_1")
+            self.assertFalse(load(path)["posted"])
+            self.assertEqual(load(path)["review_id"], "R_1")
 
     def test_a_rejection_keeps_the_error_types(self):
         error = mod.Error("failed")
@@ -4036,7 +4104,7 @@ class PostFailure(Base):
         _, path = self.posting()
         with self.assertRaisesRegex(mod.Error, "submit refused"):
             mod.cmd_post(URL, path, None)
-        self.assertNotIn("review_id", json.loads(read_text(path)))
+        self.assertNotIn("review_id", load(path))
 
     def past_the_limit(self, selected):
         self.addCleanup(setattr, mod, "BODY_LIMIT", mod.BODY_LIMIT)
@@ -4081,7 +4149,7 @@ class Wording(Base):
         result, _ = self.raw_draft()
         self.assertEqual(result["selected_ids"], ["C-1", "M-1", "mi-1"])
         self.assertEqual(result["prior_ids"], [])
-        body = json.loads(read_text(result["pr_body_path"]))
+        body = load(result["pr_body_path"])
         self.assertEqual(body, {"title": "Title", "body": "Description"})
 
     def test_merge_reports_what_is_missing_and_touches_nothing_else(self):
@@ -4092,7 +4160,7 @@ class Wording(Base):
         ]})
         result = mod.cmd_wording(URL, path)
         self.assertEqual((result["comment_lang"], result["missing"]), ("en", ["M-1", "mi-1"]))
-        finding = json.loads(read_text(path))["findings"][0]
+        finding = load(path)["findings"][0]
         self.assertEqual((finding["summary"], finding["post_text"], finding["post_summary"]),
                          ("要約", "Null deref", "Guard it"))
         self.assertTrue(finding["selected"])
@@ -4104,17 +4172,17 @@ class Wording(Base):
             {"id": "C-1", "summary": "s", "post_summary": "old"}]})
         mod.cmd_wording(URL, path)
         self.assertEqual(glob.glob(os.path.join(self.dir, "wording-*.jsonl")), [])
-        draft = json.loads(read_text(path))
+        draft = load(path)
         draft["findings"][0]["post_summary"] = "reworded"
         self.save(draft)
         self.wording({"comment_lang": "en", "findings": [{"id": "M-1", "summary": "s"}]}, 2)
         mod.cmd_wording(URL, path)
-        finding = json.loads(read_text(path))["findings"][0]
+        finding = load(path)["findings"][0]
         self.assertEqual(finding["post_summary"], "reworded")
 
     def test_a_finding_with_no_recommendation_needs_no_summary(self):
         _, path = self.raw_draft()
-        draft = json.loads(read_text(path))
+        draft = load(path)
         for f in draft["findings"]:
             f["selected"] = f["id"] == "I-1"
         self.save(draft)
@@ -4130,7 +4198,7 @@ class Wording(Base):
             f.write(prior_doc_text([("M-7", "💬 Feedback — まだ壊れている"), ("M-8", None)]))
         mod.cmd_draft(URL, self.dir, self.doc, "gate", "ja", prior)
         path = os.path.join(self.dir, "draft.jsonl")
-        draft = json.loads(read_text(path))
+        draft = load(path)
         self.wording({"comment_lang": "en", "overview": "o", "findings": [
             {"id": f["id"]} for f in draft["findings"] if f["selected"]]})
         self.assertEqual(mod.cmd_wording(URL, path)["missing"], ["M-7"])
@@ -4147,7 +4215,7 @@ class Wording(Base):
                 mod.cmd_wording(URL, path)
             self.assertFalse(os.path.exists(bad))
             self.assertTrue(os.path.exists(good))
-        self.assertNotIn("comment_lang", json.loads(read_text(path)))
+        self.assertNotIn("comment_lang", load(path))
 
     def test_a_broken_wording_file_is_removed_and_named(self):
         _, path = self.raw_draft()
@@ -4160,11 +4228,16 @@ class Wording(Base):
 
     def test_a_broken_replies_file_keeps_the_wording_files(self):
         self.fake()
-        path = self.save({"comment_lang": "en"}, "replies.jsonl")
+        path = os.path.join(self.dir, "replies.jsonl")
         wording = self.wording({"comment_lang": "en", "replies": []})
-        with self.assertRaisesRegex(mod.Error, "no replies list"):
-            mod.cmd_wording(URL, path)
-        self.assertTrue(os.path.exists(wording))
+        reply = {"type": "reply", "kind": "thread", "target_id": 1}
+        for lines, error in (([{**reply, "body": "a"}], "metadata line"),
+                             ([{"type": "meta"}, reply], "malformed reply")):
+            with open(path, "w", encoding="utf-8") as f:
+                f.writelines(json.dumps(line) + "\n" for line in lines)
+            with self.assertRaisesRegex(mod.Error, error):
+                mod.cmd_wording(URL, path)
+            self.assertTrue(os.path.exists(wording))
 
     def test_two_comment_languages_are_refused(self):
         _, path = self.raw_draft()
@@ -4183,7 +4256,7 @@ class Wording(Base):
             mod.cmd_post(URL, path, None)
 
     def fully_worded(self, path, **extra):
-        draft = json.loads(read_text(path))
+        draft = load(path)
         self.wording({"comment_lang": "en", "findings": [
             {"id": f["id"], "summary": f"要約 {f['id']}", "post_text": f"Text {f['id']}",
              "post_summary": f"Summary {f['id']}"}
@@ -4232,7 +4305,7 @@ class Wording(Base):
 
     def test_preview_names_nothing_when_the_wording_is_the_same(self):
         _, path = self.raw_draft()
-        draft = json.loads(read_text(path))
+        draft = load(path)
         self.wording({"comment_lang": "ja", "findings": [
             {"id": f["id"], "summary": f"要約 {f['id']}"}
             for f in draft["findings"] if f["selected"]]})
@@ -4243,7 +4316,7 @@ class Wording(Base):
     def test_preview_leaves_out_of_post_differs_what_is_not_selected(self):
         _, path = self.raw_draft()
         self.fully_worded(path)
-        draft = json.loads(read_text(path))
+        draft = load(path)
         for finding in draft["findings"]:
             finding["selected"] = finding["id"] == "M-1"
         self.save(draft)
@@ -4257,7 +4330,7 @@ class Wording(Base):
             f.write(prior_doc_text([("M-7", "💬 Feedback — まだ壊れている")]))
         mod.cmd_draft(URL, self.dir, self.doc, "gate", "ja", prior)
         path = os.path.join(self.dir, "draft.jsonl")
-        draft = json.loads(read_text(path))
+        draft = load(path)
         draft["prior"][0]["post_note"] = "still broken"
         for finding in draft["findings"]:
             finding["selected"] = False
@@ -4287,7 +4360,7 @@ class Wording(Base):
 
     def test_preview_puts_the_critical_and_major_not_posted_first_and_marks_them(self):
         _, path = self.raw_draft()
-        draft = json.loads(read_text(path))
+        draft = load(path)
         draft["comment_lang"] = "ja"
         for finding in draft["findings"]:
             finding["worded"] = True
@@ -4306,7 +4379,7 @@ class Wording(Base):
 
     def test_without_a_translation_the_post_uses_the_preview_wording(self):
         _, path = self.raw_draft()
-        draft = json.loads(read_text(path))
+        draft = load(path)
         self.wording({"comment_lang": "ja", "findings": [
             {"id": f["id"], "summary": f"要約 {f['id']}"}
             for f in draft["findings"] if f["selected"]]})
@@ -4320,7 +4393,7 @@ class Wording(Base):
 
     def test_a_translation_goes_out_as_written(self):
         _, path = self.raw_draft()
-        draft = json.loads(read_text(path))
+        draft = load(path)
         self.wording({"comment_lang": "en", "findings": [
             {"id": f["id"], "summary": "s", "post_text": "ask @mallory",
              "post_summary": "<!-- hidden -->"}
@@ -4339,7 +4412,7 @@ class Wording(Base):
         result = mod.cmd_draft(URL, self.dir, self.doc, "gate", "ja", prior)
         self.assertEqual(result["prior_ids"], ["M-7"])
         path = os.path.join(self.dir, "draft.jsonl")
-        draft = json.loads(read_text(path))
+        draft = load(path)
         self.wording({"comment_lang": "en", "overview": "o", "findings": [
             {"id": "M-7", "post_note": "still broken"},
             *({"id": f["id"], "summary": "s"} for f in draft["findings"] if f["selected"])]})
@@ -4354,7 +4427,7 @@ class Wording(Base):
 
     def test_categories_go_out_translated(self):
         _, path = self.raw_draft()
-        draft = json.loads(read_text(path))
+        draft = load(path)
         self.wording({"comment_lang": "en", "findings": [
             {"id": f["id"], "summary": "s", "post_categories": f"Defect {f['id']}"}
             for f in draft["findings"] if f["selected"]]})
@@ -4375,7 +4448,7 @@ class Wording(Base):
 
     def test_a_gate_draft_needs_an_overview(self):
         path = self.gate_raw_draft()
-        draft = json.loads(read_text(path))
+        draft = load(path)
         self.wording({"comment_lang": "ja", "findings": [
             {"id": f["id"], "summary": "s"} for f in draft["findings"] if f["selected"]]})
         self.assertEqual(mod.cmd_wording(URL, path)["missing"], ["overview"])
@@ -4387,7 +4460,7 @@ class Wording(Base):
 
     def test_the_overview_follows_the_verdict_and_goes_out_translated(self):
         path = self.gate_raw_draft()
-        draft = json.loads(read_text(path))
+        draft = load(path)
         for finding in draft["findings"]:
             finding["selected"] = False
         self.save(draft)
@@ -4418,7 +4491,7 @@ class Wording(Base):
             with self.assertRaisesRegex(mod.Error, r"^wording-1\.jsonl: "):
                 mod.cmd_wording(URL, path)
             self.assertFalse(os.path.exists(bad))
-        self.assertNotIn("overview", json.loads(read_text(path)))
+        self.assertNotIn("overview", load(path))
 
     def test_replies_merge_by_index_and_post_the_translation(self):
         gh = self.fake()
@@ -4465,7 +4538,7 @@ class Wording(Base):
         self.save({"findings": []}, "prior.jsonl")
         result = mod.cmd_replies(URL, self.dir, self.doc, "en")
         self.assertEqual(result["pr_body_path"], written)
-        self.assertEqual(json.loads(read_text(written)),
+        self.assertEqual(load(written),
                          {"title": "Title", "body": "Description"})
 
     def test_the_description_reaches_no_one_with_its_html_comments(self):
@@ -4473,7 +4546,7 @@ class Wording(Base):
         pull = gh.view["data"]["repository"]["pullRequest"]
         pull["title"], pull["body"] = "T<!-- a -->", "B<!-- b -->`<!-- c -->`"
         mod.cmd_comments(URL, self.dir)
-        self.assertEqual(json.loads(read_text(os.path.join(self.dir, "pr-body.jsonl"))),
+        self.assertEqual(load(os.path.join(self.dir, "pr-body.jsonl")),
                          {"title": "T", "body": "B`<!-- c -->`"})
 
 
@@ -4949,6 +5022,221 @@ class ReplyTemplate(unittest.TestCase):
             ROOT, "cgh", "rules", "wording.md")))
         self.assertIn("`変更を見送ります。`", read_text(os.path.join(
             ROOT, "src", "cgh", "rules", "wording.md")))
+
+
+class Layout(PriorBase):
+    """What the script writes is JSON Lines in its file's layout, and what it reads must be."""
+
+    def write(self, text, name="x.jsonl"):
+        path = os.path.join(self.dir, name)
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        return path
+
+    def assert_layouts(self, *names):
+        """Every .jsonl file in the directory, the named ones among them, passes check-jsonl.py and
+        holds one object on one line, or a metadata line and then the records of its lists in
+        their order.
+        """
+        paths = glob.glob(os.path.join(glob.escape(self.dir), "**", "*.jsonl"), recursive=True)
+        found = {os.path.relpath(path, self.dir).replace(os.sep, "/") for path in paths}
+        self.assertLessEqual(set(names), found)
+        for path in paths:
+            proc = subprocess.run([sys.executable, CHECK_JSONL, path], capture_output=True,
+                                  text=True)
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            with open(path, "rb") as f:
+                raw = f.read()
+            types = line_types(path)
+            self.assertEqual(raw.count(b"\n"), len(types), path)
+            self.assertTrue(raw.endswith(b"\n") and b"\r" not in raw, path)
+            lists = record_lists(path)
+            if lists is None:
+                self.assertEqual(len(types), 1, path)
+                continue
+            order = ["meta", *(kind for _, kind in lists)]
+            self.assertEqual(types[0], "meta", path)
+            self.assertEqual(types, sorted(types, key=order.index), path)
+
+    def test_the_files_of_the_finding_ids_and_a_resolve_run(self):
+        gh = self.fake()
+        self.local(gh)
+        self.posted(gh)
+        gh.issue_comments = [
+            {"id": 20, "user": {"login": "me"}, "body": "Issue.",
+             "created_at": "2026-01-02T00:00:00Z"},
+            {"id": 21, "user": {"login": "rev"}, "body": "Theirs.",
+             "created_at": "2026-01-03T00:00:00Z"}]
+        mod.cmd_own(URL, self.dir)
+        self.save({"findings": [{"key": "thread:5", "ids": ["M-1"]}], "used": ["M-1"]},
+                  os.path.join("own", "extract-1.jsonl"))
+        mod.cmd_ids(URL, self.dir)
+        self.prior()
+        with open(self.doc, "w", encoding="utf-8") as f:
+            f.write(prior_doc_text([("M-1", "💬 Feedback — still broken")]))
+        path = mod.cmd_replies(URL, self.dir, self.doc, "en")["path"]
+        self.save({"comment_lang": "en", "replies": [{"index": 0, "post_body": "Still."}]},
+                  "wording-1.jsonl")
+        mod.cmd_wording(URL, path)
+        self.preview(path)
+        self.assert_layouts("own/keys.jsonl", "own/batch-1.jsonl", "own/extract-1.jsonl",
+                            "finding-ids.jsonl", "posted/items.jsonl", "posted/batch-1.jsonl",
+                            "posted/extract-1.jsonl", "prior.jsonl", "pr-body.jsonl",
+                            "replies.jsonl")
+        self.assertEqual(line_types(os.path.join(self.dir, "own", "batch-1.jsonl")),
+                         ["meta", "comment", "comment", "other", "own_outside"])
+        self.assertEqual(line_types(os.path.join(self.dir, "posted", "batch-1.jsonl")),
+                         ["meta", "item", "item", "conversation", "conversation"])
+        self.assertEqual(json_lines(path)[0], {"type": "meta", "comment_lang": "en"})
+        self.assertEqual(line_types(path), ["meta", "reply"])
+
+    def test_the_files_of_a_gate_and_a_respond_run(self):
+        gh = self.fake(assignees=("lead",))
+        gh.reviews = [{"id": 3, "state": "COMMENTED", "user": {"login": "rev"}, "body": "Body.",
+                       "submitted_at": "2026-01-01T00:00:00Z"}]
+        gh.review_comments = [{"id": 1, "user": {"login": "rev"}, "pull_request_review_id": 3,
+                               "path": "src/a.py", "line": 10, "in_reply_to_id": None,
+                               "body": "Inline.", "created_at": "2026-01-01T00:00:00Z"}]
+        gh.issue_comments = [{"id": 8, "user": {"login": "pal"}, "body": "Issue.",
+                              "created_at": "2026-01-02T00:00:00Z"}]
+        mod.cmd_raised(URL, self.dir, discussion=True)
+        mod.cmd_comments(URL, self.dir)
+        gh.git = {"log": f"{'f' * 40}\x00fix: add check\n\nsrc/a.py\n"}
+        mod.cmd_fixes(URL, self.dir, self.doc)
+        prior = os.path.join(self.dir, "prior.md")
+        with open(prior, "w", encoding="utf-8") as f:
+            f.write(prior_doc_text([("M-7", "💬 Feedback — still broken")]))
+        self.save({"findings": [{"id": "M-7", "blocking": True}], "waived": [
+            {"id": "M-8", "location": "a.py:1", "text": "t", "reason": "r"}]}, "prior.jsonl")
+        draft = mod.cmd_draft(URL, self.dir, self.doc, "gate", "en", prior)["path"]
+        self.preview(draft)
+        self.assert_layouts("raised/batch-1.jsonl", "raised/conversation.jsonl", "comments.jsonl",
+                            "fix-commits.jsonl", "draft.jsonl", "pr-body.jsonl")
+        raised = os.path.join(self.dir, "raised")
+        self.assertEqual(line_types(os.path.join(raised, "batch-1.jsonl")),
+                         ["meta", "comment", "comment", "comment"])
+        self.assertEqual(line_types(os.path.join(raised, "conversation.jsonl")),
+                         ["meta", "conversation", "conversation"])
+        self.assertEqual(line_types(os.path.join(self.dir, "comments.jsonl")),
+                         ["meta", "review_comment", "review", "issue_comment"])
+        self.assertEqual(line_types(os.path.join(self.dir, "fix-commits.jsonl")),
+                         ["meta", "commit"])
+        self.assertEqual(line_types(draft), ["meta", *["finding"] * 6, "prior", "waived"])
+        self.assertEqual(load(draft)["previewed_verdict"], "BLOCK")
+
+    def test_line_separators_in_comments_stay_in_their_records(self):
+        text = "a\u2028b\u2029c\u0085d"
+        gh = self.fake()
+        gh.issue_comments = [{"id": 2, "user": {"login": "me"}, "body": text},
+                             {"id": 3, "user": {"login": "rev"}, "body": text}]
+        mod.cmd_own(URL, self.dir)
+        batch = os.path.join(self.dir, "own", "batch-1.jsonl")
+        draft = os.path.join(self.dir, "draft.jsonl")
+        mod.write_post_file(draft, {"url": URL, "kind": "review", "overview": text,
+                                    "findings": [{"id": "M-1", "text": text}], "prior": [],
+                                    "waived": []})
+        for path, records in ((batch, 3), (draft, 1)):
+            with open(path, "rb") as f:
+                raw = f.read()
+            for char in SEPARATORS:
+                self.assertNotIn(char.encode("utf-8"), raw)
+            self.assertEqual(len(raw.decode("utf-8").splitlines()), records + 1)
+        own = mod.read_records(batch, mod.OWN_BATCH)
+        self.assertEqual([c["text"] for key in ("comments", "others", "own_outside")
+                          for c in own[key]], [text] * 3)
+        self.assertEqual(load(batch)["others"][0]["text"], text)
+        read = mod.read_post_file(draft)
+        self.assertEqual((read["overview"], read["findings"][0]["text"]), (text, text))
+
+    def test_a_file_a_leader_wrote_with_raw_separators_or_crlf_is_read(self):
+        body = "fixed\u2028now\u0085"
+        lines = [{"type": "meta", "comment_lang": "en"},
+                 {"type": "reply", "kind": "thread", "target_id": 1, "finding_ids": ["M-1"],
+                  "body": body}]
+        for end in ("\n", "\r\n"):
+            path = self.write("".join(json.dumps(line, ensure_ascii=False) + end
+                                      for line in lines), "replies.jsonl")
+            data = mod.read_post_file(path)
+            self.assertEqual((data["comment_lang"], data["replies"][0]["body"]), ("en", body))
+
+    def test_a_single_object_file_must_hold_one_object_on_one_line(self):
+        for text, error in (('{\n  "a": 1\n}\n', r":1: .*3 lines.*one line"),
+                            ('{"a": 1}\n{"b": 2}\n', r":2: .*one line"),
+                            ("", r":1: .*empty"),
+                            ("\n  \n", r":1: .*empty"),
+                            ("[1]\n", r":1: .*not a JSON object"),
+                            ('{"a": 1}\n{"b": \n', r":2:[0-9]+: ")):
+            path = self.write(text)
+            with self.assertRaisesRegex(mod.Error, re.escape(path) + error):
+                mod.read_json(path)
+        self.assertEqual(mod.read_json(self.write('\n{"a": 1}\r\n\n')), {"a": 1})
+
+    def test_a_record_file_must_open_with_its_metadata_line_and_hold_its_records(self):
+        meta = '{"type": "meta"}\n'
+        reply = '{"type": "reply", "kind": "issue", "target_id": null, "body": "b"}\n'
+        for text, error in ((reply, r":1: .*metadata line"),
+                            (meta + '{"type": "finding"}\n', r":2: .*'finding'"),
+                            (meta + '{"kind": "issue"}\n', r":2: .*None"),
+                            (meta + meta, r":2: .*'meta'"),
+                            (meta + "[1]\n", r":2: .*not a JSON object"),
+                            ('{"type": "meta", "replies": []}\n', r":1: .*replies"),
+                            ("", r":1: .*empty"),
+                            ('{"type": "meta",\n "comment_lang": "en"}\n', r":1: .*one line")):
+            path = self.write(text, "replies.jsonl")
+            with self.assertRaisesRegex(mod.Error, re.escape(path) + error):
+                mod.read_records(path, mod.REPLIES)
+        path = self.write(meta + reply, "replies.jsonl")
+        self.assertEqual(mod.read_records(path, mod.REPLIES),
+                         {"replies": [{"kind": "issue", "target_id": None, "body": "b"}]})
+
+    def test_an_agents_file_over_several_lines_is_removed_and_named(self):
+        def pretty(data):
+            return json.dumps(data, indent=2) + "\n"
+
+        gh = self.fake()
+        self.posted(gh)
+        mod.cmd_own(URL, self.dir)
+        extract = self.write(pretty({"findings": [], "used": []}),
+                             os.path.join("own", "extract-1.jsonl"))
+        with self.assertRaisesRegex(mod.Error, r"extract-1\.jsonl"):
+            mod.cmd_ids(URL, self.dir)
+        self.assertFalse(os.path.exists(extract))
+        self.collect()
+        extract = self.write(pretty({"findings": []}), os.path.join("posted", "extract-1.jsonl"))
+        with self.assertRaisesRegex(mod.Error, r"extract-1\.jsonl"):
+            mod.cmd_prior(URL, self.dir, "review", os.path.join(self.dir, "p.md"))
+        self.assertFalse(os.path.exists(extract))
+        blocking = self.write(pretty({"findings": []}), "blocking.jsonl")
+        with self.assertRaisesRegex(mod.Error, r"blocking\.jsonl"):
+            mod.cmd_draft(URL, self.dir, self.doc, "gate", "en", None, blocking)
+        self.assertFalse(os.path.exists(blocking))
+        path = mod.cmd_draft(URL, self.dir, self.doc, "review", "en", None)["path"]
+        wording = self.write(pretty({"comment_lang": "en", "findings": []}), "wording-1.jsonl")
+        with self.assertRaisesRegex(mod.Error, r"^wording-1\.jsonl: .*one line"):
+            mod.cmd_wording(URL, path)
+        self.assertFalse(os.path.exists(wording))
+
+    def test_the_metadata_line_tells_a_draft_from_a_replies_file(self):
+        draft = os.path.join(self.dir, "draft.jsonl")
+        replies = os.path.join(self.dir, "replies.jsonl")
+        empty = {"url": URL, "kind": "gate", "findings": [], "prior": [], "waived": []}
+        mod.write_post_file(draft, empty)
+        mod.write_post_file(replies, {"comment_lang": "en", "replies": []})
+        self.assertEqual(json_lines(draft), [{"type": "meta", "url": URL, "kind": "gate"}])
+        self.assertEqual(json_lines(replies), [{"type": "meta", "comment_lang": "en"}])
+        self.assertEqual(mod.read_post_file(draft), empty)
+        self.assertEqual(mod.read_post_file(replies), {"comment_lang": "en", "replies": []})
+
+    def test_a_gate_draft_with_no_records_is_previewed(self):
+        self.fake()
+        with open(self.doc, "w", encoding="utf-8") as f:
+            f.write(f"# Report\n\n- **PR:** {URL} (head {HEAD}, base {BASE})\n- **Trust:** off\n")
+        path = mod.cmd_draft(URL, self.dir, self.doc, "gate", "en", None)["path"]
+        self.assertEqual(line_types(path), ["meta"])
+        result, _ = self.preview(path)
+        self.assertEqual(result["verdict"], "PASS")
+        self.assertEqual(line_types(path), ["meta"])
+        self.assertEqual(load(path)["previewed_verdict"], "PASS")
 
 
 class Cli(unittest.TestCase):

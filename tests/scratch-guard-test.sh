@@ -90,7 +90,7 @@ PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GUARD}" \
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${CJ}" || { note "FAIL: python3 -m py_compile check-jsonl.py"; fail=1; }
 PYTHONPYCACHEPREFIX="${SANDBOX}/pycache" python3 -m py_compile "${GHPR}" \
     || { note "FAIL: python3 -m py_compile gh-pr.py"; fail=1; }
-python3 -I -B - "${GHPR}" "${SANDBOX}" <<'PY' || fail=1
+python3 -I -B - "${GHPR}" "${SANDBOX}" "${CJ}" <<'PY' || fail=1
 import importlib.util
 import json
 import os
@@ -101,6 +101,14 @@ spec = importlib.util.spec_from_file_location("gh_pr", sys.argv[1])
 g = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(g)
 failed = False
+SEPARATORS = "\u2028\u2029\u0085"
+
+
+def jsonl(path):
+    # Lines end at \n alone, with one \r before it removed.
+    with open(path, encoding="utf-8", newline="") as f:
+        lines = [line[:-1] if line.endswith("\r") else line for line in f.read().split("\n")]
+    return [json.loads(line) for line in lines if line.strip()]
 
 
 def report(case, want, got):
@@ -356,11 +364,37 @@ expect("leave_out_resolved keeps open and unknown threads",
 expect("leave_out_resolved counts threads, not comments", skipped, 1)
 expect("leave_out_resolved leaves the full list as it is", len(threads["review_comments"]), 4)
 
+expect("json_line escapes what str.splitlines() splits at and keeps other characters",
+       g.json_line({"a": "x\u2028y\u2029z\u0085w\u00e9\n"}),
+       '{"a": "x\\u2028y\\u2029z\\u0085w\u00e9\\n"}')
+
 comment_dir = os.path.join(sys.argv[2], "fetched")
 os.makedirs(comment_dir)
 expect("write_comment_batches count", g.write_comment_batches(comment_dir, split), 1)
-with open(os.path.join(comment_dir, "pr-comments", "batch-1.jsonl"), encoding="utf-8") as f:
-    expect("write_comment_batches content", batch_ids([json.load(f)]), [([1, 3, 2, 4], [5], [6])])
+batch = jsonl(os.path.join(comment_dir, "pr-comments", "batch-1.jsonl"))
+expect("write_comment_batches writes a line per comment, a thread's from its first one",
+       [(c["type"], c["id"]) for c in batch],
+       [("review_comment", 1), ("review_comment", 3), ("review_comment", 2), ("review_comment", 4),
+        ("review", 5), ("issue_comment", 6)])
+expect("write_comment_batches puts the type first beside the comment's fields",
+       [list(batch[1]), batch[1]],
+       [["type", "id", "in_reply_to", "body"], {"type": "review_comment", **inline(3, reply=1)}])
+
+odd = "a\u2028b\u2029c\u0085d\r\ne"
+odd_dir = os.path.join(sys.argv[2], "odd")
+os.makedirs(odd_dir)
+g.write_comment_batches(odd_dir, {
+    "review_comments": [inline(1), {"id": 2, "in_reply_to": 1, "body": odd}],
+    "reviews": [{"id": 3, "body": odd}], "issue_comments": [], "omitted": False,
+})
+odd_batch = os.path.join(odd_dir, "pr-comments", "batch-1.jsonl")
+with open(odd_batch, "rb") as f:
+    raw = f.read()
+expect("a batch holds no raw line separator",
+       [c for c in SEPARATORS if c.encode("utf-8") in raw], [])
+expect("str.splitlines() splits a batch at its records only",
+       len(raw.decode("utf-8").splitlines()), 3)
+expect("a batch reads back the bodies", [c["body"] for c in jsonl(odd_batch)][1:], [odd, odd])
 
 docs = os.path.join(sys.argv[2], "docs")
 os.makedirs(docs)
@@ -424,9 +458,19 @@ def fetch(name, comments, *options):
     os.makedirs(out)
     g.all_comments = lambda host, repo, number: comments
     result = g.cmd_fetch(fetch_url, out, *options)
-    with open(os.path.join(out, "pr-comments", "batch-1.jsonl"), encoding="utf-8") as f:
-        batch = [c["id"] for c in json.load(f)["review_comments"]]
+    batches = [os.path.join(out, "pr-comments", n)
+               for n in sorted(os.listdir(os.path.join(out, "pr-comments")))]
+    proc = subprocess.run([sys.executable, "-I", "-B", sys.argv[3], os.path.join(out, "pr.jsonl"),
+                           os.path.join(out, "pr-context.jsonl"), *batches],
+                          capture_output=True, encoding="utf-8", errors="replace")
+    expect(f"check-jsonl.py accepts what cmd_fetch writes for {name}",
+           (proc.returncode, proc.stderr), (0, ""))
+    batch = [c["id"] for b in batches for c in jsonl(b) if c["type"] == "review_comment"]
     return result, batch, out
+
+
+def context_of(out):
+    return jsonl(os.path.join(out, "pr-context.jsonl"))
 
 
 g.run = fetch_run
@@ -441,23 +485,69 @@ try:
     expect("cmd_fetch keeps every thread by default", batch, [1, 2, 3, 4])
     expect("cmd_fetch comment_batches", result["comment_batches"], 1)
     expect("cmd_fetch comments_omitted", result["comments_omitted"], False)
-    with open(os.path.join(out, "pr.jsonl"), encoding="utf-8") as f:
-        expect("cmd_fetch pr.jsonl", json.load(f), {
-            "url": fetch_url, "repo": "o/r", "number": 3, "head_sha": A, "base_sha": fetch_base,
-            "merge_base": B,
-        })
+    with open(os.path.join(out, "pr.jsonl"), encoding="utf-8", newline="") as f:
+        text = f.read()
+    expect("cmd_fetch writes pr.jsonl on one line", (text.count("\n"), text.endswith("\n")),
+           (1, True))
+    expect("cmd_fetch pr.jsonl", json.loads(text), {
+        "url": fetch_url, "repo": "o/r", "number": 3, "head_sha": A, "base_sha": fetch_base,
+        "merge_base": B,
+    })
 
     result, batch, out = fetch("fetch-skip", fetched, "--skip-resolved")
     expect("cmd_fetch --skip-resolved counts the threads", result["resolved_threads_skipped"], 1)
     expect("cmd_fetch --skip-resolved leaves them out of the batches", batch, [3, 4])
-    with open(os.path.join(out, "pr-context.jsonl"), encoding="utf-8") as f:
-        expect("cmd_fetch --skip-resolved keeps them in the conversation",
-               [c["id"] for c in json.load(f)["conversation"]["review_comments"]], [1, 2, 3, 4])
+    expect("cmd_fetch --skip-resolved keeps them in the conversation",
+           [c["id"] for c in context_of(out) if c["type"] == "review_comment"], [1, 2, 3, 4])
 
-    result, _, _ = fetch("fetch-omitted", {**fetched, "omitted": True,
-                                           "thread_states_complete": False})
+    result, _, out = fetch("fetch-omitted", {**fetched, "omitted": True,
+                                             "thread_states_complete": False})
     expect("cmd_fetch comments_omitted past the page limit", result["comments_omitted"], True)
     expect("cmd_fetch thread_states_complete", result["thread_states_complete"], False)
+    expect("pr-context.jsonl conversation_omitted past the page limit",
+           context_of(out)[0]["conversation_omitted"], True)
+
+    result, batch, out = fetch("fetch-none", {"review_comments": [], "reviews": [],
+                                              "issue_comments": [], "omitted": False,
+                                              "thread_states_complete": True})
+    expect("cmd_fetch writes no batch without comments", (result["comment_batches"], batch),
+           (0, []))
+    expect("pr-context.jsonl without checks or comments is its meta line", context_of(out),
+           [{"type": "meta", "title": "t", "body": "b", "conversation_omitted": False}])
+
+    g.view_pr = lambda url, fields="": ("github.com", "o/r", 3, fetch_url, {
+        "headRefOid": A, "baseRefOid": fetch_base, "title": "t\u2028", "body": "b" * 30000,
+        "statusCheckRollup": [
+            {"__typename": "StatusContext", "context": "ci/s", "state": "SUCCESS",
+             "description": "d", "targetUrl": "https://example.com/s"},
+            {"__typename": "CheckRun", "name": "build", "workflowName": "w",
+             "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": None},
+        ],
+    })
+    _, _, out = fetch("fetch-context", {
+        **fetched,
+        "reviews": [{"id": 12, "author": "x", "state": "COMMENTED", "submitted_at": "t",
+                     "body": "r"}],
+        "issue_comments": [{"id": 11, "author": "x", "created_at": "t", "body": "i"}],
+    })
+    context = context_of(out)
+    expect("pr-context.jsonl opens with its meta line", context[0], {
+        "type": "meta", "title": "t\u2028", "body": g.clip("b" * 30000, g.BODY_CHARS),
+        "conversation_omitted": False,
+    })
+    expect("pr-context.jsonl has the checks, then the conversation by kind",
+           [(c["type"], c.get("id", c.get("name"))) for c in context[1:]],
+           [("check", "ci/s"), ("check", "build"), ("issue_comment", 11), ("review", 12),
+            ("review_comment", 1), ("review_comment", 2), ("review_comment", 3),
+            ("review_comment", 4)])
+    expect("pr-context.jsonl keeps a check's fields", context[1], {
+        "type": "check", "name": "ci/s", "state": "SUCCESS", "description": "d",
+        "url": "https://example.com/s",
+    })
+    expect("pr-context.jsonl puts the type first", {list(c)[0] for c in context}, {"type"})
+    with open(os.path.join(out, "pr-context.jsonl"), "rb") as f:
+        expect("pr-context.jsonl holds no raw line separator",
+               [c for c in SEPARATORS if c.encode("utf-8") in f.read()], [])
 finally:
     for name, value in saved.items():
         setattr(g, name, value)
@@ -1511,9 +1601,11 @@ def setup(name, *extracts, raw=None):
                    "head_sha": "c" * 40, "merge_base": "d" * 40}, f)
     for n, findings in enumerate(extracts, 1):
         with open(os.path.join(comments, f"batch-{n}.jsonl"), "w", encoding="utf-8") as f:
-            f.write("{}")
+            f.write(json.dumps({"type": "issue_comment", "id": n, "author": "alice",
+                                "body": "x"}) + "\n")
         if findings is not None:
-            with open(os.path.join(comments, f"extract-{n}.jsonl"), "w", encoding="utf-8") as f:
+            with open(os.path.join(comments, f"extract-{n}.jsonl"), "w", encoding="utf-8",
+                      newline="") as f:
                 f.write(raw if raw is not None else json.dumps({"findings": findings}))
     return tmp
 
@@ -1657,6 +1749,12 @@ proc, doc = with_ids("own-info-used", {"comments": {"thread:5": ["I-3"]}, "used"
                      finding("Critical", "a.c:1", sources=["thread:5"], id="I-3"))
 expect("an Info id named does not lower a finding", ids_of(doc), [("C-1", "a.c:1")])
 
+proc, doc = with_ids("pretty-map", json.dumps({"comments": {"thread:5": ["mi-13"]},
+                                               "used": ["mi-13"]}, indent=2),
+                     finding("Minor", "a.c:1", sources=["thread:5"]))
+expect("a map over several lines, as cgh 0.1.6 writes it, is read",
+       (proc.returncode, ids_of(doc)), (0, [("mi-13", "a.c:1")]))
+
 proc, doc = run(setup("no-map", [finding("Minor", "a.c:1", sources=["thread:5"], id="mi-13")]))
 expect("without a map an id named does not count", ids_of(doc), [("mi-1", "a.c:1")])
 
@@ -1758,11 +1856,30 @@ for name, extracts, raw, part in (
     ("location-dict", ([finding(location={"path": "x"})],), None, "extract-1.jsonl"),
     ("location-number", ([finding(location=12)],), None, "extract-1.jsonl"),
     ("surrogate", ([finding(description="\ud83d")],), None, "extract-1.jsonl"),
+    ("pretty", ([finding()],), json.dumps({"findings": [finding()]}, indent=2), "extract-1.jsonl"),
+    ("two-lines", ([finding()],), '{"findings": []}\n{"findings": []}\n', "extract-1.jsonl"),
+    ("two-on-a-line", ([finding()],), '{"findings": []} {"findings": []}', "extract-1.jsonl"),
+    ("blank-extract", ([finding()],), "\n \n", "extract-1.jsonl"),
 ):
     proc, doc = run(setup(name, *extracts, raw=raw))
     expect(f"{name} exit", proc.returncode, 1)
     expect(f"{name} names the file", part in proc.stderr, True)
     expect(f"{name} writes no document", os.path.exists(doc), False)
+proc, _ = run(setup("pretty-message", [finding()],
+                    raw=json.dumps({"findings": [finding()]}, indent=2)))
+expect("an extract over several lines is to be written on one line", "on one line" in proc.stderr,
+       True)
+
+proc, doc = run(setup("crlf-and-blank-lines", [finding()],
+                      raw="\r\n" + json.dumps({"findings": [finding()]}) + "\r\n\r\n"))
+expect("an extract line ending in CRLF between blank lines is read",
+       (proc.returncode, proc.stderr), (0, ""))
+proc, doc = run(setup("raw-separator", [finding()], raw=json.dumps(
+    {"findings": [finding(description="a\u2028b\u0085c")]}, ensure_ascii=False) + "\n"))
+expect("an extract with a raw U+2028 and U+0085 in a value is read",
+       (proc.returncode, proc.stderr), (0, ""))
+with open(doc, encoding="utf-8") as f:
+    expect("a description folds a raw U+2028 and U+0085", "\na b c\n" in f.read(), True)
 
 proc, doc = run(setup("several", [finding()], None, raw="{not json"))
 expect("several bad extracts exit", proc.returncode, 1)
@@ -2244,19 +2361,117 @@ check "render-review.py with line breaks in values" 0 "${rc}"
 cmp -s "${RD}/out.md" "${RD}/want.md" \
     || { note "FAIL: render-review.py wrote '$(cat -v "${RD}/out.md")'"; fail=1; }
 
-# --- check-jsonl.py accepts both shapes and rejects malformed input ---------------
+# --- compile-review.py writes each event on a line str.splitlines() keeps whole ----
+python3 -I -B - "${REPO_ROOT}/creview/skills" "${SANDBOX}" "${RR}" <<'PY' || fail=1
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+
+skills, sandbox, render_review = sys.argv[1:4]
+spec = importlib.util.spec_from_file_location("render_review", render_review)
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+failed = False
+SEPARATORS = "\u2028\u2029\u0085"
+ODD = "\u00e9" + SEPARATORS + "x"
+DOC = "# Report\n\n### M-1 — `a.c:1`\n\n<!-- METADATA(M-1) -->\n<!-- /METADATA(M-1) -->\n"
+
+
+def expect(case, got, want):
+    global failed
+    if got != want:
+        print(f"FAIL: compile-review.py {case} (expected {want!r:.300}, got {got!r:.300})")
+        failed = True
+
+
+def save(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(data, ensure_ascii=False) + "\n")
+
+
+CASES = {
+    "triage": ({
+        "triage.jsonl": {"items": [{"id": "M-1", "memo_value": "Will Fix " + ODD}],
+                         "will_fix_count": 1, "wontfix_count": 0},
+        "estimates/M-1.jsonl": {"id": "M-1", "memo_value": "Direct " + ODD,
+                                "verdict": "Maintain"},
+    }, [("triage", "Will Fix " + ODD), ("estimate", "Direct " + ODD)]),
+    "respond": ({
+        "statuses/M-1.jsonl": {"id": "M-1", "memo_value": "Fixed " + ODD, "verdict": "Maintain"},
+    }, [("status", "Fixed " + ODD)]),
+    "resolve": ({
+        "verifications/M-1.jsonl": {"id": "M-1", "severity": "Major", "outcome": "Resolved",
+                                    "trailing_field": "t", "reason": "r",
+                                    "memo_value": "Verified " + ODD},
+    }, [("verification", "Verified " + ODD)]),
+}
+for skill, (inputs, events) in CASES.items():
+    tmp = os.path.join(sandbox, "compile-review", skill)
+    for name, data in inputs.items():
+        save(os.path.join(tmp, name), data)
+    doc = os.path.join(tmp, "doc.md")
+    with open(doc, "w", encoding="utf-8", newline="\n") as f:
+        f.write(DOC)
+    proc = subprocess.run(
+        [sys.executable, "-I", "-B", os.path.join(skills, skill, "scripts", "compile-review.py"),
+         tmp, doc], capture_output=True, encoding="utf-8", errors="replace")
+    expect(f"{skill} exit", (proc.returncode, proc.stderr), (0, ""))
+    with open(os.path.join(tmp, "events.jsonl"), "rb") as f:
+        raw = f.read()
+    expect(f"{skill} events.jsonl holds no raw line separator",
+           [c for c in SEPARATORS if c.encode("utf-8") in raw], [])
+    expect(f"{skill} events.jsonl keeps other characters as they are",
+           "\u00e9".encode("utf-8") in raw, True)
+    expect(f"{skill} events.jsonl reads back each value, split by str.splitlines()",
+           [(e["field"], e["value"]) for e in map(json.loads, raw.decode("utf-8").splitlines())],
+           events)
+    with open(doc, encoding="utf-8") as f:
+        lines = f.read().split("\n")
+    for field, value in events:
+        expect(f"{skill} document holds the {field} on one line",
+               f"- **{r.LABELS[field]}:** {r.one_line(value)}" in lines, True)
+sys.exit(1 if failed else 0)
+PY
+
+# --- check-jsonl.py accepts JSON Lines only and rejects malformed input -----------
 JD="${SANDBOX}/jsonl"
 mkdir -p "${JD}"
 echo '{"id":"C-1"}' > "${JD}/object.jsonl"
-{ echo '{'; echo '  "id": "C-1"'; echo '}'; } > "${JD}/pretty.jsonl"
 { echo '{"a":1}'; echo '{"b":2}'; } > "${JD}/lines.jsonl"
+{ echo '{"a":1}'; echo; echo '  '; echo '{"b":2}'; } > "${JD}/blank.jsonl"
+printf '{"a":1}\r\n{"b":2}\r\n' > "${JD}/crlf.jsonl"
+printf '{"a":"x\xe2\x80\xa8y\xc2\x85z"}\n' > "${JD}/separator.jsonl"
+{ echo '{'; echo '  "id": "C-1"'; echo '}'; } > "${JD}/pretty.jsonl"
+{ echo '{"a":1}'; echo '[1,2]'; } > "${JD}/array.jsonl"
+{ echo '{"a":1}'; echo '"x"'; } > "${JD}/scalar.jsonl"
+printf '\xef\xbb\xbf{"a":1}\n' > "${JD}/bom.jsonl"
 { echo '{"a":1}'; echo '{"b":2'; echo '{"c":3}'; } > "${JD}/broken.jsonl"
 echo '{"a":1},' > "${JD}/trailing.jsonl"
 : > "${JD}/empty.jsonl"
-for case in object:0 pretty:0 lines:0 broken:1 trailing:1 empty:1 missing:1; do
+for case in object:0 lines:0 blank:0 crlf:0 separator:0 pretty:1 array:1 scalar:1 bom:1 \
+    broken:1 trailing:1 empty:1 missing:1; do
     rc=0; python3 "${CJ}" "${JD}/${case%%:*}.jsonl" >/dev/null 2>&1 || rc=$?
     check "check-jsonl ${case%%:*}" "${case##*:}" "${rc}"
 done
+cj_says() { # <case> <stream: out|err> <glob pattern the output matches>
+    local out
+    if [[ "$2" == out ]]; then
+        out="$(python3 "${CJ}" "${JD}/$1.jsonl" 2>/dev/null)"
+    else
+        out="$(python3 "${CJ}" "${JD}/$1.jsonl" 2>&1 >/dev/null)"
+    fi
+    out="${out//$'\r'/}"
+    # shellcheck disable=SC2053
+    [[ "${out}" == $3 ]] || { note "FAIL: check-jsonl $1 printed '${out}'"; fail=1; }
+}
+cj_says object out '*object.jsonl: 1 line'
+cj_says blank out '*blank.jsonl: 2 lines'
+cj_says pretty err '*pretty.jsonl:1:1: *3 lines*on one line*'
+cj_says array err '*array.jsonl:2:1: *not a JSON object*'
+cj_says broken err '*broken.jsonl:2:*'
 rc=0; python3 "${CJ}" >/dev/null 2>&1 || rc=$?
 check "check-jsonl no argument" 1 "${rc}"
 rc=0; python3 "${CJ}" "${JD}/object.jsonl" "${JD}/broken.jsonl" >/dev/null 2>&1 || rc=$?

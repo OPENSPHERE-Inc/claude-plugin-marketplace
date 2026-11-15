@@ -62,7 +62,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 
 ## 状態ファイル
 
-`{loop_dir}/state.jsonl` が実行の進行の正である。1 つの JSON オブジェクトとして Write で書き、書くたびに `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {loop_dir}/state.jsonl` で検証し、エラーなら直して再検証する。書けない、または検証に通るよう直せない場合は、エラーを表示して終了する。書けるなら `loop-summary.md`（ステップ 6）を書く。
+`{loop_dir}/state.jsonl` が実行の進行の正である。1 つの JSON オブジェクトを 1 行で Write で書き、書くたびに `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {loop_dir}/state.jsonl` で検証し、エラーなら直して再検証する。書けない、または検証に通るよう直せない場合は、エラーを表示して終了する。書けるなら `loop-summary.md`（ステップ 6）を書く。
 
 書くもの:
 

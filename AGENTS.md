@@ -112,7 +112,10 @@ see **[CLAUDE.md](CLAUDE.md)**.
 12. **Skill data files are `.jsonl`, never `.json`** — state, result, sub-agent output, and
     script intermediate files alike, whoever writes them. Plugin manifests, the destination
     project's files, a path the user gives such as a `--result` value, and the JSON a script
-    prints are exempt; see CLAUDE.md § Naming conventions.
+    prints are exempt. Each data file is JSON Lines: every line is one complete JSON object,
+    and no value spans several lines. A file holding one object is one line, and a list an
+    agent reads in parts is one record per line, after a `{"type": "meta", ...}` metadata line
+    where the file's layout defines one. See CLAUDE.md § Naming conventions.
 
 For architecture, the localization workflow, common tasks, and warnings, refer to
 **[CLAUDE.md](CLAUDE.md)**.

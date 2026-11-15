@@ -46,7 +46,7 @@ template_id: 158ca65c-c8f4-4d8f-bb6d-ce62fd015be1
 出力:
 
 - `{{postmortem_md_path}}`: 人間向けの分析。`{{doc_lang}}` で、`{{plugin_root}}/rules/document.md` に従って書く: 評価、根拠を伴う根本原因、理由を伴う判定、finish では採用世代。
-- `{{postmortem_json_path}}`: 1 つの JSON オブジェクト。`python3 {{plugin_root}}/scripts/check-jsonl.py {{postmortem_json_path}}` で検証し、エラーなら直して再検証する。
+- `{{postmortem_json_path}}`: 1 行に書いた 1 つの JSON オブジェクト。`python3 {{plugin_root}}/scripts/check-jsonl.py {{postmortem_json_path}}` で検証し、エラーなら直して再検証する。
 
   ```json
   {"verdict": "finish", "basis": null, "adopted_generation": 1,

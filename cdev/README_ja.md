@@ -466,7 +466,8 @@ push と PR の作成は行いません。
 - `scripts/` — `fetch-diff.sh`（コーディング開始前のツリーを記録し、開始以降の QA 差分を
   取得）、`del-tmp.sh`（`.claude/tmp/` 配下の実行作業ディレクトリを削除。`--dry` では
   封じ込めチェックのみを行い、スキルはこのディレクトリの作成前にこれを実行する）、
-  `check-jsonl.py`（teammate が書き出した `.jsonl` の検証に使用）、
+  `check-jsonl.py`（teammate が、書き出した `.jsonl` の各行が 1 つの JSON オブジェクトで
+  あることの検証に使用）、
   `lib/scratch-guard.py`（両者が共有する `.claude/tmp/` 封じ込めチェック。`python3` が必要 —
   動作要件参照）、`worktree.sh`（`--worktree` のワークツリーを作成・削除）、`restore.sh`
   （設計の復元リストのエントリをターニングポイントのコミットから作業ツリーに復元する。

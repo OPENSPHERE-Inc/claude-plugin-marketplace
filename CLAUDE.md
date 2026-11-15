@@ -568,9 +568,42 @@ the repository root, since the leader stays in the main working tree between pha
     prints.
   - Why: some Claude Code environments ask before a Write or Edit of a `*.json` file, which
     stops an unattended run.
-  - Line layout: the extension sets none; the file holds one JSON value for the whole file or
-    one JSON value per line, the shapes `check-jsonl.py` accepts, and the prompt or script that
-    writes it decides which.
+  - Line layout: every data file is JSON Lines, whoever writes it.
+    - Each line is one complete JSON object on its own; no value spans several lines.
+    - The file's spec states its shape: the docstring of the script that writes it, or the
+      prompt that tells an agent to write it.
+    - Record file: one record per line, so any range of lines holds whole records only.
+      - A list that an agent reader is told to read in parts when Read reports it too large
+        takes this shape, since Read splits a file only by line range.
+      - Examples: creview's `pr-context.jsonl` and `pr-comments/batch-{n}.jsonl`, and cgh's
+        comment batches.
+      - creview's `events.jsonl`, the event log `render-review.py` reads, is also a record
+        file.
+    - Single-object file: every other file, such as a state or result file or an agent's
+      output, is one line holding one object.
+    - Metadata line: a record file whose spec defines one puts the values about the whole list
+      on line 1, as a flat `{"type": "meta", ...}`; no other file has one.
+    - `type`: every line of a record file that has a metadata line or more than one kind of
+      record carries `type` as its first key.
+      - Its value is `meta` on the metadata line, and on a record line the record's kind,
+        named in singular snake_case after the list it forms, such as `review_comment`.
+      - The record's other fields sit beside `type` under their usual names, unwrapped.
+      - A record file with one kind of record and no metadata line, such as `events.jsonl`,
+        carries no `type`.
+    - Lines are split on `\n` alone, with one trailing `\r` removed.
+      - A reader does not use `str.splitlines()`, which also splits on U+2028, U+2029, and
+        U+0085.
+      - A line a script writes holds none of those three characters raw; the script writes
+        them as `\u2028`, `\u2029`, and `\u0085`.
+    - A reader accepts every shape the convention allows.
+      - When `check-jsonl.py` does not validate an agent's output, the script that reads it
+        validates it with the same accepted shapes and requires a single-object file to be
+        exactly one line.
+    - `check-jsonl.py` accepts a file only when each non-blank line parses on its own as one
+      JSON object.
+      - It skips blank lines and rejects an empty file, a line holding an array or a scalar,
+        and a file whose one value spans several lines.
+      - It checks syntax only, not the schema, `type`, or the metadata line.
 
 ---
 

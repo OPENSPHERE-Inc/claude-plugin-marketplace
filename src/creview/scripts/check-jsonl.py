@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""check-jsonl.py — Validate the JSON syntax of a file a sub-agent wrote.
+"""check-jsonl.py — Validate that a .jsonl file an agent wrote is JSON Lines.
 
 Usage:
     python3 <path>/check-jsonl.py <file> [<file> ...]
 
-Accepts either shape this workflow uses: the whole file as one JSON value (what
-a sub-agent writes), or one JSON value per non-blank line (events.jsonl). Prints
-one ok line per file; on a syntax error prints <file>:<line>:<col>: <message> to
-stderr and exits 1.
+Accepts a file each non-blank line of which is one JSON object on its own. A line
+ends at a line feed, with one carriage return before it removed; blank lines are
+skipped. A file with no non-blank line, a line that does not parse, and a line that
+holds an array or a scalar are errors, and so is one JSON value written across
+several lines, whose message says to write it on one line. Only the syntax is
+checked, not the schema. Prints one ok line per file; on an error prints
+<file>:<line>:<col>: <message> to stderr and exits 1.
 """
 
 from __future__ import annotations
@@ -16,39 +19,36 @@ import json
 import sys
 
 
+def plural(n, word):
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
 def check(path):
-    """Return a description of the shape parsed, or raise ValueError with a located message."""
+    """Return the number of lines parsed, or raise ValueError with a located message."""
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", newline="") as f:
             text = f.read()
     except OSError as exc:
         raise ValueError(f"{path}: {exc.strerror}")
-    if not text.strip():
+    lines = [(n, line[:-1] if line.endswith("\r") else line)
+             for n, line in enumerate(text.split("\n"), 1)]
+    lines = [(n, line) for n, line in lines if line.strip()]
+    if not lines:
         raise ValueError(f"{path}:1:1: file is empty")
 
-    whole_err = None
-    try:
-        json.loads(text)
-        return "1 object"
-    except json.JSONDecodeError as exc:
-        whole_err = exc
-
-    lines = [(n, line) for n, line in enumerate(text.splitlines(), 1) if line.strip()]
-    errors = []
     for lineno, line in lines:
         try:
-            json.loads(line)
+            value = json.loads(line)
         except json.JSONDecodeError as exc:
-            errors.append((lineno, exc))
-    if not errors:
-        return f"{len(lines)} lines"
-
-    # Neither shape parses. A one-line file can only have meant one object, so its
-    # whole-file error is the accurate one; otherwise report the first bad line.
-    if len(lines) == 1:
-        raise ValueError(f"{path}:{whole_err.lineno}:{whole_err.colno}: {whole_err.msg}")
-    lineno, exc = errors[0]
-    raise ValueError(f"{path}:{lineno}:{exc.colno}: {exc.msg}")
+            try:
+                json.loads(text)
+            except json.JSONDecodeError:
+                raise ValueError(f"{path}:{lineno}:{exc.colno}: {exc.msg}") from None
+            raise ValueError(f"{path}:1:1: one JSON value spans {plural(len(lines), 'line')}; "
+                             "write each value on one line") from None
+        if not isinstance(value, dict):
+            raise ValueError(f"{path}:{lineno}:1: the line is not a JSON object")
+    return len(lines)
 
 
 def main():
@@ -57,12 +57,12 @@ def main():
     failed = 0
     for path in sys.argv[1:]:
         try:
-            shape = check(path)
+            count = check(path)
         except ValueError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             failed = 1
         else:
-            print(f"ok {path}: {shape}")
+            print(f"ok {path}: {plural(count, 'line')}")
     sys.exit(failed)
 
 

@@ -29,7 +29,7 @@ README やガイドなど、人向けのドキュメントの問題の `blocking
 
 判断できないときは true とする。
 
-`{{output_path}}` を 1 つの JSON オブジェクトとして書く:
+`{{output_path}}` を 1 つの JSON オブジェクトとして 1 行に書く:
 
 `{"findings": [{"id": "mi-1", "blocking": true}, {"id": "M-2", "blocking": false}]}`
 

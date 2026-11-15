@@ -8,7 +8,7 @@ Usage:
         [--finding-ids <path>]
 
 Reads, for each <tmp_dir>/pr-comments/batch-<n>.jsonl, the file extract-<n>.jsonl next
-to it:
+to it, one JSON object on one line:
     {"findings": [{"severity": "Critical" | "Major" | "Minor",
                    "categories": ["..."], "location": "path:line" | "path" | "PR",
                    "authors": ["..."], "description": "...",
@@ -29,16 +29,16 @@ of . _ - + @ / ( ) [ ] $ %, becomes PR. It merges no findings, so the same findi
 two batches stays as two. --lang selects the language of the labels the script writes;
 finding text stays as extracted. With no findings it writes nothing.
 
---finding-ids names a JSON file of IDs to keep, {"comments": {source: [id]}, "used": [id]}. A
-finding takes an ID its sources hold: the id it names, or else one of its severity, or else any
-left, each ID once. An ID's prefix decides the finding's severity. Every other finding numbers on
-after the highest ID in used and those kept. An Info ID is not kept, since no later phase handles
-an Info finding, though used still counts it. Without the option, findings number from 1 and their
-sources and id do not count.
+--finding-ids names a JSON file of IDs to keep, {"comments": {source: [id]}, "used": [id]}, read
+as one JSON value on one line or several. A finding takes an ID its sources hold: the id it
+names, or else one of its severity, or else any left, each ID once. An ID's prefix decides the
+finding's severity. Every other finding numbers on after the highest ID in used and those kept.
+An Info ID is not kept, since no later phase handles an Info finding, though used still counts
+it. Without the option, findings number from 1 and their sources and id do not count.
 
 Prints {"doc_path", "findings_total", "severity_counts"}; doc_path is null without
-findings. A missing or malformed extract file exits 1, naming every such file on
-stderr, and writes nothing.
+findings. A missing or malformed extract file, one whose object is not on one line
+included, exits 1, naming every such file on stderr, and writes nothing.
 """
 
 import argparse
@@ -156,9 +156,24 @@ def read_finding(entry):
             "sources": names(entry.get("sources", []), "sources"), "named_id": entry.get("id")}
 
 
+def one_line_value(text):
+    """Parse the one non-blank line of text, splitting lines at line feeds only."""
+    lines = [line[:-1] if line.endswith("\r") else line for line in text.split("\n")]
+    lines = [line for line in lines if line.strip()]
+    if not lines:
+        raise Invalid("it is empty")
+    if len(lines) > 1:
+        try:
+            json.loads(text)
+        except ValueError:
+            raise Invalid(f"it has {len(lines)} lines, not one") from None
+        raise Invalid(f"its JSON value spans {len(lines)} lines; write it on one line")
+    return json.loads(lines[0])
+
+
 def read_extract(path):
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+    with open(path, encoding="utf-8", newline="") as f:
+        data = one_line_value(f.read())
     if not isinstance(data, dict) or not isinstance(data.get("findings"), list):
         raise Invalid("it has no findings list")
     findings = [read_finding(entry) for entry in data["findings"]]

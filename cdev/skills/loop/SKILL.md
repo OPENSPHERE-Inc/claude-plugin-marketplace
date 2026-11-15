@@ -62,7 +62,7 @@ Do not use `EnterWorktree` / `ExitWorktree`: the inner skills create and enter t
 
 ## State file
 
-`{loop_dir}/state.jsonl` is the source of truth for the run's progress. Write it with Write as one JSON object, validate each write with `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {loop_dir}/state.jsonl`, and fix and re-validate on error. When you cannot write it or make it valid, show the error and terminate, writing `loop-summary.md` (Step 6) if you can.
+`{loop_dir}/state.jsonl` is the source of truth for the run's progress. Write it with Write as one JSON object on a single line, validate each write with `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {loop_dir}/state.jsonl`, and fix and re-validate on error. When you cannot write it or make it valid, show the error and terminate, writing `loop-summary.md` (Step 6) if you can.
 
 Write:
 

@@ -677,7 +677,8 @@ has an agent of the same name, which takes precedence.
   `adr-format.md`, `doc-worktree.md`, `pr-comment-doc.md`, `contract-style-prompts.md`,
   `prompt.md` (only the rules the skills reference).
 - `scripts/` — `fetch-diff.sh`, `render-review.py`, `del-tmp.sh`,
-  `check-jsonl.py` (sub-agents validate the `.jsonl` they wrote with it),
+  `check-jsonl.py` (sub-agents check with it that each line of a `.jsonl` they
+  wrote is one JSON object),
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by
   `fetch-diff.sh` / `del-tmp.sh`; from a linked worktree it also accepts the
   `.claude/tmp/` of another working tree of the same repository),

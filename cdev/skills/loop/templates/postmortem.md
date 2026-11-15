@@ -46,7 +46,7 @@ When `{{remaining_generations}}` is 0, finish, still writing the analysis. On fi
 Output:
 
 - `{{postmortem_md_path}}`: the analysis for humans, in `{{doc_lang}}`, following `{{plugin_root}}/rules/document.md`: the evaluation, the root causes with their evidence, the verdict with its reasons, and the adopted generation on finish.
-- `{{postmortem_json_path}}`: one JSON object. Validate it with `python3 {{plugin_root}}/scripts/check-jsonl.py {{postmortem_json_path}}`, and fix and re-validate on error.
+- `{{postmortem_json_path}}`: one JSON object on a single line. Validate it with `python3 {{plugin_root}}/scripts/check-jsonl.py {{postmortem_json_path}}`, and fix and re-validate on error.
 
   ```json
   {"verdict": "finish", "basis": null, "adopted_generation": 1,
