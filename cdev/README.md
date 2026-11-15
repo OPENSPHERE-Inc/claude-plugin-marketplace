@@ -2,17 +2,21 @@
 
 *[日本語版 README](README_ja.md)*
 
-A team-native multi-agent coding workflow for Claude Code. One skill, `/cdev:coding`,
-stands up an agent team and drives a task from design to verified, reviewed code.
+A team-native multi-agent coding workflow for Claude Code. `/cdev:coding` stands up an
+agent team and drives a task from design to verified, reviewed code. `/cdev:loop` runs
+`/cdev:coding` and creview's `/creview:rounds` as one unattended pipeline from
+implementation to review.
 
-## Skill
+## Skills
 
 | Command | Purpose |
 |---------|---------|
 | `/cdev:coding` | Implement a coding task end to end: form a standing team, then run design → design review → coding → QA → code review with feedback loops. AI-facing prompt files also get a self-check, compression, and an interpretation test. |
+| `/cdev:loop` | Take a coding task through `/cdev:coding` and `/creview:rounds` without asking for decisions: send the work back to `/cdev:coding` when the review diverges, and decide in a post-mortem whether to finish or start over, each within a limit. See [Loop](#loop-cdevloop). |
 
-Invoke it with a task description, e.g. `/cdev:coding add a rate limiter to the
-upload endpoint`.
+Invoke either with a task description, e.g. `/cdev:coding add a rate limiter to the
+upload endpoint` or `/cdev:loop --max-generations 2 add a rate limiter to the upload
+endpoint`.
 
 ## Lifecycle role
 
@@ -22,12 +26,16 @@ authoritative review — run `creview` afterward for the bias-controlled, audita
 (`/creview:start` → `triage` → `respond` → `resolve`). Because the authoritative review
 lives in `creview`, `cdev` optimizes for speed and coherence instead.
 
+`/cdev:loop` joins the two stages into one pipeline: it runs `/creview:rounds` after
+`/cdev:coding`, and feeds the review back into the implementation stage by sending the work
+back to `/cdev:coding` on a divergence and by starting over after a post-mortem.
+
 ## How it works
 
-The leader (team lead) spawns each selected specialist once as a named, persistent
-background teammate (`Agent` with `run_in_background`), pairs each producer with a reviewer,
-and drives two cell steps, with a team re-formation between them, and a final QA gate,
-reporting progress to the console:
+In `/cdev:coding`, the leader (team lead) spawns each selected specialist once as a named,
+persistent background teammate (`Agent` with `run_in_background`), pairs each producer with a
+reviewer, and drives two cell steps, with a team re-formation between them, and a final QA
+gate, reporting progress to the console:
 
 1. **Design cells** — each architect writes a design for its area, then its **paired
    reviewer** reviews it; the architect **triages** each finding (fix, or reject with a
@@ -71,7 +79,7 @@ status, severity counts, paths, and the QA and interpretation-test results, neve
 
 ## Requirements
 
-This skill uses background subagents (`Agent` with `run_in_background`) and `SendMessage`
+`/cdev:coding` uses background subagents (`Agent` with `run_in_background`) and `SendMessage`
 between named teammates. The session has a single implicit team — no explicit team creation
 or deletion, and no shared task list; the leader tracks each cell's status itself. When the
 run ends, the leader stops the teammates with `TaskStop`. It runs only in a runtime where
@@ -85,11 +93,14 @@ Claude Code v2.1.217 or later caps the sub-agents running at once in a session
 `Concurrent subagent limit reached`. Teammates at work and the sub-agents of the interpretation
 test can count toward the cap. The leader spawns a refused teammate again the next time a
 teammate's report or completion notice wakes it; when no teammate is left to wake it, the run
-ends with the error and commits nothing. In that case, wait for other agents in the session to
-finish, or raise the cap, and run again. Without `--worktree`, changes made before the error
-stay uncommitted in the working tree, and the files the run created stay untracked. The next
-run's clean-working-tree check counts untracked files as well and ignores `.claude/tmp/`,
-`.claude/worktrees/`, and the `--output` destination, so commit, stash, or discard the changes
+ends with the error. In that case, wait for other agents in the session to finish, or raise the
+cap, and run again. The run commits nothing, unless `--commit-always` is on and the refusal
+came during the QA gate, after every code cell had closed: the run then commits as that option
+describes, and what follows about uncommitted changes and a kept worktree does not apply.
+Without `--worktree`, changes made before the error stay uncommitted in the working tree, and
+the files the run created stay untracked. The next run's clean-working-tree check counts
+untracked files as well and ignores `.claude/tmp/`, `.claude/worktrees/`, the `--output`
+destination, and the `--handoff` and `--result` files, so commit, stash, or discard the changes
 outside those places first. Under `--worktree`, those changes stay in the worktree, which is
 kept and its path reported.
 
@@ -109,7 +120,12 @@ ones pointing inside the project: the bundled scripts refuse them with an error.
 configuration across working
 trees, keep it in `~/.claude/` instead.
 
+`/cdev:loop` has the requirements of both `/cdev:coding` and `/creview:rounds`; see
+[Requirements and cost](#requirements-and-cost).
+
 ## Options
+
+Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop).
 
 - `--review-rounds N` (default 5, max 10) — max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, max 10) — max QA verify ⇄ fix attempts.
@@ -118,10 +134,45 @@ trees, keep it in `~/.claude/` instead.
   enables `--commit` (see below).
 - `--output {dir}` — directory for the design documents (default
   `.claude/tmp/cdev-coding-{timestamp}-design/`).
+- `--handoff {path}` (default none) — a Markdown handoff that team formation, the design
+  cells, and the design review read.
+  - Judgment priority becomes the user's task, then the handoff, then the design intent.
+  - When the handoff names turning points — branches given with their commits — to return
+    to, an architect can choose to restore files of its area to a turning point's content.
+    - Only a run with `--worktree` restores, so that a restore cannot overwrite ignored files
+      of the main working tree, such as `.env`. Without it, the design builds on the current
+      code even when the handoff names turning points.
+    - Only the file contents are restored: the branch and HEAD stay where they are, and the
+      restored content counts as a change of this run.
+    - A restore that would do either of the following is refused, and the path it would
+      restore is left as it is: overwrite or delete an untracked file or a tracked file with
+      local changes, or change a path outside the path it restores. The run goes on, and the
+      final report and the result file list each refused path with its reason.
+  - The run does not commit when the branch or HEAD has moved since the start.
+- `--team-tag {tag}` (default none) — appends `-{tag}` to every teammate name, e.g.
+  `coder-backend-g1c2`, so that a second or later run in the same session does not reuse the
+  names of an earlier run's teammates. The tag is 1 to 16 letters, digits, and hyphens,
+  starting with a letter or a digit; keeping it unused in the session is up to the caller.
+- `--commit-always` (default off; implies `--commit`) — commit once every code cell has
+  closed, even when QA or the interpretation test has not passed. The result file and the
+  final report say what did not pass.
+- `--result {path}` (default none) — write a JSON result at the end: whether the run committed
+  and the commit, the branch, the design document paths, the turning points the designs
+  restore from, the refused restores with their reasons, the QA and interpretation-test
+  results, the numbers of `FIXME:`s left and of escalations, whether team re-formation fell
+  back to the original roster, the step and reason when the run stopped early, and the
+  worktree kept, if any. It is written as well when the run ends before the commit step, such
+  as on an invalid option or an unmet requirement. It is not written when `.claude` or
+  `.claude/tmp` is a symbolic link.
+  - When the run writes no file, whether for that reason, on an interruption, or on a failed
+    write, a file already at the path stays and can be mistaken for this run's result. Pass a
+    path where no file exists, or delete the file before the run, and treat a missing file as
+    an error.
 
 The design documents (`design-{slug}.md`, one per architect) are kept after the run; every
-other intermediate file is deleted. `--commit` never stages them. The clean-working-tree
-check at start ignores `.claude/tmp/`, `.claude/worktrees/`, and the `--output` destination,
+other intermediate file is deleted. `--commit` never stages them, nor the `--handoff` and
+`--result` files. The clean-working-tree check at start ignores `.claude/tmp/`,
+`.claude/worktrees/`, the `--output` destination, and the `--handoff` and `--result` files,
 so design documents left by earlier runs and the worktrees of `--worktree` runs do not block a
 new run.
 
@@ -145,8 +196,9 @@ command and tests that run without a build cannot rely on it. A build or test fa
 by such a missing prerequisite is not fixed in the source: the QA gate ends without a QA-fix
 cell and reports the failure as environmental. The working directory and the
 default design-document destination are in the main working tree's `.claude/tmp/`, a relative
-`--output` resolves against the main working tree's root, and the destination project's
-`.claude/agents/` and `.claude/rules/` are read from the main working tree. At the end the
+`--output`, `--handoff`, or `--result` resolves against the main working tree's root, and the
+destination project's `.claude/agents/` and `.claude/rules/` are read from the main working
+tree. At the end the
 worktree is removed and the branch is kept; a worktree left with uncommitted changes — for
 example after an unfixed QA failure — is kept and its path is reported. Git also refuses to
 remove a worktree in which submodules were initialized (for example by the configure command),
@@ -217,6 +269,189 @@ code cells, and QA gate as any other task, with these additions:
     the test.
   - The test runs in the same QA attempts as the build and tests, bounded by `--qa-attempts`.
 
+## Loop (/cdev:loop)
+
+`/cdev:loop` takes the same coding task as `/cdev:coding` and carries it through implementation
+and review without asking for decisions. It runs `/cdev:coding` and `/creview:rounds` inline in
+the session, acting as their leader, and does no design, coding, or review itself. When the
+review diverges, it sends the work back to `/cdev:coding`, up to a limit; otherwise a
+post-mortem decides whether to finish or to start over from the starting commit. Both are
+bounded, so the run always ends. It never pushes or opens a pull request.
+
+### Flow
+
+- A **cycle** is one `/cdev:coding` run followed by one `/creview:rounds` run. A
+  **generation** is a series of cycles on one work branch, starting from the **starting
+  commit**: the main working tree's `HEAD` when the loop starts.
+- In each cycle, `/cdev:coding` runs in a worktree on the generation's work branch and commits
+  its result even when QA or the interpretation test did not pass. `/creview:rounds` then runs
+  on the same branch with `--incremental`, and stops instead of pausing when it detects a
+  divergence (`--on-divergence stop`).
+- Round 1 of every cycle's review covers the whole generation, as the diff from the starting
+  commit; later rounds review only the previous round's fixes. A send-back can touch fixes
+  across earlier rounds, so the review after it looks at the whole generation again.
+- **Send-back**: when the review stops on a divergence, the loop writes a handoff that has
+  `/cdev:coding` follow the sources and fix proposals of the divergence investigation report,
+  and starts the next cycle on the same branch.
+  - From the second generation on, the handoff also carries over the policy of the
+    post-mortem's handoff that started the generation, and what that handoff says to avoid.
+    These prevail over the investigation report's fix proposals: a source that cannot be
+    removed without departing from them stays, and after at most `--max-sendbacks`
+    send-backs, it goes to the generation's post-mortem.
+  - By default, the new work goes on top of the branch's tip, keeping the earlier review
+    fixes, most of which have nothing to do with the divergence.
+  - The design may instead restore files to the content of a turning point of the same
+    generation, which the design review checks. The restored content is committed on top of
+    the branch; history is never rewritten.
+  - `--max-sendbacks` limits the send-backs per generation. A divergence past the limit goes
+    to the post-mortem as unresolved.
+- **Post-mortem**: once a generation's review has converged, reached its maximum rounds, or
+  diverged past the send-back limit, a post-mortem sub-agent reads the generation's design
+  documents, review documents, final reports, and divergence reports, and returns `finish` or
+  `redo`.
+  - By default, it returns `redo` only when all of these hold:
+    - A problem that affects the result's quality remains: an unresolved Critical or Major
+      finding, a `FIXME:` on one, a failed QA, or an unresolved divergence.
+    - The review documents show that its root cause lies in a design choice.
+    - A different approach that avoids that cause can be given concretely.
+  - With `--pursuit`, it also returns `redo`, even with no such problem left, when all of these
+    hold:
+    - A different approach can be given concretely.
+    - That approach is expected to clearly beat the generation in an observable way, such as
+      making a class of repeated findings impossible, removing a constraint or residual risk
+      the design accepted, having clearly fewer components, interfaces, or special cases, or
+      better meeting a goal the task sets.
+    - The design documents, review documents, and code back that expectation.
+  - An improvement that ordinary fixes could reach, or a matter of taste, is never a reason
+    for `redo`.
+  - `redo` starts a **grand reset**: a new generation from the starting commit on a new work
+    branch, with a handoff the post-mortem writes, up to `--max-generations`. With no
+    generation left, the verdict is `finish`.
+- **Adopted generation**: on `finish`, the post-mortem picks the generation to deliver: the
+  last one, unless an earlier one surpasses it, being no worse in each of unresolved Critical
+  and Major findings, `FIXME:`s, QA, and unresolved divergence, and better in at least one.
+  When several earlier ones do, it picks the latest of those that no other of them surpasses.
+  The loop creates the output branch at the tip of that generation's work branch.
+
+### Options
+
+- `--branch {name}` (default `cdev-loop-{timestamp}`) — the output branch's name, also the
+  prefix of the work branches and turning points.
+- `--max-sendbacks N` (default 2, 0 to 5) — max send-backs per generation.
+- `--max-generations N` (default 3, 1 to 5) — max generations; 1 means no grand reset.
+- `--pursuit` (default off) — widen the post-mortem's `redo` condition as described above.
+- `--output {dir}` (default `.claude/tmp/cdev-loop-{timestamp}/`) — the run directory.
+- Passed through to `/cdev:coding`: `--review-rounds N` and `--qa-attempts N`. Passed through
+  to `/creview:rounds`: `--max-rounds N`, `--adversarial`, and `--adr`.
+- Rejected with an error: `--worktree`, `--commit`, and `--incremental`, which are always on;
+  `--confirm` and `--confirm-round`, which wait for you; `--base`, which the loop sets; and the
+  options the loop passes to the inner skills itself (`--on-divergence`, `--result`,
+  `--handoff`, `--team-tag`, and `--commit-always`).
+
+### Branches and turning points
+
+In the names below, `{branch}` is the `--branch` value, `g` the generation, and `c` the cycle.
+
+| Kind | Name | Created |
+|------|------|---------|
+| Output branch | `{branch}` | At the end, at the tip of the adopted generation's work branch |
+| Work branch | `{branch}-g{g}` | At the start of generation g, at the starting commit |
+| Turning point A | `{branch}-tp/g{g}c{c}-coding-start` | Right before cycle c's `/cdev:coding` |
+| Turning point B | `{branch}-tp/g{g}c{c}-coding-done` | Right after cycle c's `/cdev:coding` |
+
+- A turning point is a branch that marks the code at that moment. Turning point A of a
+  generation's first cycle is the starting commit, and that of a later cycle is the work
+  branch's tip after the previous review. Turning point B is the tip after `/cdev:coding`'s
+  commit, the same commit as A when it committed nothing. The work branch's tip holds the
+  state after the last review.
+- The loop creates branches without touching any working tree, never moves or deletes a
+  turning point, and never rewrites a work branch's history. A grand reset leaves the earlier
+  generations' work branches and turning points in place. Cleaning them up is yours; to delete
+  every turning point of a run:
+
+  ```
+  git for-each-ref --format='%(refname:short)' 'refs/heads/{branch}-tp/' | xargs git branch -D
+  ```
+
+- To continue by hand from a turning point, branch from it, e.g.
+  `git switch -c retry {branch}-tp/g1c1-coding-done`.
+- The run stops at the start when a branch named `{branch}` or `{branch}-tp`, or a branch
+  under `{branch}/` or `{branch}-tp/`, or one matching `{branch}-g*`, already exists. Turning
+  points live under `{branch}-tp/` rather than `{branch}/` because git cannot hold a branch
+  `{branch}` alongside branches under `{branch}/`.
+
+### Run directory
+
+```
+{output}/                    (default .claude/tmp/cdev-loop-{timestamp}/)
+├── state.json               progress state
+├── g1c1/
+│   ├── design/              /cdev:coding design documents
+│   ├── coding-result.json   /cdev:coding result
+│   ├── review/              /creview:rounds review documents and final report
+│   └── rounds-result.json   /creview:rounds result
+├── g1c2/
+│   ├── handoff.md           send-back handoff
+│   └── ...
+├── g1/
+│   ├── postmortem.md        post-mortem analysis
+│   └── postmortem.json      post-mortem verdict
+├── g2c1/
+│   ├── handoff.md           grand-reset handoff
+│   └── ...
+└── loop-summary.md          run summary
+```
+
+- The directory is in the main working tree; a relative `--output` resolves against the
+  repository root. It must be absent or empty at the start, and it is kept after the run.
+- `state.json` records the position, each cycle's results, the turning points, and the
+  send-backs. The loop updates it at every step and reads it back to recover its position after
+  the session's context is compacted. It does not resume a run in another session.
+- `loop-summary.md`, written at the end, lists each cycle's end reasons, the send-backs, the
+  post-mortem verdicts and the adopted generation, the turning points and how to delete them,
+  the warnings, and any worktree left behind. The warnings include, for example, those of QA,
+  the build, and the interpretation test, and a failure to create the output branch.
+
+### When it stops
+
+The loop stops and reports to you only when:
+
+- A starting check fails, such as a session not started at the repository root, an unmet
+  requirement, a branch name already taken, or a run directory that is not empty. The run then
+  ends without a summary.
+- `/cdev:coding` ends abnormally: it writes no result, stops early, or keeps its worktree.
+- `/creview:rounds` ends on an error.
+- `/creview:rounds` keeps its worktree, for example one left with uncommitted changes or
+  initialized submodules, so the next phase cannot check out the work branch.
+- A work branch or turning point cannot be created, the session cannot return to the
+  repository root after an inner skill, or `state.json` cannot be written or made valid.
+
+Otherwise it decides and goes on without asking. An error stop creates no output branch; the
+turning points and work branches made so far remain, and the report names the step that
+stopped, the error, the last work branch, and `loop-summary.md`. When creating the output
+branch at the end fails, the run still ends normally, with a warning: the adopted generation's
+work branch `{branch}-g{g}` holds the same commit, and `loop-summary.md` records the failure.
+
+### Requirements and cost
+
+- The loop needs what `/cdev:coding` and `/creview:rounds` need: background subagents and
+  `SendMessage`, nested sub-agent spawning of depth 3 or more
+  (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), a repository you trust, and a session started at
+  the repository root. It also needs the creview plugin, version 0.22.0 or later, which Claude
+  Code installs with cdev as a dependency.
+- The project's configure, build, and test steps must leave in the worktree neither initialized
+  submodules nor untracked files that `.gitignore` does not cover. Git refuses to remove such a
+  worktree, the inner skill keeps it, and the loop stops after that phase, typically the first
+  coding phase.
+- A run makes at most `(1 + max_sendbacks) × max_generations` cycles, 9 with the defaults.
+  Each cycle runs `/cdev:coding` from team formation to QA and up to `--max-rounds` review
+  rounds, and every send-back has the next review's Round 1 cover the whole generation again.
+  `--pursuit` tends to run up to the generation limit. For the caps on sub-agents launched in a
+  session and running at once, see the [creview README](../creview/README.md).
+- A run makes two turning points per cycle, up to 18 with the defaults.
+- The main working tree's sources are never changed. Its uncommitted changes are not part of
+  the starting commit and are left out of the run; the loop says so at the start.
+
 ## Architect / coder / reviewer agents
 
 Apart from the comment and prompt specialists listed under Bundled agents, this plugin does not
@@ -255,8 +490,12 @@ same agent pool by the same rules.
   `--dry`, it only runs the containment check, which the skill does before creating that
   directory), `check-jsonl.py` (teammates validate the `.jsonl` they wrote with it), and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by both; requires
-  `python3` — see Requirements), and `worktree.sh` (creates and removes the `--worktree`
-  worktree). The skill invokes them via
+  `python3` — see Requirements), `worktree.sh` (creates and removes the `--worktree`
+  worktree), and `restore.sh` (restores an entry of a design's restore list from its turning
+  point commit into the working tree, refusing an entry whose restore would overwrite or
+  delete an untracked file or a tracked file with local changes, or would change a path
+  outside the entry; it may overwrite ignored files, as a git checkout does, so it is used
+  only in the worktree of a `--worktree` run). The skill invokes them via
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`; teammates receive the resolved path through the
   `{{plugin_root}}` variable.
 

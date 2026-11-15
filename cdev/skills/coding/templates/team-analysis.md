@@ -7,6 +7,7 @@ template_id: d8760930-8d32-42c1-b033-d61f0cbd19c7
 Scope the coding task, assemble the specialist team, and pair each producer with a reviewer.
 
 Task: `{{task}}`
+Handoff: `{{handoff_path}}`
 Output: `{{output_path}}`
 
 Agent pool: build it per `{{plugin_root}}/rules/agents-detection.md` § Enumeration. That rule resolves one agent; here select several (below), recording each pick's `name` as its § Result specifies.
@@ -21,11 +22,11 @@ Assignment rules:
 
 Procedure:
 
-1. Understand the task: determine the target language(s), the subsystems / directories it touches, and the build / test surface. Determine whether the project has a test suite (a resolvable test command, a test framework, or a test directory) and set `has_test_suite`. Set `has_prompts` to true when the task creates or edits, or may create or edit, an AI-facing prompt file (per `{{plugin_root}}/rules/prompt.md`), and when in doubt. Use Glob / Grep / Read on the existing codebase to ground this; read only enough to scope, and do not implement anything.
+1. Understand the task: determine the target language(s), the subsystems / directories it touches, and the build / test surface. Determine whether the project has a test suite (a resolvable test command, a test framework, or a test directory) and set `has_test_suite`. Set `has_prompts` to true when the task creates or edits, or may create or edit, an AI-facing prompt file (per `{{plugin_root}}/rules/prompt.md`), and when in doubt. Use Glob / Grep / Read on the existing codebase to ground this; read only enough to scope, and do not implement anything. When `{{handoff_path}}` is not `(none)`, Read it and scope with it as well: the subsystems it touches, the changes its direction calls for, and the files a design may restore to a turning point it names.
 2. Select the team from the pool:
    - architects — own the design. An architect always runs as `general-purpose` (`name` = `general-purpose`). One suffices for a single-subsystem task; use multiple only when the task spans clearly separable subsystems. Give each a `slug` (kebab-case) and a `scope`, and note the domain its scope concerns in `reason`.
    - coders and reviewers — select them, and pair each architect and coder, per the Assignment rules.
-3. Write `task_summary` as a self-contained restatement of the task (in {{doc_lang}}) that the architects / coders can act on without the original chat.
+3. Write `task_summary` as a self-contained restatement of the task (in {{doc_lang}}) that the architects / coders can act on without the original chat. Write it from the task alone, leaving out the handoff's content: what the task summary holds takes the task's rank in the judgment priority, above the handoff.
 4. Write the result to `{{output_path}}`. Write `scope` / `reason` / `rationale` / `task_summary` in {{doc_lang}}; keep `name` / `slug` / identifiers as-is.
 
 `{{output_path}}` format:

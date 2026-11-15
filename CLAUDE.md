@@ -10,7 +10,10 @@ under the MIT license. It publishes three first-party plugins:
 - **cdev** — a team-native multi-agent coding workflow (`coding`: a standing team runs design
   and coding as paired review cells, then a QA gate). AI-facing prompt files also get a
   prompt-discipline self-check, compression, and an interpretation test. Requires background
-  subagents and inter-agent messaging.
+  subagents and inter-agent messaging. `loop` runs `coding` and creview's `rounds` inline as
+  one unattended pipeline, sending the work back to `coding` on a review divergence and
+  letting a post-mortem decide whether to finish or start over, each within a limit. Depends
+  on creview.
 - **cgh** — a GitHub pull request workflow on top of creview (`review`, `gate`, `respond`,
   `resolve`, each taking a pull request URL). Depends on creview; posts only on the user's
   instruction and never approves or merges.
@@ -63,12 +66,14 @@ claude-plugin-marketplace/
 │   └── scripts/                  # fetch-diff.sh, render-review.py, del-tmp.sh, check-jsonl.py, worktree.sh, gh-pr.py, compile-pr-comments.py, lib/scratch-guard.py
 │
 ├── cdev/                         # Plugin: multi-agent coding workflow (active, English)
-│   ├── .claude-plugin/plugin.json
+│   ├── .claude-plugin/plugin.json  # declares the dependency on creview
 │   ├── README.md / README_ja.md
-│   ├── skills/coding/            # /cdev:coding (SKILL.md + templates/: team-analysis, team-reassign, design, design-review, code, code-review, comment-review, prompt-review, prompt-test, qa)
+│   ├── skills/
+│   │   ├── coding/               # /cdev:coding (SKILL.md + templates/: team-analysis, team-reassign, design, design-review, code, code-review, comment-review, prompt-review, prompt-test, qa)
+│   │   └── loop/                 # /cdev:loop (SKILL.md + templates/postmortem.md)
 │   ├── agents/                   # comment-sensei.md, prompt-sensei.md, prompt-tester.md, dev-helper.md
 │   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, prompt.md, divergence.md
-│   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, lib/scratch-guard.py
+│   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, restore.sh, lib/scratch-guard.py
 │
 ├── cgh/                          # Plugin: GitHub pull request workflow on top of creview (active, English)
 │   ├── .claude-plugin/plugin.json  # declares the dependency on creview
@@ -192,16 +197,18 @@ done
 # Every sub-agent launch in a SKILL passes target_dir (prints offending lines)
 grep -nF 'plugin_root = ${CLAUDE_PLUGIN_ROOT}' {creview,cdev}/skills/*/SKILL.md \
   src/{creview,cdev}/skills/*/SKILL.md | grep -vF 'target_dir' && echo BAD || echo ok
-# Same for the colon-form launch block of /creview:rounds (one target_dir line per block)
+# Same for the colon-form launch blocks of /creview:rounds and /cdev:loop (one target_dir
+# line per block)
 pat='- plugin_root: ${CLAUDE_PLUGIN_ROOT}'
-for f in creview/skills/rounds/SKILL.md src/creview/skills/rounds/SKILL.md; do
+for f in creview/skills/rounds/SKILL.md src/creview/skills/rounds/SKILL.md \
+         cdev/skills/loop/SKILL.md src/cdev/skills/loop/SKILL.md; do
   [ "$(grep -cF -- "$pat" "$f")" = "$(grep -A2 -F -- "$pat" "$f" | grep -cF -- '- target_dir:')" ] \
     && echo "ok $f" || echo "BAD $f"
 done
 
-# Scratch-guard self-test: containment behavior, worktree.sh, and byte-parity of the
-# shared script copies across creview/cdev/cgh and their src/ mirrors, and of the
-# creview/cdev rules/prompt.md copies
+# Scratch-guard self-test: containment behavior, worktree.sh, cdev's restore.sh, and
+# byte-parity of the shared script copies across creview/cdev/cgh and their src/ mirrors,
+# and of the creview/cdev rules/prompt.md copies
 bash tests/scratch-guard-test.sh
 
 # cgh's GitHub script, with GitHub and git faked
@@ -230,10 +237,19 @@ a pull request URL (which compile a review document from its comments; `/creview
 leaves out threads resolved on GitHub and `/creview:resolve` keeps them; needs an
 authenticated `gh`), and `/cdev:coding` (in a runtime with background subagents and
 inter-agent messaging) on a task without AI-facing prompt files, on one that edits them
-(which needs a teammate to be able to launch sub-agents), and on one whose design adds a file
+(which needs a teammate to be able to launch sub-agents), on one whose design adds a file
 no coder of the Step 1 team can hold, such as a new script for prompt files to invoke when
 the task edits only prompt files (which the team re-formation after the design gives to a new
-coder, paired with a reviewer of its domain).
+coder, paired with a reviewer of its domain), and on one run with `--worktree` and given a
+`--handoff` that names a turning point, a branch with its commit, and asks to return a file to
+it (which a coder teammate restores with the installed plugin's `restore.sh`; check that the
+file has its content at the turning point's commit in the worktree the teardown kept, or on
+the branch the run reports when it kept none, and that the coder reports no refused entry), and
+`/cdev:loop --max-sendbacks 0
+--max-generations 1` on a small task (which needs what `/cdev:coding` and `/creview:rounds`
+need, and runs one cycle and a post-mortem; check that the branches `{branch}`,
+`{branch}-g1`, and `{branch}-tp/*` and the run directory with `state.json`,
+`loop-summary.md`, and each result file exist).
 Exercise `/cgh:review`, `/cgh:gate`, `/cgh:respond`, and `/cgh:resolve` on a pull request of a
 scratch repository: they post to GitHub under your account.
 
@@ -246,6 +262,8 @@ scratch repository: they post to GitHub under your account.
 `.claude-plugin/marketplace.json` (`name: opensphere-inc`) lists three plugins. `creview`,
 `cdev`, and `cgh` use `"source": "./<dir>"` (relative to the repo root). The `src/`
 tree is **outside** the plugin source dirs, so it is not shipped with the installed plugins.
+`cdev` and `cgh` declare a dependency on `creview` in their `plugin.json`, so Claude Code
+installs creview with either of them.
 
 ### Plugin skills
 
@@ -295,8 +313,11 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     when HEAD lacks the PR head, else the current branch, if any)
 /creview:rounds  → launches one review-leader Sub per phase per round (each Sub invokes
                     the phase's skill and runs it whole) + divergence gate after triage
-                    (Round 2 on: detect → investigate → pause with the report) +
-                    feedback re-fix inner loop
+                    (Round 2 on: detect → investigate → pause with the report, or under
+                    --on-divergence stop, stop the loop and go to the final report) +
+                    feedback re-fix inner loop; --result {path} writes a result JSON
+                    (end reason, rounds, each round's start commit, paths, warnings)
+                    at the end, also on an error
 ```
 
 Each skill's `skills/<skill>/scripts/compile-review.py` (run directly by the leader, not a
@@ -376,6 +397,52 @@ IDs read from the authenticated user's comments. `/cgh:respond` passes `/creview
 comments and gives any other finding a new ID, which the posted reply shows in a heading the script
 adds. `post` reads back what it sent.
 
+### The cdev:loop workflow (state lives in the run directory and on branches)
+
+`/cdev:loop` runs `/cdev:coding` and `/creview:rounds` inline with the Skill tool, in the main
+session: `/cdev:coding`'s leader must be the session that receives its teammates' `to: "main"`
+messages, and handing `/creview:rounds` to a sub-agent would nest it one level deeper. The loop
+leader designs, codes, and reviews nothing itself and reads no body, except that, when it
+arbitrates an escalation as `/cdev:coding`'s leader, it may Read that cycle's handoff and, for a
+send-back handoff, the post-mortem handoff it references; it keeps only its state file, paths,
+counts, end reasons, and verdicts.
+
+A cycle is one `/cdev:coding --worktree={branch}-g{g} --team-tag g{g}c{c}-{hhmmss}
+--commit-always --result ...` followed by one `/creview:rounds --worktree={branch}-g{g}
+--incremental --base {branch}-tp/g{g}c1-coding-start --on-divergence stop --result ...`, where
+`{branch}` is the `--branch` value and `{hhmmss}` the time part of the run's timestamp, which
+keeps the teammate names apart from an earlier run's in the same session. A generation is the
+series of cycles on one work branch `{branch}-g{g}`, created at the starting commit, the main
+working tree's HEAD at the start. The turning points
+`{branch}-tp/g{g}c{c}-coding-start` and `-coding-done` are branches made with `git branch`
+right before and after each `/cdev:coding`, never moved or deleted, and no work branch's
+history is rewritten; they live under `{branch}-tp/` because `refs/heads/{branch}` cannot
+coexist with `refs/heads/{branch}/...`. `--base` is always the generation's first turning
+point A, the starting commit, so every cycle's Round 1 reviews the whole generation.
+
+On the `divergence` end reason with send-backs left, the leader writes a handoff from paths
+alone, pointing at the divergence investigation report and listing the generation's turning
+points as restore candidates, and starts the next cycle with `--handoff` on the same branch;
+`/cdev:coding`'s design may restore files to a turning point's content, committed forward. At
+the end of a generation, the leader launches the post-mortem sub-agent (`general-purpose`,
+`templates/postmortem.md`, with a `template_id` the SKILL checks), which writes
+`postmortem.md` and `postmortem.json` and, on `redo`, the next generation's handoff; a `redo`
+with generations left is a grand reset from the starting commit. On a normal end (`finish`, or
+`redo` with no generations left, which adopts the last generation), the output branch
+`{branch}` is created at the tip of the adopted generation's work branch; a failure to create
+it is recorded as a warning and the end stays normal.
+
+The run directory holds `state.json`, the source of truth for progress, which the leader
+updates at every step and re-reads after context compaction, never repeating a side effect it
+records, and each cycle's `coding-result.json` (`/cdev:coding --result`) and
+`rounds-result.json` (`/creview:rounds --result`), on which every branch decision rests. The
+loop stops only when its starting checks fail, `/cdev:coding` ends abnormally (no result file,
+`aborted`, or `kept_worktree`), `/creview:rounds` ends in `error` (or the result file is
+missing), a worktree is left behind, a work branch or turning point cannot be created, the
+session cannot return to the repository root, or `state.json` cannot be written or made valid;
+an error stop creates no output branch and keeps the turning points and work branches made so
+far.
+
 ### Sub-agent launch contract
 
 Leaders pass a launch prompt that tells the sub-agent to `Read` an external
@@ -424,6 +491,11 @@ The launches of `prompt-tester`, in cdev and in creview, are an exception as wel
 tester carries no context of the run, the same plugin's `prompt-sensei` launches it with an
 inline prompt, with no external template, no `template_id`, and no `plugin_root`, `main_root`,
 or `target_dir`. The agent has Read, Glob, and Grep only.
+
+`/cdev:loop` runs `/cdev:coding` and `/creview:rounds` inline, so each keeps this contract as
+its own leader. The only sub-agent the loop leader launches itself is the post-mortem, in a
+colon-form launch block that passes `plugin_root`, `main_root` = `(none)`, and `target_dir` =
+the repository root, since the leader stays in the main working tree between phases.
 
 ---
 
@@ -596,9 +668,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   because plugins install independently. Edit one copy and replicate to the others;
   `tests/scratch-guard-test.sh` fails on any drift. `scripts/worktree.sh` is likewise
   byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors).
-  `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `creview/scripts/gh-pr.py`, and
-  `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` are likewise each
-  byte-identical with its own `src/` mirror.
+  `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `cdev/scripts/restore.sh`,
+  `creview/scripts/gh-pr.py`, and `creview/scripts/compile-pr-comments.py`, and
+  `cgh/scripts/gh-review.py` are likewise each byte-identical with its own `src/` mirror.
 - **`creview/rules/prompt.md` is a byte-identical copy of `cdev/rules/prompt.md`**, and
   `src/creview/rules/prompt.md` of `src/cdev/rules/prompt.md`: `/creview:respond` applies the
   same prompt discipline as `/cdev:coding`, and each plugin ships its own copy. Edit one copy
