@@ -1734,6 +1734,18 @@ proc, _ = run(setup("no-batches"))
 expect("no batches exit", proc.returncode, 0)
 expect("no batches result", json.loads(proc.stdout)["doc_path"], None)
 
+tmp = os.path.join(sandbox, "compile", "contract")
+expect("batches gh-pr.py writes: count", g.write_comment_batches(tmp, {
+    "review_comments": [{"id": 1, "in_reply_to": None, "body": "x"}],
+    "reviews": [], "issue_comments": [], "omitted": False,
+}), 1)
+with open(os.path.join(tmp, "pr-comments", "extract-1.jsonl"), "w", encoding="utf-8") as f:
+    f.write(json.dumps({"findings": [finding()]}))
+proc, doc = run(tmp)
+expect("batches gh-pr.py writes: exit", proc.returncode, 0)
+out = json.loads(proc.stdout)
+expect("batches gh-pr.py writes: result", (out["doc_path"], out["findings_total"]), (doc, 1))
+
 for name, extracts, raw, part in (
     ("missing", ([finding()], None), None, "extract-2.jsonl"),
     ("malformed", ([finding()],), "{not json", "extract-1.jsonl"),
