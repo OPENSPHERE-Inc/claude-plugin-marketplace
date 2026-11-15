@@ -110,7 +110,9 @@ see **[CLAUDE.md](CLAUDE.md)**.
 11. **Agent frontmatter uses `tools:`**, not `allowed-tools:` (that key is for skills /
     commands and is ignored in `agents/*.md`, leaving the agent unrestricted).
 12. **Skill data files are `.jsonl`, never `.json`** — state, result, sub-agent output, and
-    script intermediate files alike, whoever writes them; see CLAUDE.md § Naming conventions.
+    script intermediate files alike, whoever writes them. Plugin manifests, the destination
+    project's files, a path the user gives such as a `--result` value, and the JSON a script
+    prints are exempt; see CLAUDE.md § Naming conventions.
 
 For architecture, the localization workflow, common tasks, and warnings, refer to
 **[CLAUDE.md](CLAUDE.md)**.

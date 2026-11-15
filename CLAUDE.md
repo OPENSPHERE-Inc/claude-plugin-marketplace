@@ -560,14 +560,17 @@ the repository root, since the leader stays in the main working tree between pha
 
 - Skill dirs / `name:` — kebab/lower (`start`, `triage`, `select-fix-targets`).
 - Template files — kebab-case `.md` with a `template_id` UUID in frontmatter.
-- Data files — a JSON file a skill run writes or reads to control its work (a state or result
-  file, a sub-agent's output, a script's intermediate file) is named `.jsonl`, never `.json`,
-  whoever writes it: some Claude Code environments ask before a Write or Edit of a `*.json`
-  file, which stops an unattended run. The extension sets no line layout: the file holds one
-  JSON value for the whole file or one JSON value per line, the shapes `check-jsonl.py`
-  accepts, and the prompt or script that writes it fixes which. Plugin manifests, the
-  destination project's files such as `.mcp.json` or `package.json`, a path the user gives
-  such as a `--result` value, and the JSON a script prints are not data files.
+- Data files — a JSON file a skill run writes or reads to control its work is named `.jsonl`,
+  never `.json`, whoever writes it.
+  - Examples: a state or result file, a sub-agent's output, a script's intermediate file.
+  - Not data files: plugin manifests, the destination project's files such as `.mcp.json` or
+    `package.json`, a path the user gives such as a `--result` value, and the JSON a script
+    prints.
+  - Why: some Claude Code environments ask before a Write or Edit of a `*.json` file, which
+    stops an unattended run.
+  - Line layout: the extension sets none; the file holds one JSON value for the whole file or
+    one JSON value per line, the shapes `check-jsonl.py` accepts, and the prompt or script that
+    writes it decides which.
 
 ---
 
