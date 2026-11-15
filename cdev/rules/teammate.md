@@ -18,9 +18,9 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
 
 Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting.
 
-Write each line of a `.jsonl` file as one complete JSON object, never spreading one value over several lines. Write a file the task specifies as one JSON object on one line, not one line per record, and a file whose line layout the task specifies in that layout.
+Write each `.jsonl` file your task tells you to write as the one JSON object the task specifies, on one line, not one line per record. A `.jsonl` file among the sources you edit is not such a file: keep its own format.
 
-After writing a `.jsonl` file, validate it with `python3 {{plugin_root}}/scripts/check-jsonl.py {path}`, and fix and re-validate on error. Do not check the syntax with a `node -e` or similar interpreter one-liner: an ad-hoc interpreter command is what a permission policy denies or prompts on.
+After writing a `.jsonl` file your task tells you to write, validate it with `python3 {{plugin_root}}/scripts/check-jsonl.py {path}`, and fix and re-validate on error. Do not check the syntax with a `node -e` or similar interpreter one-liner: an ad-hoc interpreter command is what a permission policy denies or prompts on.
 
 Communicate via `SendMessage`. Destination terms and resolution:
 

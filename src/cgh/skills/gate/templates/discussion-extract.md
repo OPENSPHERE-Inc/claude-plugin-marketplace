@@ -9,7 +9,7 @@ template_id: d7fe93d3-9f15-432c-af0b-f0511f8c0779
 入力: `{{batch_path}}`。最後まで読み、Read が大きすぎると報告したら分けて読む。1 行目はメタデータ行 `{"type": "meta", ...}` で、`viewer`、`author`、`assignees` を持つ。2 行目以降の各行は `comment` 行である:
 
 - `viewer` — ゲートを実行するアカウント。`author` と `assignees` — プルリクエストの作者とアサイン先。
-- `comment` — 一覧にする対象のコメント 1 件: `author`、`location`（`path:line`、パス、または `PR`）、`text`、`created_at`、スレッド内のコメントは `in_reply_to` と `review_opening`（そのレビュー本文の冒頭）。
+- `comment` — 一覧にする対象のコメント 1 件: `author`、`location`（`path:line`、パス、または `PR`）、`text`、`created_at`、スレッド内のコメントは `in_reply_to` と `review_opening`（そのレビュー本文の冒頭）。`in_reply_to` はスレッドの最初のコメントでは null、各返信ではその最初のコメントの ID である。スレッドのコメントは連続した行に古い順に並ぶ。
 
 入力: `{{conversation_path}}`。最後まで読み、Read が大きすぎると報告したら分けて読む。1 行目はメタデータ行 `{"type": "meta"}` で、2 行目以降の各行は `conversation` 行である:
 

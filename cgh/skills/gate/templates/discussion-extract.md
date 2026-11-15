@@ -9,7 +9,7 @@ List the problems the comments on a pull request raise, with what was answered. 
 Input: `{{batch_path}}`, read to its end, in parts when Read reports it too large. Its first line is the metadata line, `{"type": "meta", ...}`, with `viewer`, `author`, and `assignees`; each line after it is a `comment` line:
 
 - `viewer` — the account running the gate. `author` and `assignees` — the pull request's author and assignees.
-- `comment` — one comment to list from: `author`, `location` (`path:line`, a path, or `PR`), `text`, `created_at`, and, for a comment in a thread, `in_reply_to` and `review_opening` (the start of its review's body).
+- `comment` — one comment to list from: `author`, `location` (`path:line`, a path, or `PR`), `text`, `created_at`, and, for a comment in a thread, `in_reply_to` and `review_opening` (the start of its review's body). `in_reply_to` is null on the thread's first comment and that first comment's ID on each reply. A thread's comments are on consecutive lines, oldest first.
 
 Input: `{{conversation_path}}`, read to its end, in parts when Read reports it too large. Its first line is the metadata line, `{"type": "meta"}`; each line after it is a `conversation` line:
 
