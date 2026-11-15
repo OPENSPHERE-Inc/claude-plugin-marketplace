@@ -21,7 +21,7 @@ For `/cgh:gate`, `overview`: two to four sentences in `{doc_lang}` that open the
 
 Leave out a `post_` field when its text is already in `comment_lang` with no `@` outside code. List every id, even with no other field: an id missing from the file counts as not done.
 
-Write `{tmp_dir}/wording-{n}.json`, with `overview` and `post_overview` only for `/cgh:gate` and left out for `/cgh:review`:
+Write `{tmp_dir}/wording-{n}.jsonl` as one JSON object, with `overview` and `post_overview` only for `/cgh:gate` and left out for `/cgh:review`:
 
 `{"comment_lang": "en", "overview": "...", "post_overview": "...", "findings": [{"id": "M-1", "summary": "...", "post_text": "...", "post_summary": "...", "post_categories": "..."}, {"id": "M-7", "post_note": "..."}]}`
 
@@ -29,13 +29,13 @@ Write `{tmp_dir}/wording-{n}.json`, with `overview` and `post_overview` only for
 
 For `/cgh:resolve`. For each reply whose `body` is not in `comment_lang`, or has a `@` outside code, `post_body`: that `body` in `comment_lang`. `index` is the reply's position in `replies`, from 0.
 
-Write `{tmp_dir}/wording-{n}.json`:
+Write `{tmp_dir}/wording-{n}.jsonl` as one JSON object:
 
 `{"comment_lang": "en", "replies": [{"index": 0, "post_body": "..."}]}`
 
 ## Drafted replies
 
-For `/cgh:respond`. Inputs: the review document, whose findings have an ID, a location, a description, authors, and `Triage` / `Estimate` / `Status` lines; `comments.json`: `viewer`, `review_comments` (`id`, `in_reply_to`, `author`, `path`, `line`, `created_at`, `body`), `reviews` (`id`, `author`, `state`, `submitted_at`, `body`), `issue_comments` (`id`, `author`, `created_at`, `body`); and `fix-commits.json`: `commits` (`sha`, `subject`, `files`).
+For `/cgh:respond`. Inputs: the review document, whose findings have an ID, a location, a description, authors, and `Triage` / `Estimate` / `Status` lines; `comments.jsonl`: `viewer`, `review_comments` (`id`, `in_reply_to`, `author`, `path`, `line`, `created_at`, `body`), `reviews` (`id`, `author`, `state`, `submitted_at`, `body`), `issue_comments` (`id`, `author`, `created_at`, `body`); and `fix-commits.jsonl`: `commits` (`sha`, `subject`, `files`).
 
 Match each finding to every comment it came from, by location, author, and content. Then reply according to its metadata:
 
@@ -53,6 +53,6 @@ Rules:
 - Do not write finding IDs: the script adds the heading and the mention a reply needs. A reply to a `reviews` or `issue_comments` entry goes out in the conversation outside threads, so say in a few words which problem it answers.
 - A finding none of whose comments you can identify gets no reply: list it in `unmatched`.
 
-Write `{tmp_dir}/replies.json`:
+Write `{tmp_dir}/replies.jsonl` as one JSON object:
 
 `{"comment_lang": "en", "replies": [{"kind": "thread", "target_id": 123, "finding_ids": ["M-1"], "body": "...", "post_body": "..."}], "unmatched": ["mi-2"], "unaddressed": ["M-3"]}`

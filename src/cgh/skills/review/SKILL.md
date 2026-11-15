@@ -22,13 +22,13 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 1 — レビューとトリアージ
 
-1. レビューの前に、プルリクエストに既にあるものを集める。`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}'` を実行する。自分と他の人のコメントが `{directory}/batch-{n}.json`（`{n}` は 1 から）に書き出され、`directory` と `batches` が出力される。非ゼロ終了なら、そのエラーで中断する。バッチごとに `Agent(subagent_type="cgh:comment-writer", prompt=...)` を起動する。1 メッセージで最大 20 個まで:
+1. レビューの前に、プルリクエストに既にあるものを集める。`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}'` を実行する。自分と他の人のコメントが `{directory}/batch-{n}.jsonl`（`{n}` は 1 から）に書き出され、`directory` と `batches` が出力される。非ゼロ終了なら、そのエラーで中断する。バッチごとに `Agent(subagent_type="cgh:comment-writer", prompt=...)` を起動する。1 メッセージで最大 20 個まで:
 
    ```
    最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/review/templates/raised-extract.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
 
    変数（テンプレート中の {{...}} placeholder を置換）:
-   - batch_path: {directory}/batch-{n}.json
+   - batch_path: {directory}/batch-{n}.jsonl
    - output_path: {directory}/raised-{n}.md
    - doc_lang: {doc_lang}
 
@@ -42,11 +42,11 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 2 — ドラフト
 
-§ 指摘 ID に従う。その後、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind review --lang {lang}` を実行する。`--force-comment` が指定されていれば追加する。`{tmp_dir}/draft.json` が書き出される。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
+§ 指摘 ID に従う。その後、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind review --lang {lang}` を実行する。`--force-comment` が指定されていれば追加する。`{tmp_dir}/draft.jsonl` が書き出される。その後、`{json_path}` = `{tmp_dir}/draft.jsonl` で § コメントの文面 に従う。
 
 ## Step 3 — 確認と投稿
 
-`{json_path}` = `{tmp_dir}/draft.json` で § 確認と投稿 に従う。Info の指摘はユーザーが指示したときだけ選択する。選択された指摘がなければ、プレビューを示すときにそう伝える: `post` は何も送らない投稿を拒否する。
+`{json_path}` = `{tmp_dir}/draft.jsonl` で § 確認と投稿 に従う。Info の指摘はユーザーが指示したときだけ選択する。選択された指摘がなければ、プレビューを示すときにそう伝える: `post` は何も送らない投稿を拒否する。
 
 イベントと各指摘の投稿先はスクリプトが `{json_path}` から算出する: 自分で選ばない。
 

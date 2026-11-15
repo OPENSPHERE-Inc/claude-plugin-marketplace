@@ -22,13 +22,13 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 ## Step 1 — Review and triage
 
-1. Before the review, collect what is already on the pull request. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}'`. It writes the comments, yours and everyone else's, to `{directory}/batch-{n}.json`, `{n}` from 1, and prints `directory` and `batches`. On a non-zero exit, abort with its error. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)` for each batch, at most 20 in one message:
+1. Before the review, collect what is already on the pull request. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}'`. It writes the comments, yours and everyone else's, to `{directory}/batch-{n}.jsonl`, `{n}` from 1, and prints `directory` and `batches`. On a non-zero exit, abort with its error. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)` for each batch, at most 20 in one message:
 
    ```
    As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/review/templates/raised-extract.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
 
    Variables (substitute into the template's {{...}} placeholders):
-   - batch_path: {directory}/batch-{n}.json
+   - batch_path: {directory}/batch-{n}.jsonl
    - output_path: {directory}/raised-{n}.md
    - doc_lang: {doc_lang}
 
@@ -42,11 +42,11 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 ## Step 2 — Draft
 
-Follow § Finding IDs. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind review --lang {lang}`, adding `--force-comment` when given. It writes `{tmp_dir}/draft.json`. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
+Follow § Finding IDs. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind review --lang {lang}`, adding `--force-comment` when given. It writes `{tmp_dir}/draft.jsonl`. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.jsonl`.
 
 ## Step 3 — Confirm and post
 
-Follow § Confirm and post with `{json_path}` = `{tmp_dir}/draft.json`. Select an Info finding only when the user tells you to. With no finding selected, say so when you show the preview: `post` refuses to send nothing.
+Follow § Confirm and post with `{json_path}` = `{tmp_dir}/draft.jsonl`. Select an Info finding only when the user tells you to. With no finding selected, say so when you show the preview: `post` refuses to send nothing.
 
 The script computes the event and each finding's place from `{json_path}`: do not choose them yourself.
 

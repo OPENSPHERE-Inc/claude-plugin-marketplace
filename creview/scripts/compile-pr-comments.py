@@ -7,7 +7,7 @@ Usage:
         --merge-base <sha> --branch <branch|(none)> --trust <on|off> --lang <en|ja>
         [--finding-ids <path>]
 
-Reads, for each <tmp_dir>/pr-comments/batch-<n>.json, the file extract-<n>.jsonl next
+Reads, for each <tmp_dir>/pr-comments/batch-<n>.jsonl, the file extract-<n>.jsonl next
 to it:
     {"findings": [{"severity": "Critical" | "Major" | "Minor",
                    "categories": ["..."], "location": "path:line" | "path" | "PR",
@@ -170,11 +170,11 @@ def read_extract(path):
 
 
 def batch_number(path):
-    return int(re.search(r"batch-([0-9]+)\.json$", path).group(1))
+    return int(re.search(r"batch-([0-9]+)\.jsonl$", path).group(1))
 
 
 def read_extracts(tmp_dir):
-    batches = glob.glob(os.path.join(glob.escape(tmp_dir), "pr-comments", "batch-*.json"))
+    batches = glob.glob(os.path.join(glob.escape(tmp_dir), "pr-comments", "batch-*.jsonl"))
     findings, errors = [], []
     for batch in sorted(batches, key=batch_number):
         path = os.path.join(os.path.dirname(batch), f"extract-{batch_number(batch)}.jsonl")

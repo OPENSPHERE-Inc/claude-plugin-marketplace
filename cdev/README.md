@@ -384,18 +384,18 @@ In the names below, `{branch}` is the `--branch` value, `g` the generation, and 
 
 ```
 {output}/                    (default .claude/tmp/cdev-loop-{timestamp}/)
-├── state.json               progress state
+├── state.jsonl              progress state
 ├── g1c1/
 │   ├── design/              /cdev:coding design documents
-│   ├── coding-result.json   /cdev:coding result
+│   ├── coding-result.jsonl  /cdev:coding result
 │   ├── review/              /creview:rounds review documents and final report
-│   └── rounds-result.json   /creview:rounds result
+│   └── rounds-result.jsonl  /creview:rounds result
 ├── g1c2/
 │   ├── handoff.md           send-back handoff
 │   └── ...
 ├── g1/
 │   ├── postmortem.md        post-mortem analysis
-│   └── postmortem.json      post-mortem verdict
+│   └── postmortem.jsonl     post-mortem verdict
 ├── g2c1/
 │   ├── handoff.md           grand-reset handoff
 │   └── ...
@@ -404,7 +404,7 @@ In the names below, `{branch}` is the `--branch` value, `g` the generation, and 
 
 - The directory is in the main working tree; a relative `--output` resolves against the
   repository root. It must be absent or empty at the start, and it is kept after the run.
-- `state.json` records the position, each cycle's results, the turning points, and the
+- `state.jsonl` records the position, each cycle's results, the turning points, and the
   send-backs. The loop updates it at every step and reads it back to recover its position after
   the session's context is compacted. It does not resume a run in another session.
 - `loop-summary.md`, written at the end, lists each cycle's end reasons, the send-backs, the
@@ -424,7 +424,7 @@ The loop stops and reports to you only when:
 - `/creview:rounds` keeps its worktree, for example one left with uncommitted changes or
   initialized submodules, so the next phase cannot check out the work branch.
 - A work branch or turning point cannot be created, the session cannot return to the
-  repository root after an inner skill, or `state.json` cannot be written or made valid.
+  repository root after an inner skill, or `state.jsonl` cannot be written or made valid.
 
 Otherwise it decides and goes on without asking. An error stop creates no output branch; the
 turning points and work branches made so far remain, and the report names the step that

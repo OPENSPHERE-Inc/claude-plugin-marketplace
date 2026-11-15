@@ -248,7 +248,7 @@ the branch the run reports when it kept none, and that the coder reports no refu
 `/cdev:loop --max-sendbacks 0
 --max-generations 1` on a small task (which needs what `/cdev:coding` and `/creview:rounds`
 need, and runs one cycle and a post-mortem; check that the branches `{branch}`,
-`{branch}-g1`, and `{branch}-tp/*` and the run directory with `state.json`,
+`{branch}-g1`, and `{branch}-tp/*` and the run directory with `state.jsonl`,
 `loop-summary.md`, and each result file exist).
 Exercise `/cgh:review`, `/cgh:gate`, `/cgh:respond`, and `/cgh:resolve` on a pull request of a
 scratch repository: they post to GitHub under your account.
@@ -354,7 +354,7 @@ The `<!-- METADATA(id) -->` markers belong to the local review document and neve
 
 Every cgh skill runs `rules/leader.md` § Finding IDs: `gh-review.py own` writes the authenticated
 user's comments in batches, a `comment-writer` reads the IDs they use, and `gh-review.py ids` writes
-`{tmp_dir}/finding-ids.json` from that, for `collect`, `prior`, `draft`, and `/creview:triage
+`{tmp_dir}/finding-ids.jsonl` from that, for `collect`, `prior`, `draft`, and `/creview:triage
 --finding-ids`.
 
 `/cgh:resolve` and `/cgh:gate` run `rules/leader.md` § Posted findings. `gh-review.py collect`
@@ -363,7 +363,7 @@ or under `/cgh:gate`, the conversation outside threads. A `comment-writer` picks
 kind asked for and judges each one's state from that, and `gh-review.py prior` turns the judgment into a review
 document for `/creview:resolve`: a decline as a `Won't Fix` triage, a finding verified earlier with
 a `Verification` line so that it is checked again, with the comment targets in
-`{tmp_dir}/prior.json`. `gh-review.py replies` and `draft` report a finding verified earlier only
+`{tmp_dir}/prior.jsonl`. `gh-review.py replies` and `draft` report a finding verified earlier only
 when it no longer holds. `/cgh:review` collects with `gh-review.py raised`, before the review,
 what comments by anyone already raise, and an override has the triage sub-agent leave those out.
 `/cgh:gate` reviews in two stages, one after the other, each a `/creview:start` and a
@@ -426,20 +426,20 @@ points as restore candidates, and starts the next cycle with `--handoff` on the 
 `/cdev:coding`'s design may restore files to a turning point's content, committed forward. At
 the end of a generation, the leader launches the post-mortem sub-agent (`general-purpose`,
 `templates/postmortem.md`, with a `template_id` the SKILL checks), which writes
-`postmortem.md` and `postmortem.json` and, on `redo`, the next generation's handoff; a `redo`
+`postmortem.md` and `postmortem.jsonl` and, on `redo`, the next generation's handoff; a `redo`
 with generations left is a grand reset from the starting commit. On a normal end (`finish`, or
 `redo` with no generations left, which adopts the last generation), the output branch
 `{branch}` is created at the tip of the adopted generation's work branch; a failure to create
 it is recorded as a warning and the end stays normal.
 
-The run directory holds `state.json`, the source of truth for progress, which the leader
+The run directory holds `state.jsonl`, the source of truth for progress, which the leader
 updates at every step and re-reads after context compaction, never repeating a side effect it
-records, and each cycle's `coding-result.json` (`/cdev:coding --result`) and
-`rounds-result.json` (`/creview:rounds --result`), on which every branch decision rests. The
+records, and each cycle's `coding-result.jsonl` (`/cdev:coding --result`) and
+`rounds-result.jsonl` (`/creview:rounds --result`), on which every branch decision rests. The
 loop stops only when its starting checks fail, `/cdev:coding` ends abnormally (no result file,
 `aborted`, or `kept_worktree`), `/creview:rounds` ends in `error` (or the result file is
 missing), a worktree is left behind, a work branch or turning point cannot be created, the
-session cannot return to the repository root, or `state.json` cannot be written or made valid;
+session cannot return to the repository root, or `state.jsonl` cannot be written or made valid;
 an error stop creates no output branch and keeps the turning points and work branches made so
 far.
 
@@ -560,6 +560,14 @@ the repository root, since the leader stays in the main working tree between pha
 
 - Skill dirs / `name:` — kebab/lower (`start`, `triage`, `select-fix-targets`).
 - Template files — kebab-case `.md` with a `template_id` UUID in frontmatter.
+- Data files — a JSON file a skill run writes or reads to control its work (a state or result
+  file, a sub-agent's output, a script's intermediate file) is named `.jsonl`, never `.json`,
+  whoever writes it: some Claude Code environments ask before a Write or Edit of a `*.json`
+  file, which stops an unattended run. The extension sets no line layout: the file holds one
+  JSON value for the whole file or one JSON value per line, the shapes `check-jsonl.py`
+  accepts, and the prompt or script that writes it fixes which. Plugin manifests, the
+  destination project's files such as `.mcp.json` or `package.json`, a path the user gives
+  such as a `--result` value, and the JSON a script prints are not data files.
 
 ---
 

@@ -11,15 +11,15 @@ Usage:
 fetch: resolves <pr_url> (https://<host>/<owner>/<repo>/pull/<number>) with gh,
 requires <owner>/<repo> on <host> to be a remote of the current repository and
 the PR to be open, and writes to <out_dir>:
-  pr.json          url, head and base commits, merge base
-  pr-context.json  title and body, CI check results (the latest attempt of each
+  pr.jsonl         url, head and base commits, merge base
+  pr-context.jsonl title and body, CI check results (the latest attempt of each
                    check in each workflow run; the first MAX_JOB_LOGS failed
                    GitHub Actions jobs carry a log excerpt, or log_error when
                    it could not be fetched), and the conversation: issue
                    comments, submitted review bodies, and review comments, at
                    most MAX_COMMENTS of each kind, with omitted set when any
                    were left out
-  pr-comments/batch-<n>.json
+  pr-comments/batch-<n>.jsonl
                    every issue comment, submitted review body, and review
                    comment, up to MAX_PAGES pages of each kind, split into
                    batches of about BATCH_CHARS characters with each review
@@ -424,7 +424,7 @@ def write_comment_batches(out_dir, comments):
     directory = os.path.join(out_dir, "pr-comments")
     os.makedirs(directory, exist_ok=True)
     for n, batch in enumerate(batches, 1):
-        write_json(os.path.join(directory, f"batch-{n}.json"), batch)
+        write_json(os.path.join(directory, f"batch-{n}.jsonl"), batch)
     return len(batches)
 
 
@@ -528,7 +528,7 @@ def cmd_fetch(pr_url, out_dir, *options):
         )
 
     comments = all_comments(host, repo, number)
-    write_json(os.path.join(out_dir, "pr.json"), {
+    write_json(os.path.join(out_dir, "pr.jsonl"), {
         "url": url,
         "repo": repo,
         "number": number,
@@ -536,7 +536,7 @@ def cmd_fetch(pr_url, out_dir, *options):
         "base_sha": base_sha,
         "merge_base": merge_base,
     })
-    write_json(os.path.join(out_dir, "pr-context.json"), {
+    write_json(os.path.join(out_dir, "pr-context.jsonl"), {
         "title": pr["title"],
         "body": clip(pr["body"], BODY_CHARS),
         "checks": ci_checks(pr["statusCheckRollup"], host, job_repos),

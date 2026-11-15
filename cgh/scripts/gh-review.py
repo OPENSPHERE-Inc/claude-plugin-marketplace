@@ -28,38 +28,38 @@ Nothing this script reads is taken from HTML comments: it removes them, for ever
 hands on. What a comment means, finding IDs included, is judged from its visible text by whoever
 reads the files this script writes. Text it posts goes out as written.
 
-own: writes <tmp_dir>/own/batch-<n>.json and keys.json, {"batches": n}. A batch holds viewer, the
+own: writes <tmp_dir>/own/batch-<n>.jsonl and keys.jsonl, {"batches": n}. A batch holds viewer, the
 authenticated user, and comments, each comment of that user with visible text, outside pending
 reviews and with dismissed reviews included, with its key (review:<id>, thread:<id of the thread's
 first comment>, or issue_comment:<id>), location, and text. A batch with a review body or an issue
 comment also holds others, other people's review bodies and issue comments, with key, author, and
 text, and own_outside, that user's review bodies and issue comments, with key and text.
 
-ids: reads what each batch of own comes to from <tmp_dir>/own/extract-<n>.json,
+ids: reads what each batch of own comes to from <tmp_dir>/own/extract-<n>.jsonl,
 {"findings": [{"key", "ids"}], "used": [...]}, and names any file that is missing or malformed: a
 key must be in that batch's comments, others, or own_outside. It removes a malformed file, so that
-a writer run again can write it. Writes <tmp_dir>/finding-ids.json for collect, prior, draft, and
+a writer run again can write it. Writes <tmp_dir>/finding-ids.jsonl for collect, prior, draft, and
 creview's compile-pr-comments.py: comments, the finding IDs by key, and used, every ID in the
 extracts.
 
-collect: writes <tmp_dir>/posted/batch-<n>.json and items.json. Each comment of the authenticated
+collect: writes <tmp_dir>/posted/batch-<n>.jsonl and items.jsonl. Each comment of the authenticated
 user with visible text, outside pending and dismissed reviews, is an item, except that a reply in
 one of that user's own threads stays a reply of that thread's item. Which of them hold findings
 of --kind is judged by whoever reads the batches. An item has key (review:<id>, thread:<own id>, or
-issue_comment:<id>), earlier_ids, the IDs finding-ids.json gives its comment or thread, location,
+issue_comment:<id>), earlier_ids, the IDs finding-ids.jsonl gives its comment or thread, location,
 text, the replies in its thread, and, when it is in a thread, review_opening, the opening of its
 review's visible body, and, for a reply in someone else's thread, thread_root, that thread's first
 comment in the form of a reply. A batch also holds viewer and the pull request's author and
 assignees, by
 whom an answer is weighed, and kind, and, when it holds an item with no thread or kind is gate, the
-conversation outside threads, with the key of each entry. items.json also records backed: whether
+conversation outside threads, with the key of each entry. items.jsonl also records backed: whether
 the user replied in the item's thread, or wrote a review body or an issue comment after it other
 than the one holding it, and marks, by finding ID, whether the user's comments outside dismissed
 reviews last showed it as blocking, in the form this script posts at the start of a line.
 
-prior: reads the judgment of each batch from <tmp_dir>/posted/extract-<n>.json, and names any file
+prior: reads the judgment of each batch from <tmp_dir>/posted/extract-<n>.jsonl, and names any file
 that is missing or malformed, removing a malformed one: a key must be an item of that batch. Writes
-<tmp_dir>/prior.json with the findings not withdrawn, each with blocking from marks or null, Info
+<tmp_dir>/prior.jsonl with the findings not withdrawn, each with blocking from marks or null, Info
 left out since creview's verification skips it, and, when there are any, <document>: a review
 document creview's verification reads, with
 a Source: pr-comments bullet and a Trust bullet: on at the pull request's head or with --trust,
@@ -70,13 +70,13 @@ when it is that comment's only finding, or else takes the next free number; an I
 took counts as none. A finding judged withdrawn that is not backed stays open, printed in demoted.
 Stops when there are findings and the working tree holds what the pull request does not: commits
 past its head, or uncommitted changes at its head. A finding judged withdrawn rests on that judgment
-of the comments alone, with the code unchecked, so it is recorded with its reason: in prior.json's
+of the comments alone, with the code unchecked, so it is recorded with its reason: in prior.jsonl's
 waived, in a section of <document> no parser reads as a finding, and in the file printed as
 waived_document, <tmp_dir>/waived.md, or with no <document>, <document minus .md>-waived.md, which
 outlasts <tmp_dir>. Of the comments with earlier IDs and no judgment, prints in unjudged the key and
 IDs of those the extracts do not skip, in other_kind the count skipped as another kind, and in
 no_problem the key, IDs, and why of those skipped as raising nothing. Also writes
-<tmp_dir>/pr-body.json, the pull request's title and description, and prints its path in
+<tmp_dir>/pr-body.jsonl, the pull request's title and description, and prints its path in
 pr_body_path.
 
 since: finds the authenticated user's latest gate review outside pending and dismissed reviews, one
@@ -103,23 +103,23 @@ ids, each new ID with the document and the ID it had there, and adrs, the ADR fi
 
 draft: reads a review document of the pull request, with or without findings, which must
 still be at the document's head and, for a gate draft, at its merge base, with --since still the
-commit since picks, and writes <tmp_dir>/draft.json: every finding, numbered after
-every ID finding-ids.json lists as used on the pull request, with the categories its heading
+commit since picks, and writes <tmp_dir>/draft.jsonl: every finding, numbered after
+every ID finding-ids.jsonl lists as used on the pull request, with the categories its heading
 brackets, which its comment shows, whether it is selected,
 and where it goes (inline: a line of the diff; file: a file of the diff; body: anywhere else).
 Selected by default: a Will Fix finding other than Info, unless Downgrade leaves it at Minor;
 Critical or Major with Downgrade stays a real problem. --prior-doc, which must be at the pull
 request's head too,
-adds the verification of earlier gate findings. A finding <tmp_dir>/prior.json has as verified
+adds the verification of earlier gate findings. A finding <tmp_dir>/prior.jsonl has as verified
 earlier is left out when that still holds, and printed in unchanged. The findings it has as waived
 go into the draft's waived, which the preview lists and nothing posts. It also writes
-<tmp_dir>/pr-body.json, the pull request's title and description. Under --kind gate, each finding
+<tmp_dir>/pr-body.jsonl, the pull request's title and description. Under --kind gate, each finding
 also has blocking, whether it stops the merge, which severity does not decide. --blocking, which
-must be <tmp_dir>/blocking.json, reads the judgment, {"findings": [{"id", "blocking"}]} by the
+must be <tmp_dir>/blocking.jsonl, reads the judgment, {"findings": [{"id", "blocking"}]} by the
 document's IDs, and a file it cannot read is removed and named in the error, so that a writer run
 again can write it. A selected finding it does not name counts as blocking, and is printed in
 blocking_unjudged. A blocking finding stays selected through a Downgrade. An earlier finding has
-blocking from prior.json, the latest mark in the user's own comments, or, with none, from its
+blocking from prior.jsonl, the latest mark in the user's own comments, or, with none, from its
 severity: Critical and Major block. One still open with no mark is printed in blocking_fallback.
 A gate draft also has verdict_labels, the one-line words its verdict heading shows for PASS and
 BLOCK, by default those, and may have post_verdict_labels, the same for what goes out, which
@@ -128,7 +128,7 @@ goes out as Comment, never Request Changes. --since, for a gate draft only, reco
 full SHA of the commit the code stage covered the changes from, which a line under the verdict
 names.
 
-wording: merges every wording-*.json next to <json_path> into it: comment_lang, the
+wording: merges every wording-*.jsonl next to <json_path> into it: comment_lang, the
 language comments go out in, with, per finding, summary (the recommendation for people,
 in the preview's language) and post_text, post_summary, post_categories, post_note (the
 wording that goes out, when it differs from the preview's), for a gate draft only, overview,
@@ -139,36 +139,36 @@ with a note that no wording has covered yet, and overview when a gate draft has 
 wording file it cannot merge is removed and named in the error, with nothing merged and the
 other files kept, so that a writer run again replaces it.
 
-comments: writes <tmp_dir>/comments.json, the pull request's comments with their IDs, times,
-and viewer, the authenticated user, and <tmp_dir>/pr-body.json.
+comments: writes <tmp_dir>/comments.jsonl, the pull request's comments with their IDs, times,
+and viewer, the authenticated user, and <tmp_dir>/pr-body.jsonl.
 
-raised: writes <tmp_dir>/raised/batch-<n>.json, the comments with visible text already on the
+raised: writes <tmp_dir>/raised/batch-<n>.jsonl, the comments with visible text already on the
 pull request by author and place, split into batches with each thread whole. Leaves out dismissed
 reviews, their comments, and threads resolved on GitHub. With --discussion, it also leaves out the
 replies in threads those comments start, keeps the resolved threads, each comment has created_at
 and, in a
 thread, review_opening, a comment with no line at the head has only its path as its location, a
-batch also holds viewer, author, and assignees, and <tmp_dir>/raised/conversation.json, printed as
+batch also holds viewer, author, and assignees, and <tmp_dir>/raised/conversation.jsonl, printed as
 conversation_path, holds conversation, the review bodies and issue comments outside dismissed
 reviews, oldest first, in the form of a reply. Without it, conversation_path is null.
 
 participants: prints viewer, the authenticated user, and author and assignees, the pull
 request's.
 
-fixes: writes <tmp_dir>/fix-commits.json, the commits on the document's Branch bullet,
+fixes: writes <tmp_dir>/fix-commits.jsonl, the commits on the document's Branch bullet,
 or HEAD without one, past the document's head. Prints head_ref, the pull request's branch,
 as null when its name holds a character unsafe to show in a command.
 
 pushed: says whether the pull request's head contains the newest of those commits.
 
-replies: writes <tmp_dir>/replies.json from the verification in <document> and the
-targets in <tmp_dir>/prior.json, and <tmp_dir>/pr-body.json. A finding verified earlier gets a
+replies: writes <tmp_dir>/replies.jsonl from the verification in <document> and the
+targets in <tmp_dir>/prior.jsonl, and <tmp_dir>/pr-body.jsonl. A finding verified earlier gets a
 reply only when the verification no longer holds; otherwise it is printed in unchanged. A reply
 outside threads quotes each finding.
 
-preview: writes <json_path minus .json>-preview.md, what post would send in the preview's
+preview: writes <json_path minus .jsonl>-preview.md, what post would send in the preview's
 language, and -post.md, the same in the wording that goes out. The JSON file is
-draft.json, or a file with a "replies" list of {kind: thread|review|issue_comment|issue,
+draft.jsonl, or a file with a "replies" list of {kind: thread|review|issue_comment|issue,
 target_id, finding_ids, body, post_body, selected (default true), verified}. For a draft,
 wording_missing holds what wording would print as missing, an empty recommendation or not.
 post_differs holds the IDs of what goes out in other wording than the preview's, a reply with no
@@ -635,7 +635,7 @@ def labels_for(lang):
 
 
 def write_pr_body(tmp_dir, view):
-    path = os.path.join(tmp_dir, "pr-body.json")
+    path = os.path.join(tmp_dir, "pr-body.jsonl")
     write_json(path, {"title": without_comments(view.get("title") or ""),
                       "body": without_comments(view.get("body") or "")})
     return path
@@ -844,13 +844,13 @@ def cmd_own(pr_url, tmp_dir):
     batches = batched(own, lambda c: len(c["text"]))
     directory = os.path.join(tmp_dir, "own")
     os.makedirs(directory, exist_ok=True)
-    write_json(os.path.join(directory, "keys.json"), {"batches": len(batches)})
+    write_json(os.path.join(directory, "keys.jsonl"), {"batches": len(batches)})
     for n, batch in enumerate(batches, 1):
         data = {"viewer": viewer, "comments": batch}
         if any(not c["key"].startswith("thread:") for c in batch):
             data["others"] = others
             data["own_outside"] = own_outside
-        write_json(os.path.join(directory, f"batch-{n}.json"), data)
+        write_json(os.path.join(directory, f"batch-{n}.jsonl"), data)
     return {"directory": directory, "batches": len(batches)}
 
 
@@ -868,9 +868,9 @@ def read_own_extracts(directory, batches):
     """
     comments, used, bad = {}, set(), []
     for n in range(1, batches + 1):
-        name = os.path.join(directory, f"extract-{n}.json")
+        name = os.path.join(directory, f"extract-{n}.jsonl")
         try:
-            batch = read_json(os.path.join(directory, f"batch-{n}.json"))
+            batch = read_json(os.path.join(directory, f"batch-{n}.jsonl"))
             keys = {c["key"] for group in ("comments", "others", "own_outside")
                     for c in batch.get(group, [])}
             extract = read_json(name)
@@ -896,18 +896,18 @@ def cmd_ids(pr_url, tmp_dir):
     checked_pr(pr_url)
     directory = os.path.join(tmp_dir, "own")
     try:
-        batches = read_json(os.path.join(directory, "keys.json"))["batches"]
+        batches = read_json(os.path.join(directory, "keys.jsonl"))["batches"]
     except (Error, KeyError, TypeError):
         raise Error(f"run own first: no comments listed in {directory}") from None
     comments, used = read_own_extracts(directory, batches)
-    path = os.path.join(tmp_dir, "finding-ids.json")
+    path = os.path.join(tmp_dir, "finding-ids.jsonl")
     write_json(path, {"comments": comments, "used": sorted(used)})
     return {"path": path, "comments": len(comments)}
 
 
 def known_ids(tmp_dir):
     """The IDs by key and the IDs used, from what ids wrote."""
-    path = os.path.join(tmp_dir, "finding-ids.json")
+    path = os.path.join(tmp_dir, "finding-ids.jsonl")
     try:
         known = read_json(path)
         comments, used = known["comments"], known["used"]
@@ -1020,7 +1020,7 @@ def cmd_collect(pr_url, tmp_dir, kind):
     os.makedirs(directory, exist_ok=True)
     batches = batched(items, lambda i: (len(i["text"]) + sum(len(r["text"]) for r in i["replies"])
                                         + len(i.get("thread_root", {}).get("text", ""))))
-    write_json(os.path.join(directory, "items.json"),
+    write_json(os.path.join(directory, "items.jsonl"),
                {"items": items, "batches": len(batches), "marks": marks})
     shown = ("key", "earlier_ids", "location", "text", "replies", "review_opening", "thread_root")
     for n, batch in enumerate(batches, 1):
@@ -1028,7 +1028,7 @@ def cmd_collect(pr_url, tmp_dir, kind):
                 "items": [{k: item[k] for k in shown if k in item} for item in batch]}
         if kind == "gate" or any(item["target"]["kind"] != "thread" for item in batch):
             data["conversation"] = outside
-        write_json(os.path.join(directory, f"batch-{n}.json"), data)
+        write_json(os.path.join(directory, f"batch-{n}.jsonl"), data)
     return {"directory": directory, "batches": len(batches), "items": len(items)}
 
 
@@ -1039,9 +1039,9 @@ def read_judgments(directory, batches, items):
     keys = {item["key"]: item for item in items}
     judged, skipped, bad = {}, {}, []
     for n in range(1, batches + 1):
-        name = os.path.join(directory, f"extract-{n}.json")
+        name = os.path.join(directory, f"extract-{n}.jsonl")
         try:
-            batch = read_json(os.path.join(directory, f"batch-{n}.json"))
+            batch = read_json(os.path.join(directory, f"batch-{n}.jsonl"))
             own_keys = {listed["key"] for listed in batch["items"]}
             extract = read_json(name)
             entries = extract["findings"]
@@ -1212,7 +1212,7 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
     view = view_pr(pr)
     directory = os.path.join(tmp_dir, "posted")
     try:
-        collected = read_json(os.path.join(directory, "items.json"))
+        collected = read_json(os.path.join(directory, "items.jsonl"))
     except (Error, OSError):
         raise Error(f"run collect first: no findings collected in {directory}") from None
     judged, skipped = read_judgments(directory, collected["batches"], collected["items"])
@@ -1226,7 +1226,7 @@ def cmd_prior(pr_url, tmp_dir, kind, document, trust=False):
         finding.pop("reason", None)
     waived = [f for f in settled if f["state"] == "withdrawn"]
     findings = [f for f in settled if f["state"] != "withdrawn" and f["severity"] != "Info"]
-    write_json(os.path.join(tmp_dir, "prior.json"), {
+    write_json(os.path.join(tmp_dir, "prior.jsonl"), {
         "findings": findings,
         "waived": [{k: f.get(k) for k in ("id", "location", "text", "reason")} for f in waived]})
     state = local_state(view["headRefOid"])
@@ -1332,19 +1332,19 @@ def checked_document(pr, document):
 
 
 def earlier_verified(tmp_dir):
-    path = os.path.join(tmp_dir, "prior.json")
+    path = os.path.join(tmp_dir, "prior.jsonl")
     if not os.path.exists(path):
         return set()
     return {f["id"] for f in read_json(path)["findings"] if f.get("verified")}
 
 
 def earlier_waived(tmp_dir):
-    path = os.path.join(tmp_dir, "prior.json")
+    path = os.path.join(tmp_dir, "prior.jsonl")
     return read_json(path).get("waived", []) if os.path.exists(path) else []
 
 
 def earlier_blocking(tmp_dir):
-    path = os.path.join(tmp_dir, "prior.json")
+    path = os.path.join(tmp_dir, "prior.jsonl")
     if not os.path.exists(path):
         return {}
     return {f["id"]: f.get("blocking") for f in read_json(path)["findings"]}
@@ -1352,7 +1352,7 @@ def earlier_blocking(tmp_dir):
 
 def read_blocking(path, ids, tmp_dir):
     """The blocking judgment by finding ID."""
-    expected = os.path.join(tmp_dir, "blocking.json")
+    expected = os.path.join(tmp_dir, "blocking.jsonl")
     if os.path.normcase(os.path.abspath(path)) != os.path.normcase(os.path.abspath(expected)):
         raise Error(f"--blocking must be {expected}, not {path}")
     try:
@@ -1428,7 +1428,7 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
             "excluded_reason": reason, "text": finding["text"],
             "recommendation": recommendation(finding),
         })
-    write_json(os.path.join(tmp_dir, "draft.json"), {
+    write_json(os.path.join(tmp_dir, "draft.jsonl"), {
         "url": pr.url, "head_sha": view["headRefOid"], "kind": kind, "lang": lang,
         **({"merge_base": header.get("merge_base")} if gate else {}),
         **({"verdict_labels": {v: v for v in VERDICTS}} if gate else {}),
@@ -1438,7 +1438,7 @@ def cmd_draft(pr_url, tmp_dir, document, kind, lang, prior_doc, blocking_path=No
     })
     selected = [e for e in entries if e["selected"]]
     return {
-        "path": os.path.join(tmp_dir, "draft.json"), "total": len(entries),
+        "path": os.path.join(tmp_dir, "draft.jsonl"), "total": len(entries),
         "selected": len(selected),
         "selected_ids": [e["id"] for e in selected],
         "blocking_unjudged": [e["id"] for e in selected
@@ -1838,7 +1838,7 @@ def cmd_preview(pr_url, path):
         viewer = view_pr(pr, require_open=False)["viewer"]
         text, summary = preview_replies(pr, data, viewer, False)
         post_text, _ = preview_replies(pr, data, viewer, True)
-    stem = re.sub(r"\.json$", "", path)
+    stem = re.sub(r"\.jsonl$", "", path)
     paths = {"preview_path": stem + "-preview.md", "post_preview_path": stem + "-post.md"}
     for name, content in (("preview_path", text), ("post_preview_path", post_text)):
         with open(paths[name], "w", encoding="utf-8", newline="\n") as f:
@@ -1896,7 +1896,7 @@ def cmd_wording(pr_url, path):
     if "findings" not in data:
         validated_replies(data)
     directory = glob.escape(os.path.dirname(path) or ".")
-    names = sorted(glob.glob(os.path.join(directory, "wording-*.json")))
+    names = sorted(glob.glob(os.path.join(directory, "wording-*.jsonl")))
     for name in names:
         try:
             merge_wording_file(data, name)
@@ -2226,7 +2226,7 @@ def cmd_comments(pr_url, tmp_dir):
     view = view_pr(pr, require_open=False)
     viewer = view["viewer"]
     reviews, comments, issue_comments = visible_comments(pr)
-    path = os.path.join(tmp_dir, "comments.json")
+    path = os.path.join(tmp_dir, "comments.jsonl")
     write_json(path, {
         "viewer": viewer,
         "review_comments": [
@@ -2309,11 +2309,11 @@ def cmd_raised(pr_url, tmp_dir, discussion=False):
         shared = participants(view_pr(pr, require_open=False))
         outside = [r for r in reviews if r.get("id") not in dismissed] + issue_comments
         spoken_outside = [spoken(c, shared["viewer"]) for c in outside]
-        conversation_path = os.path.join(directory, "conversation.json")
+        conversation_path = os.path.join(directory, "conversation.jsonl")
         write_json(conversation_path,
                    {"conversation": by_time(c for c in spoken_outside if c["text"])})
     for n, batch in enumerate(batches, 1):
-        write_json(os.path.join(directory, f"batch-{n}.json"),
+        write_json(os.path.join(directory, f"batch-{n}.jsonl"),
                    {**shared, "comments": [c for unit in batch for c in unit]})
     return {"directory": directory, "batches": len(batches),
             "comments": sum(len(unit) for batch in batches for unit in batch),
@@ -2337,7 +2337,7 @@ def cmd_fixes(pr_url, tmp_dir, document):
             commits.append({"sha": sha, "subject": subject, "files": []})
         elif line.strip() and commits:
             commits[-1]["files"].append(line.strip())
-    path = os.path.join(tmp_dir, "fix-commits.json")
+    path = os.path.join(tmp_dir, "fix-commits.jsonl")
     write_json(path, {"commits": commits})
     view = view_pr(pr, require_open=False)
     head_ref = view.get("headRefName") or ""
@@ -2363,7 +2363,7 @@ def cmd_replies(pr_url, tmp_dir, document, lang):
     header, findings = checked_document(pr, document)
     labels = labels_for(lang)
     short = header["head_sha"][:SHORT_SHA]
-    prior = read_json(os.path.join(tmp_dir, "prior.json"))["findings"]
+    prior = read_json(os.path.join(tmp_dir, "prior.jsonl"))["findings"]
     posted = {f["id"]: f for f in prior}
     earlier = {f["id"] for f in prior if f.get("verified")}
     replies, body_lines, body_ids, body_verified, unverified = [], [], [], [], []
@@ -2402,7 +2402,7 @@ def cmd_replies(pr_url, tmp_dir, document, lang):
     if body_lines:
         replies.append({"kind": "issue", "target_id": None, "finding_ids": body_ids,
                         "body": "\n\n".join(body_lines), "verified": body_verified})
-    path = os.path.join(tmp_dir, "replies.json")
+    path = os.path.join(tmp_dir, "replies.jsonl")
     write_json(path, {"replies": replies})
     return {"path": path, "replies": len(replies), "unverified": unverified,
             "unchanged": unchanged,

@@ -109,6 +109,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
 10. **CRLF** in skill/template files is inherited from upstream; avoid global reflow churn.
 11. **Agent frontmatter uses `tools:`**, not `allowed-tools:` (that key is for skills /
     commands and is ignored in `agents/*.md`, leaving the agent unrestricted).
+12. **Skill data files are `.jsonl`, never `.json`** — state, result, sub-agent output, and
+    script intermediate files alike, whoever writes them; see CLAUDE.md § Naming conventions.
 
 For architecture, the localization workflow, common tasks, and warnings, refer to
 **[CLAUDE.md](CLAUDE.md)**.

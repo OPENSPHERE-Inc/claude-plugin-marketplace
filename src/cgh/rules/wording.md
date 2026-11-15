@@ -21,7 +21,7 @@
 
 テキストがすでに `comment_lang` でコードの外に `@` がなければ、その `post_` フィールドは省く。他のフィールドがなくてもすべての id を挙げる: ファイルにない id は未処理とみなされる。
 
-`{tmp_dir}/wording-{n}.json` を書く。`overview` と `post_overview` は `/cgh:gate` のときだけ含め、`/cgh:review` では省く:
+`{tmp_dir}/wording-{n}.jsonl` を 1 つの JSON オブジェクトとして書く。`overview` と `post_overview` は `/cgh:gate` のときだけ含め、`/cgh:review` では省く:
 
 `{"comment_lang": "en", "overview": "...", "post_overview": "...", "findings": [{"id": "M-1", "summary": "...", "post_text": "...", "post_summary": "...", "post_categories": "..."}, {"id": "M-7", "post_note": "..."}]}`
 
@@ -29,13 +29,13 @@
 
 `/cgh:resolve` 用。`body` が `comment_lang` でない、またはコードの外に `@` がある返信それぞれについて、`post_body`: その `body` を `comment_lang` にしたもの。`index` は `replies` での返信の位置で、0 から数える。
 
-`{tmp_dir}/wording-{n}.json` を書く:
+`{tmp_dir}/wording-{n}.jsonl` を 1 つの JSON オブジェクトとして書く:
 
 `{"comment_lang": "en", "replies": [{"index": 0, "post_body": "..."}]}`
 
 ## 起草する返信
 
-`/cgh:respond` 用。入力: レビュードキュメント（各指摘に ID、場所、説明、作者、`Triage` / `Estimate` / `Status` の行がある）、`comments.json`（`viewer`、`review_comments`: `id`、`in_reply_to`、`author`、`path`、`line`、`created_at`、`body`、`reviews`: `id`、`author`、`state`、`submitted_at`、`body`、`issue_comments`: `id`、`author`、`created_at`、`body`）、`fix-commits.json`（`commits`: `sha`、`subject`、`files`）。
+`/cgh:respond` 用。入力: レビュードキュメント（各指摘に ID、場所、説明、作者、`Triage` / `Estimate` / `Status` の行がある）、`comments.jsonl`（`viewer`、`review_comments`: `id`、`in_reply_to`、`author`、`path`、`line`、`created_at`、`body`、`reviews`: `id`、`author`、`state`、`submitted_at`、`body`、`issue_comments`: `id`、`author`、`created_at`、`body`）、`fix-commits.jsonl`（`commits`: `sha`、`subject`、`files`）。
 
 各指摘を、場所、作者、内容から元のコメントのすべてに対応付ける。そのうえでメタデータに応じて返信する:
 
@@ -53,6 +53,6 @@
 - 指摘 ID は書かない: 返信に必要な見出しとメンションはスクリプトが追加する。`reviews` や `issue_comments` のエントリへの返信はスレッド外の会話に投稿されるので、どの問題への回答かを一言述べる。
 - どのコメントも特定できない指摘は返信せず、`unmatched` に挙げる。
 
-`{tmp_dir}/replies.json` を書く:
+`{tmp_dir}/replies.jsonl` を 1 つの JSON オブジェクトとして書く:
 
 `{"comment_lang": "en", "replies": [{"kind": "thread", "target_id": 123, "finding_ids": ["M-1"], "body": "...", "post_body": "..."}], "unmatched": ["mi-2"], "unaddressed": ["M-3"]}`

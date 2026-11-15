@@ -26,13 +26,13 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 `{kind}` = `gate`、`{prior_path}` = `{tmp_dir}-prior.md` で § 投稿済みの指摘 に従う。`{waived_document}` を、出力された `waived_document` とする。
 
-プルリクエスト上の議論を読む。`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}' --discussion` を実行する。自分と他の全員のコメントを、GitHub で resolved になったスレッドも含めて `{directory}/batch-{n}.json`（`{n}` は 1 から）に、スレッド外のコメントを 1 つのファイルに書き、`directory`、`batches`、そのファイルの `conversation_path` を出力する。非ゼロ終了なら、そのエラーで中止する。各バッチについて `Agent(subagent_type="cgh:comment-writer", prompt=...)` を、1 メッセージに最大 20 個まで起動する:
+プルリクエスト上の議論を読む。`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}' --discussion` を実行する。自分と他の全員のコメントを、GitHub で resolved になったスレッドも含めて `{directory}/batch-{n}.jsonl`（`{n}` は 1 から）に、スレッド外のコメントを 1 つのファイルに書き、`directory`、`batches`、そのファイルの `conversation_path` を出力する。非ゼロ終了なら、そのエラーで中止する。各バッチについて `Agent(subagent_type="cgh:comment-writer", prompt=...)` を、1 メッセージに最大 20 個まで起動する:
 
 ```
 As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/gate/templates/discussion-extract.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
 
 Variables (substitute into the template's {{...}} placeholders):
-- batch_path: {directory}/batch-{n}.json
+- batch_path: {directory}/batch-{n}.jsonl
 - conversation_path: {conversation_path}
 - output_path: {directory}/discussion-{n}.md
 - doc_lang: {doc_lang}
@@ -107,18 +107,18 @@ Variables (substitute into the template's {{...}} placeholders):
 - document_path: {document_path}
 - pr_body_path: {pr_body_path}
 - discussion_paths: {discussion_paths}, or (none) when `batches` is 0
-- output_path: {tmp_dir}/blocking.json
+- output_path: {tmp_dir}/blocking.jsonl
 
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
 返された `template_id` は `d76407d5-7ea4-4a7a-89e2-cffbb00f1d38` でなければならない。不一致なら起動し直し、2 回起きたら中止する。
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc '{prior_document}'` を、判定したなら `--blocking '{tmp_dir}/blocking.json'` を、指定されていれば `--force-comment` を、`{since}` が null でなければ `--since {since}` を追加する。`{tmp_dir}/draft.json` が書き出され、`unchanged`（以前に検証済みで解決が保たれており、レビュー本文に載せない指摘）、`blocking_unjudged`（判定から漏れた選択済みの指摘で、ブロッキングとして数える）、`blocking_fallback`（プルリクエスト上にブロッキングの表示がなく、重大度で決まった未解決の前回までの指摘）が出力される: その ID をユーザーに伝える。エラーが `blocking.json` を挙げるとき（不正なファイルなら削除されている）は、書き手をもう一度起動して再実行する。2 回目の失敗では、そのエラーで中止する。その後、`{json_path}` = `{tmp_dir}/draft.json` で § コメントの文面 に従う。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}` を実行する。`{prior_document}` が `(none)` でなければ `--prior-doc '{prior_document}'` を、判定したなら `--blocking '{tmp_dir}/blocking.jsonl'` を、指定されていれば `--force-comment` を、`{since}` が null でなければ `--since {since}` を追加する。`{tmp_dir}/draft.jsonl` が書き出され、`unchanged`（以前に検証済みで解決が保たれており、レビュー本文に載せない指摘）、`blocking_unjudged`（判定から漏れた選択済みの指摘で、ブロッキングとして数える）、`blocking_fallback`（プルリクエスト上にブロッキングの表示がなく、重大度で決まった未解決の前回までの指摘）が出力される: その ID をユーザーに伝える。エラーが `blocking.jsonl` を挙げるとき（不正なファイルなら削除されている）は、書き手をもう一度起動して再実行する。2 回目の失敗では、そのエラーで中止する。その後、`{json_path}` = `{tmp_dir}/draft.jsonl` で § コメントの文面 に従う。
 
 ## Step 4 — 確認と投稿
 
-`{json_path}` = `{tmp_dir}/draft.json` で § 確認と投稿 に従う。ユーザーが前回までの指摘を取り下げたら、`prior` 配下のその `state` を `waived` にする: 以後の実行では確認も報告もしない。ユーザーが指摘や前回までの指摘のブロッキングを変更したら、その `blocking` を合わせる。指摘がブロッキングになったら、その `selected` も true にする: 判定と投稿内容は選択済みの指摘だけを数える。変更で `overview` が実態と合わなくなったとき、または選択されていない指摘に触れているときは、それと `post_overview` を書き直す。プレビューを示すとき、コードから判定できないために未検証のままの前回までの指摘があれば、対応済みならその場で取り下げを指示できることをユーザーに伝える。
+`{json_path}` = `{tmp_dir}/draft.jsonl` で § 確認と投稿 に従う。ユーザーが前回までの指摘を取り下げたら、`prior` 配下のその `state` を `waived` にする: 以後の実行では確認も報告もしない。ユーザーが指摘や前回までの指摘のブロッキングを変更したら、その `blocking` を合わせる。指摘がブロッキングになったら、その `selected` も true にする: 判定と投稿内容は選択済みの指摘だけを数える。変更で `overview` が実態と合わなくなったとき、または選択されていない指摘に触れているときは、それと `post_overview` を書き直す。プレビューを示すとき、コードから判定できないために未検証のままの前回までの指摘があれば、対応済みならその場で取り下げを指示できることをユーザーに伝える。
 
 判定、イベント、各指摘の投稿先はスクリプトが `{json_path}` から算出する: 自分で選ばない。判定の見出しには `PASS` か `BLOCK` が表示される。プレビューでは `{json_path}` の `verdict_labels` から、投稿する本文では `post_verdict_labels` があればその代わりにそこから取られる。どちらも `PASS` と `BLOCK` の両方のキーを持ち、各値は空でない 1 行とする。`preview` がそのどちらかを挙げるエラーで終了したら、直して `preview` を再実行し、2 回目の失敗ではそのエラーで中止する。
 

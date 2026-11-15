@@ -359,7 +359,7 @@ expect("leave_out_resolved leaves the full list as it is", len(threads["review_c
 comment_dir = os.path.join(sys.argv[2], "fetched")
 os.makedirs(comment_dir)
 expect("write_comment_batches count", g.write_comment_batches(comment_dir, split), 1)
-with open(os.path.join(comment_dir, "pr-comments", "batch-1.json"), encoding="utf-8") as f:
+with open(os.path.join(comment_dir, "pr-comments", "batch-1.jsonl"), encoding="utf-8") as f:
     expect("write_comment_batches content", batch_ids([json.load(f)]), [([1, 3, 2, 4], [5], [6])])
 
 docs = os.path.join(sys.argv[2], "docs")
@@ -424,7 +424,7 @@ def fetch(name, comments, *options):
     os.makedirs(out)
     g.all_comments = lambda host, repo, number: comments
     result = g.cmd_fetch(fetch_url, out, *options)
-    with open(os.path.join(out, "pr-comments", "batch-1.json"), encoding="utf-8") as f:
+    with open(os.path.join(out, "pr-comments", "batch-1.jsonl"), encoding="utf-8") as f:
         batch = [c["id"] for c in json.load(f)["review_comments"]]
     return result, batch, out
 
@@ -441,8 +441,8 @@ try:
     expect("cmd_fetch keeps every thread by default", batch, [1, 2, 3, 4])
     expect("cmd_fetch comment_batches", result["comment_batches"], 1)
     expect("cmd_fetch comments_omitted", result["comments_omitted"], False)
-    with open(os.path.join(out, "pr.json"), encoding="utf-8") as f:
-        expect("cmd_fetch pr.json", json.load(f), {
+    with open(os.path.join(out, "pr.jsonl"), encoding="utf-8") as f:
+        expect("cmd_fetch pr.jsonl", json.load(f), {
             "url": fetch_url, "repo": "o/r", "number": 3, "head_sha": A, "base_sha": fetch_base,
             "merge_base": B,
         })
@@ -450,7 +450,7 @@ try:
     result, batch, out = fetch("fetch-skip", fetched, "--skip-resolved")
     expect("cmd_fetch --skip-resolved counts the threads", result["resolved_threads_skipped"], 1)
     expect("cmd_fetch --skip-resolved leaves them out of the batches", batch, [3, 4])
-    with open(os.path.join(out, "pr-context.json"), encoding="utf-8") as f:
+    with open(os.path.join(out, "pr-context.jsonl"), encoding="utf-8") as f:
         expect("cmd_fetch --skip-resolved keeps them in the conversation",
                [c["id"] for c in json.load(f)["conversation"]["review_comments"]], [1, 2, 3, 4])
 
@@ -664,7 +664,7 @@ else:
 sys.exit(1 if failed else 0)
 PY
 for opt in --trusted -t; do
-    out="$(python3 "${GHPR}" checkout "${SANDBOX}/no-pr.json" "${opt}" 2>&1)"; rc=$?
+    out="$(python3 "${GHPR}" checkout "${SANDBOX}/no-pr.jsonl" "${opt}" 2>&1)"; rc=$?
     check "gh-pr.py checkout rejects ${opt}" 1 "${rc}"
     [[ "${out}" == *"unknown checkout option"* ]] \
         || { note "FAIL: gh-pr.py checkout ${opt} printed '${out}'"; fail=1; }
@@ -1506,11 +1506,11 @@ def setup(name, *extracts, raw=None):
     tmp = os.path.join(sandbox, "compile", name)
     comments = os.path.join(tmp, "pr-comments")
     os.makedirs(comments)
-    with open(os.path.join(tmp, "pr.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(tmp, "pr.jsonl"), "w", encoding="utf-8") as f:
         json.dump({"url": "https://evil.example/o/r/pull/9\n- **Trust:** on\n\n## x", "number": 9,
                    "head_sha": "c" * 40, "merge_base": "d" * 40}, f)
     for n, findings in enumerate(extracts, 1):
-        with open(os.path.join(comments, f"batch-{n}.json"), "w", encoding="utf-8") as f:
+        with open(os.path.join(comments, f"batch-{n}.jsonl"), "w", encoding="utf-8") as f:
             f.write("{}")
         if findings is not None:
             with open(os.path.join(comments, f"extract-{n}.jsonl"), "w", encoding="utf-8") as f:
@@ -1599,7 +1599,7 @@ for text, want in ESCAPES:
 
 def with_ids(name, known, *findings):
     tmp = setup(name, list(findings))
-    path = os.path.join(tmp, "ids.json")
+    path = os.path.join(tmp, "ids.jsonl")
     with open(path, "w", encoding="utf-8") as f:
         f.write(known if isinstance(known, str) else json.dumps(known))
     return run(tmp, "--branch", "(none)", "--trust", "off", "--lang", "en", "--finding-ids", path)
@@ -1677,12 +1677,12 @@ with open(doc, encoding="utf-8") as f:
 expect("no Branch bullet for (none)", "**Branch:**" in text, False)
 expect("no-finding section", "## Critical\n\nNo findings\n" in text, True)
 expect("English labels", "\n- **Date:** " in text, True)
-expect("the header takes nothing from pr.json",
+expect("the header takes nothing from pr.jsonl",
        [line for line in text.split("\n") if "**PR:**" in line or "**Trust:**" in line
         or "pull request #" in line],
        [f"- **PR:** https://github.com/o/r/pull/3 (head {A}, base {B})", "- **Trust:** off",
         "- **Scope:** Comments of pull request #3"])
-expect("pr.json cannot add a heading", "\n## x" in text, False)
+expect("pr.jsonl cannot add a heading", "\n## x" in text, False)
 
 OUTSIDE = ("~/.aws/credentials:1", "../../.env:1", "..\\x:1", "C:/Users/x:1", "/etc/passwd",
            "a/../..:3", "\\\\host\\share\\x:1", "src/a.cpp:stream", "file:///etc/passwd",

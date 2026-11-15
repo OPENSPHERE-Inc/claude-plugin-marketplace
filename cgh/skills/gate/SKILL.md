@@ -26,13 +26,13 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 Follow § Posted findings with `{kind}` = `gate` and `{prior_path}` = `{tmp_dir}-prior.md`. Set `{waived_document}` to the `waived_document` it prints.
 
-Read the discussions on the pull request. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}' --discussion`. It writes the comments, yours and everyone else's, threads marked resolved on GitHub included, to `{directory}/batch-{n}.json`, `{n}` from 1, and the comments outside threads to one file, and prints `directory`, `batches`, and that file's `conversation_path`. On a non-zero exit, abort with its error. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)` for each batch, at most 20 in one message:
+Read the discussions on the pull request. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py raised '{pr_url}' '{tmp_dir}' --discussion`. It writes the comments, yours and everyone else's, threads marked resolved on GitHub included, to `{directory}/batch-{n}.jsonl`, `{n}` from 1, and the comments outside threads to one file, and prints `directory`, `batches`, and that file's `conversation_path`. On a non-zero exit, abort with its error. Launch `Agent(subagent_type="cgh:comment-writer", prompt=...)` for each batch, at most 20 in one message:
 
 ```
 As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/gate/templates/discussion-extract.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
 
 Variables (substitute into the template's {{...}} placeholders):
-- batch_path: {directory}/batch-{n}.json
+- batch_path: {directory}/batch-{n}.jsonl
 - conversation_path: {conversation_path}
 - output_path: {directory}/discussion-{n}.md
 - doc_lang: {doc_lang}
@@ -107,18 +107,18 @@ Variables (substitute into the template's {{...}} placeholders):
 - document_path: {document_path}
 - pr_body_path: {pr_body_path}
 - discussion_paths: {discussion_paths}, or (none) when `batches` is 0
-- output_path: {tmp_dir}/blocking.json
+- output_path: {tmp_dir}/blocking.jsonl
 
 Include `template_id` (Read from the template's frontmatter) in the return value.
 ```
 
 The returned `template_id` must be `d76407d5-7ea4-4a7a-89e2-cffbb00f1d38`; on mismatch, launch it again, and abort when it happens twice.
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}`, adding `--prior-doc '{prior_document}'` when it is not `(none)`, `--blocking '{tmp_dir}/blocking.json'` when you judged, `--force-comment` when given, and `--since {since}` when `{since}` is not null. It writes `{tmp_dir}/draft.json` and prints `unchanged`, the findings verified earlier whose verification still holds, which the review body leaves out, `blocking_unjudged`, the selected findings the judgment left out, which count as blocking, and `blocking_fallback`, the earlier findings still open with no blocking mark on the pull request, which their severity decided: tell the user their IDs. When its error names `blocking.json`, which it has removed if the file was malformed, launch the writer once more and run it again. On a second failure, abort with its error. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.json`.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py draft '{pr_url}' '{tmp_dir}' '{document_path}' --kind gate --lang {lang}`, adding `--prior-doc '{prior_document}'` when it is not `(none)`, `--blocking '{tmp_dir}/blocking.jsonl'` when you judged, `--force-comment` when given, and `--since {since}` when `{since}` is not null. It writes `{tmp_dir}/draft.jsonl` and prints `unchanged`, the findings verified earlier whose verification still holds, which the review body leaves out, `blocking_unjudged`, the selected findings the judgment left out, which count as blocking, and `blocking_fallback`, the earlier findings still open with no blocking mark on the pull request, which their severity decided: tell the user their IDs. When its error names `blocking.jsonl`, which it has removed if the file was malformed, launch the writer once more and run it again. On a second failure, abort with its error. Then follow § Comment wording with `{json_path}` = `{tmp_dir}/draft.jsonl`.
 
 ## Step 4 — Confirm and post
 
-Follow § Confirm and post with `{json_path}` = `{tmp_dir}/draft.json`. When the user waives an earlier finding, set its `state` under `prior` to `waived`: later runs neither check nor report it. When the user changes whether a finding or an earlier finding blocks, set its `blocking` to match. When a finding becomes blocking, also set its `selected` to true: the verdict and what goes out count only selected findings. When a change makes `overview` wrong, or it mentions a finding that is not selected, rewrite it and `post_overview` to match. When you show the preview and an earlier finding stays not verified because the code cannot settle it, tell the user that they can waive it now if it is dealt with.
+Follow § Confirm and post with `{json_path}` = `{tmp_dir}/draft.jsonl`. When the user waives an earlier finding, set its `state` under `prior` to `waived`: later runs neither check nor report it. When the user changes whether a finding or an earlier finding blocks, set its `blocking` to match. When a finding becomes blocking, also set its `selected` to true: the verdict and what goes out count only selected findings. When a change makes `overview` wrong, or it mentions a finding that is not selected, rewrite it and `post_overview` to match. When you show the preview and an earlier finding stays not verified because the code cannot settle it, tell the user that they can waive it now if it is dealt with.
 
 The script computes the verdict, the event, and each finding's place from `{json_path}`: do not choose them yourself. The verdict heading shows `PASS` or `BLOCK`, from `verdict_labels` of `{json_path}` in the preview and from `post_verdict_labels` in its place, when it is there, in what goes out. Each of them keeps both keys, `PASS` and `BLOCK`, each a single line that is not blank. When `preview` exits with an error that names one of them, correct it and run `preview` again; on a second failure, abort with its error.
 

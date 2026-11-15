@@ -52,7 +52,7 @@ Show an error and terminate on a value out of range, and on any of these options
 
 Create a branch only with `git branch {name} {commit}`, which touches no working tree. Never move or delete a TP, and never rewrite a work branch's history.
 
-A cycle's directory `{loop_dir}/g{g}c{c}/` holds `design/`, `coding-result.json`, `review/`, `rounds-result.json`, and `handoff.md`. The post-mortem of generation g writes to `{loop_dir}/g{g}/`.
+A cycle's directory `{loop_dir}/g{g}c{c}/` holds `design/`, `coding-result.jsonl`, `review/`, `rounds-result.jsonl`, and `handoff.md`. The post-mortem of generation g writes to `{loop_dir}/g{g}/`.
 
 ## Running an inner skill
 
@@ -62,7 +62,7 @@ Do not use `EnterWorktree` / `ExitWorktree`: the inner skills create and enter t
 
 ## State file
 
-`{loop_dir}/state.json` is the source of truth for the run's progress. Write it with Write as one JSON object, validate each write with `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {loop_dir}/state.json`, and fix and re-validate on error. When you cannot write it or make it valid, show the error and terminate, writing `loop-summary.md` (Step 6) if you can.
+`{loop_dir}/state.jsonl` is the source of truth for the run's progress. Write it with Write as one JSON object, validate each write with `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {loop_dir}/state.jsonl`, and fix and re-validate on error. When you cannot write it or make it valid, show the error and terminate, writing `loop-summary.md` (Step 6) if you can.
 
 Write:
 
@@ -101,7 +101,7 @@ Write:
 - `coding` / `review`: `started` and `skill_dir` at the invocation, the other fields from the result file.
 - `postmortem.fallback`: the reason when Step 5 fell back on its own verdict, otherwise null.
 - `end`: written in Step 6, `{"kind": "normal"|"error", "step": "<the step it stopped in>", "error": "<string>"|null, "output_branch": "<name>"|null}`.
-- `warnings`: only short warning texts. From `coding-result.json`: an unpassed QA, stating whether it is environmental; the files the interpretation test failed or left untested; the restore entries refused (`restore_refused`); a team re-formation fallback. From `rounds-result.json`: its `workflow_warnings` and `prompt_warnings`. Your own: a missing divergence report, a post-mortem fallback, a failed output branch creation. `source` is `coding`, `review`, `postmortem`, or `finish`.
+- `warnings`: only short warning texts. From `coding-result.jsonl`: an unpassed QA, stating whether it is environmental; the files the interpretation test failed or left untested; the restore entries refused (`restore_refused`); a team re-formation fallback. From `rounds-result.jsonl`: its `workflow_warnings` and `prompt_warnings`. Your own: a missing divergence report, a post-mortem fallback, a failed output branch creation. `source` is `coding`, `review`, `postmortem`, or `finish`.
 
 When you cannot tell your position from context, Read this file and the `SKILL.md` in its top-level `skill_dir`. In a `SKILL.md` you Read, the `CLAUDE_PLUGIN_ROOT` placeholder stays unexpanded: take it as the directory two levels above the `skill_dir` you Read it from, for this skill and for an inner skill alike. Continue from `position`:
 
@@ -126,7 +126,7 @@ You write the send-back handoff, only with what you can write without Reading a 
 - Keep: the existing implementation and review fixes the divergence does not involve and, from generation 2 on, the policy of the post-mortem handoff in the references. Add, from generation 2 on, that this policy and what that handoff says to avoid prevail over the report's Fix proposals, which were written without knowledge of them: remove each source only by changes that keep to them, and when no such change removes a source, state in the design that it cannot be removed without departing from them and leave it to the generation's post-mortem.
 - Avoid: bringing back a form the report names as a source and, from generation 2 on, what the post-mortem handoff says to avoid.
 - Candidate return points: every TP of this generation so far, each with its name, its commit, and what it holds. The TP-A of g{g}c1 holds the start commit, before implementation; the TP-B of g{g}c{k} holds cycle k after `/cdev:coding`, before its review fixes; the TP-A of g{g}c{k} for k > 1 holds the code after cycle k-1's review. State that building on the current head is the default, and that returning means restoring a TP's content into files and committing forward, which `/cdev:coding` does, never rewriting history.
-- References: the divergence report; from generation 2 on, the post-mortem handoff (the `handoff` of the generation's first cycle in the state file); and for each cycle of this generation, the design documents (`design_paths` of `coding-result.json`), the review documents (`doc_paths` of `rounds-result.json`), and the final report (`final_report_path` of `rounds-result.json`). Read only these paths from the result files.
+- References: the divergence report; from generation 2 on, the post-mortem handoff (the `handoff` of the generation's first cycle in the state file); and for each cycle of this generation, the design documents (`design_paths` of `coding-result.jsonl`), the review documents (`doc_paths` of `rounds-result.jsonl`), and the final report (`final_report_path` of `rounds-result.jsonl`). Read only these paths from the result files.
 
 ## Step 1 — Initialization
 
@@ -139,7 +139,7 @@ You write the send-back handoff, only with what you can write without Reading a 
    - `{loop_dir}` exists and is not empty: a result file an earlier run left would be misread as that of an inner skill that ended without writing one.
 5. Run `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry .claude/tmp/cdev-loop-{timestamp}`, which refuses a symlinked `.claude` or `.claude/tmp`; on a non-zero exit, show its error and terminate the skill. Pass this path rather than `{loop_dir}`: del-tmp.sh refuses a path outside `.claude/tmp/`. Then create `{loop_dir}` with `mkdir -p`.
 6. Record the start commit S with `git rev-parse HEAD`. When `git status --porcelain` prints anything, state on the console that the uncommitted changes are not in S and fall outside the run.
-7. Initialize `state.json` with `skill_dir` and with `position` at g = 1, c = 1, `init`, and go to Step 2.
+7. Initialize `state.jsonl` with `skill_dir` and with `position` at g = 1, c = 1, `init`, and go to Step 2.
 
 Never change the main working tree's sources. Between phases, stay at `{repo_root}`.
 
@@ -151,10 +151,10 @@ Never change the main working tree's sources. Between phases, stay at `{repo_roo
 4. Create `{loop_dir}/g{g}c{c}/` and run `cdev:coding` (§ Running an inner skill) with these arguments, adding `--handoff` in every cycle but g1c1:
 
    ```
-   cdev:coding --worktree={loop_branch}-g{g} --output {loop_dir}/g{g}c{c}/design --result {loop_dir}/g{g}c{c}/coding-result.json --team-tag g{g}c{c}-{hhmmss} --commit-always [--handoff {loop_dir}/g{g}c{c}/handoff.md] [{coding_args}] {task}
+   cdev:coding --worktree={loop_branch}-g{g} --output {loop_dir}/g{g}c{c}/design --result {loop_dir}/g{g}c{c}/coding-result.jsonl --team-tag g{g}c{c}-{hhmmss} --commit-always [--handoff {loop_dir}/g{g}c{c}/handoff.md] [{coding_args}] {task}
    ```
 
-5. Once it returns, Read `coding-result.json`.
+5. Once it returns, Read `coding-result.jsonl`.
    - The coding phase ended abnormally when the file is missing or is not valid JSON, `aborted` is not null, or `kept_worktree` is not null: end as an error (Step 6).
    - Otherwise record its results and warnings (§ State file), create TP-B at the work branch's head, record it, and go to Step 3, even when QA or the interpretation test did not pass.
 
@@ -164,10 +164,10 @@ Never change the main working tree's sources. Between phases, stay at `{repo_roo
 2. Run `creview:rounds` with these arguments. `--base` is the generation's first TP-A so that Round 1 of every cycle reviews the whole generation as a diff from S, since a send-back reworks the earlier fixes across the board.
 
    ```
-   creview:rounds {loop_dir}/g{g}c{c}/review --worktree={loop_branch}-g{g} --incremental --base {loop_branch}-tp/g{g}c1-coding-start --on-divergence stop --result {loop_dir}/g{g}c{c}/rounds-result.json [{rounds_args}]
+   creview:rounds {loop_dir}/g{g}c{c}/review --worktree={loop_branch}-g{g} --incremental --base {loop_branch}-tp/g{g}c1-coding-start --on-divergence stop --result {loop_dir}/g{g}c{c}/rounds-result.jsonl [{rounds_args}]
    ```
 
-3. Once it returns, Read `rounds-result.json` and record its results and warnings.
+3. Once it returns, Read `rounds-result.jsonl` and record its results and warnings.
 4. Go on by its content:
    - The file is missing or unreadable, `error` is not null, `kept_worktree` is not null, or `end_reason` is none of `converged`, `max-rounds`, and `divergence`: end as an error (Step 6).
    - `converged` or `max-rounds`: go to Step 5.
@@ -193,19 +193,19 @@ Never change the main working tree's sources. Between phases, stay at `{repo_roo
    - main_root: (none)
    - target_dir: {repo_root}
    - task: {task}
-   - state_path: {loop_dir}/state.json
+   - state_path: {loop_dir}/state.jsonl
    - generation: {g}
    - remaining_generations: {--max-generations minus g}
    - pursuit: {true under --pursuit, otherwise false}
    - doc_lang: {doc_lang}
    - postmortem_md_path: {loop_dir}/g{g}/postmortem.md
-   - postmortem_json_path: {loop_dir}/g{g}/postmortem.json
+   - postmortem_json_path: {loop_dir}/g{g}/postmortem.jsonl
    - handoff_path: {handoff_path}
 
    Include `template_id` (Read from the template's frontmatter) in the return value.
    ```
 
-3. Accept the result when the returned `template_id` is `158ca65c-c8f4-4d8f-bb6d-ce62fd015be1` and `postmortem.json` is valid JSON in the template's format with:
+3. Accept the result when the returned `template_id` is `158ca65c-c8f4-4d8f-bb6d-ce62fd015be1` and `postmortem.jsonl` is valid JSON in the template's format with:
    - `verdict` `finish`: `adopted_generation` an integer from 1 to g.
    - `verdict` `redo`: `basis` `residual`, or `improvement` under `--pursuit`; and, when `{handoff_path}` is not `(none)`, `handoff_path` equal to it, naming an existing file.
 
@@ -233,6 +233,6 @@ Stop continuing automatically and end as an error in Step 6 only when:
 - `/creview:rounds` ends on an error (Step 3).
 - A result file names a kept worktree, whose branch the next phase could not check out.
 - A work branch or TP cannot be created, or the working directory cannot be returned to `{repo_root}`.
-- `state.json` cannot be written or made valid. Terminate as § State file directs.
+- `state.jsonl` cannot be written or made valid. Terminate as § State file directs.
 
 Otherwise judge and continue on your own, without asking the user. On an error end, leave every TP and work branch made so far.

@@ -33,22 +33,22 @@ Follow `${CLAUDE_PLUGIN_ROOT}/rules/leader.md`, with its `plugin_root` variable 
 
 ## Step 2 — Push
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py fixes '{pr_url}' '{tmp_dir}' '{document_path}'`. It writes `{tmp_dir}/fix-commits.json` and prints `commits`, `branch`, `head_ref`, and `head_repo`.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py fixes '{pr_url}' '{tmp_dir}' '{document_path}'`. It writes `{tmp_dir}/fix-commits.jsonl` and prints `commits`, `branch`, `head_ref`, and `head_repo`.
 
 When `commits` is 0, Read `{document_path}`: when a finding has `Status: 🟢 Fixed`, its fix is uncommitted, so tell the user, post nothing, and continue at Step 5; otherwise continue at Step 3. When `commits` is above 0, show the commits, and ask the user to push them to `head_ref` of `head_repo`, from `branch` when it is not null, and to tell you when that is done. When `head_ref` is null, name no branch and show no command: tell the user to check where to push on the pull request's page. End your turn.
 
-When the user says so, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py pushed '{pr_url}' '{tmp_dir}/fix-commits.json'`. When `pushed` is false, tell the user that the pull request does not contain the commits under the hashes the replies would cite (a rebase changes them), and end your turn again. When the user says the commits were rebased or squashed, run this step again from `fixes`. When the user says to stop, post nothing and continue at Step 5.
+When the user says so, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py pushed '{pr_url}' '{tmp_dir}/fix-commits.jsonl'`. When `pushed` is false, tell the user that the pull request does not contain the commits under the hashes the replies would cite (a rebase changes them), and end your turn again. When the user says the commits were rebased or squashed, run this step again from `fixes`. When the user says to stop, post nothing and continue at Step 5.
 
 ## Step 3 — Draft the replies
 
 1. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py comments '{pr_url}' '{tmp_dir}'`. It prints `pr_body_path`.
-2. Read `{document_path}`, `{tmp_dir}/comments.json`, `{tmp_dir}/fix-commits.json`, `{pr_body_path}`, and `${CLAUDE_PLUGIN_ROOT}/rules/wording.md`, and write `{tmp_dir}/replies.json` as its § Drafted replies says.
+2. Read `{document_path}`, `{tmp_dir}/comments.jsonl`, `{tmp_dir}/fix-commits.jsonl`, `{pr_body_path}`, and `${CLAUDE_PLUGIN_ROOT}/rules/wording.md`, and write `{tmp_dir}/replies.jsonl` as its § Drafted replies says.
 
 ## Step 4 — Confirm and post
 
 When there are no replies, continue at Step 5. Otherwise show `unmatched` and `unaddressed` with the preview.
 
-Follow § Confirm and post with `{json_path}` = `{tmp_dir}/replies.json`, passing `post` the option `--commits '{tmp_dir}/fix-commits.json'`: it refuses to send anything until the pull request contains the commits. When `preview` exits non-zero because `{json_path}` is missing or malformed, or prints `comment_lang` as null, write the file again and run it again; abort on a second failure.
+Follow § Confirm and post with `{json_path}` = `{tmp_dir}/replies.jsonl`, passing `post` the option `--commits '{tmp_dir}/fix-commits.jsonl'`: it refuses to send anything until the pull request contains the commits. When `preview` exits non-zero because `{json_path}` is missing or malformed, or prints `comment_lang` as null, write the file again and run it again; abort on a second failure.
 
 ## Step 5 — Report
 
