@@ -595,10 +595,10 @@ the repository root, since the leader stays in the main working tree between pha
         U+0085.
       - A line a script writes holds none of those three characters raw; the script writes
         them as `\u2028`, `\u2029`, and `\u0085`.
-    - A reader accepts every shape the convention allows.
+    - A reader skips blank lines, as `check-jsonl.py` does.
       - When `check-jsonl.py` does not validate an agent's output, the script that reads it
-        validates it with the same accepted shapes and requires a single-object file to be
-        exactly one line.
+        runs the checks `check-jsonl.py` runs and also requires a single-object file to hold
+        exactly one non-blank line.
     - `check-jsonl.py` accepts a file only when each non-blank line parses on its own as one
       JSON object.
       - It skips blank lines and rejects an empty file, a line holding an array or a scalar,
