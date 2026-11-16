@@ -1911,10 +1911,11 @@ class Replies(Base):
     def test_commits_path_refuses_what_a_reply_cannot_send(self):
         gh = self.fake()
         commits = self.save({"commits": []}, "fix-commits.jsonl")
+        _, draft = self.draft()
+        self.assertTrue(draft["findings"])
         thread = {"kind": "thread", "target_id": 1, "finding_ids": ["M-1"], "body": "a"}
-        for data in ({"findings": [], "replies": [thread]},
-                     {"replies": [{**thread, "verified": ["M-1"]}]}):
-            path = self.save(data, "replies.jsonl")
+        replies = self.save({"replies": [{**thread, "verified": ["M-1"]}]}, "replies.jsonl")
+        for path in (os.path.join(self.dir, "draft.jsonl"), replies):
             with self.assertRaisesRegex(mod.Error, "--commits"):
                 mod.cmd_post(URL, path, commits)
         self.assertEqual((gh.posts, gh.mutations), ([], []))
@@ -5238,16 +5239,19 @@ class Layout(PriorBase):
         mod.cmd_own(URL, self.dir)
         extract = self.write(pretty({"findings": [], "used": []}),
                              os.path.join("own", "extract-1.jsonl"))
-        with self.assertRaisesRegex(mod.Error, r"extract-1\.jsonl"):
+        with self.assertRaisesRegex(mod.Error,
+                                    r"extract-1\.jsonl \(.*extract-1\.jsonl:1: .*one line"):
             mod.cmd_ids(URL, self.dir)
         self.assertFalse(os.path.exists(extract))
         self.collect()
         extract = self.write(pretty({"findings": []}), os.path.join("posted", "extract-1.jsonl"))
-        with self.assertRaisesRegex(mod.Error, r"extract-1\.jsonl"):
+        with self.assertRaisesRegex(mod.Error,
+                                    r"extract-1\.jsonl \(.*extract-1\.jsonl:1: .*one line"):
             mod.cmd_prior(URL, self.dir, "review", os.path.join(self.dir, "p.md"))
         self.assertFalse(os.path.exists(extract))
         blocking = self.write(pretty({"findings": []}), "blocking.jsonl")
-        with self.assertRaisesRegex(mod.Error, r"blocking\.jsonl"):
+        with self.assertRaisesRegex(mod.Error,
+                                    r"blocking\.jsonl \(.*blocking\.jsonl:1: .*one line"):
             mod.cmd_draft(URL, self.dir, self.doc, "gate", "en", None, blocking)
         self.assertFalse(os.path.exists(blocking))
         path = mod.cmd_draft(URL, self.dir, self.doc, "review", "en", None)["path"]

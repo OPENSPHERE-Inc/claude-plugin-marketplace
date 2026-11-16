@@ -980,6 +980,10 @@ def discard(path):
         pass
 
 
+def described(path, error):
+    return f"{path} ({error})" if isinstance(error, Error) else path
+
+
 def read_own_extracts(directory, batches):
     """The IDs by key and the IDs used in each batch's extract, naming any file that is missing or
     malformed.
@@ -1001,9 +1005,9 @@ def read_own_extracts(directory, batches):
                 if entry["ids"]:
                     held = comments.setdefault(entry["key"], [])
                     held.extend(fid for fid in entry["ids"] if fid not in held)
-        except (Error, OSError, AttributeError, KeyError, TypeError, ValueError):
+        except (Error, OSError, AttributeError, KeyError, TypeError, ValueError) as e:
             discard(name)
-            bad.append(name)
+            bad.append(described(name, e))
     if bad:
         raise Error(f"missing or malformed: {', '.join(bad)}")
     return comments, used
@@ -1189,9 +1193,9 @@ def read_judgments(directory, batches, items):
                         or (fid is not None and fid in [e.get("id") for e in siblings])):
                     raise ValueError(entry)
                 siblings.append(entry)
-        except (Error, OSError, KeyError, TypeError, ValueError):
+        except (Error, OSError, KeyError, TypeError, ValueError) as e:
             discard(name)
-            bad.append(name)
+            bad.append(described(name, e))
     if bad:
         raise Error(f"missing or malformed: {', '.join(bad)}")
     return judged, skipped
@@ -1482,9 +1486,9 @@ def read_blocking(path, ids, tmp_dir):
         if (not all(isinstance(value, bool) for value in judged.values()) or set(judged) - ids
                 or len(judged) != len(entries)):
             raise ValueError(judged)
-    except (Error, KeyError, TypeError, ValueError):
+    except (Error, KeyError, TypeError, ValueError) as e:
         discard(path)
-        raise Error(f"missing or malformed: {path}") from None
+        raise Error(f"missing or malformed: {described(path, e)}") from None
     return judged
 
 
