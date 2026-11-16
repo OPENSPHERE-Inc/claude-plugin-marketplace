@@ -2360,6 +2360,19 @@ rc=0; python3 "${RR}" "${RD}/doc.md" "${RD}/events.jsonl" "${RD}/out.md" >/dev/n
 check "render-review.py with line breaks in values" 0 "${rc}"
 cmp -s "${RD}/out.md" "${RD}/want.md" \
     || { note "FAIL: render-review.py wrote '$(cat -v "${RD}/out.md")'"; fail=1; }
+printf '%s\r\n' '{"id":"mi-1","field":"triage","value":"Will Fix\n- **Branch:** main"}' \
+    '{"id":"mi-1","field":"estimate","value":"Maintain\r- **Branch:** main"}' \
+    '{"id":"mi-9","field":"status","value":"Fixed\r\n- **Branch:** main"}' > "${RD}/crlf.jsonl"
+rc=0; python3 "${RR}" "${RD}/doc.md" "${RD}/crlf.jsonl" "${RD}/crlf.md" >/dev/null 2>&1 || rc=$?
+check "render-review.py with CRLF line ends" 0 "${rc}"
+cmp -s "${RD}/crlf.md" "${RD}/want.md" \
+    || { note "FAIL: render-review.py on CRLF line ends wrote '$(cat -v "${RD}/crlf.md")'"
+         fail=1; }
+printf '%s\r%s\n' '{"id":"mi-1","field":"triage","value":"Will Fix"}' \
+    '{"id":"mi-1","field":"estimate","value":"Maintain"}' > "${RD}/cr.jsonl"
+rc=0; python3 "${RR}" "${RD}/doc.md" "${RD}/cr.jsonl" "${RD}/cr.md" >/dev/null 2>&1 || rc=$?
+[[ "${rc}" -ne 0 && ! -e "${RD}/cr.md" ]] \
+    || { note "FAIL: render-review.py read events split by a lone CR (rc=${rc})"; fail=1; }
 
 # --- compile-review.py writes each event on a line str.splitlines() keeps whole ----
 python3 -I -B - "${REPO_ROOT}/creview/skills" "${SANDBOX}" "${RR}" <<'PY' || fail=1

@@ -5270,6 +5270,11 @@ class Layout(PriorBase):
         self.assertEqual(json_lines(replies), [{"type": "meta", "comment_lang": "en"}])
         self.assertEqual(mod.read_post_file(draft), empty)
         self.assertEqual(mod.read_post_file(replies), {"comment_lang": "en", "replies": []})
+        stray = {"comment_lang": "en", "findings": [], "replies": []}
+        mod.write_post_file(replies, stray)
+        self.assertEqual(mod.read_post_file(replies), stray)
+        self.assertTrue(mod.is_draft(empty))
+        self.assertFalse(mod.is_draft(stray))
 
     def test_a_gate_draft_with_no_records_is_previewed(self):
         self.fake()
@@ -5281,6 +5286,17 @@ class Layout(PriorBase):
         self.assertEqual(result["verdict"], "PASS")
         self.assertEqual(line_types(path), ["meta"])
         self.assertEqual(load(path)["previewed_verdict"], "PASS")
+
+    def test_a_failed_write_leaves_the_file_as_it_was(self):
+        path = os.path.join(self.dir, "draft.jsonl")
+        draft = {"url": URL, "kind": "review", "findings": [{"id": "mi-1", "selected": True}],
+                 "prior": [], "waived": []}
+        mod.write_post_file(path, draft)
+        with self.assertRaises(TypeError):
+            mod.write_lines(path, [{"type": "meta", "url": URL, "kind": "review"},
+                                   {"bad": object()}])
+        self.assertEqual(mod.read_post_file(path), draft)
+        self.assertFalse(os.path.exists(path + ".tmp"))
 
 
 class Cli(unittest.TestCase):

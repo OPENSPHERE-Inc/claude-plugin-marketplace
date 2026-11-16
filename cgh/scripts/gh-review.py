@@ -647,8 +647,14 @@ def json_line(value):
 
 
 def write_lines(path, values):
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
-        f.writelines(json_line(value) + "\n" for value in values)
+    partial = path + ".tmp"
+    try:
+        with open(partial, "w", encoding="utf-8", newline="\n") as f:
+            f.writelines(json_line(value) + "\n" for value in values)
+        os.replace(partial, path)
+    except BaseException:
+        discard(partial)
+        raise
 
 
 def write_json(path, data):
@@ -662,8 +668,12 @@ def write_records(path, data, layout):
                                for key, kind in layout for entry in data.get(key, []))])
 
 
+def is_draft(data):
+    return "kind" in data
+
+
 def write_post_file(path, data):
-    write_records(path, data, DRAFT if "findings" in data else REPLIES)
+    write_records(path, data, DRAFT if is_draft(data) else REPLIES)
 
 
 def json_lines(path):
@@ -736,7 +746,7 @@ def read_records(path, layout):
 def read_post_file(path):
     """A draft, whose metadata line holds kind, or a replies file, whose metadata line has none."""
     lines = json_lines(path)
-    return records_of(path, lines, DRAFT if "kind" in lines[0][1] else REPLIES)
+    return records_of(path, lines, DRAFT if is_draft(lines[0][1]) else REPLIES)
 
 
 def severity_of(fid):
@@ -1929,7 +1939,7 @@ def preview_replies(pr, data, viewer, post):
 
 def post_differs(data):
     """The IDs of what goes out in other wording than the preview's."""
-    if "findings" in data:
+    if is_draft(data):
         ids = [f["id"] for f in data["findings"]
                if f["selected"] and comment_view(f, True) != comment_view(f, False)]
         ids += [p["id"] for p in data["prior"] if p["state"] != "waived" and p.get("post_note")
@@ -1950,7 +1960,7 @@ def post_differs(data):
 def cmd_preview(pr_url, path):
     pr = checked_pr(pr_url)
     data = read_post_file(path)
-    if "findings" in data:
+    if is_draft(data):
         view = view_for_draft(pr, data)
         text, summary = preview_review(data, view, False)
         post_text, _ = preview_review(data, view, True)
@@ -2007,7 +2017,7 @@ def merge_wording_file(data, name):
     for key in ("findings", "replies"):
         if not isinstance(wording.get(key, []), list):
             raise Error(f"malformed wording in {name}: {key} is not a list")
-    if "findings" in data:
+    if is_draft(data):
         merge_wording(data, wording)
     else:
         merge_reply_wording(data, wording)
@@ -2016,7 +2026,7 @@ def merge_wording_file(data, name):
 def cmd_wording(pr_url, path):
     checked_pr(pr_url)
     data = read_post_file(path)
-    if "findings" not in data:
+    if not is_draft(data):
         validated_replies(data)
     directory = glob.escape(os.path.dirname(path) or ".")
     names = sorted(glob.glob(os.path.join(directory, "wording-*.jsonl")))
@@ -2029,7 +2039,7 @@ def cmd_wording(pr_url, path):
     write_post_file(path, data)
     for name in names:
         os.remove(name)
-    missing = wording_missing(data) if "findings" in data else []
+    missing = wording_missing(data) if is_draft(data) else []
     return {"path": path, "comment_lang": data.get("comment_lang"), "missing": missing}
 
 
@@ -2336,12 +2346,12 @@ def cmd_post(pr_url, path, commits_path):
     pr = checked_pr(pr_url)
     data = read_post_file(path)
     if commits_path:
-        if "findings" in data or any(e["verified"] for e in validated_replies(data)):
+        if is_draft(data) or any(e["verified"] for e in validated_replies(data)):
             raise Error(f"--commits sends only replies that mark nothing verified: {path} holds "
                         "findings or a verified reply")
         if not pushed_state(pr, commits_path)["pushed"]:
             raise Error("the pull request does not contain the fix commits yet; push them first")
-    return post_review(pr, path, data) if "findings" in data else post_replies(pr, path, data)
+    return post_review(pr, path, data) if is_draft(data) else post_replies(pr, path, data)
 
 
 def cmd_comments(pr_url, tmp_dir):

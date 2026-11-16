@@ -61,13 +61,15 @@ def load_events(jsonl_path):
             f"  in shell. Use the same writing tool throughout to avoid mismatch."
         )
     fields = {}
-    with open(jsonl_path, encoding="utf-8") as f:
-        for raw in f:
-            line = raw.strip()
-            if not line:
-                continue
-            event = json.loads(line)
-            fields.setdefault(event["id"], {})[event["field"]] = event["value"]
+    with open(jsonl_path, encoding="utf-8", newline="") as f:
+        text = f.read()
+    for line in text.split("\n"):
+        if line.endswith("\r"):
+            line = line[:-1]
+        if not line.strip():
+            continue
+        event = json.loads(line)
+        fields.setdefault(event["id"], {})[event["field"]] = event["value"]
     return fields
 
 
