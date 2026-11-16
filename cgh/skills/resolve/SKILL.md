@@ -32,13 +32,13 @@ Run `creview:resolve` with `{document_path}`. Overrides for every verification s
 
 ## Step 3 — Replies
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' '{tmp_dir}' '{document_path}' --lang {lang}`. It writes `{tmp_dir}/replies.json` and prints `replies`, `unverified`, the findings that got no result, `unchanged`, the findings verified earlier whose verification still holds, which get no reply, and `pr_body_path`. When `replies` is 0, continue at Step 5.
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' '{tmp_dir}' '{document_path}' --lang {lang}`. It writes `{tmp_dir}/replies.jsonl` and prints `replies`, `unverified`, the findings that got no result, `unchanged`, the findings verified earlier whose verification still holds, which get no reply, and `pr_body_path`. When `replies` is 0, continue at Step 5.
 
-Replies go out in the language of the pull request's description. Read `{tmp_dir}/replies.json`, `{pr_body_path}`, and `${CLAUDE_PLUGIN_ROOT}/rules/wording.md`, and write `{tmp_dir}/wording-1.json` as its § Translated replies says. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' '{tmp_dir}/replies.json'`. When its error names `wording-1.json`, which it has removed, or it prints `comment_lang` as null, write the file again and run it again. On a second failure, a second null, or any other non-zero exit, abort with its error.
+Replies go out in the language of the pull request's description. Read `{tmp_dir}/replies.jsonl`, `{pr_body_path}`, and `${CLAUDE_PLUGIN_ROOT}/rules/wording.md`, and write `{tmp_dir}/wording-1.jsonl` as its § Translated replies says. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' '{tmp_dir}/replies.jsonl'`. When its error names `wording-1.jsonl`, which it has removed, or it prints `comment_lang` as null, write the file again and run it again. On a second failure, a second null, or any other non-zero exit, abort with its error.
 
 ## Step 4 — Confirm and post
 
-Follow § Confirm and post with `{json_path}` = `{tmp_dir}/replies.json`.
+Follow § Confirm and post with `{json_path}` = `{tmp_dir}/replies.jsonl`.
 
 ## Step 5 — Report
 

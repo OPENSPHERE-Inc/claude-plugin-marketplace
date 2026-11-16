@@ -26,6 +26,13 @@ RENDER_REVIEW = os.path.join(
     "..", "..", "..", "scripts", "render-review.py",
 )
 SEVERITY_RANK = {"Critical": 0, "Major": 1, "Minor": 2, "Info": 3}
+# json.dumps leaves these raw under ensure_ascii=False, and str.splitlines() splits a line at
+# each of them.
+LINE_SEPARATORS = {ord(c): f"\\u{ord(c):04x}" for c in "\u2028\u2029\u0085"}
+
+
+def json_line(value):
+    return json.dumps(value, ensure_ascii=False).translate(LINE_SEPARATORS)
 
 
 def cell(value):
@@ -99,7 +106,8 @@ def main():
         for v in verifications:
             if v.get("outcome") == "Unresolved":
                 continue
-            f.write(json.dumps({"id": v["id"], "field": "verification", "value": v["memo_value"]}, ensure_ascii=False) + "\n")
+            event = {"id": v["id"], "field": "verification", "value": v["memo_value"]}
+            f.write(json_line(event) + "\n")
     subprocess.run([sys.executable, RENDER_REVIEW, document_path, events_path, document_path], check=True)
 
     summary_line = f"{len(resolved)} resolved"

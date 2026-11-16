@@ -644,7 +644,8 @@ frontmatter の `name` / `description` を読み、指摘ごとに最適なも�
   `adr-format.md`、`doc-worktree.md`、`pr-comment-doc.md`、`contract-style-prompts.md`、
   `prompt.md`（スキルが参照するルールのみ）。
 - `scripts/` — `fetch-diff.sh`、`render-review.py`、`del-tmp.sh`、
-  `check-jsonl.py`（サブエージェントが書き出した `.jsonl` の検証に使用）、
+  `check-jsonl.py`（サブエージェントが、書き出した `.jsonl` の各行が 1 つの JSON
+  オブジェクトであることの検証に使用）、
   `lib/scratch-guard.py`（`fetch-diff.sh` / `del-tmp.sh` が共有する
   `.claude/tmp/` 封じ込めチェック。リンクされたワークツリーからは、同じ
   リポジトリの別の作業ツリーの `.claude/tmp/` も受け付ける）、`worktree.sh`

@@ -32,13 +32,13 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 3 — 返信
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' '{tmp_dir}' '{document_path}' --lang {lang}` を実行する。`{tmp_dir}/replies.json` が書き出され、`replies`、`unverified`（結果が得られなかった指摘）、`unchanged`（以前に検証済みで解決が保たれており、返信しない指摘）、`pr_body_path` が出力される。`replies` が 0 なら、担当を起動せず Step 5 に進む。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py replies '{pr_url}' '{tmp_dir}' '{document_path}' --lang {lang}` を実行する。`{tmp_dir}/replies.jsonl` が書き出され、`replies`、`unverified`（結果が得られなかった指摘）、`unchanged`（以前に検証済みで解決が保たれており、返信しない指摘）、`pr_body_path` が出力される。`replies` が 0 なら、担当を起動せず Step 5 に進む。
 
-返信は PR 本文の言語で投稿する。`{tmp_dir}/replies.json`、`{pr_body_path}`、`${CLAUDE_PLUGIN_ROOT}/rules/wording.md` を Read し、その § 翻訳する返信 のとおり `{tmp_dir}/wording-1.json` を書く。その後、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' '{tmp_dir}/replies.json'` を実行する。エラーが `wording-1.json` を名指すとき（そのファイルは削除されている）か、`comment_lang` が null と出力されたときは、ファイルを書き直して再度実行する。2 度目の失敗、2 度目の null、他の非ゼロ終了のいずれかなら、そのエラーで中断する。
+返信は PR 本文の言語で投稿する。`{tmp_dir}/replies.jsonl`、`{pr_body_path}`、`${CLAUDE_PLUGIN_ROOT}/rules/wording.md` を Read し、その § 翻訳する返信 のとおり `{tmp_dir}/wording-1.jsonl` を書く。その後、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py wording '{pr_url}' '{tmp_dir}/replies.jsonl'` を実行する。エラーが `wording-1.jsonl` を名指すとき（そのファイルは削除されている）か、`comment_lang` が null と出力されたときは、ファイルを書き直して再度実行する。2 度目の失敗、2 度目の null、他の非ゼロ終了のいずれかなら、そのエラーで中断する。
 
 ## Step 4 — 確認と投稿
 
-`{json_path}` = `{tmp_dir}/replies.json` で § 確認と投稿 に従う。
+`{json_path}` = `{tmp_dir}/replies.jsonl` で § 確認と投稿 に従う。
 
 ## Step 5 — 報告
 

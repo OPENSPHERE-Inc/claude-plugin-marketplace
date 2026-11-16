@@ -18,7 +18,9 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 ファイル出力は Write ツールを使用する。Bash の cat heredoc は値内のアポストロフィ（`Won't` 等）で外側のクォーティングが破綻するため使用不可。
 
-`.jsonl` を Write した後は `python3 {{plugin_root}}/scripts/check-jsonl.py {path}` で検証し、エラーが出たら修正して再検証する。`node -e` 等のインタプリタワンライナーで構文チェックしない。その場限りのインタプリタ実行は権限ポリシーの拒否や確認の対象になるため。
+タスクが書くよう指示する `.jsonl` ファイルは、タスクが指定する 1 つの JSON オブジェクトとして、レコード 1 件 1 行に分割せずに 1 行で書く。編集するソースの中の `.jsonl` ファイルはこれに当たらず、そのファイル自身の形式を保つ。
+
+タスクが書くよう指示する `.jsonl` ファイルを Write した後は `python3 {{plugin_root}}/scripts/check-jsonl.py {path}` で検証し、エラーが出たら修正して再検証する。`node -e` 等のインタプリタワンライナーで構文チェックしない。その場限りのインタプリタ実行は権限ポリシーの拒否や確認の対象になるため。
 
 連絡は `SendMessage` で行う。宛先の用語と解決:
 

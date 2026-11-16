@@ -33,22 +33,22 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 ## Step 2 — push
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py fixes '{pr_url}' '{tmp_dir}' '{document_path}'` を実行する。`{tmp_dir}/fix-commits.json` が書き出され、`commits`、`branch`、`head_ref`、`head_repo` が出力される。
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py fixes '{pr_url}' '{tmp_dir}' '{document_path}'` を実行する。`{tmp_dir}/fix-commits.jsonl` が書き出され、`commits`、`branch`、`head_ref`、`head_repo` が出力される。
 
 `commits` が 0 なら `{document_path}` を Read する: `Status: 🟢 Fixed` の指摘があればその修正は未コミットなので、ユーザーに伝えて何も投稿せず Step 5 に進み、なければ Step 3 に進む。`commits` が 1 以上なら、コミットを示し、`head_repo` の `head_ref` へ（`branch` が null でなければそこから）push して完了を知らせるようユーザーに依頼する。`head_ref` が null なら、ブランチ名もコマンドも示さず、push 先をプルリクエストのページで確認するよう伝える。ターンを終える。
 
-ユーザーが完了を伝えたら、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py pushed '{pr_url}' '{tmp_dir}/fix-commits.json'` を実行する。`pushed` が false なら、返信が引用するハッシュのコミットがプルリクエストに含まれていないこと（リベースするとハッシュが変わる）をユーザーに伝え、再びターンを終える。コミットをリベースまたはスカッシュしたとユーザーが伝えたら、`fixes` からこのステップをやり直す。やめるとユーザーが伝えたら、何も投稿せずに Step 5 に進む。
+ユーザーが完了を伝えたら、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py pushed '{pr_url}' '{tmp_dir}/fix-commits.jsonl'` を実行する。`pushed` が false なら、返信が引用するハッシュのコミットがプルリクエストに含まれていないこと（リベースするとハッシュが変わる）をユーザーに伝え、再びターンを終える。コミットをリベースまたはスカッシュしたとユーザーが伝えたら、`fixes` からこのステップをやり直す。やめるとユーザーが伝えたら、何も投稿せずに Step 5 に進む。
 
 ## Step 3 — 返信のドラフト
 
 1. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py comments '{pr_url}' '{tmp_dir}'` を実行する。`pr_body_path` が出力される。
-2. `{document_path}`、`{tmp_dir}/comments.json`、`{tmp_dir}/fix-commits.json`、`{pr_body_path}`、`${CLAUDE_PLUGIN_ROOT}/rules/wording.md` を Read し、その § 起草する返信 のとおり `{tmp_dir}/replies.json` を書く。
+2. `{document_path}`、`{tmp_dir}/comments.jsonl`、`{tmp_dir}/fix-commits.jsonl`、`{pr_body_path}`、`${CLAUDE_PLUGIN_ROOT}/rules/wording.md` を Read し、その § 起草する返信 のとおり `{tmp_dir}/replies.jsonl` を書く。
 
 ## Step 4 — 確認と投稿
 
 返信がなければ Step 5 に進む。それ以外は `unmatched` と `unaddressed` をプレビューとともに示す。
 
-`{json_path}` = `{tmp_dir}/replies.json` で § 確認と投稿 に従い、`post` にオプション `--commits '{tmp_dir}/fix-commits.json'` を渡す: プルリクエストがコミットを含むまで何も送らない。`{json_path}` の欠落または不正で `preview` が非ゼロ終了したとき、または `comment_lang` に null を出力したときは、ファイルを書き直して再度実行する。2 回目の失敗で中断する。
+`{json_path}` = `{tmp_dir}/replies.jsonl` で § 確認と投稿 に従い、`post` にオプション `--commits '{tmp_dir}/fix-commits.jsonl'` を渡す: プルリクエストがコミットを含むまで何も送らない。`{json_path}` の欠落または不正で `preview` が非ゼロ終了したとき、または `comment_lang` に null を出力したときは、ファイルを書き直して再度実行する。2 回目の失敗で中断する。
 
 ## Step 5 — 報告
 

@@ -1,7 +1,7 @@
 ---
 name: coding
 description: ペアレビューセルを用いて、設計セルステップ・コーディングセルステップ・QA ゲートでコーディングタスクをエンドツーエンドに統括する、常駐エージェントチーム方式のワークフロー。AI 向けプロンプトファイルには、コーディングセルでのプロンプト規律セルフチェックと圧縮、QA ゲートでの解釈テストも行う。reviewer は対象プロジェクトのエージェントから自動選定する。ユーザーがリポジトリ内での機能の実装・変更の構築・コーディングタスクの遂行を求めたとき、リポジトリ内の AI 向けプロンプトファイル（エージェント定義・SKILL.md・ルール・スラッシュコマンド・プロンプトテンプレート）の作成や修正を含め、能動的に使用する。リポジトリ外のファイル（`~/.claude/` 配下など）、1 体のエージェントで直接済む小さな編集（ルールへの 1 項目の追記など）、ファイルになっていないプロンプトの起草、`--worktree` なしでの未コミットの変更がある作業ツリーには使わない。バックグラウンドのサブエージェント（Agent の run_in_background）とエージェント間メッセージング（SendMessage）が利用可能なランタイムを要する。
-allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/restore.sh:*)
+allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/restore.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*)
 ---
 
 # マルチエージェントコーディング
@@ -41,7 +41,7 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 
 ### 結果ファイル（`--result`）
 
-Write ツールで 1 つの JSON オブジェクトとして書く。既存のファイルは置き換え、親ディレクトリがなければ作る。ファイルが既にある場合は先に Read する: Write は、このセッションで Read していないファイルの置き換えを拒否する。ステップ 5 の手順 5 で書くほか、ステップ 5 に至らないあらゆる終了 — § 動作要件 と § 信頼前提 による中止、およびステップ 1 での各終了 — でも、終了する前に書く。ワークツリーのセットアップ後の終了では、ティアダウンの後に書く。`.claude` か `.claude/tmp` がシンボリックリンクの間は書かない: ステップ 1 手順 5 の `del-tmp.sh` を通過する前の終了では、先に `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry {tmp_dir}` を実行し（ステップ 1 より前の終了では、その時点で `{timestamp}` を確定する）、ゼロ終了したときだけ書き、非ゼロ終了の場合はそのエラーをコンソールに表示して終了する。書き出しに失敗した場合は、エラーをコンソールに表示し、それ以外は何も変えない。
+Write ツールで 1 つの JSON オブジェクトを 1 行で書く。既存のファイルは置き換え、親ディレクトリがなければ作る。ファイルが既にある場合は先に Read する: Write は、このセッションで Read していないファイルの置き換えを拒否する。ステップ 5 の手順 5 で書くほか、ステップ 5 に至らないあらゆる終了 — § 動作要件 と § 信頼前提 による中止、およびステップ 1 での各終了 — でも、終了する前に書く。ワークツリーのセットアップ後の終了では、ティアダウンの後に書く。`.claude` か `.claude/tmp` がシンボリックリンクの間は書かない: ステップ 1 手順 5 の `del-tmp.sh` を通過する前の終了では、先に `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry {tmp_dir}` を実行し（ステップ 1 より前の終了では、その時点で `{timestamp}` を確定する）、ゼロ終了したときだけ書き、非ゼロ終了の場合はそのエラーをコンソールに表示して終了する。書いたファイルを `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {path}` で検証する。エラーなら修正して、もう 1 度だけ検証する。書き込みか 2 度目の検証が失敗した場合は、エラーをコンソールに表示し、それ以外は何も変えない。
 
 ```json
 {"committed": true, "commit": "<sha>", "branch": "<name>",

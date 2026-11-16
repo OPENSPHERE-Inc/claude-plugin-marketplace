@@ -29,9 +29,9 @@ The runtime refuses a launch with `Concurrent subagent limit reached` while the 
 
 Use the Write tool for file output. Bash cat heredoc is unusable because apostrophes inside values (e.g., `Won't`) break the outer quoting.
 
-Write a `.jsonl` output file as the single JSON object the task specifies, on one line. Do not split it into one line per record.
+Write each `.jsonl` file your template tells you to write as the one JSON object the template specifies, on one line, even where the template shows its format over several lines; do not split it into one line per record. A `.jsonl` file among the sources you edit is not such a file: keep its own format.
 
-After writing a `.jsonl` file, validate it with `python3 {{plugin_root}}/scripts/check-jsonl.py {path}`, and fix and re-validate on error. Do not check the syntax with a `node -e` or similar interpreter one-liner: an ad-hoc interpreter command is what a permission policy denies or prompts on.
+After writing a `.jsonl` file your template tells you to write, validate it with `python3 {{plugin_root}}/scripts/check-jsonl.py {path}`, and fix and re-validate on error. Do not check the syntax with a `node -e` or similar interpreter one-liner: an ad-hoc interpreter command is what a permission policy denies or prompts on.
 
 ## Coding Conventions
 

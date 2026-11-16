@@ -24,6 +24,13 @@ RENDER_REVIEW = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "..", "..", "..", "scripts", "render-review.py",
 )
+# json.dumps leaves these raw under ensure_ascii=False, and str.splitlines() splits a line at
+# each of them.
+LINE_SEPARATORS = {ord(c): f"\\u{ord(c):04x}" for c in "\u2028\u2029\u0085"}
+
+
+def json_line(value):
+    return json.dumps(value, ensure_ascii=False).translate(LINE_SEPARATORS)
 
 
 def main():
@@ -50,7 +57,7 @@ def main():
     events_path = os.path.join(tmp_dir, "events.jsonl")
     with open(events_path, "w", encoding="utf-8", newline="\n") as f:
         for event in events:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+            f.write(json_line(event) + "\n")
     subprocess.run([sys.executable, RENDER_REVIEW, document_path, events_path, document_path], check=True)
 
     will_fix = triage.get("will_fix_count", 0)

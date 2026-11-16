@@ -10,25 +10,30 @@ Usage:
 
 fetch: resolves <pr_url> (https://<host>/<owner>/<repo>/pull/<number>) with gh,
 requires <owner>/<repo> on <host> to be a remote of the current repository and
-the PR to be open, and writes to <out_dir>:
-  pr.json          url, head and base commits, merge base
-  pr-context.json  title and body, CI check results (the latest attempt of each
-                   check in each workflow run; the first MAX_JOB_LOGS failed
-                   GitHub Actions jobs carry a log excerpt, or log_error when
-                   it could not be fetched), and the conversation: issue
-                   comments, submitted review bodies, and review comments, at
-                   most MAX_COMMENTS of each kind, with omitted set when any
-                   were left out
-  pr-comments/batch-<n>.json
-                   every issue comment, submitted review body, and review
-                   comment, up to MAX_PAGES pages of each kind, split into
+the PR to be open, and writes to <out_dir> these JSON Lines files, each line one
+JSON object with U+2028, U+2029, and U+0085 escaped:
+  pr.jsonl         one line: url, head and base commits, merge base
+  pr-context.jsonl a first line {"type": "meta", "title", "body",
+                   "conversation_omitted"}, then a line per CI check result
+                   ("type": "check"; the latest attempt of each check in each
+                   workflow run; the first MAX_JOB_LOGS failed GitHub Actions
+                   jobs carry a log excerpt, or log_error when it could not be
+                   fetched), then a line per comment of the conversation:
+                   issue comments, submitted review bodies, and review
+                   comments, in that order ("type": "issue_comment", "review",
+                   "review_comment"), at most MAX_COMMENTS of each kind, with
+                   conversation_omitted true when any were left out
+  pr-comments/batch-<n>.jsonl
+                   a line per comment ("type" as in pr-context.jsonl): every
+                   review comment, submitted review body, and issue comment, in
+                   that order, up to MAX_PAGES pages of each kind, split into
                    batches of about BATCH_CHARS characters with each review
-                   thread whole; a review comment says whether its line is
-                   outdated, which side of the diff its line is on (LEFT: a line
-                   of the base that the PR removes), whether its review was
-                   dismissed, and, when known, whether its thread is resolved;
-                   with --skip-resolved, the batches leave out the threads known
-                   to be resolved
+                   thread whole, on consecutive lines from its first comment; a
+                   review comment says whether its line is outdated, which side
+                   of the diff its line is on (LEFT: a line of the base that the
+                   PR removes), whether its review was dismissed, and, when
+                   known, whether its thread is resolved; with --skip-resolved,
+                   the batches leave out the threads known to be resolved
 Both files hold every comment with its HTML comments removed, and leave out a
 review body with nothing else in it.
 It prints a JSON object whose in_place is true when HEAD of the current working
@@ -148,6 +153,13 @@ MAX_PAGES = 100
 MAX_COMMENTS = 50
 BATCH_CHARS = 40000
 COMMENT_KINDS = ("issue_comments", "reviews", "review_comments")
+# The order of a batch's lines, the order comment_batches packs its units in.
+BATCH_KINDS = ("review_comments", "reviews", "issue_comments")
+RECORD_TYPES = {"issue_comments": "issue_comment", "reviews": "review",
+                "review_comments": "review_comment"}
+# json.dumps leaves these raw under ensure_ascii=False, and str.splitlines() splits a line at
+# each of them.
+LINE_SEPARATORS = {ord(c): f"\\u{ord(c):04x}" for c in "\u2028\u2029\u0085"}
 # GitHub hides comments outside code: <!--> and <!---> are whole comments; a comment that starts a
 # line crosses blank lines and, never closed, hides the rest; one opened mid-line ends at a blank
 # line. Scanning from the left keeps code from hiding what a comment opened first, and a comment
@@ -220,10 +232,21 @@ def login(user):
     return (user or {}).get("login") or "ghost"
 
 
-def write_json(path, data):
+def json_line(value):
+    return json.dumps(value, ensure_ascii=False).translate(LINE_SEPARATORS)
+
+
+def write_records(path, records):
     with open(path, "w", encoding="utf-8", newline="\n") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-        f.write("\n")
+        f.writelines(json_line(record) + "\n" for record in records)
+
+
+def write_json(path, data):
+    write_records(path, [data])
+
+
+def comment_records(comments, kinds):
+    return [{"type": RECORD_TYPES[kind], **c} for kind in kinds for c in comments[kind]]
 
 
 def api_pages(endpoint, host, max_pages=MAX_PAGES):
@@ -424,7 +447,8 @@ def write_comment_batches(out_dir, comments):
     directory = os.path.join(out_dir, "pr-comments")
     os.makedirs(directory, exist_ok=True)
     for n, batch in enumerate(batches, 1):
-        write_json(os.path.join(directory, f"batch-{n}.json"), batch)
+        write_records(os.path.join(directory, f"batch-{n}.jsonl"),
+                      comment_records(batch, BATCH_KINDS))
     return len(batches)
 
 
@@ -528,7 +552,7 @@ def cmd_fetch(pr_url, out_dir, *options):
         )
 
     comments = all_comments(host, repo, number)
-    write_json(os.path.join(out_dir, "pr.json"), {
+    write_json(os.path.join(out_dir, "pr.jsonl"), {
         "url": url,
         "repo": repo,
         "number": number,
@@ -536,12 +560,14 @@ def cmd_fetch(pr_url, out_dir, *options):
         "base_sha": base_sha,
         "merge_base": merge_base,
     })
-    write_json(os.path.join(out_dir, "pr-context.json"), {
-        "title": pr["title"],
-        "body": clip(pr["body"], BODY_CHARS),
-        "checks": ci_checks(pr["statusCheckRollup"], host, job_repos),
-        "conversation": capped_conversation(comments),
-    })
+    conversation = capped_conversation(comments)
+    write_records(os.path.join(out_dir, "pr-context.jsonl"), [
+        {"type": "meta", "title": pr["title"], "body": clip(pr["body"], BODY_CHARS),
+         "conversation_omitted": conversation["omitted"]},
+        *({"type": "check", **check}
+          for check in ci_checks(pr["statusCheckRollup"], host, job_repos)),
+        *comment_records(conversation, COMMENT_KINDS),
+    ])
     skipped = 0
     if options:
         comments, skipped = leave_out_resolved(comments)

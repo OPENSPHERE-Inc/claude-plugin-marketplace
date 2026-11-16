@@ -52,7 +52,7 @@ allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*),
 
 ブランチは、どの作業ツリーにも触れない `git branch {name} {commit}` でのみ作成する。TP は動かさず、消さない。作業ブランチの履歴は書き換えない。
 
-サイクルのディレクトリ `{loop_dir}/g{g}c{c}/` は `design/`、`coding-result.json`、`review/`、`rounds-result.json`、`handoff.md` を持つ。世代 g のポストモーテムは `{loop_dir}/g{g}/` に書く。
+サイクルのディレクトリ `{loop_dir}/g{g}c{c}/` は `design/`、`coding-result.jsonl`、`review/`、`rounds-result.jsonl`、`handoff.md` を持つ。世代 g のポストモーテムは `{loop_dir}/g{g}/` に書く。
 
 ## 内側スキルの実行
 
@@ -62,7 +62,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 
 ## 状態ファイル
 
-`{loop_dir}/state.json` が実行の進行の正である。1 つの JSON オブジェクトとして Write で書き、書くたびに `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {loop_dir}/state.json` で検証し、エラーなら直して再検証する。書けない、または検証に通るよう直せない場合は、エラーを表示して終了する。書けるなら `loop-summary.md`（ステップ 6）を書く。
+`{loop_dir}/state.jsonl` が実行の進行の正である。1 つの JSON オブジェクトを 1 行で Write で書き、書くたびに `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {loop_dir}/state.jsonl` で検証し、エラーなら直して再検証する。書けない、または検証に通るよう直せない場合は、エラーを表示して終了する。書けるなら `loop-summary.md`（ステップ 6）を書く。
 
 書くもの:
 
@@ -101,7 +101,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 - `coding` / `review`: `started` と `skill_dir` は起動時に、ほかのフィールドは結果ファイルから書く。
 - `postmortem.fallback`: ステップ 5 が自身の判定で代替した場合はその理由、それ以外は null。
 - `end`: ステップ 6 で書く。`{"kind": "normal"|"error", "step": "<止まったステップ>", "error": "<文字列>"|null, "output_branch": "<名前>"|null}`。
-- `warnings`: 短い警告文だけを書く。`coding-result.json` からは、未通過の QA（環境起因かどうかを添える）、解釈テストが未通過または未テストとしたファイル、拒否された復元エントリ（`restore_refused`）、チーム再編成のフォールバック。`rounds-result.json` からは、その `workflow_warnings` と `prompt_warnings`。あなた自身のものとしては、発散調査レポートの欠落、ポストモーテムの代替判定、成果物ブランチの作成失敗。`source` は `coding`、`review`、`postmortem`、`finish` のいずれか。
+- `warnings`: 短い警告文だけを書く。`coding-result.jsonl` からは、未通過の QA（環境起因かどうかを添える）、解釈テストが未通過または未テストとしたファイル、拒否された復元エントリ（`restore_refused`）、チーム再編成のフォールバック。`rounds-result.jsonl` からは、その `workflow_warnings` と `prompt_warnings`。あなた自身のものとしては、発散調査レポートの欠落、ポストモーテムの代替判定、成果物ブランチの作成失敗。`source` は `coding`、`review`、`postmortem`、`finish` のいずれか。
 
 コンテキストから自分の位置が分からない場合は、このファイルと、そのトップレベルの `skill_dir` にある `SKILL.md` を Read する。Read した `SKILL.md` の `CLAUDE_PLUGIN_ROOT` のプレースホルダーは展開されないまま残る: Read した元の `skill_dir` の 2 階層上のディレクトリとみなす。このスキルでも内側スキルでも同じとする。`position` から続ける:
 
@@ -126,7 +126,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 - 維持すること: 発散に関わらない既存の実装とレビューでの修正。世代 2 以降では、参照資料にあるポストモーテムの申し送りの方針も維持する。世代 2 以降では、この方針とその申し送りが避けるとしたことが、それらを知らずに書かれたレポートの Fix proposal より優先すると添える: 源泉はそれらに沿う変更だけで除き、そうした変更で除けない源泉は、それらから外れずには除けないことを設計に明記して世代のポストモーテムに委ねる。
 - 避けること: レポートが源泉として挙げた形を再び持ち込むこと。世代 2 以降では、ポストモーテムの申し送りが避けるとしたことも避ける。
 - 戻り先の候補: この世代でこれまでに作ったすべての TP を、名前、コミット、その時点で保持する内容とともに挙げる。g{g}c1 の TP-A は開始コミットで、実装前である。g{g}c{k} の TP-B は、サイクル k の `/cdev:coding` の後で、そのレビュー修正の前である。k > 1 の g{g}c{k} の TP-A は、サイクル k-1 のレビューの後のコードである。現在の先頭に積むことが既定であること、戻す場合は TP の内容をファイルに復元して前方へコミットし（コミットは `/cdev:coding` が行う）、履歴は書き換えないことを併記する。
-- 参照資料: 発散調査レポート、世代 2 以降ではポストモーテムの申し送り（状態ファイルにある、その世代の最初のサイクルの `handoff`）、この世代の各サイクルの設計ドキュメント（`coding-result.json` の `design_paths`）、レビュードキュメント（`rounds-result.json` の `doc_paths`）、最終レポート（`rounds-result.json` の `final_report_path`）。結果ファイルからはこれらのパスだけを Read する。
+- 参照資料: 発散調査レポート、世代 2 以降ではポストモーテムの申し送り（状態ファイルにある、その世代の最初のサイクルの `handoff`）、この世代の各サイクルの設計ドキュメント（`coding-result.jsonl` の `design_paths`）、レビュードキュメント（`rounds-result.jsonl` の `doc_paths`）、最終レポート（`rounds-result.jsonl` の `final_report_path`）。結果ファイルからはこれらのパスだけを Read する。
 
 ## ステップ 1 — 初期化
 
@@ -139,7 +139,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
    - `{loop_dir}` が既にあり、空でない: 以前の実行が残した結果ファイルを、結果を書かずに終わった内側スキルの結果として誤読する。
 5. `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry .claude/tmp/cdev-loop-{timestamp}` を実行する。シンボリックリンクの `.claude` または `.claude/tmp` はこれで拒否される。非ゼロ終了した場合はそのエラーを表示してスキルを終了する。`{loop_dir}` ではなくこのパスを渡す: del-tmp.sh は `.claude/tmp/` の外のパスを拒否する。その後 `mkdir -p` で `{loop_dir}` を作成する。
 6. 開始コミット S を `git rev-parse HEAD` で記録する。`git status --porcelain` が何かを出力する場合は、未コミットの変更は S に含まれず、実行の対象外である旨をコンソールに示す。
-7. `skill_dir` を記録し、`position` を g = 1、c = 1、`init` として `state.json` を初期化し、ステップ 2 へ進む。
+7. `skill_dir` を記録し、`position` を g = 1、c = 1、`init` として `state.jsonl` を初期化し、ステップ 2 へ進む。
 
 メイン作業ツリーのソースは変更しない。フェーズの合間は `{repo_root}` にいる。
 
@@ -151,10 +151,10 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 4. `{loop_dir}/g{g}c{c}/` を作成し、次の引数で `cdev:coding` を実行する（§ 内側スキルの実行）。g1c1 以外のすべてのサイクルで `--handoff` を加える:
 
    ```
-   cdev:coding --worktree={loop_branch}-g{g} --output {loop_dir}/g{g}c{c}/design --result {loop_dir}/g{g}c{c}/coding-result.json --team-tag g{g}c{c}-{hhmmss} --commit-always [--handoff {loop_dir}/g{g}c{c}/handoff.md] [{coding_args}] {task}
+   cdev:coding --worktree={loop_branch}-g{g} --output {loop_dir}/g{g}c{c}/design --result {loop_dir}/g{g}c{c}/coding-result.jsonl --team-tag g{g}c{c}-{hhmmss} --commit-always [--handoff {loop_dir}/g{g}c{c}/handoff.md] [{coding_args}] {task}
    ```
 
-5. 戻ったら `coding-result.json` を Read する。
+5. 戻ったら `coding-result.jsonl` を Read する。
    - ファイルがない、または有効な JSON でない、`aborted` が null でない、`kept_worktree` が null でない、のいずれかであれば、コーディングフェーズは異常終了している: エラー終了とする（ステップ 6）。
    - それ以外では、その結果と警告を記録し（§ 状態ファイル）、作業ブランチの先頭に TP-B を作成して記録し、ステップ 3 へ進む。QA や解釈テストが未通過でも進む。
 
@@ -164,10 +164,10 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 2. 次の引数で `creview:rounds` を実行する。`--base` を世代の最初の TP-A とし、どのサイクルの Round 1 も世代全体を S からの差分としてレビューさせる: 差し戻しは、それまでの修正に横断的に手を入れる。
 
    ```
-   creview:rounds {loop_dir}/g{g}c{c}/review --worktree={loop_branch}-g{g} --incremental --base {loop_branch}-tp/g{g}c1-coding-start --on-divergence stop --result {loop_dir}/g{g}c{c}/rounds-result.json [{rounds_args}]
+   creview:rounds {loop_dir}/g{g}c{c}/review --worktree={loop_branch}-g{g} --incremental --base {loop_branch}-tp/g{g}c1-coding-start --on-divergence stop --result {loop_dir}/g{g}c{c}/rounds-result.jsonl [{rounds_args}]
    ```
 
-3. 戻ったら `rounds-result.json` を Read し、その結果と警告を記録する。
+3. 戻ったら `rounds-result.jsonl` を Read し、その結果と警告を記録する。
 4. その内容で進み先を決める:
    - ファイルがない、または読めない、`error` が null でない、`kept_worktree` が null でない、`end_reason` が `converged`、`max-rounds`、`divergence` のいずれでもない: エラー終了とする（ステップ 6）。
    - `converged` または `max-rounds`: ステップ 5 へ進む。
@@ -193,19 +193,19 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
    - main_root: (none)
    - target_dir: {repo_root}
    - task: {task}
-   - state_path: {loop_dir}/state.json
+   - state_path: {loop_dir}/state.jsonl
    - generation: {g}
    - remaining_generations: {--max-generations から g を引いた値}
    - pursuit: {--pursuit 指定時は true、それ以外は false}
    - doc_lang: {doc_lang}
    - postmortem_md_path: {loop_dir}/g{g}/postmortem.md
-   - postmortem_json_path: {loop_dir}/g{g}/postmortem.json
+   - postmortem_json_path: {loop_dir}/g{g}/postmortem.jsonl
    - handoff_path: {handoff_path}
 
    戻り値に template_id（テンプレートの frontmatter から Read）を含める。
    ```
 
-3. 戻り値の `template_id` が `158ca65c-c8f4-4d8f-bb6d-ce62fd015be1` であり、`postmortem.json` がテンプレートの書式の有効な JSON で、次を満たす場合に、結果を受け入れる:
+3. 戻り値の `template_id` が `158ca65c-c8f4-4d8f-bb6d-ce62fd015be1` であり、`postmortem.jsonl` がテンプレートの書式の有効な JSON で、次を満たす場合に、結果を受け入れる:
    - `verdict` が `finish`: `adopted_generation` が 1 から g までの整数である。
    - `verdict` が `redo`: `basis` が `residual`、または `--pursuit` 指定時は `improvement` でもよい。さらに `{handoff_path}` が `(none)` でなければ、`handoff_path` がそれと一致し、既存のファイルを指す。
 
@@ -233,6 +233,6 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 - `/creview:rounds` がエラーで終わった（ステップ 3）。
 - 結果ファイルが残ったワークツリーを示す。そのブランチを次のフェーズがチェックアウトできない。
 - 作業ブランチか TP を作成できない、または作業ディレクトリを `{repo_root}` に戻せない。
-- `state.json` を書けない、または検証に通るよう直せない。§ 状態ファイル の指示どおりに終了する。
+- `state.jsonl` を書けない、または検証に通るよう直せない。§ 状態ファイル の指示どおりに終了する。
 
 それ以外は、ユーザーに尋ねずに自分で判断して続ける。エラー終了でも、それまでに作った TP と作業ブランチはすべて残す。
