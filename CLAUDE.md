@@ -155,6 +155,10 @@ the files it names.
   namespaced name (`creview:review-helper`, `cdev:dev-helper`); a bare name resolves only
   to a project or user agent of that name. The detection rules and `scope-analysis.md`
   likewise return the namespaced name for an agent they pick from the plugin bundle.
+  When a selection returns a bare name instead, the leader launching it uses
+  `creview:{name}` in creview and `cdev:{name}` in `/cdev:coding`, before any fallback to
+  `general-purpose` or abort, if no agent of that name is available and its plugin has
+  `agents/{name}.md`; `/creview:start` reports each reviewer it relaunched this way.
   In creview, the detection rule and `scope-analysis.md` leave the fixed-role bundled
   agents (`review-helper`, `review-leader`, `pr-description-reviewer`, `pr-comment-compiler`,
   `prompt-tester`) out of the candidates, so `comment-sensei` and `prompt-sensei` are the

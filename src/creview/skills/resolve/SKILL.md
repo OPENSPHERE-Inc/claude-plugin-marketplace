@@ -152,7 +152,7 @@ events.jsonl は `compile-review.py` が `verifications/*.jsonl` の `memo_value
 
 ## ステップ 2 — 各指摘の検証（specialist 単位で並列委譲）
 
-ステップ 1 の `by_assignee` をループし、各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で検証サブエージェントを並列起動する（agent 定義の persona と専門観点が自動ロードされる）。
+ステップ 1 の `by_assignee` をループし、各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で検証サブエージェントを並列起動する（agent 定義の persona と専門観点が自動ロードされる）。担当 `{assignee}` が利用可能なエージェントでなく、`:` を含まず、`${CLAUDE_PLUGIN_ROOT}/agents/{assignee}.md` が存在する場合は、代わりに `creview:{assignee}` で起動する。
 
 persona は含めない。テンプレート `verify.md`、`template_id` `8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`diff_path = {tmp_dir}/diff.txt`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, outcome}, ...], template_id}` — **verification 本文は context に載せない**。
 

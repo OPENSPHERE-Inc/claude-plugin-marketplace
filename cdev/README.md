@@ -465,7 +465,9 @@ as `general-purpose`**: some specialist agents emit malformed tool calls and sta
 producer works to its assigned scope and the project conventions while the specialist reviewers
 enforce domain correctness. When no specialist matches a domain, the reviewer falls back to
 `general-purpose`. Team re-formation after the design cells picks the reviewers it adds from the
-same agent pool by the same rules.
+same agent pool by the same rules. When team formation, the team re-formation, or QA's choice of
+a fix specialist returns a bundled agent by its bare name, such as `prompt-sensei`, and no agent
+of that name is available, the skill spawns `cdev:{name}`.
 
 ## Bundled agents and support files
 

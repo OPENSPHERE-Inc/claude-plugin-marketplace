@@ -671,6 +671,13 @@ The skills launch five of them by name. The other two, `comment-sensei` and
 includes AI-facing prompt files, unless the destination project or user scope
 has an agent of the same name, which takes precedence.
 
+When a sub-agent that picks agents returns a bundled agent by its bare name,
+such as `comment-sensei`, and no agent of that name is available, the skill
+launches `creview:{name}` before any fallback to `general-purpose`. An agent
+of that name in the destination project or user scope is available, so the
+skill launches it as is. `/creview:start` lists each reviewer it relaunched
+this way in its final report.
+
 ## Bundled support files
 
 - `rules/` — `comment.md`, `document.md`, `review.md`, `wontfix.md`, `sub-agent.md`,

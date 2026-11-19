@@ -85,7 +85,7 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 ### 専門家エージェントの解決
 
-本スキルは同梱エージェント 2 つを固定役割で実行する: `creview:comment-sensei`（ステップ 3）と、`creview:prompt-tester` を起動する `creview:prompt-sensei`（ステップ 3〜4）。各指摘の assignee は `Triage:` メタデータ（`(assignee: {specialist})`）から読み取る。これは `/creview:triage` が**反映先プロジェクトの** `.claude/agents/` に対して記録したものである。リーダーはその assignee 名をそのまま `subagent_type` に渡す。assignee が存在しない、または解決できない場合は `general-purpose` を使う。ビルド／テスト修正専門家は、フォーマット・ビルド・テスト検証 Sub が反映先プロジェクトの `.claude/agents/`（または `general-purpose`）から解決する。
+本スキルは同梱エージェント 2 つを固定役割で実行する: `creview:comment-sensei`（ステップ 3）と、`creview:prompt-tester` を起動する `creview:prompt-sensei`（ステップ 3〜4）。各指摘の assignee は `Triage:` メタデータ（`(assignee: {specialist})`）から読み取る。これは `/creview:triage` が**反映先プロジェクトの** `.claude/agents/` に対して記録したものである。リーダーはその assignee 名をそのまま `subagent_type` に渡す。ただし、assignee `{assignee}` が利用可能なエージェントでなく、`:` を含まず、`${CLAUDE_PLUGIN_ROOT}/agents/{assignee}.md` が存在する場合は、代わりに `creview:{assignee}` を渡す。assignee が存在しない、またはその例外を適用しても解決できない場合は `general-purpose` を使う。ビルド／テスト修正専門家は、フォーマット・ビルド・テスト検証 Sub が反映先プロジェクトの `.claude/agents/`（または `general-purpose`）から解決する。ステップ 4 で起動する `suggested_specialist` にも同じ `creview:` の例外を適用する。
 
 ## 内部処理（中間ファイル）
 

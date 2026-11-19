@@ -100,7 +100,7 @@ Verify each returned `template_id` against the UUID its step names; on mismatch,
 
 ### Specialist agent resolution
 
-This skill does not bundle specialist reviewer / fixer agents. The triage sub-agent resolves the assignee per finding via the procedure in `${CLAUDE_PLUGIN_ROOT}/rules/agents-detection.md` (match target = finding content, result field = assignee). The leader passes the resolved assignee names through to Step 2's `subagent_type` verbatim.
+This skill does not bundle specialist reviewer / fixer agents. The triage sub-agent resolves the assignee per finding via the procedure in `${CLAUDE_PLUGIN_ROOT}/rules/agents-detection.md` (match target = finding content, result field = assignee). The leader passes the resolved assignee names through to Step 2's `subagent_type` verbatim, except that when an assignee `{assignee}` is not an available agent, contains no `:`, and `${CLAUDE_PLUGIN_ROOT}/agents/{assignee}.md` exists, it passes `creview:{assignee}` instead.
 
 ## Internal processing (intermediate files)
 
