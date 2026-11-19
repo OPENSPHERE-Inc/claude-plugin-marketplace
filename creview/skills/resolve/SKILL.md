@@ -152,7 +152,7 @@ The leader (you) does not Read the diff content. Verification is insufficient wi
 
 ## Step 2 — Verify each finding (delegate in parallel per specialist)
 
-Loop over `by_assignee` from Step 1, and for each `{assignee, ids}` launch a verification sub-agent in parallel via `Agent(subagent_type=assignee, prompt=...)` (the agent definition's persona and specialist perspective are auto-loaded).
+Loop over `by_assignee` from Step 1, and for each `{assignee, ids}` launch a verification sub-agent in parallel via `Agent(subagent_type=assignee, prompt=...)` (the agent definition's persona and specialist perspective are auto-loaded). When an assignee `{assignee}` is not an available agent, contains no `:`, and `${CLAUDE_PLUGIN_ROOT}/agents/{assignee}.md` exists, launch it as `creview:{assignee}` instead.
 
 Do not include the persona. Template `verify.md`, `template_id` `8a1f5c9b-2e73-4d64-9c1e-8b3d7f2a5e94`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `ids = {ids}`, `document_path = {document_path}`, `tmp_dir = {tmp_dir}`, `diff_path = {tmp_dir}/diff.txt`, overrides `(none)`. Return value per agent: `{items: [{id, outcome}, ...], template_id}` — **do not place the verification body in context**.
 

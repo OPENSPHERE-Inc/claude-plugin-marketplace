@@ -185,6 +185,7 @@ The leader (you) does not Read the diff content. Diff analysis, line counting, s
 
 Launch one reviewer per (scope, `reviewers[].name`) pair, and in PR mode without `--code-only` the PR description reviewer, concurrently via the Agent tool, at most 20 in one message (`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Launch mode, which also governs relaunching a refused launch). When a reviewer's launch fails:
 
+- Its `subagent_type` `{name}` is not an available agent, contains no `:`, and `${CLAUDE_PLUGIN_ROOT}/agents/{name}.md` exists — launch the pair as `creview:{name}` instead of applying the bullets below; from then on that is the pair's reviewer name, in its `{output_path}` and in `{reviewer_names_csv}` too. When the scope already has a `creview:{name}` reviewer, drop the pair instead. When that launch fails too, apply the bullets below to it.
 - Its `subagent_type` is not an available agent, and it is neither `general-purpose` nor the PR description reviewer — launch a `general-purpose` reviewer for that scope in its place, with `{output_path}` = `{tmp_dir}/reviews/{scope_id}/review-general-purpose.md`; when the scope already has a `general-purpose` reviewer, drop the pair instead.
 - Any other failure, including a failed launch under § Launch mode and the nested-spawn depth limit — abort, naming the reviewer, its scope if it has one, and the error.
 
@@ -198,7 +199,7 @@ Each reviewer must not return findings to stdout; instead, they Write to a dedic
 
 ### Reviewer Launch
 
-Specify `subagent_type={name}` (the name the scope-analysis Sub returned, or `general-purpose`). The agent definition's persona and perspective load automatically; do not include the persona / perspective in the launch prompt.
+Specify `subagent_type={name}` (the name the scope-analysis Sub returned, its `creview:` form from Step 2, or `general-purpose`). The agent definition's persona and perspective load automatically; do not include the persona / perspective in the launch prompt.
 
 Template `{reviewer_template}`, `template_id` `{reviewer_template_id}`, variables `plugin_root = ${CLAUDE_PLUGIN_ROOT}`, `main_root = {main_root}`, `target_dir = {target_dir}`, `targets = {targets}`, `base = {base}`, `diff_path = {diff_path}`, `scope_paths = {scope_paths}`, `output_path = {output_path}`, `doc_lang = {doc_lang}`, overrides `(none)`. `{scope_paths}` is that pair's scope `paths`; `{output_path}` is `{tmp_dir}/reviews/{scope_id}/review-{name}.md`, with each `:` of `{name}` written as `__`. Return value from each reviewer: `{path, critical, major, minor, info, template_id}`.
 
@@ -230,4 +231,4 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
 ## Step 5 — Finish
 
 1. In a worktree review, run the teardown.
-2. Report `{final_doc_path}`, its finding counts by severity, and each (scope, reviewer) pair Step 2 replaced with `general-purpose` or dropped. After a worktree review without `--trust`, add that the agent files were left out of the worktree, so their changes were reviewed from the diff only, and that reviewing them with the files present takes a run in a sandbox, either with `--trust` or with the PR head checked out in the working tree. Add as well that `/creview:triage`, `/creview:respond`, and `/creview:resolve` leave them out of the worktrees they make for this document.
+2. Report `{final_doc_path}`, its finding counts by severity, and each (scope, reviewer) pair Step 2 launched as `creview:{name}`, replaced with `general-purpose`, or dropped. After a worktree review without `--trust`, add that the agent files were left out of the worktree, so their changes were reviewed from the diff only, and that reviewing them with the files present takes a run in a sandbox, either with `--trust` or with the PR head checked out in the working tree. Add as well that `/creview:triage`, `/creview:respond`, and `/creview:resolve` leave them out of the worktrees they make for this document.

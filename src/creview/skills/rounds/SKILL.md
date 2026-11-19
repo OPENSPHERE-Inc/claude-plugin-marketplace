@@ -100,7 +100,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls
   - 対応フェーズ（ステップ 2.3 / 2.5） — `creview:respond`
   - 検証フェーズ（ステップ 2.4 / 2.5） — `creview:resolve`
 - **発散パターン検出サブエージェント（ステップ 2.2）** — `subagent_type="creview:review-helper"`。指摘への修正が後のラウンドの指摘を生む連鎖と、手続きの細部が毎ラウンド指摘を呼ぶ AI 向けプロンプトファイルから、ラウンドループの発散をすべて検出する。
-- **発散調査サブエージェント（ステップ 2.2）** — `subagent_type` は発散パターン検出サブエージェントが返す `investigator`。各発散の源泉を特定し、修正案を発散調査レポートに書き出す。
+- **発散調査サブエージェント（ステップ 2.2）** — `subagent_type` は発散パターン検出サブエージェントが返す `investigator` とし、`{investigator}` が利用可能なエージェントでなく、`:` を含まず、`${CLAUDE_PLUGIN_ROOT}/agents/{investigator}.md` が存在する場合は `creview:{investigator}` とする。各発散の源泉を特定し、修正案を発散調査レポートに書き出す。
 - **最終レポート編纂サブエージェント（ステップ 3）** — `subagent_type="creview:review-helper"`。全ラウンドのレビュードキュメントから最終レポートを生成する。
 - **オーケストレーター（あなた自身）が直接担うのは以下に限定する**:
   - コンソール見出しの表示、ラウンドループ制御、フィードバック再修正ループ。

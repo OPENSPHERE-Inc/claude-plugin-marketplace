@@ -85,7 +85,7 @@ Verify each returned `template_id` against the UUID its step names; on mismatch,
 
 ### Specialist agent resolution
 
-The skill runs two bundled agents in fixed roles: `creview:comment-sensei` (Step 3) and `creview:prompt-sensei` (Steps 3–4), which launches `creview:prompt-tester`. Each finding's assignee is read from its `Triage:` metadata (`(assignee: {specialist})`), written by `/creview:triage` against the **destination project's** `.claude/agents/`. The leader passes those assignee names through to `subagent_type` verbatim. When an assignee is absent or unresolvable, use `general-purpose`. The build/test-fix specialist is resolved by the format / build / test verification Sub from the destination project's `.claude/agents/` (or `general-purpose`).
+The skill runs two bundled agents in fixed roles: `creview:comment-sensei` (Step 3) and `creview:prompt-sensei` (Steps 3–4), which launches `creview:prompt-tester`. Each finding's assignee is read from its `Triage:` metadata (`(assignee: {specialist})`), written by `/creview:triage` against the **destination project's** `.claude/agents/`. The leader passes those assignee names through to `subagent_type` verbatim, except that when an assignee `{assignee}` is not an available agent, contains no `:`, and `${CLAUDE_PLUGIN_ROOT}/agents/{assignee}.md` exists, it passes `creview:{assignee}` instead. When an assignee is absent, or is unresolvable even with that exception, use `general-purpose`. The build/test-fix specialist is resolved by the format / build / test verification Sub from the destination project's `.claude/agents/` (or `general-purpose`). Apply the same `creview:` exception to the `suggested_specialist` Step 4 launches.
 
 ## Internal processing (intermediate files)
 

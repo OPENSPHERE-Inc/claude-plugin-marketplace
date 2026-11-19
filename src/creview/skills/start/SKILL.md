@@ -185,6 +185,7 @@ PR モードでは、全サブエージェントの起動プロンプトに `(no
 
 （スコープ, `reviewers[].name`）の全組につき 1 体ずつのレビュアーと、`--code-only` のない PR モードではプルリクエスト本文レビュアーを、Agent ツールで同時に起動する。1 メッセージで起動するのは 20 体までとする（拒否された起動のやり直しを含め `${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § 起動形態に従う）。レビュアーの起動が失敗した場合:
 
+- その `subagent_type` `{name}` が利用可能なエージェントでなく、`:` を含まず、`${CLAUDE_PLUGIN_ROOT}/agents/{name}.md` が存在する — 以下の箇条を適用せずに、その組を `creview:{name}` で起動する。以後はそれがその組のレビュアー名で、`{output_path}` にも `{reviewer_names_csv}` にもその名前を使う。そのスコープに既に `creview:{name}` のレビュアーがいる場合は、その組を取りやめる。その起動も失敗した場合は、以下の箇条をその起動に適用する。
 - その `subagent_type` が利用可能なエージェントでなく、それが `general-purpose` でもプルリクエスト本文レビュアーでもない — そのスコープに代わりに `general-purpose` のレビュアーを起動し、`{output_path}` は `{tmp_dir}/reviews/{scope_id}/review-general-purpose.md` とする。そのスコープに既に `general-purpose` のレビュアーがいる場合は、その組を取りやめる。
 - それ以外の失敗（§ 起動形態による起動の失敗、ネスト起動の深度上限を含む）— そのレビュアー、スコープがあればそのスコープ、およびエラーを示して中止する。
 
@@ -198,7 +199,7 @@ PR モードでは、全サブエージェントの起動プロンプトに `(no
 
 ### レビュアーの起動
 
-`subagent_type={name}`（スコープ解析 Sub が返した名前、または `general-purpose`）を指定する。agent 定義の persona と観点は自動でロードされる。起動プロンプトに persona / 観点は含めない。
+`subagent_type={name}`（スコープ解析 Sub が返した名前、ステップ 2 でそれに `creview:` を付けた名前、または `general-purpose`）を指定する。agent 定義の persona と観点は自動でロードされる。起動プロンプトに persona / 観点は含めない。
 
 テンプレート `{reviewer_template}`、`template_id` `{reviewer_template_id}`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`targets = {targets}`、`base = {base}`、`diff_path = {diff_path}`、`scope_paths = {scope_paths}`、`output_path = {output_path}`、`doc_lang = {doc_lang}`、オーバーライド `(none)`。`{scope_paths}` は当該組のスコープの `paths`、`{output_path}` は `{tmp_dir}/reviews/{scope_id}/review-{name}.md` で、`{name}` 中の `:` は `__` と書く。各レビュアーの戻り値: `{path, critical, major, minor, info, template_id}`。
 
@@ -230,4 +231,4 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
 ## ステップ 5 — 終了
 
 1. ワークツリーレビューでは、ティアダウンを実行する。
-2. `{final_doc_path}`、重要度別の指摘件数、およびステップ 2 で `general-purpose` に置き換えた、または取りやめた（スコープ, レビュアー）の組を報告する。`--trust` なしのワークツリーレビューの後では、エージェントファイルをワークツリーから除外したため、それらの変更は差分だけでレビューしたことを添える。それらをファイルのある状態でレビューするには、サンドボックス内で、`--trust` を付けて実行するか、作業ツリーに PR の head をチェックアウトして実行することも添える。`/creview:triage`・`/creview:respond`・`/creview:resolve` も、このドキュメントのために作るワークツリーからそれらを除外することを添える。
+2. `{final_doc_path}`、重要度別の指摘件数、およびステップ 2 が `creview:{name}` で起動した、`general-purpose` に置き換えた、または取りやめた（スコープ, レビュアー）の組を報告する。`--trust` なしのワークツリーレビューの後では、エージェントファイルをワークツリーから除外したため、それらの変更は差分だけでレビューしたことを添える。それらをファイルのある状態でレビューするには、サンドボックス内で、`--trust` を付けて実行するか、作業ツリーに PR の head をチェックアウトして実行することも添える。`/creview:triage`・`/creview:respond`・`/creview:resolve` も、このドキュメントのために作るワークツリーからそれらを除外することを添える。

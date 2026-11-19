@@ -100,7 +100,7 @@ PR モードでは `${CLAUDE_PLUGIN_ROOT}/rules/pr-comment-doc.md` に従う。�
 
 ### 専門家エージェントの解決
 
-本スキルは専門レビュアー / 修正エージェントを同梱しない。トリアージサブエージェントは `${CLAUDE_PLUGIN_ROOT}/rules/agents-detection.md` の手順で指摘ごとに担当を解決する（マッチ対象＝指摘内容、記録先＝assignee）。リーダーは解決された担当エージェント名をステップ 2 の `subagent_type` にそのまま渡す。
+本スキルは専門レビュアー / 修正エージェントを同梱しない。トリアージサブエージェントは `${CLAUDE_PLUGIN_ROOT}/rules/agents-detection.md` の手順で指摘ごとに担当を解決する（マッチ対象＝指摘内容、記録先＝assignee）。リーダーは解決された担当エージェント名をステップ 2 の `subagent_type` にそのまま渡す。ただし、担当 `{assignee}` が利用可能なエージェントでなく、`:` を含まず、`${CLAUDE_PLUGIN_ROOT}/agents/{assignee}.md` が存在する場合は、代わりに `creview:{assignee}` を渡す。
 
 ## 内部処理（中間ファイル）
 
