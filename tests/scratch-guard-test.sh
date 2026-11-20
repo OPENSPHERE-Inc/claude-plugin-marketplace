@@ -46,6 +46,7 @@ same cdev/scripts/check-jsonl.py creview/scripts/check-jsonl.py
 same cdev/scripts/check-jsonl.py src/creview/scripts/check-jsonl.py
 same cdev/scripts/fetch-diff.sh src/cdev/scripts/fetch-diff.sh
 same cdev/scripts/restore.sh src/cdev/scripts/restore.sh
+same cdev/scripts/commit-plan.py src/cdev/scripts/commit-plan.py
 same creview/scripts/fetch-diff.sh src/creview/scripts/fetch-diff.sh
 same creview/scripts/gh-pr.py src/creview/scripts/gh-pr.py
 same creview/scripts/compile-pr-comments.py src/creview/scripts/compile-pr-comments.py
