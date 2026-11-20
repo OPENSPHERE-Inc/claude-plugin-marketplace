@@ -9,11 +9,13 @@ under the MIT license. It publishes three first-party plugins:
   → `resolve`, plus an automatic multi-round driver `rounds`).
 - **cdev** — a team-native multi-agent coding workflow (`coding`: a standing team runs design
   and coding as paired review cells, then a QA gate). AI-facing prompt files also get a
-  prompt-discipline self-check, compression, and an interpretation test. Requires background
+  prompt-discipline self-check, compression, and an interpretation test. When it commits
+  (`--commit`), `coding` splits its result into commits by logical change. Requires background
   subagents and inter-agent messaging. `loop` runs `coding` and creview's `rounds` inline as
   one unattended pipeline, sending the work back to `coding` on a review divergence and
-  letting a post-mortem decide whether to finish or start over, each within a limit. Depends
-  on creview.
+  letting a post-mortem decide whether to finish or start over, each within a limit; with
+  `--cleanup`, it restacks the adopted generation's changes into commits by logical change for
+  the output branch. Depends on creview.
 - **cgh** — a GitHub pull request workflow on top of creview (`review`, `gate`, `respond`,
   `resolve`, each taking a pull request URL). Depends on creview; posts only on the user's
   instruction and never approves or merges.
@@ -69,11 +71,11 @@ claude-plugin-marketplace/
 │   ├── .claude-plugin/plugin.json  # declares the dependency on creview
 │   ├── README.md / README_ja.md
 │   ├── skills/
-│   │   ├── coding/               # /cdev:coding (SKILL.md + templates/: team-analysis, team-reassign, design, design-review, code, code-review, comment-review, prompt-review, prompt-test, qa)
-│   │   └── loop/                 # /cdev:loop (SKILL.md + templates/postmortem.md)
+│   │   ├── coding/               # /cdev:coding (SKILL.md + templates/: team-analysis, team-reassign, design, design-review, code, code-review, comment-review, prompt-review, prompt-test, qa, commit-plan)
+│   │   └── loop/                 # /cdev:loop (SKILL.md + templates/postmortem.md, cleanup.md)
 │   ├── agents/                   # comment-sensei.md, prompt-sensei.md, prompt-tester.md, dev-helper.md
-│   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, prompt.md, divergence.md
-│   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, restore.sh, lib/scratch-guard.py
+│   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, prompt.md, divergence.md, commit-plan.md
+│   └── scripts/                  # fetch-diff.sh, del-tmp.sh, check-jsonl.py, worktree.sh, restore.sh, commit-plan.py, lib/scratch-guard.py
 │
 ├── cgh/                          # Plugin: GitHub pull request workflow on top of creview (active, English)
 │   ├── .claude-plugin/plugin.json  # declares the dependency on creview
@@ -88,7 +90,7 @@ claude-plugin-marketplace/
 │   ├── cdev/...                  # src/cdev/<same tree as cdev/>
 │   └── cgh/...                   # src/cgh/<same tree as cgh/>
 │
-├── tests/                        # scratch-guard-test.sh, gh-review-test.py — repo-level self-tests (not shipped)
+├── tests/                        # scratch-guard-test.sh, gh-review-test.py, commit-plan-test.py — repo-level self-tests (not shipped)
 │
 └── .claude/rules/                # Discipline rules for editing THIS repo
     ├── comment.md  commit.md  development.md
@@ -133,8 +135,8 @@ the files it names.
   - SKILL.md bodies / `allowed-tools` and bundled agent definitions use
     `${CLAUDE_PLUGIN_ROOT}/...`.
   - `templates/*.md` and bundled rules (opened with Read by a sub-agent, or by a leader for
-    `rules/doc-worktree.md` / `rules/pr-comment-doc.md` / `cgh/rules/leader.md`) use the
-    `{{plugin_root}}/...` launch variable.
+    `rules/doc-worktree.md` / `rules/pr-comment-doc.md` / `cgh/rules/leader.md` /
+    `cdev/rules/commit-plan.md`) use the `{{plugin_root}}/...` launch variable.
 - **Agent-dispatch generalization**: skills do **not** bundle specialist reviewers, apart
   from the comment and prompt specialists named below, which the skills also run in fixed
   roles. The single-best-match resolution mechanics (enumerate agents recursively `**/*.md` across
@@ -217,6 +219,9 @@ bash tests/scratch-guard-test.sh
 
 # cgh's GitHub script, with GitHub and git faked
 python3 tests/gh-review-test.py
+
+# cdev's commit-plan.py, in temporary git repositories
+python3 tests/commit-plan-test.py
 ```
 
 ### Install smoke test
@@ -228,32 +233,69 @@ python3 tests/gh-review-test.py
 /plugin install cgh@opensphere-inc
 ```
 
-Then exercise `/creview:start`, `/creview:triage`, `/creview:respond`, `/creview:resolve`
-in a project that has its own `.claude/agents/` (or none, to test the `general-purpose`
-fallback), `/creview:respond` on a document whose fixes edit an AI-facing prompt file (which
-runs the prompt review and the interpretation test; the test needs nested sub-agent spawning
-of depth 2, or reports the files as untested), `/creview:start` with a pull request URL (both
-with HEAD at the pull request's
-head and elsewhere, which reviews in a worktree; needs an authenticated `gh`), the
-`/creview:triage` / `respond` / `resolve` on that review document with HEAD elsewhere
-(which work in a worktree of the pull request), `/creview:triage` and `/creview:resolve` with
-a pull request URL (which compile a review document from its comments; `/creview:triage`
-leaves out threads resolved on GitHub and `/creview:resolve` keeps them; needs an
-authenticated `gh`), and `/cdev:coding` (in a runtime with background subagents and
-inter-agent messaging) on a task without AI-facing prompt files, on one that edits them
-(which needs a teammate to be able to launch sub-agents), on one whose design adds a file
-no coder of the Step 1 team can hold, such as a new script for prompt files to invoke when
-the task edits only prompt files (which the team re-formation after the design gives to a new
-coder, paired with a reviewer of its domain), and on one run with `--worktree` and given a
-`--handoff` that names a turning point, a branch with its commit, and asks to return a file to
-it (which a coder teammate restores with the installed plugin's `restore.sh`; check that the
-file has its content at the turning point's commit in the worktree the teardown kept, or on
-the branch the run reports when it kept none, and that the coder reports no refused entry), and
-`/cdev:loop --max-sendbacks 0
---max-generations 1` on a small task (which needs what `/cdev:coding` and `/creview:rounds`
-need, and runs one cycle and a post-mortem; check that the branches `{branch}`,
-`{branch}-g1`, and `{branch}-tp/*` and the run directory with `state.jsonl`,
-`loop-summary.md`, and each result file exist).
+Then exercise each of the following:
+
+- `/creview:start`, `/creview:triage`, `/creview:respond`, and `/creview:resolve` in a project
+  that has its own `.claude/agents/`, or in one that has none, to test the `general-purpose`
+  fallback.
+- `/creview:respond` on a document whose fixes edit an AI-facing prompt file.
+  It runs the prompt review and the interpretation test.
+  The test needs nested sub-agent spawning of depth 2, or reports the files as untested.
+- `/creview:start` with a pull request URL, both with HEAD at the pull request's head and with
+  HEAD elsewhere, where it reviews in a worktree.
+  It needs an authenticated `gh`.
+- `/creview:triage`, `respond`, and `resolve` on the review document of that pull request
+  review, with HEAD elsewhere.
+  They work in a worktree of the pull request.
+- `/creview:triage` and `/creview:resolve` with a pull request URL.
+  They compile a review document from its comments.
+  `/creview:triage` leaves out threads resolved on GitHub, and `/creview:resolve` keeps them.
+  They need an authenticated `gh`.
+- `/cdev:coding`, in a runtime with background subagents and inter-agent messaging, on each of
+  the following:
+  - A task without AI-facing prompt files.
+  - A task that edits them.
+    It needs a teammate to be able to launch sub-agents.
+  - A task whose design adds a file no coder of the Step 1 team can hold, such as a new script
+    for prompt files to invoke when the task edits only prompt files.
+    The team re-formation after the design gives that file to a new coder, paired with a
+    reviewer of its domain.
+  - A task run with `--worktree` and given a `--handoff` that names a turning point, a branch
+    with its commit, and asks to return a file to it.
+    A coder teammate restores the file with the installed plugin's `restore.sh`.
+    Check that:
+    - The file has its content at the turning point's commit in the worktree the teardown
+      kept, or on the branch the run reports when it kept none.
+    - The coder reports no refused entry.
+  - A task that spans several concerns, run with `--worktree` and `--result`.
+    Check that:
+    - The branch holds several commits on top of the starting HEAD.
+    - Each commit has a message that follows the repository's commit conventions.
+    - The worktree is removed with no uncommitted change left.
+    - The result file's `commit_count` equals the number of commits.
+    - The result file's `commit_warning` is null.
+  - A task run with `--commit` and without `--worktree`, given an `--output` directory in the
+    repository outside `.claude/tmp` and an untracked `--handoff` file in the repository.
+    Check that:
+    - The current branch holds at least one commit on top of the starting HEAD.
+    - None of those commits holds the design documents, the handoff file, or anything under
+      `.claude/tmp`.
+- `/cdev:loop --max-sendbacks 0 --max-generations 1` on a small task.
+  It needs what `/cdev:coding` and `/creview:rounds` need, and runs one cycle and a
+  post-mortem.
+  Check that:
+  - The branches `{branch}`, `{branch}-g1`, and `{branch}-tp/*` exist.
+  - The run directory exists with `state.jsonl`, `loop-summary.md`, and each result file.
+  - `{branch}` points at the same commit as `{branch}-g1`.
+- `/cdev:loop` once more with the same options and task, adding `--cleanup`.
+  Check that:
+  - `{branch}` has the tree of `{branch}-g1`.
+  - `{branch}` descends from `start_commit` in `state.jsonl`, and
+    `git rev-list --count {start_commit}..{branch}` equals its `cleanup.count`.
+  - `{branch}-g1` is still at `cleanup.head`, and each turning point is at the commit
+    `turning_points` records.
+  - `loop-summary.md` shows the restack.
+
 Exercise `/cgh:review`, `/cgh:gate`, `/cgh:respond`, and `/cgh:resolve` on a pull request of a
 scratch repository: they post to GitHub under your account.
 
@@ -436,6 +478,19 @@ with generations left is a grand reset from the starting commit. On a normal end
 `{branch}` is created at the tip of the adopted generation's work branch; a failure to create
 it is recorded as a warning and the end stays normal.
 
+Under `--cleanup`, a normal end instead creates the output branch at the tip of a restack of the
+adopted generation's changes from the starting commit. The leader launches the cleanup planner
+(`general-purpose`, `templates/cleanup.md`, with a `template_id` the SKILL checks), which writes
+`cleanup/plan.jsonl` by `rules/commit-plan.md`; the leader checks the plan itself with
+`commit-plan.py check` and runs `commit-plan.py build`, which makes the commits with a temporary
+index and `git commit-tree`, touching no ref, shared index, or working tree. When the starting
+commit and the generation's tip have the same tree, the restack is skipped. A plan that cannot
+be accepted, with at most one relaunch, or a failed `build` falls back to the work branch's tip
+with a warning, and the end stays normal. The work branches and turning points never move, so
+the original history stays on the work branch. `state.jsonl` records the restack's result in
+`cleanup`, so a resumed leader neither launches the planner nor runs `build` again once a
+result is there.
+
 The run directory holds `state.jsonl`, the source of truth for progress, which the leader
 updates at every step and re-reads after context compaction, never repeating a side effect it
 records, and each cycle's `coding-result.jsonl` (`/cdev:coding --result`) and
@@ -497,9 +552,10 @@ inline prompt, with no external template, no `template_id`, and no `plugin_root`
 or `target_dir`. The agent has Read, Glob, and Grep only.
 
 `/cdev:loop` runs `/cdev:coding` and `/creview:rounds` inline, so each keeps this contract as
-its own leader. The only sub-agent the loop leader launches itself is the post-mortem, in a
-colon-form launch block that passes `plugin_root`, `main_root` = `(none)`, and `target_dir` =
-the repository root, since the leader stays in the main working tree between phases.
+its own leader. The loop leader launches two sub-agents itself, the post-mortem and the
+`--cleanup` planner, each in a colon-form launch block that passes `plugin_root`, `main_root` =
+`(none)`, and `target_dir` = the repository root, since the leader stays in the main working
+tree between phases.
 
 ---
 
@@ -665,16 +721,17 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   (`agents/*.md`) — use `${CLAUDE_PLUGIN_ROOT}`, which Claude Code expands. Files a sub-agent
   opens with Read — `templates/*.md` and the bundled rules it is pointed to
   (`rules/sub-agent.md`, `rules/teammate.md`, `rules/agents-detection.md`,
-  `rules/build-format-detection.md`) — use `{{plugin_root}}`: Read returns them raw, so
-  `${CLAUDE_PLUGIN_ROOT}` would stay unexpanded there, while `plugin_root` is already in the
-  sub-agent's scope (the leader resolves it and passes it in the launch prompt; in cdev, the
-  spawn contract). Never put `${CLAUDE_PLUGIN_ROOT}` in a template or a bundled rule; never
-  put `{{plugin_root}}` in a SKILL. (`agents/review-helper.md` / `agents/review-leader.md` /
-  `agents/pr-description-reviewer.md` / `agents/pr-comment-compiler.md` /
+  `rules/build-format-detection.md`, `rules/commit-plan.md`) — use `{{plugin_root}}`: Read
+  returns them raw, so `${CLAUDE_PLUGIN_ROOT}` would stay unexpanded there, while `plugin_root`
+  is already in the sub-agent's scope (the leader resolves it and passes it in the launch
+  prompt; in cdev, the spawn contract). Never put `${CLAUDE_PLUGIN_ROOT}` in a template or a
+  bundled rule; never put `{{plugin_root}}` in a SKILL. (`agents/review-helper.md` /
+  `agents/review-leader.md` / `agents/pr-description-reviewer.md` /
+  `agents/pr-comment-compiler.md` /
   `creview/agents/prompt-sensei.md` mention `{{plugin_root}}` only to name that template
   variable.)
-  `rules/sub-agent.md`, `rules/teammate.md`, and the detection rules carry
-  `{{target_dir}}` on the same basis: every launch passes `target_dir`.
+  `rules/sub-agent.md`, `rules/teammate.md`, the detection rules, and `rules/commit-plan.md`
+  carry `{{target_dir}}` on the same basis: every launch passes `target_dir`.
   `rules/wontfix.md` carries `{{previous_round_doc_paths}}` on the same basis: every
   template that references it receives that launch variable.
   `rules/pr-comment-doc.md` is opened with Read by the `/creview:triage` / `resolve` leaders in
@@ -684,6 +741,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `plugin_root` variable without writing the `{{...}}` token.
   `cgh/rules/leader.md` is opened with Read by the `/cgh:*` leaders on the same basis, and
   their SKILLs name its `plugin_root` variable the same way.
+  `cdev/rules/commit-plan.md`, which the planners of `/cdev:coding` and `/cdev:loop --cleanup`
+  Read, is also opened with Read by the `/cdev:coding` leader for the message of its fallback
+  commit, on the same basis.
 - **`template_id` must match.** The SKILL step's hard-coded UUID and the template's
   frontmatter `template_id` must be identical, or the leader will loop relaunching.
 - **src ↔ active parity is a contract.** Do not edit one side only. A structural
@@ -717,8 +777,9 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   `tests/scratch-guard-test.sh` fails on any drift. `scripts/worktree.sh` is likewise
   byte-identical across all four copies (`creview/`, `cdev/`, and their `src/` mirrors).
   `scripts/fetch-diff.sh` (in `creview/` and `cdev/`), `cdev/scripts/restore.sh`,
-  `creview/scripts/gh-pr.py`, and `creview/scripts/compile-pr-comments.py`, and
-  `cgh/scripts/gh-review.py` are likewise each byte-identical with its own `src/` mirror.
+  `cdev/scripts/commit-plan.py`, `creview/scripts/gh-pr.py`, and
+  `creview/scripts/compile-pr-comments.py`, and `cgh/scripts/gh-review.py` are likewise each
+  byte-identical with its own `src/` mirror.
 - **`creview/rules/prompt.md` is a byte-identical copy of `cdev/rules/prompt.md`**, and
   `src/creview/rules/prompt.md` of `src/cdev/rules/prompt.md`: `/creview:respond` applies the
   same prompt discipline as `/cdev:coding`, and each plugin ships its own copy. Edit one copy

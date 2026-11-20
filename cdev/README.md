@@ -34,8 +34,8 @@ back to `/cdev:coding` on a divergence and by starting over after a post-mortem.
 
 In `/cdev:coding`, the leader (team lead) spawns each selected specialist once as a named,
 persistent background teammate (`Agent` with `run_in_background`), pairs each producer with a
-reviewer, and drives two cell steps, with a team re-formation between them, and a final QA
-gate, reporting progress to the console:
+reviewer, and drives two cell steps, with a team re-formation between them, a final QA gate,
+and the commit, reporting progress to the console:
 
 1. **Design cells** — each architect writes a design for its area, then its **paired
    reviewer** reviews it; the architect **triages** each finding (fix, or reject with a
@@ -63,6 +63,10 @@ gate, reporting progress to the console:
 4. **QA gate** — the build / format / test workflow runs once, together with an interpretation
    test of the changed AI-facing prompt files when the task has any; on failure the responsible
    coder fixes it, the fix goes through a review cell, and QA re-runs (bounded loop).
+5. **Commit** — under `--commit`, `dev-helper` writes a plan that splits the run's changes
+   into commits, one per logical change, and `scripts/commit-plan.py` checks the plan and makes
+   the commits. When no plan can be accepted, the run commits the changes in one commit
+   instead.
 
 A cell runs autonomously: the producer (architect / coder) and its paired reviewer loop
 review ⇄ triage ⇄ resolve until the reviewer closes the cell. The leader sets up the cells,
@@ -113,7 +117,9 @@ started from a subdirectory of the repository, it stops with an error.
 
 The bundled `fetch-diff.sh` / `del-tmp.sh` scripts also require `python3` (3.9 or later) on
 the `PATH`: their shared `.claude/tmp/` containment check is implemented in
-`scripts/lib/scratch-guard.py`.
+`scripts/lib/scratch-guard.py`. `scripts/commit-plan.py`, which the commit step and
+`/cdev:loop --cleanup` run, requires it as well. The commit step splits its commits only with
+Git 2.25 or later; with an older Git, it commits in one commit and reports why.
 
 `.claude`, `.claude/tmp`, and `.claude/worktrees` in the project must not be symbolic links, even
 ones pointing inside the project: the bundled scripts refuse them with an error. To share
@@ -129,7 +135,13 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
 
 - `--review-rounds N` (default 5, max 10) — max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, max 10) — max QA verify ⇄ fix attempts.
-- `--commit` (default off) — commit the verified implementation in one commit.
+- `--commit` (default off) — commit the verified implementation, split into commits by logical
+  change, with messages that follow the repository's commit history and conventions.
+  - Each changed file goes into exactly one commit: the change of one file is never split
+    across commits.
+  - When no plan can be accepted, or committing fails partway, the run commits the rest in one
+    commit and reports why.
+  - The commits before the last are not built or tested; QA verified only the final state.
 - `--worktree[=branch]` (default off) — run the task in a separate git worktree on `branch`;
   enables `--commit` (see below).
 - `--output {dir}` — directory for the design documents (default
@@ -153,11 +165,12 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
   `coder-backend-g1c2`, so that a second or later run in the same session does not reuse the
   names of an earlier run's teammates. The tag is 1 to 16 letters, digits, and hyphens,
   starting with a letter or a digit; keeping it unused in the session is up to the caller.
-- `--commit-always` (default off; implies `--commit`) — commit once every code cell has
+- `--commit-always` (default off; implies `--commit`) — commit after every code cell has
   closed, even when QA or the interpretation test has not passed. The result file and the
   final report say what did not pass.
-- `--result {path}` (default none) — write a JSON result at the end: whether the run committed
-  and the commit, the branch, the design document paths, the turning points the designs
+- `--result {path}` (default none) — write a JSON result at the end: whether the run committed,
+  the last commit, the number of commits, any warning from the commit step (such as a fallback
+  to one commit), the branch, the design document paths, the turning points the designs
   restore from, the refused restores with their reasons, the QA and interpretation-test
   results, the numbers of `FIXME:`s left and of escalations, whether team re-formation fell
   back to the original roster, the step and reason when the run stopped early, and the
@@ -284,9 +297,9 @@ bounded, so the run always ends. It never pushes or opens a pull request.
   **generation** is a series of cycles on one work branch, starting from the **starting
   commit**: the main working tree's `HEAD` when the loop starts.
 - In each cycle, `/cdev:coding` runs in a worktree on the generation's work branch and commits
-  its result even when QA or the interpretation test did not pass. `/creview:rounds` then runs
-  on the same branch with `--incremental`, and stops instead of pausing when it detects a
-  divergence (`--on-divergence stop`).
+  its result, split by logical change, even when QA or the interpretation test did not pass.
+  `/creview:rounds` then runs on the same branch with `--incremental`, and stops instead of
+  pausing when it detects a divergence (`--on-divergence stop`).
 - Round 1 of every cycle's review covers the whole generation, as the diff from the starting
   commit; later rounds review only the previous round's fixes. A send-back can touch fixes
   across earlier rounds, so the review after it looks at the whole generation again.
@@ -332,6 +345,9 @@ bounded, so the run always ends. It never pushes or opens a pull request.
   and Major findings, `FIXME:`s, QA, and unresolved divergence, and better in at least one.
   When several earlier ones do, it picks the latest of those that no other of them surpasses.
   The loop creates the output branch at the tip of that generation's work branch.
+  - With `--cleanup`, the loop instead restacks the generation's changes from the starting
+    commit into commits by logical change, and creates the output branch at the last of them.
+    The work branch keeps the original history.
 
 ### Options
 
@@ -340,6 +356,19 @@ bounded, so the run always ends. It never pushes or opens a pull request.
 - `--max-sendbacks N` (default 2, 0 to 5) — max send-backs per generation.
 - `--max-generations N` (default 3, 1 to 5) — max generations; 1 means no grand reset.
 - `--pursuit` (default off) — widen the post-mortem's `redo` condition as described above.
+- `--cleanup` (default off) — on a normal end, create the output branch at the tip of a restack
+  of the adopted generation's changes, as described above.
+  - A planner sub-agent splits the changes into commits by the same rules as the commit step of
+    `/cdev:coding`, and `scripts/commit-plan.py` checks the plan and makes the commits without
+    touching any ref, index, or working tree.
+  - The restack's last commit has the same tree as the work branch's tip, so the results of QA
+    and the review still hold for it. The commits before it are not built or tested.
+  - The commits are made with `git commit-tree`, so no hook runs on them. They are signed when
+    `commit.gpgSign` is true; where signing needs interaction, the restack fails and falls back
+    as described under [When it stops](#when-it-stops).
+  - Their author and committer are the current git identity, at the current time.
+  - When the starting commit and the generation's tip have the same tree, nothing is
+    restacked.
 - `--output {dir}` (default `.claude/tmp/cdev-loop-{timestamp}/`) — the run directory.
 - Passed through to `/cdev:coding`: `--review-rounds N` and `--qa-attempts N`. Passed through
   to `/creview:rounds`: `--max-rounds N`, `--adversarial`, and `--adr`.
@@ -354,7 +383,7 @@ In the names below, `{branch}` is the `--branch` value, `g` the generation, and 
 
 | Kind | Name | Created |
 |------|------|---------|
-| Output branch | `{branch}` | At the end, at the tip of the adopted generation's work branch |
+| Output branch | `{branch}` | At the end, at the tip of the adopted generation's work branch; with `--cleanup`, at the tip of the restacked commits |
 | Work branch | `{branch}-g{g}` | At the start of generation g, at the starting commit |
 | Turning point A | `{branch}-tp/g{g}c{c}-coding-start` | Right before cycle c's `/cdev:coding` |
 | Turning point B | `{branch}-tp/g{g}c{c}-coding-done` | Right after cycle c's `/cdev:coding` |
@@ -362,7 +391,7 @@ In the names below, `{branch}` is the `--branch` value, `g` the generation, and 
 - A turning point is a branch that marks the code at that moment. Turning point A of a
   generation's first cycle is the starting commit, and that of a later cycle is the work
   branch's tip after the previous review. Turning point B is the tip after `/cdev:coding`'s
-  commit, the same commit as A when it committed nothing. The work branch's tip holds the
+  commits, the same commit as A when it committed nothing. The work branch's tip holds the
   state after the last review.
 - The loop creates branches without touching any working tree, never moves or deletes a
   turning point, and never rewrites a work branch's history. A grand reset leaves the earlier
@@ -399,18 +428,24 @@ In the names below, `{branch}` is the `--branch` value, `g` the generation, and 
 ├── g2c1/
 │   ├── handoff.md           grand-reset handoff
 │   └── ...
+├── cleanup/
+│   └── plan.jsonl           --cleanup restack plan
 └── loop-summary.md          run summary
 ```
 
 - The directory is in the main working tree; a relative `--output` resolves against the
   repository root. It must be absent or empty at the start, and it is kept after the run.
-- `state.jsonl` records the position, each cycle's results, the turning points, and the
-  send-backs. The loop updates it at every step and reads it back to recover its position after
-  the session's context is compacted. It does not resume a run in another session.
+- `state.jsonl` records the position, each cycle's results, the turning points, the
+  send-backs, and the result of `--cleanup`. The loop updates it at every step and reads it
+  back to recover its position after the session's context is compacted. It does not resume a
+  run in another session.
 - `loop-summary.md`, written at the end, lists each cycle's end reasons, the send-backs, the
   post-mortem verdicts and the adopted generation, the turning points and how to delete them,
   the warnings, and any worktree left behind. The warnings include, for example, those of QA,
   the build, and the interpretation test, and a failure to create the output branch.
+  - With `--cleanup`, it also lists the restack's commits and their subjects, or why nothing
+    was restacked, and states that the original history stays on the work branch and that the
+    commits before the last were not built or tested.
 
 ### When it stops
 
@@ -428,9 +463,17 @@ The loop stops and reports to you only when:
 
 Otherwise it decides and goes on without asking. An error stop creates no output branch; the
 turning points and work branches made so far remain, and the report names the step that
-stopped, the error, the last work branch, and `loop-summary.md`. When creating the output
-branch at the end fails, the run still ends normally, with a warning: the adopted generation's
-work branch `{branch}-g{g}` holds the same commit, and `loop-summary.md` records the failure.
+stopped, the error, the last work branch, and `loop-summary.md`.
+
+Two failures at the end do not stop the run; it still ends normally, with a warning that
+`loop-summary.md` records:
+
+- A restack under `--cleanup` fails: no plan from the planner can be accepted, with at most one
+  relaunch, or `commit-plan.py` fails to make the commits. The output branch is then created at
+  the tip of the adopted generation's work branch, as without `--cleanup`.
+- Creating the output branch fails. Without a restack, the adopted generation's work branch
+  `{branch}-g{g}` holds the same commit. After one, the report shows the SHA of the restack's
+  last commit, which has the same tree as the work branch but a different history.
 
 ### Requirements and cost
 
@@ -449,6 +492,7 @@ work branch `{branch}-g{g}` holds the same commit, and `loop-summary.md` records
   `--pursuit` tends to run up to the generation limit. For the caps on sub-agents launched in a
   session and running at once, see the [creview README](../creview/README.md).
 - A run makes two turning points per cycle, up to 18 with the defaults.
+- `--cleanup` adds one or two launches of the planner sub-agent at the end.
 - The main working tree's sources are never changed. Its uncommitted changes are not part of
   the starting commit and are left out of the run; the loop says so at the start.
 
@@ -473,8 +517,9 @@ of that name is available, the skill spawns `cdev:{name}`.
 
 - `agents/dev-helper.md` — mechanical teammate: team formation (scoping + agent selection),
   team re-formation after the design (assigning the files the design adds or changes to coders
-  and selecting any coders / reviewers needed), and QA (running the project's format / build /
-  test, identifying the fix specialist on failure).
+  and selecting any coders / reviewers needed), QA (running the project's format / build /
+  test, identifying the fix specialist on failure), and the commit plan (splitting the changed
+  files into commits by logical change).
 - `agents/comment-sensei.md` — code-comment specialist teammate; reviews and fixes comments
   added or modified during coding, against `rules/comment.md`.
 - `agents/prompt-sensei.md` — AI-facing prompt specialist teammate; self-checks, fixes, and
@@ -486,7 +531,9 @@ of that name is available, the skill spawns `cdev:{name}`.
 - `rules/` — `teammate.md` (teammate common rules), `agents-detection.md`,
   `build-format-detection.md`, `comment.md`, `review.md`, `document.md`, `prompt.md` (prompt
   discipline), `divergence.md` (divergence patterns the design must not introduce, and how
-  code cells keep prompt files from over-specification).
+  code cells keep prompt files from over-specification), `commit-plan.md` (how the planners of
+  the commit step and `/cdev:loop --cleanup` split changes into commits, the commit messages,
+  and the plan file format).
 - `scripts/` — `fetch-diff.sh` (snapshots the pre-coding tree, then captures the QA diff since
   coding start), `del-tmp.sh` (deletes the run's working directory under `.claude/tmp/`; with
   `--dry`, it only runs the containment check, which the skill does before creating that
@@ -494,11 +541,14 @@ of that name is available, the skill spawns `cdev:{name}`.
   wrote is one JSON object), and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by both; requires
   `python3` — see Requirements), `worktree.sh` (creates and removes the `--worktree`
-  worktree), and `restore.sh` (restores an entry of a design's restore list from its turning
+  worktree), `restore.sh` (restores an entry of a design's restore list from its turning
   point commit into the working tree, refusing an entry whose restore would overwrite or
   delete an untracked file or a tracked file with local changes, or would change a path
   outside the entry; it may overwrite ignored files, as a git checkout does, so it is used
-  only in the worktree of a `--worktree` run). The skill invokes them via
+  only in the worktree of a `--worktree` run), and `commit-plan.py` (lists the changed paths,
+  checks a commit plan against them, makes the planned commits from the working tree with
+  `commit`, and with `build` restacks the changes between two commits as new commits without
+  touching any ref, index, or working tree). The skills invoke them via
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`; teammates receive the resolved path through the
   `{{plugin_root}}` variable.
 
