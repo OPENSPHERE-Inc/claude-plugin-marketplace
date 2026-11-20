@@ -1,7 +1,7 @@
 ---
 name: coding
 description: ペアレビューセルを用いて、設計セルステップ・コーディングセルステップ・QA ゲートでコーディングタスクをエンドツーエンドに統括する、常駐エージェントチーム方式のワークフロー。AI 向けプロンプトファイルには、コーディングセルでのプロンプト規律セルフチェックと圧縮、QA ゲートでの解釈テストも行う。reviewer は対象プロジェクトのエージェントから自動選定する。ユーザーがリポジトリ内での機能の実装・変更の構築・コーディングタスクの遂行を求めたとき、リポジトリ内の AI 向けプロンプトファイル（エージェント定義・SKILL.md・ルール・スラッシュコマンド・プロンプトテンプレート）の作成や修正を含め、能動的に使用する。リポジトリ外のファイル（`~/.claude/` 配下など）、1 体のエージェントで直接済む小さな編集（ルールへの 1 項目の追記など）、ファイルになっていないプロンプトの起草、`--worktree` なしでの未コミットの変更がある作業ツリーには使わない。バックグラウンドのサブエージェント（Agent の run_in_background）とエージェント間メッセージング（SendMessage）が利用可能なランタイムを要する。
-allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/restore.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*)
+allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(git reset -q), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/restore.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py:*)
 ---
 
 # マルチエージェントコーディング
@@ -26,7 +26,7 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 
 - `--review-rounds N`（デフォルト 5、範囲 1–10）— セルごとのレビュー ⇄ triage の最大反復回数。
 - `--qa-attempts N`（デフォルト 5、範囲 1–10）— QA 検証 ⇄ 修正の最大試行回数。
-- `--commit`（デフォルト OFF）— QA 通過後、実装を 1 コミットにまとめてコミットする（簡潔なメッセージ、finding ID なし）。
+- `--commit`（デフォルト OFF）— QA 通過後、実装を論理的な変更ごとのコミットに分けてコミットする（ステップ 5）。
 - `--worktree[=branch]`（デフォルト OFF）— タスクを `branch` 上の別の git ワークツリーで実行する（§ ワークツリー）。`=branch` を省略すると、現在の HEAD から新しいブランチ `cdev-coding-{timestamp}` を作成する。`--commit` を有効にする。
 - `--output {dir}` — 設計ドキュメントの出力先ディレクトリ（`{design_dir}`）を指定する。
 - `--handoff {path}`（デフォルト 未指定）— この実行への申し送り。書式を問わない Markdown ファイル。team-analysis、architect、設計 reviewer がこれを Read する。判断優先度ではタスクの次に位置し（§ レビューセルプロトコル）、`--worktree` 指定時は、設計はこれが挙げるターニングポイントへファイルを復元してよい。
@@ -44,7 +44,8 @@ QA ゲートは反映先リポジトリのビルド定義（`build-format.md` / 
 Write ツールで 1 つの JSON オブジェクトを 1 行で書く。既存のファイルは置き換え、親ディレクトリがなければ作る。ファイルが既にある場合は先に Read する: Write は、このセッションで Read していないファイルの置き換えを拒否する。ステップ 5 の手順 5 で書くほか、ステップ 5 に至らないあらゆる終了 — § 動作要件 と § 信頼前提 による中止、およびステップ 1 での各終了 — でも、終了する前に書く。ワークツリーのセットアップ後の終了では、ティアダウンの後に書く。`.claude` か `.claude/tmp` がシンボリックリンクの間は書かない: ステップ 1 手順 5 の `del-tmp.sh` を通過する前の終了では、先に `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry {tmp_dir}` を実行し（ステップ 1 より前の終了では、その時点で `{timestamp}` を確定する）、ゼロ終了したときだけ書き、非ゼロ終了の場合はそのエラーをコンソールに表示して終了する。書いたファイルを `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {path}` で検証する。エラーなら修正して、もう 1 度だけ検証する。書き込みか 2 度目の検証が失敗した場合は、エラーをコンソールに表示し、それ以外は何も変えない。
 
 ```json
-{"committed": true, "commit": "<sha>", "branch": "<name>",
+{"committed": true, "commit": "<sha>", "commit_count": 1, "commit_warning": null,
+ "branch": "<name>",
  "design_paths": ["<abs path>"], "restored_from": ["<turning point name>"],
  "restore_refused": [{"turning_point": "<name>", "path": "<path>", "reason": "<reason>"}],
  "qa": {"passed": true, "environmental": false, "summary": "<summary_line>"},
@@ -54,7 +55,10 @@ Write ツールで 1 つの JSON オブジェクトを 1 行で書く。既存�
  "aborted": null, "kept_worktree": null}
 ```
 
-- `committed`: ステップ 5 の手順 1 でコミットした場合に true。`commit`: そのコミットの SHA。それ以外は null。
+- `committed`: ステップ 5 の手順 1 でコミットを作った場合に true、それ以外は false。
+- `commit`: ステップ 5 の手順 1 で作った最後のコミットの SHA。それ以外は null。
+- `commit_count`: ステップ 5 の手順 1 で作ったコミットの数。`commit-plan.py commit` の分とフォールバックのコミットを合わせて数える。作らなかった場合は 0。
+- `commit_warning`: null、または次のうち起きたものを述べる文字列: フォールバックとその理由、`commit-plan.py commit` の `tree_match` が false だったこと、フォールバックのコミットの失敗。
 - `branch`: ソースが載るブランチ — `--worktree` 指定時は `worktree.sh` の `branch=`、それ以外は `{start_branch}`。detached `HEAD` の場合と、その値が分かる前に実行が終わった場合は null。
 - `design_paths`: `{design_paths}` を絶対パスで。ステップ 2 の手順 3 のゲートを通過しなかった場合は空配列。
 - `restored_from`: `{restored_from}`。ない場合は空配列。
@@ -66,7 +70,7 @@ Write ツールで 1 つの JSON オブジェクトを 1 行で書く。既存�
 - `team_fallback`: チームの再編成がステップ 1 のロスターにフォールバックした場合に true。
 - `aborted`: ステップ 4 を終えてステップ 5 に来た場合は null。それ以外は `{"step": <1-4>, "reason": "<string>"}` で、実行が止まったステップを示す。§ 動作要件 と § 信頼前提 による中止はステップ 1 とする。
 - `kept_worktree`: ティアダウンで残したワークツリーのパス。それ以外は null。
-- `reason` と `summary` は `{doc_lang}` で書く。
+- `reason`、`summary`、`commit_warning` は `{doc_lang}` で書く。
 
 ## 出力言語
 
@@ -140,7 +144,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 ## リーダーのスコープ（本体の隔離）
 
-リーダーが保持するのは、roster（各 teammate の name → agentType）、再 spawn 待ちの teammate、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA と解釈テストの結果、設計が復元元とするターニングポイントの名前、coder が拒否されたと報告する復元エントリ、エスカレーションの数と未解決項目のために残した `FIXME:` の数のみ。設計本体・ソース・指摘本体は teammate 側に留まり、指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
+リーダーが保持するのは、roster（各 teammate の name → agentType）、再 spawn 待ちの teammate、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA と解釈テストの結果、設計が復元元とするターニングポイントの名前、coder が拒否されたと報告する復元エントリ、エスカレーションの数と未解決項目のために残した `FIXME:` の数、コミット計画のパス、`commit-plan.py` の出力（`paths` がパスを挙げたかどうか、`check` の `errors`、作ったコミットとその件名、`tree_match`）のみ。設計本体・ソース・指摘本体・コミット計画の本体は teammate 側に留まり、リーダーはコミット計画を Read しない。指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
 
 ## 作業用ディレクトリ
 
@@ -153,6 +157,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 {tmp_dir}/qa-result.jsonl          ← QA 結果
 {tmp_dir}/build.log                ← dev-helper が取得するビルド / テスト出力
 {tmp_dir}/prompt-test.jsonl        ← AI 向けプロンプトファイルの解釈テスト結果
+{tmp_dir}/commit-plan.jsonl        ← コミット計画（dev-helper が書き、commit-plan.py が読む）
 ```
 
 作成はステップ 1 で `mkdir -p`、削除はリーダーがステップ 5 で `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}` により行う。
@@ -211,9 +216,14 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 
 ## ステップ 5 — クリーンアップと報告
 
-1. `--commit` が ON でステップ 4 のループが QA と解釈テストの双方の通過で抜けた場合、または `--commit-always` が ON で実行がステップ 4 に入っていた場合（QA と解釈テストの結果は問わず、ステップ 4 での spawn の拒否でステップ 5 に来た実行も含む）は、実装をコミットする。`--handoff` 指定時は、先に現在のブランチと `HEAD` のコミットがまだ `{start_branch}` と `{start_head}` であることを確かめ、そうでなければコミットせず、そのことを報告のために保持する。コミットでは、変更されたソースファイルのみをステージし（`.claude/tmp`、`.claude/worktrees`、`{design_dir}`、`--handoff` と `--result` のファイルは除く）、簡潔なメッセージで 1 回コミットする（finding ID なし）。ステージするものがなければコミットしない。
+1. `--commit` が ON でステップ 4 のループが QA と解釈テストの双方の通過で抜けた場合、または `--commit-always` が ON で実行がステップ 4 に入っていた場合（QA と解釈テストの結果は問わず、ステップ 4 での spawn の拒否でステップ 5 に来た実行も含む）は、実装をコミットする。`--handoff` 指定時は、先に現在のブランチと `HEAD` のコミットがまだ `{start_branch}` と `{start_head}` であることを確かめ、そうでなければコミットせず、そのことを報告のために保持する。コミットでは、作業ツリーの変更を、`commit-plan.py` が常に除く `.claude/tmp` と `.claude/worktrees`、および `{commit_excludes}` を除いて、論理的な変更ごとのコミットに分けてコミットする。`{commit_excludes}` を、`{design_dir}` と、指定されていれば `--handoff` と `--result` のファイルの絶対パスとして確定し、その各パスを引用符で囲んだ `--exclude {path}` を並べたものを `{exclude_options}` とする。作った各コミットの SHA と件名、その数を、手順 5〜6 のために保持する。
+   a. まず `git reset -q` を実行する。`commit-plan.py --worktree` がステージ済みの変更のあるインデックスを拒否するためである。次に `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py paths --worktree {exclude_options}` を実行する。その `paths` が空ならコミットしない。
+   b. `dev-helper` 宛に `templates/commit-plan.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`exclude = {commit_excludes}`、`output_path = {tmp_dir}/commit-plan.jsonl`、`rejection = (none)` を渡して `SendMessage`。
+   c. 完了報告を受けたら、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py check --worktree {exclude_options} --plan {tmp_dir}/commit-plan.jsonl` を自ら実行する。出力に `errors` があって不合格の場合は、`dev-helper` にタスクを 1 度だけ差し戻す。`rejection` にはその `errors` を、メッセージの散文の中で 1 件ずつ 1 文で述べる。その報告を受けたら、もう 1 度 `check` を実行する。
+   d. `check` が合格したら、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py commit --worktree {exclude_options} --plan {tmp_dir}/commit-plan.jsonl` を Bash ツールの `run_in_background` で実行し、終了してから、その終了コードと出力で判断して先へ進む: コミットごとにプロジェクトのコミットフックが走るため、Bash ツールの最大のタイムアウトも超えることがある。成功して `tree_match` が false の場合は、そのことを `commit_warning` に記録し、それ以上はコミットしない。
+   e. 次の場合は 1 回のコミットにフォールバックし、その理由を `commit_warning` に記録する: `dev-helper` が roster にいないか、`dev-helper` への `SendMessage` が失敗した場合、`paths` が非ゼロ終了した場合、`check` が `errors` のない失敗で終わったか、差し戻しの後も不合格の場合、`commit` が非ゼロ終了した場合（失敗するまでに作ったコミットは残す）。コミットする対象のうちまだコミットされていない変更をすべてステージし、`${CLAUDE_PLUGIN_ROOT}/rules/commit-plan.md` § メッセージ に従うメッセージで 1 回コミットする。そのルールの B は `HEAD`、`plugin_root`・`main_root`・`target_dir` は `${CLAUDE_PLUGIN_ROOT}`・`{main_root}`・`{target_dir}` と読む。ステージするものがなければコミットしない。フォールバックのコミットが失敗した場合は、そのことを `commit_warning` に足し、それ以上は何もしない。
 2. teammate を停止する: roster の各 name を `task_id` として `TaskStop` を呼び、応答や通知を待たずに次の手順へ進む。アイドルの teammate には稼働中のタスクがないため、稼働していない旨の失敗は停止済みとみなす。`shutdown_request` は送らない: リーダーが待てる完了の合図がない。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`。
 4. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
 5. `--result` 指定時は、結果ファイルを書く（§ 結果ファイル）。
-6. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、チームの再編成がステップ 1 のロスターにフォールバックしたかどうか、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、coder が拒否されたと報告した復元エントリ（ターニングポイント、パス、理由）、coder が報告したプロンプトレビューの件数、ステップ 4 を実行した場合の QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、稼働していない以外の理由で `TaskStop` が失敗した teammate、および spawn の拒否でステップ 5 に来た場合は、中断したステップと、spawn が拒否されたままの teammate。加えて、`--commit-always` が QA か解釈テストの未通過のままコミットした場合はそのこと、ブランチか `HEAD` が動いたためにコミットしなかった場合はそのこと、`--result` 指定時は結果ファイルのパスか、その書き出しに失敗したことを示す。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
+6. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、チームの再編成がステップ 1 のロスターにフォールバックしたかどうか、ステップごとに resolve したセル、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、ステップ 5 の手順 1 で作ったコミットの数と各件名、null でなければ `commit_warning`、coder が拒否されたと報告した復元エントリ（ターニングポイント、パス、理由）、coder が報告したプロンプトレビューの件数、ステップ 4 を実行した場合の QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、稼働していない以外の理由で `TaskStop` が失敗した teammate、および spawn の拒否でステップ 5 に来た場合は、中断したステップと、spawn が拒否されたままの teammate。加えて、`--commit-always` が QA か解釈テストの未通過のままコミットした場合はそのこと、ブランチか `HEAD` が動いたためにコミットしなかった場合はそのこと、`--result` 指定時は結果ファイルのパスか、その書き出しに失敗したことを示す。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
