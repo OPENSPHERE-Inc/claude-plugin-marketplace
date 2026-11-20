@@ -1,7 +1,7 @@
 ---
 name: coding
 description: Orchestrate a coding task end to end with a standing agent team using paired review cells — a design cell step, a coding cell step, and a QA gate. AI-facing prompt files also get a prompt-discipline self-check and compression in the coding cell and an interpretation test in the QA gate. Reviewers are auto-selected from the destination project agents. Use proactively when the user asks to implement a feature, build a change, or carry out a coding task in the repository, including creating or modifying an AI-facing prompt file in it (agent definition, SKILL.md, rule, slash command, or prompt template). Do not use it for a file outside the repository (such as under `~/.claude/`), for a small edit one agent can make directly (such as adding one item to a rule), for drafting a prompt that is not a file, or, without `--worktree`, on a working tree with uncommitted changes. Requires a runtime with background subagents (Agent run_in_background) and inter-agent messaging (SendMessage).
-allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/restore.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*)
+allowed-tools: Agent, SendMessage, TaskStop, TodoWrite, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(grep:*), Bash(ls:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(git reset -q), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/restore.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py:*)
 ---
 
 # Multi-Agent Coding
@@ -26,7 +26,7 @@ The user supplies a coding task: a feature to implement, a change to make, or a 
 
 - `--review-rounds N` (default 5, range 1–10) — Max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, range 1–10) — Max QA verify ⇄ fix attempts.
-- `--commit` (default OFF) — After QA passes, commit the implementation in one commit (concise message, no finding IDs).
+- `--commit` (default OFF) — After QA passes, commit the implementation in commits split by logical change (Step 5).
 - `--worktree[=branch]` (default OFF) — Run the task in a separate git worktree on `branch` (§ Worktree). Without `=branch`, a new branch `cdev-coding-{timestamp}` is created from the current HEAD. Enables `--commit`.
 - `--output {dir}` — Specify the output directory for the design documents (`{design_dir}`).
 - `--handoff {path}` (default unset) — A handoff for this run: a Markdown file in any format. Team analysis, the architects, and the design reviewers Read it; it ranks after the task in the judgment priority (§ Review cell protocol), and, under `--worktree`, a design may restore files to a turning point it names.
@@ -44,7 +44,8 @@ The user supplies a coding task: a feature to implement, a change to make, or a 
 Write the file with the Write tool as one JSON object on a single line, replacing an existing file and creating its parent directory if missing; when the file exists, Read it first, since Write refuses to replace a file this session has not Read. Write it in Step 5 step 5, and also before ending at every exit that does not reach Step 5 — the aborts under § Requirements and § Trust premise, and each termination in Step 1 — after the teardown when the exit follows the worktree setup. Write nothing while `.claude` or `.claude/tmp` is a symlink: at an exit before the `del-tmp.sh` of Step 1 step 5 has passed, run `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh --dry {tmp_dir}` first, fixing `{timestamp}` at that point when the exit comes before Step 1, and write only when it exits zero, otherwise showing its error on the console and ending. Validate the written file with `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py {path}`; on an error, fix it and validate once more. When the write or the second validation fails, show the error on the console and change nothing else.
 
 ```json
-{"committed": true, "commit": "<sha>", "branch": "<name>",
+{"committed": true, "commit": "<sha>", "commit_count": 1, "commit_warning": null,
+ "branch": "<name>",
  "design_paths": ["<abs path>"], "restored_from": ["<turning point name>"],
  "restore_refused": [{"turning_point": "<name>", "path": "<path>", "reason": "<reason>"}],
  "qa": {"passed": true, "environmental": false, "summary": "<summary_line>"},
@@ -54,7 +55,10 @@ Write the file with the Write tool as one JSON object on a single line, replacin
  "aborted": null, "kept_worktree": null}
 ```
 
-- `committed`: true when Step 5 step 1 committed. `commit`: that commit's SHA, otherwise null.
+- `committed`: true when Step 5 step 1 made a commit, otherwise false.
+- `commit`: the SHA of the last commit Step 5 step 1 made, otherwise null.
+- `commit_count`: the number of commits Step 5 step 1 made, those of `commit-plan.py commit` and the fallback commit together; 0 when it made none.
+- `commit_warning`: null, or a string stating which of these happened: the fallback with its reason, `tree_match` false from `commit-plan.py commit`, the failure of the fallback commit.
 - `branch`: the branch the sources are on — `branch=` of `worktree.sh` under `--worktree`, otherwise `{start_branch}`; null on a detached `HEAD` or when the run ended before the value was known.
 - `design_paths`: `{design_paths}` as absolute paths; empty when the run did not pass the gate of Step 2 step 3.
 - `restored_from`: `{restored_from}`; empty when there is none.
@@ -66,7 +70,7 @@ Write the file with the Write tool as one JSON object on a single line, replacin
 - `team_fallback`: true when the team re-formation fell back to the Step 1 roster.
 - `aborted`: null when the run came to Step 5 after finishing Step 4; otherwise `{"step": <1-4>, "reason": "<string>"}` with the step the run stopped in, the aborts under § Requirements and § Trust premise counting as step 1.
 - `kept_worktree`: the path of the worktree the teardown kept, otherwise null.
-- Write `reason` and `summary` in `{doc_lang}`.
+- Write `reason`, `summary`, and `commit_warning` in `{doc_lang}`.
 
 ## Output language
 
@@ -140,7 +144,7 @@ When a reviewer escalates a `Critical` disagreement, the leader arbitrates by th
 
 ## Leader scope (body isolation)
 
-The leader holds only the roster (each teammate's name → agentType), the teammates awaiting a respawn, the pairings, each cell's status, severity counts, file paths, the QA and interpretation-test results, the names of the turning points the designs restore from, the restore entries the coders report as refused, and the counts of escalations and of the `FIXME:`s left for unresolved items. Design bodies, source, and finding bodies stay with the teammates; findings travel producer ⇄ reviewer by `SendMessage`.
+The leader holds only the roster (each teammate's name → agentType), the teammates awaiting a respawn, the pairings, each cell's status, severity counts, file paths, the QA and interpretation-test results, the names of the turning points the designs restore from, the restore entries the coders report as refused, the counts of escalations and of the `FIXME:`s left for unresolved items, the commit plan's path, and the outputs of `commit-plan.py`: whether `paths` lists any path, the `errors` of `check`, the commits made with their subjects, and `tree_match`. Design bodies, source, finding bodies, and the commit plan's body stay with the teammates; the leader does not Read the commit plan. Findings travel producer ⇄ reviewer by `SendMessage`.
 
 ## Working directory
 
@@ -153,6 +157,7 @@ The leader holds only the roster (each teammate's name → agentType), the teamm
 {tmp_dir}/qa-result.jsonl          ← QA result
 {tmp_dir}/build.log                ← build / test output captured by dev-helper
 {tmp_dir}/prompt-test.jsonl        ← interpretation-test result of the AI-facing prompt files
+{tmp_dir}/commit-plan.jsonl        ← commit plan (written by dev-helper; read by commit-plan.py)
 ```
 
 Created in Step 1 with `mkdir -p`; removed by the leader in Step 5 via `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
@@ -211,9 +216,14 @@ Run the QA verify ⇄ fix loop, up to `--qa-attempts`.
 
 ## Step 5 — Clean up and report
 
-1. Commit the implementation if `--commit` is on and the loop of Step 4 exited with both QA and the interpretation test passing, or if `--commit-always` is on and the run entered Step 4, whatever QA and the interpretation test found, a run that came to Step 5 on a refused spawn in Step 4 included. Under `--handoff`, first confirm that the current branch and the `HEAD` commit are still `{start_branch}` and `{start_head}`; if not, do not commit, and retain that for the report. To commit, stage only the changed source files (not `.claude/tmp`, `.claude/worktrees`, `{design_dir}`, or the `--handoff` and `--result` files), and commit once with a concise message (no finding IDs); with nothing to stage, do not commit.
+1. Commit the implementation if `--commit` is on and the loop of Step 4 exited with both QA and the interpretation test passing, or if `--commit-always` is on and the run entered Step 4, whatever QA and the interpretation test found, a run that came to Step 5 on a refused spawn in Step 4 included. Under `--handoff`, first confirm that the current branch and the `HEAD` commit are still `{start_branch}` and `{start_head}`; if not, do not commit, and retain that for the report. To commit, commit the working tree's changes in commits split by logical change, leaving out `.claude/tmp` and `.claude/worktrees`, which `commit-plan.py` always leaves out, and `{commit_excludes}`. Fix `{commit_excludes}` as the absolute paths of `{design_dir}` and, when given, the `--handoff` and `--result` files, and `{exclude_options}` as one `--exclude {path}` option for each of them, the path quoted. Hold the SHA and subject of each commit made, and their number, for steps 5-6.
+   a. First run `git reset -q`, since `commit-plan.py --worktree` refuses an index with staged changes. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py paths --worktree {exclude_options}`. When its `paths` is empty, do not commit.
+   b. To `dev-helper`, `SendMessage` naming `templates/commit-plan.md` with `task = {task_summary}`, `design_paths = {design_paths}`, `exclude = {commit_excludes}`, `output_path = {tmp_dir}/commit-plan.jsonl`, `rejection = (none)`.
+   c. On its completion report, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py check --worktree {exclude_options} --plan {tmp_dir}/commit-plan.jsonl` yourself. When it fails with `errors` in its output, send the task back to `dev-helper` once, with `rejection` stating those `errors` in the message's prose, one sentence each, and run `check` again on its report.
+   d. When `check` passes, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py commit --worktree {exclude_options} --plan {tmp_dir}/commit-plan.jsonl` with the Bash tool's `run_in_background`, and go on only once it exits, judging by its exit code and output: it runs the project's commit hooks for each commit, which can outlast the Bash tool's longest timeout. When it succeeds with `tree_match` false, record that in `commit_warning` and make no further commit.
+   e. Fall back to one commit, recording the reason in `commit_warning`, when `dev-helper` is not in the roster or the `SendMessage` to it fails, when `paths` exits non-zero, when `check` fails with no `errors` or fails again after the send-back, or when `commit` exits non-zero, keeping the commits it made before failing. Stage every change still uncommitted among those to commit, and commit once with a message per `${CLAUDE_PLUGIN_ROOT}/rules/commit-plan.md` § Messages, reading its B as `HEAD` and its `plugin_root`, `main_root`, and `target_dir` as `${CLAUDE_PLUGIN_ROOT}`, `{main_root}`, and `{target_dir}`; with nothing to stage, do not commit. When the fallback commit fails, add that to `commit_warning` and do nothing more.
 2. Stop the teammates: call `TaskStop` with each roster name as `task_id`, and go on to the next step without waiting for a reply or a notification. An idle teammate has no running task, so a failure saying it is not running means it is already stopped. Do not send `shutdown_request`: it gives the leader no completion signal to wait on.
 3. Remove the working directory: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`.
 4. Under `--worktree`, run the teardown in § Worktree.
 5. Under `--result`, write the result file (§ Result file).
-6. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, whether the team re-formation fell back to the Step 1 roster, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, any restore entry the coders reported as refused, with its turning point, path, and reason, the prompt-review counts the coders reported, the QA result when Step 4 ran (`summary_line`, plus `workflow_warning` if any, and `prompt_summary_line` when `has_prompts` is true), any unfixed QA failure, stated as environmental when `environmental` is true, any prompt file still failing the interpretation test, any prompt file left untested with its reason, any teammate whose `TaskStop` failed for a reason other than not running, and, when the run came to Step 5 on a refused spawn, the step it stopped in and each teammate whose spawn was still refused. Add, when `--commit-always` committed with QA or the interpretation test not passing, that fact; any commit skipped because the branch or `HEAD` moved; and, under `--result`, the result file's path or that writing it failed. Under `--worktree`, add the branch and any worktree the teardown kept.
+6. Report to the console: the design document paths (`{design_paths}`), the team roster with pairings, whether the team re-formation fell back to the Step 1 roster, the cells resolved per step, any escalations and the `FIXME:`s left for unresolved items, files changed, the number of commits Step 5 step 1 made with each subject, `commit_warning` when it is not null, any restore entry the coders reported as refused, with its turning point, path, and reason, the prompt-review counts the coders reported, the QA result when Step 4 ran (`summary_line`, plus `workflow_warning` if any, and `prompt_summary_line` when `has_prompts` is true), any unfixed QA failure, stated as environmental when `environmental` is true, any prompt file still failing the interpretation test, any prompt file left untested with its reason, any teammate whose `TaskStop` failed for a reason other than not running, and, when the run came to Step 5 on a refused spawn, the step it stopped in and each teammate whose spawn was still refused. Add, when `--commit-always` committed with QA or the interpretation test not passing, that fact; any commit skipped because the branch or `HEAD` moved; and, under `--result`, the result file's path or that writing it failed. Under `--worktree`, add the branch and any worktree the teardown kept.

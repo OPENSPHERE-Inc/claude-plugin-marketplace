@@ -1,12 +1,12 @@
 ---
 name: loop
 description: Run a coding task through /cdev:coding and /creview:rounds as one pipeline without asking the user for decisions. When the review detects a divergence, the task goes back to /cdev:coding on the same branch; after the review, a post-mortem decides whether to finish or to start over from the start commit. Send-backs and restarts each stay within a limit. Use when the user names this skill or asks to take a coding task from implementation through review unattended. Requires the creview plugin, a runtime with background subagents (Agent run_in_background) and inter-agent messaging (SendMessage), and nested sub-agent spawning of depth 3 or more.
-allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git check-ref-format:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(git grep:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
+allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git check-ref-format:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(git grep:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py paths:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py check:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py build:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
 # Coding Loop
 
-As the **loop leader**, you run a coding task through cycles of `/cdev:coding` and `/creview:rounds`. When the review detects a divergence, you send the task back to `/cdev:coding` in the same generation; at a generation's end, a post-mortem sub-agent judges whether to finish or to start a new generation from the start commit. You do not design, write, review, or fix code. You hold only the state file, paths, counts, end reasons, verdicts, and short warnings, and do not Read the body of a design, review, divergence report, post-mortem, or handoff the post-mortem writes. The one exception is an escalation you arbitrate as the `/cdev:coding` leader (§ Running an inner skill): its § Escalation lets you Read that cycle's handoff, and with a send-back handoff, the post-mortem handoff it references.
+As the **loop leader**, you run a coding task through cycles of `/cdev:coding` and `/creview:rounds`. When the review detects a divergence, you send the task back to `/cdev:coding` in the same generation; at a generation's end, a post-mortem sub-agent judges whether to finish or to start a new generation from the start commit. You do not design, write, review, or fix code. You hold only the state file, paths, counts, end reasons, verdicts, short warnings, and the output of `commit-plan.py` (for its runs in § Cleanup, only the parts § Cleanup keeps), and do not Read the body of a design, review, divergence report, post-mortem, handoff the post-mortem writes, or cleanup plan. The one exception is an escalation you arbitrate as the `/cdev:coding` leader (§ Running an inner skill): its § Escalation lets you Read that cycle's handoff, and with a send-back handoff, the post-mortem handoff it references.
 
 ## Requirements
 
@@ -30,6 +30,7 @@ When the argument is `$ARGUMENTS`, interpret it as the coding task and options. 
 - `--max-sendbacks N` (default 2, range 0–5) — The maximum number of send-backs per generation.
 - `--max-generations N` (default 3, range 1–5) — The maximum number of generations.
 - `--pursuit` (default OFF) — Let the post-mortem also redo a generation with no residual problem when a clearly better approach can be shown.
+- `--cleanup` (default OFF) — On a normal end, create the output branch at the head of commits that restack the adopted generation's changes from the start commit (§ Cleanup).
 - `--output {dir}` (default `.claude/tmp/cdev-loop-{timestamp}/`) — The run directory `{loop_dir}`.
 
 Passed through: `--review-rounds N` (range 1–10) and `--qa-attempts N` (range 1–10) to `/cdev:coding` as `{coding_args}`; `--max-rounds N` (range 1–20), `--adversarial`, and `--adr` to `/creview:rounds` as `{rounds_args}`. Each is empty when none is given.
@@ -52,7 +53,7 @@ Show an error and terminate on a value out of range, and on any of these options
 
 Create a branch only with `git branch {name} {commit}`, which touches no working tree. Never move or delete a TP, and never rewrite a work branch's history.
 
-A cycle's directory `{loop_dir}/g{g}c{c}/` holds `design/`, `coding-result.jsonl`, `review/`, `rounds-result.jsonl`, and `handoff.md`. The post-mortem of generation g writes to `{loop_dir}/g{g}/`.
+A cycle's directory `{loop_dir}/g{g}c{c}/` holds `design/`, `coding-result.jsonl`, `review/`, `rounds-result.jsonl`, and `handoff.md`. The post-mortem of generation g writes to `{loop_dir}/g{g}/`. The cleanup plan is `{loop_dir}/cleanup/plan.jsonl`.
 
 ## Running an inner skill
 
@@ -74,7 +75,7 @@ Write:
 ```json
 {"task": "<task>", "timestamp": "...", "repo_root": "<abs>", "loop_dir": "<abs>",
  "skill_dir": "<abs>", "start_commit": "<S>", "branch": "<loop_branch>", "doc_lang": "<chat language>",
- "limits": {"max_sendbacks": 2, "max_generations": 3, "pursuit": false},
+ "limits": {"max_sendbacks": 2, "max_generations": 3, "pursuit": false, "cleanup": false},
  "coding_args": "<pass-through options or empty>", "rounds_args": "<same>",
  "position": {"generation": 1, "cycle": 2, "step": "review"},
  "generations": [
@@ -92,6 +93,7 @@ Write:
  "turning_points": [{"name": "...", "commit": "<sha>", "kind": "coding-start",
                      "generation": 1, "cycle": 1}],
  "adopted_generation": null,
+ "cleanup": null,
  "warnings": [{"generation": 1, "cycle": 1, "source": "coding", "message": "..."}],
  "end": null}
 ```
@@ -100,13 +102,19 @@ Write:
 - `position.step`: `init`, `coding`, `review`, `sendback`, `postmortem`, or `finish`.
 - `coding` / `review`: `started` and `skill_dir` at the invocation, the other fields from the result file.
 - `postmortem.fallback`: the reason when Step 5 fell back on its own verdict, otherwise null.
+- `cleanup`: null when `--cleanup` is off and until § Cleanup starts, then `{"head": "<H>", "plan_path": "<abs>", "launches": 1, "commit": "<sha>", "count": 3, "skipped": null, "fallback": null}`:
+  - `head` and `plan_path`: written as § Cleanup starts.
+  - `launches`: the number of the planner's launches, those redone on a resume included, kept as a record only.
+  - `commit` / `count`: the head and the number of the commits `build` created; null until `build` succeeds.
+  - `skipped`: `"no-change"` when S and H have the same tree, otherwise null.
+  - `fallback`: the reason, in `{doc_lang}`, when § Cleanup fell back, otherwise null.
 - `end`: written in Step 6, `{"kind": "normal"|"error", "step": "<the step it stopped in>", "error": "<string>"|null, "output_branch": "<name>"|null}`.
-- `warnings`: only short warning texts. From `coding-result.jsonl`: an unpassed QA, stating whether it is environmental; the files the interpretation test failed or left untested; the restore entries refused (`restore_refused`); a team re-formation fallback. From `rounds-result.jsonl`: its `workflow_warnings` and `prompt_warnings`. Your own: a missing divergence report, a post-mortem fallback, a failed output branch creation. `source` is `coding`, `review`, `postmortem`, or `finish`.
+- `warnings`: only short warning texts. From `coding-result.jsonl`: an unpassed QA, stating whether it is environmental; the files the interpretation test failed or left untested; the restore entries refused (`restore_refused`); a team re-formation fallback; the `commit_warning` when not null. From `rounds-result.jsonl`: its `workflow_warnings` and `prompt_warnings`. Your own: a missing divergence report, a post-mortem fallback, a cleanup fallback, a failed output branch creation. `source` is `coding`, `review`, `postmortem`, `cleanup`, or `finish`.
 
 When you cannot tell your position from context, Read this file and the `SKILL.md` in its top-level `skill_dir`. In a `SKILL.md` you Read, the `CLAUDE_PLUGIN_ROOT` placeholder stays unexpanded: take it as the directory two levels above the `skill_dir` you Read it from, for this skill and for an inner skill alike. Continue from `position`:
 
 - Do not repeat a side effect the file records.
-- When a work branch, TP, or the output branch to create already exists at the commit it should point to, record it without creating it. When a work branch or TP points elsewhere, end as an error; when the output branch does, handle it as a failed creation in Step 6 step 2.
+- When a work branch, TP, or the output branch to create already exists at the commit it should point to, record it without creating it. The output branch should point to `cleanup.commit` when it is recorded, otherwise to the head of the adopted generation's work branch. When a work branch or TP points elsewhere, end as an error; when the output branch does, handle it as a failed creation in Step 6 step 3.
 - When `position.step` is `coding` or `review` and that cycle's `started` is true:
   - With no `skill_dir` recorded, the inner skill had not entered its first step: invoke it again.
   - When the cycle's result file exists, the inner skill has ended: continue from the Step's handling of the result file.
@@ -127,6 +135,45 @@ You write the send-back handoff, only with what you can write without Reading a 
 - Avoid: bringing back a form the report names as a source and, from generation 2 on, what the post-mortem handoff says to avoid.
 - Candidate return points: every TP of this generation so far, each with its name, its commit, and what it holds. The TP-A of g{g}c1 holds the start commit, before implementation; the TP-B of g{g}c{k} holds cycle k after `/cdev:coding`, before its review fixes; the TP-A of g{g}c{k} for k > 1 holds the code after cycle k-1's review. State that building on the current head is the default, and that returning means restoring a TP's content into files and committing forward, which `/cdev:coding` does, never rewriting history.
 - References: the divergence report; from generation 2 on, the post-mortem handoff (the `handoff` of the generation's first cycle in the state file); and for each cycle of this generation, the design documents (`design_paths` of `coding-result.jsonl`), the review documents (`doc_paths` of `rounds-result.jsonl`), and the final report (`final_report_path` of `rounds-result.jsonl`). Read only these paths from the result files.
+
+## Cleanup
+
+Restack the changes of the adopted generation a (`adopted_generation` in the state file) from S by the plan a planner sub-agent writes, and obtain the head C of the commits this creates.
+
+When `cleanup` in the state file records `commit`, `skipped`, or `fallback`, continue at Step 6 step 3 with the output commit it gives: the `commit`, or for `skipped` or `fallback` the recorded `head`. Otherwise go through the items from 1, taking a recorded `head` as H: a launch or `build` whose result is not recorded changed no ref.
+
+1. Get H with `git rev-parse {loop_branch}-g{a}`, and record `cleanup` with `head` and `plan_path` (`{loop_dir}/cleanup/plan.jsonl`).
+2. When S and H have the same tree, compared with `git rev-parse`, record `skipped` as `"no-change"` and continue at Step 6 step 3 with H as the output commit.
+3. Create `{loop_dir}/cleanup/` and launch the planner in the foreground via `Agent(subagent_type="general-purpose", prompt=...)`. At each launch, increment `launches` and record it. `{rejection}` is `(none)` at the first launch.
+
+   ```
+   As your first action, you MUST Read `${CLAUDE_PLUGIN_ROOT}/skills/loop/templates/cleanup.md`. Do not perform any other judgment, action, or tool call before the Read completes. After reading, follow its instructions.
+
+   Variables (substitute into the template's {{...}} placeholders):
+   - plugin_root: ${CLAUDE_PLUGIN_ROOT}
+   - main_root: (none)
+   - target_dir: {repo_root}
+   - task: {task}
+   - state_path: {loop_dir}/state.jsonl
+   - adopted_generation: {a}
+   - start_commit: {S}
+   - head_commit: {H}
+   - doc_lang: {doc_lang}
+   - plan_path: {loop_dir}/cleanup/plan.jsonl
+   - rejection: {rejection}
+
+   Include `template_id` (Read from the template's frontmatter) in the return value.
+   ```
+
+4. Accept the plan when the returned `template_id` is `64157739-d562-4866-b6fb-0691183710ac` and `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py check --base {S} --head {H} --plan {loop_dir}/cleanup/plan.jsonl`, run by you, exits 0 with `ok` true.
+5. When you do not accept it:
+   - When `check` exited non-zero with no `errors` in its output, a failure the planner cannot fix, such as a git error: fall back without relaunching.
+   - Otherwise, after the first launch of this run of § Cleanup: write in `{rejection}` the `template_id` mismatch and the `errors` of `check`, whichever occurred, and launch once more (item 3).
+   - Otherwise: fall back.
+6. Once you accept it, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py build --base {S} --head {H} --plan {loop_dir}/cleanup/plan.jsonl`. When it exits 0, record its `commit` and `count`, and continue at Step 6 step 3 with that `commit` as the output commit. Otherwise fall back.
+7. To fall back, record the reason, in `{doc_lang}`, in `cleanup.fallback` and in `warnings` with `source` `cleanup`, and continue at Step 6 step 3 with H as the output commit. The end stays normal.
+
+Of the planner's return value, judge only by `template_id`. Of the output of `commit-plan.py`, keep only the `errors` and `error` of `check`, and the `commit`, `count`, and `error` of `build` with the subjects of its `commits`.
 
 ## Step 1 — Initialization
 
@@ -216,13 +263,15 @@ Never change the main working tree's sources. Between phases, stay at `{repo_roo
 ## Step 6 — Finish
 
 1. Set `position` to `finish`. Console: `## Loop — Finish`.
-2. On a normal end, create the output branch `{loop_branch}` at the head of the adopted generation's work branch. When that fails, the end stays normal: record the error in `end`, with `output_branch` null, and in `warnings`, and report that the adopted generation's work branch holds the same commit. On an error end, create no output branch.
-3. Record `end`, and write `{loop_dir}/loop-summary.md` in `{doc_lang}`, following `${CLAUDE_PLUGIN_ROOT}/rules/document.md`, with:
+2. On a normal end, fix the output commit: under `--cleanup` (`limits.cleanup`), run § Cleanup and take its result; otherwise, the head of the adopted generation's work branch. On an error end, fix none.
+3. On a normal end, create the output branch `{loop_branch}` at the output commit. When that fails, the end stays normal: record the error in `end`, with `output_branch` null, and in `warnings`, and report where the result is: without a restack, that the adopted generation's work branch holds the same commit; after a restack, C's SHA, and that it has the work branch's tree but a different history. On an error end, create no output branch.
+4. Record `end`, and write `{loop_dir}/loop-summary.md` in `{doc_lang}`, following `${CLAUDE_PLUGIN_ROOT}/rules/document.md`, with:
    - the end reason of each generation and cycle, and on an error end, the step it stopped in and the error;
    - the send-backs, each post-mortem's verdict (`summary_line`, and `basis` for a redo), and the adopted generation;
+   - on a normal end under `--cleanup`, the result of the restack (the commit count and each subject, or why it skipped or fell back), that the original history stays on the adopted generation's work branch, and that no intermediate commit was built or tested. Take the subjects from `build`'s output or, when it is not in context, from `git log` of the commits from S to `cleanup.commit`;
    - the TPs, and this command for the user to delete them all: `git for-each-ref --format='%(refname:short)' 'refs/heads/{loop_branch}-tp/' | xargs git branch -D`;
    - the warnings, and any worktree kept.
-4. Report to the console. On a normal end: the output branch, the `loop-summary.md` path, and the generation, cycle, and send-back counts with each generation's verdict. On an error end: the step it stopped in, the error, the last work branch, and the `loop-summary.md` path. Do not push or create a pull request.
+5. Report to the console. On a normal end: the output branch, the `loop-summary.md` path, the generation, cycle, and send-back counts with each generation's verdict, and under `--cleanup` the number of restacked commits, or the skip or fallback. On an error end: the step it stopped in, the error, the last work branch, and the `loop-summary.md` path. Do not push or create a pull request.
 
 ## Stop conditions
 

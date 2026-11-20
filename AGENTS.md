@@ -14,7 +14,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - **License**: MIT
 - **Maintainer**: OPENSPHERE Inc.
 - **No build step. No CI yet.** Validation = consistency checks +
-  `bash tests/scratch-guard-test.sh` + `python3 tests/gh-review-test.py` + manual install.
+  `bash tests/scratch-guard-test.sh` + `python3 tests/gh-review-test.py` +
+  `python3 tests/commit-plan-test.py` + manual install.
 
 ## Key Files
 
@@ -40,20 +41,22 @@ see **[CLAUDE.md](CLAUDE.md)**.
   `/creview:start`'s PR mode, and `doc-checkout`: the review document header parsing and
   worktree checkout for `/creview:triage` / `respond` / `resolve`), `lib/scratch-guard.py`.
 - `creview/skills/{triage,respond,resolve}/scripts/compile-review.py` — per-skill leader-run compile (aggregates intermediate JSON → `events.jsonl` → `render-review.py`).
-- `cdev/skills/coding/SKILL.md` (+ `templates/`) — The `/cdev:coding` team-native skill (10 teammate task templates, each with a `template_id`).
-- `cdev/skills/loop/SKILL.md` (+ `templates/postmortem.md`) — The `/cdev:loop` skill, which runs `/cdev:coding` and `/creview:rounds` inline, and its one sub-agent template, the post-mortem, with a `template_id`.
-- `cdev/agents/` (bundled) — `comment-sensei.md`, `prompt-sensei.md`, `dev-helper.md`, and the tool-restricted `prompt-tester.md` (the interpretation tester `prompt-sensei` launches). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`, `prompt.md`, `divergence.md`. `cdev/scripts/` — `fetch-diff.sh`, `del-tmp.sh`, `check-jsonl.py`, `worktree.sh`, `restore.sh` (the coders' restore of a design's restore list), `lib/scratch-guard.py`.
+- `cdev/skills/coding/SKILL.md` (+ `templates/`) — The `/cdev:coding` team-native skill (11 teammate task templates, each with a `template_id`).
+- `cdev/skills/loop/SKILL.md` (+ `templates/postmortem.md`, `templates/cleanup.md`) — The `/cdev:loop` skill, which runs `/cdev:coding` and `/creview:rounds` inline, and its two sub-agent templates, the post-mortem and the `--cleanup` planner, each with a `template_id`.
+- `cdev/agents/` (bundled) — `comment-sensei.md`, `prompt-sensei.md`, `dev-helper.md`, and the tool-restricted `prompt-tester.md` (the interpretation tester `prompt-sensei` launches). `cdev/rules/` — `teammate.md`, `agents-detection.md`, `build-format-detection.md`, `comment.md`, `review.md`, `document.md`, `prompt.md`, `divergence.md`, `commit-plan.md` (the commit planners' rules, also read by the `/cdev:coding` leader for its fallback commit). `cdev/scripts/` — `fetch-diff.sh`, `del-tmp.sh`, `check-jsonl.py`, `worktree.sh`, `restore.sh` (the coders' restore of a design's restore list), `commit-plan.py` (the check of a commit plan, the split commit of `/cdev:coding`, and the restack of `/cdev:loop --cleanup`), `lib/scratch-guard.py`.
 - `cgh/skills/{review,gate,respond,resolve}/SKILL.md` — The 4 `/cgh:*` skills, which run the creview skills inline. `cgh/agents/comment-writer.md` (tool-restricted). `cgh/rules/` — `leader.md` (read by the leaders), `gate-focus-pr.md` and `gate-focus-code.md` (read by the reviewers, triage, and estimate of the gate's pull request stage and code stage). `cgh/scripts/` — `gh-review.py` (the leaders' own reads and writes on GitHub), `del-tmp.sh`, `lib/scratch-guard.py`.
 - `src/<plugin>/...` — **Japanese master**, mirrors each plugin's tree 1:1 (minus
   `.claude-plugin/` and the READMEs).
 - `tests/scratch-guard-test.sh` — repo-level self-test: containment, `worktree.sh`,
   `restore.sh`, and byte-parity of the shared `lib/scratch-guard.py` / `del-tmp.sh` /
-  `check-jsonl.py` / `worktree.sh` copies and of `fetch-diff.sh`, `restore.sh`, `gh-pr.py`,
-  `compile-pr-comments.py`, and `gh-review.py` with their `src/` mirrors, and of
-  `creview/rules/prompt.md` with `cdev/rules/prompt.md` and `src/creview/rules/prompt.md`
-  with `src/cdev/rules/prompt.md` (not shipped).
+  `check-jsonl.py` / `worktree.sh` copies and of `fetch-diff.sh`, `restore.sh`,
+  `commit-plan.py`, `gh-pr.py`, `compile-pr-comments.py`, and `gh-review.py` with their `src/`
+  mirrors, and of `creview/rules/prompt.md` with `cdev/rules/prompt.md` and
+  `src/creview/rules/prompt.md` with `src/cdev/rules/prompt.md` (not shipped).
 - `tests/gh-review-test.py` — self-test of `cgh/scripts/gh-review.py` with GitHub and git
   faked (not shipped).
+- `tests/commit-plan-test.py` — self-test of `cdev/scripts/commit-plan.py`, run in temporary
+  git repositories (not shipped).
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
 - `.claude/rules/*.md` — Discipline rules for editing this repo
   (prompt/document/comment/…); `paired-files.md` defines the files that change together.

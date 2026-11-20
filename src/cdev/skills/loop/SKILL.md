@@ -1,12 +1,12 @@
 ---
 name: loop
 description: コーディングタスクを /cdev:coding と /creview:rounds の 1 本のパイプラインとして、ユーザーの判断を仰がずに実行する。レビューが発散を検出したら、同じブランチでタスクを /cdev:coding に差し戻す。レビューの後はポストモーテムが、終了するか、開始コミットからやり直すかを決める。差し戻しとやり直しは、それぞれ上限の回数の内で行う。ユーザーがこのスキルを名指ししたとき、またはコーディングタスクを実装からレビューまで無人で通すよう求めたときに使用する。creview プラグイン、バックグラウンドのサブエージェント（Agent の run_in_background）とエージェント間メッセージング（SendMessage）が利用可能なランタイム、深さ 3 以上のサブエージェントのネスト起動を要する。
-allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git check-ref-format:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(git grep:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
+allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git check-ref-format:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(git grep:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-jsonl.py:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py paths:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py check:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py build:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
 # コーディングループ
 
-あなたは**ループリーダー**として、コーディングタスクを `/cdev:coding` と `/creview:rounds` のサイクルに通す。レビューが発散を検出したら、同じ世代のうちにタスクを `/cdev:coding` へ差し戻す。世代の終わりには、ポストモーテムのサブエージェントが、終了するか、開始コミットから新しい世代を始めるかを判定する。あなたは設計・コード記述・レビュー・修正を行わない。保持するのは状態ファイル、パス、件数、終了理由、判定、短い警告文だけであり、設計、レビュー、発散調査レポート、ポストモーテム、ポストモーテムが書く申し送りの本文は Read しない。唯一の例外は、`/cdev:coding` のリーダーとして裁定するエスカレーション（§ 内側スキルの実行）である: その § エスカレーション に従い、そのサイクルの申し送りを Read してよく、差し戻しの申し送りなら、それが参照するポストモーテムの申し送りも Read してよい。
+あなたは**ループリーダー**として、コーディングタスクを `/cdev:coding` と `/creview:rounds` のサイクルに通す。レビューが発散を検出したら、同じ世代のうちにタスクを `/cdev:coding` へ差し戻す。世代の終わりには、ポストモーテムのサブエージェントが、終了するか、開始コミットから新しい世代を始めるかを判定する。あなたは設計・コード記述・レビュー・修正を行わない。保持するのは状態ファイル、パス、件数、終了理由、判定、短い警告文、`commit-plan.py` の出力（§ 積み直し での実行については、§ 積み直し が保持するとした部分）だけであり、設計、レビュー、発散調査レポート、ポストモーテム、ポストモーテムが書く申し送り、積み直しの計画の本文は Read しない。唯一の例外は、`/cdev:coding` のリーダーとして裁定するエスカレーション（§ 内側スキルの実行）である: その § エスカレーション に従い、そのサイクルの申し送りを Read してよく、差し戻しの申し送りなら、それが参照するポストモーテムの申し送りも Read してよい。
 
 ## 動作要件
 
@@ -30,6 +30,7 @@ allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*),
 - `--max-sendbacks N`（デフォルト 2、範囲 0–5）— 世代あたりの差し戻し回数の上限。
 - `--max-generations N`（デフォルト 3、範囲 1–5）— 世代数の上限。
 - `--pursuit`（デフォルト OFF）— 残存問題のない世代でも、明確に上回るアプローチを示せる場合はポストモーテムが redo とすることを許す。
+- `--cleanup`（デフォルト OFF）— 通常終了で、採用世代の変更を開始コミットから積み直したコミット列の先頭に、成果物ブランチを作る（§ 積み直し）。
 - `--output {dir}`（デフォルト `.claude/tmp/cdev-loop-{timestamp}/`）— 実行ディレクトリ `{loop_dir}`。
 
 パススルー: `--review-rounds N`（範囲 1–10）と `--qa-attempts N`（範囲 1–10）は `{coding_args}` として `/cdev:coding` へ、`--max-rounds N`（範囲 1–20）、`--adversarial`、`--adr` は `{rounds_args}` として `/creview:rounds` へ渡す。どちらも、指定がなければ空とする。
@@ -52,7 +53,7 @@ allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*),
 
 ブランチは、どの作業ツリーにも触れない `git branch {name} {commit}` でのみ作成する。TP は動かさず、消さない。作業ブランチの履歴は書き換えない。
 
-サイクルのディレクトリ `{loop_dir}/g{g}c{c}/` は `design/`、`coding-result.jsonl`、`review/`、`rounds-result.jsonl`、`handoff.md` を持つ。世代 g のポストモーテムは `{loop_dir}/g{g}/` に書く。
+サイクルのディレクトリ `{loop_dir}/g{g}c{c}/` は `design/`、`coding-result.jsonl`、`review/`、`rounds-result.jsonl`、`handoff.md` を持つ。世代 g のポストモーテムは `{loop_dir}/g{g}/` に書く。積み直しの計画は `{loop_dir}/cleanup/plan.jsonl` に置く。
 
 ## 内側スキルの実行
 
@@ -74,7 +75,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 ```json
 {"task": "<タスク>", "timestamp": "...", "repo_root": "<abs>", "loop_dir": "<abs>",
  "skill_dir": "<abs>", "start_commit": "<S>", "branch": "<loop_branch>", "doc_lang": "<チャットの言語>",
- "limits": {"max_sendbacks": 2, "max_generations": 3, "pursuit": false},
+ "limits": {"max_sendbacks": 2, "max_generations": 3, "pursuit": false, "cleanup": false},
  "coding_args": "<パススルーのオプション、または空文字列>", "rounds_args": "<同上>",
  "position": {"generation": 1, "cycle": 2, "step": "review"},
  "generations": [
@@ -92,6 +93,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
  "turning_points": [{"name": "...", "commit": "<sha>", "kind": "coding-start",
                      "generation": 1, "cycle": 1}],
  "adopted_generation": null,
+ "cleanup": null,
  "warnings": [{"generation": 1, "cycle": 1, "source": "coding", "message": "..."}],
  "end": null}
 ```
@@ -100,13 +102,19 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 - `position.step`: `init`、`coding`、`review`、`sendback`、`postmortem`、`finish` のいずれか。
 - `coding` / `review`: `started` と `skill_dir` は起動時に、ほかのフィールドは結果ファイルから書く。
 - `postmortem.fallback`: ステップ 5 が自身の判定で代替した場合はその理由、それ以外は null。
+- `cleanup`: `--cleanup` が OFF のとき、および § 積み直し に入るまでは null。それ以降は `{"head": "<H>", "plan_path": "<abs>", "launches": 1, "commit": "<sha>", "count": 3, "skipped": null, "fallback": null}`:
+  - `head` と `plan_path`: § 積み直し に入るときに書く。
+  - `launches`: 計画者の起動回数。再開でやり直した起動も数え、記録のためだけに持つ。
+  - `commit` / `count`: `build` が作ったコミット列の先頭とコミット数。`build` が成功するまでは null。
+  - `skipped`: S と H のツリーが同じとき `"no-change"`、それ以外は null。
+  - `fallback`: § 積み直し がフォールバックした場合はその理由（`{doc_lang}`）、それ以外は null。
 - `end`: ステップ 6 で書く。`{"kind": "normal"|"error", "step": "<止まったステップ>", "error": "<文字列>"|null, "output_branch": "<名前>"|null}`。
-- `warnings`: 短い警告文だけを書く。`coding-result.jsonl` からは、未通過の QA（環境起因かどうかを添える）、解釈テストが未通過または未テストとしたファイル、拒否された復元エントリ（`restore_refused`）、チーム再編成のフォールバック。`rounds-result.jsonl` からは、その `workflow_warnings` と `prompt_warnings`。あなた自身のものとしては、発散調査レポートの欠落、ポストモーテムの代替判定、成果物ブランチの作成失敗。`source` は `coding`、`review`、`postmortem`、`finish` のいずれか。
+- `warnings`: 短い警告文だけを書く。`coding-result.jsonl` からは、未通過の QA（環境起因かどうかを添える）、解釈テストが未通過または未テストとしたファイル、拒否された復元エントリ（`restore_refused`）、チーム再編成のフォールバック、null でない `commit_warning`。`rounds-result.jsonl` からは、その `workflow_warnings` と `prompt_warnings`。あなた自身のものとしては、発散調査レポートの欠落、ポストモーテムの代替判定、積み直しのフォールバック、成果物ブランチの作成失敗。`source` は `coding`、`review`、`postmortem`、`cleanup`、`finish` のいずれか。
 
 コンテキストから自分の位置が分からない場合は、このファイルと、そのトップレベルの `skill_dir` にある `SKILL.md` を Read する。Read した `SKILL.md` の `CLAUDE_PLUGIN_ROOT` のプレースホルダーは展開されないまま残る: Read した元の `skill_dir` の 2 階層上のディレクトリとみなす。このスキルでも内側スキルでも同じとする。`position` から続ける:
 
 - ファイルが記録している副作用は繰り返さない。
-- 作成しようとする作業ブランチ、TP、成果物ブランチが、指すべきコミットに既にある場合は、作成せずに記録だけをする。作業ブランチや TP が別のコミットを指している場合は、エラー終了とする。成果物ブランチが別のコミットを指している場合は、ステップ 6 の手順 2 の作成の失敗として扱う。
+- 作成しようとする作業ブランチ、TP、成果物ブランチが、指すべきコミットに既にある場合は、作成せずに記録だけをする。成果物ブランチが指すべきコミットは、`cleanup.commit` が記録されていればそれ、そうでなければ採用世代の作業ブランチの先頭である。作業ブランチや TP が別のコミットを指している場合は、エラー終了とする。成果物ブランチが別のコミットを指している場合は、ステップ 6 の手順 3 の作成の失敗として扱う。
 - `position.step` が `coding` か `review` で、そのサイクルの `started` が true の場合:
   - `skill_dir` が記録されていなければ、内側スキルは最初の手順に入っていない: 起動し直す。
   - そのサイクルの結果ファイルがあれば、内側スキルは終わっている: そのステップの結果ファイルの扱いから続ける。
@@ -127,6 +135,45 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 - 避けること: レポートが源泉として挙げた形を再び持ち込むこと。世代 2 以降では、ポストモーテムの申し送りが避けるとしたことも避ける。
 - 戻り先の候補: この世代でこれまでに作ったすべての TP を、名前、コミット、その時点で保持する内容とともに挙げる。g{g}c1 の TP-A は開始コミットで、実装前である。g{g}c{k} の TP-B は、サイクル k の `/cdev:coding` の後で、そのレビュー修正の前である。k > 1 の g{g}c{k} の TP-A は、サイクル k-1 のレビューの後のコードである。現在の先頭に積むことが既定であること、戻す場合は TP の内容をファイルに復元して前方へコミットし（コミットは `/cdev:coding` が行う）、履歴は書き換えないことを併記する。
 - 参照資料: 発散調査レポート、世代 2 以降ではポストモーテムの申し送り（状態ファイルにある、その世代の最初のサイクルの `handoff`）、この世代の各サイクルの設計ドキュメント（`coding-result.jsonl` の `design_paths`）、レビュードキュメント（`rounds-result.jsonl` の `doc_paths`）、最終レポート（`rounds-result.jsonl` の `final_report_path`）。結果ファイルからはこれらのパスだけを Read する。
+
+## 積み直し
+
+採用世代 a（状態ファイルの `adopted_generation`）の変更を、計画者のサブエージェントが書く計画に従って S から積み直し、そのコミット列の先頭 C を得る。
+
+状態ファイルの `cleanup` に `commit`、`skipped`、`fallback` のいずれかが記録されていれば、それが示すコミットを成果物のコミットとしてステップ 6 の手順 3 へ進む: `commit` ならそのコミット、`skipped` か `fallback` なら記録された `head`。それ以外では手順 1 から行い、`head` が記録されていればそれを H とする: 結果が記録されていない起動と `build` は、どの ref も変えていない。
+
+1. H を `git rev-parse {loop_branch}-g{a}` で得て、`cleanup` に `head` と `plan_path`（`{loop_dir}/cleanup/plan.jsonl`）を記録する。
+2. `git rev-parse` で比べて S と H のツリーが同じなら、`skipped` を `"no-change"` と記録し、H を成果物のコミットとしてステップ 6 の手順 3 へ進む。
+3. `{loop_dir}/cleanup/` を作成し、`Agent(subagent_type="general-purpose", prompt=...)` で計画者をフォアグラウンドで起動する。起動のたびに `launches` を 1 増やして記録する。`{rejection}` は、最初の起動では `(none)` とする。
+
+   ```
+   最初の行動として `${CLAUDE_PLUGIN_ROOT}/skills/loop/templates/cleanup.md` を必ず Read する。Read 完了前に他の判断・行動・ツール呼び出しを行わない。Read 後はその指示に従う。
+
+   変数（テンプレート中の {{...}} placeholder を置換）:
+   - plugin_root: ${CLAUDE_PLUGIN_ROOT}
+   - main_root: (none)
+   - target_dir: {repo_root}
+   - task: {task}
+   - state_path: {loop_dir}/state.jsonl
+   - adopted_generation: {a}
+   - start_commit: {S}
+   - head_commit: {H}
+   - doc_lang: {doc_lang}
+   - plan_path: {loop_dir}/cleanup/plan.jsonl
+   - rejection: {rejection}
+
+   戻り値に template_id（テンプレートの frontmatter から Read）を含める。
+   ```
+
+4. 戻り値の `template_id` が `64157739-d562-4866-b6fb-0691183710ac` であり、あなた自身が実行した `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py check --base {S} --head {H} --plan {loop_dir}/cleanup/plan.jsonl` が終了コード 0 で `ok` が true の場合に、計画を受理する。
+5. 受理しない場合:
+   - `check` が 0 以外で終了し、出力に `errors` がない: git の失敗など、計画者には直せない失敗である。再起動せずにフォールバックする。
+   - それ以外で、この § 積み直し の実行での最初の起動の後: `template_id` の不一致と `check` の `errors` のうち起きたものを `{rejection}` に書いて、もう 1 度だけ起動する（手順 3）。
+   - それ以外: フォールバックする。
+6. 受理したら、`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/commit-plan.py build --base {S} --head {H} --plan {loop_dir}/cleanup/plan.jsonl` を実行する。終了コード 0 なら、出力の `commit` と `count` を記録し、その `commit` を成果物のコミットとしてステップ 6 の手順 3 へ進む。0 以外ならフォールバックする。
+7. フォールバックでは、理由を `{doc_lang}` で `cleanup.fallback` と `warnings`（`source` は `cleanup`）に記録し、H を成果物のコミットとしてステップ 6 の手順 3 へ進む。通常終了のままとする。
+
+計画者の戻り値で判定に使うのは `template_id` だけとする。`commit-plan.py` の出力から保持するのは、`check` の `errors` と `error`、`build` の `commit`・`count`・`error` と `commits` の件名だけとする。
 
 ## ステップ 1 — 初期化
 
@@ -216,13 +263,15 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 ## ステップ 6 — 終了処理
 
 1. `position` を `finish` にする。コンソール: `## Loop — Finish`。
-2. 通常終了では、採用世代の作業ブランチの先頭に成果物ブランチ `{loop_branch}` を作成する。失敗した場合も通常終了のままとする: そのエラーを `end`（`output_branch` は null）と `warnings` に記録し、採用世代の作業ブランチが同じコミットを持つことを報告する。エラー終了では成果物ブランチを作成しない。
-3. `end` を記録し、`{loop_dir}/loop-summary.md` を `{doc_lang}` で、`${CLAUDE_PLUGIN_ROOT}/rules/document.md` に従って書く。内容は次のとおり:
+2. 通常終了では、成果物のコミットを決める: `--cleanup`（`limits.cleanup`）なら § 積み直し を行ってその結果とし、それ以外では採用世代の作業ブランチの先頭とする。エラー終了では決めない。
+3. 通常終了では、成果物のコミットに成果物ブランチ `{loop_branch}` を作成する。失敗した場合も通常終了のままとする: そのエラーを `end`（`output_branch` は null）と `warnings` に記録し、成果物の在りかを報告する: 積み直していなければ、採用世代の作業ブランチが同じコミットを持つこと。積み直していれば、C の SHA と、それが作業ブランチと同じツリーで異なる履歴を持つこと。エラー終了では成果物ブランチを作成しない。
+4. `end` を記録し、`{loop_dir}/loop-summary.md` を `{doc_lang}` で、`${CLAUDE_PLUGIN_ROOT}/rules/document.md` に従って書く。内容は次のとおり:
    - 各世代と各サイクルの終了理由。エラー終了では、止まったステップとエラー。
    - 差し戻し、各ポストモーテムの判定（`summary_line`、redo では `basis`）、採用世代。
+   - `--cleanup` での通常終了では、積み直しの結果（コミット数と各件名、またはスキップかフォールバックの理由）、元の履歴が採用世代の作業ブランチに残ること、中間コミットのビルドとテストは検証していないこと。件名は `build` の出力から、それがコンテキストにない場合は S から `cleanup.commit` までのコミットの `git log` から得る。
    - TP の一覧と、それらをまとめて削除するためにユーザーが実行するコマンド: `git for-each-ref --format='%(refname:short)' 'refs/heads/{loop_branch}-tp/' | xargs git branch -D`。
    - 警告と、残ったワークツリー。
-4. コンソールに報告する。通常終了では、成果物ブランチ、`loop-summary.md` のパス、世代数・サイクル数・差し戻し回数と各世代の判定。エラー終了では、止まったステップ、エラー、最後の作業ブランチ、`loop-summary.md` のパス。push と pull request の作成は行わない。
+5. コンソールに報告する。通常終了では、成果物ブランチ、`loop-summary.md` のパス、世代数・サイクル数・差し戻し回数と各世代の判定、`--cleanup` では積み直したコミット数、またはスキップかフォールバック。エラー終了では、止まったステップ、エラー、最後の作業ブランチ、`loop-summary.md` のパス。push と pull request の作成は行わない。
 
 ## 停止条件
 
