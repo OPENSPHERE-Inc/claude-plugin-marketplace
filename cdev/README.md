@@ -49,31 +49,39 @@ cells, a final QA gate, and the commit, reporting progress to the console:
 2. **Team re-formation** — once every design cell has closed, `dev-helper` reads the designs
    and the roster, and re-forms the coders and writers so that each file the designs add or
    change lies in the scope of exactly one of them, paired with a reviewer matching the file's
-   domain. Documentation files go only to writers, whose scope holds no other file (see
-   [Documentation](#documentation)). As in team formation, prompt files go only to coders whose
-   scope holds no other source. A test the design adds goes to the coder that holds the file it
-   tests, unless that file is a prompt file or a documentation file, or no coder holds it. A
-   file under the scope of a coder or writer that may not hold it moves out of that scope, and a
-   file no existing coder or writer can hold goes to a new one. The leader starts the coders,
-   writers, and reviewers the updated roster adds. If the updated roster is still unusable after
-   one retry, coding starts with the original roster, and the final report says so.
+   domain.
+   - Documentation files go only to writers, whose scope holds no other file (see
+     [Documentation](#documentation)).
+   - As in team formation, prompt files go only to coders whose scope holds no other source.
+   - A test the design adds goes to the coder that holds the file it tests, unless that file is
+     a prompt file or a documentation file, or no coder holds it.
+   - A file under the scope of a coder or writer that may not hold it moves out of that scope,
+     and a file no existing coder or writer can hold goes to a new one.
+   - The leader starts the coders, writers, and reviewers the updated roster adds.
+   - If the updated roster is still unusable after one retry, coding starts with the original
+     roster, and the final report says so.
 3. **Code cells** — each coder implements its scope (test-first when the project has a test
-   suite); `comment-sensei` fixes comment violations when comments are present, and
-   `prompt-sensei` self-checks and compresses AI-facing prompt files (see
-   [AI-facing prompts](#ai-facing-prompts)); the **paired reviewer** reviews, the coder triages,
-   the reviewer resolves and closes the cell. When the designs list no file other than
-   documentation files, no code cell runs.
+   suite).
+   - `comment-sensei` fixes comment violations when comments are present, and `prompt-sensei`
+     self-checks and compresses AI-facing prompt files (see
+     [AI-facing prompts](#ai-facing-prompts)).
+   - The **paired reviewer** reviews, the coder triages, the reviewer resolves and closes the
+     cell.
+   - When the designs list no file other than documentation files, no code cell runs.
 4. **Documentation cells** — when the designs list documentation files, once every code cell
    has closed, each writer writes the documentation files of its scope from the designs and the
    code as it now stands, this run's changes included; the **paired reviewer** reviews them,
    checking that they agree with the code, the writer triages, the reviewer resolves and closes
    the cell.
 5. **QA gate** — the build / format / test workflow runs once, together with an interpretation
-   test of the changed AI-facing prompt files when the task has any; on failure the responsible
-   coder fixes it, the fix goes through a review cell, and QA re-runs (bounded loop). A failure
-   in a documentation file of a writer's scope goes to that writer instead, and when the designs
-   list documentation files, every writer brings its documentation in line with the code after
-   the coders' fixes have changed it; both run as documentation cells before QA re-runs.
+   test of the changed AI-facing prompt files when the task has any.
+   - On failure the responsible coder fixes it, the fix goes through a review cell, and QA
+     re-runs (bounded loop).
+   - A failure in a documentation file of a writer's scope goes to that writer instead, who
+     fixes it in a documentation cell before QA re-runs.
+   - When the designs list documentation files, every writer brings its documentation in line
+     with the code after the coders' fixes have changed it, in a documentation cell before QA
+     re-runs.
 6. **Commit** — under `--commit`, `dev-helper` writes a plan that splits the run's changes
    into commits, one per logical change, and `scripts/commit-plan.py` checks the plan and makes
    the commits. When no plan can be accepted, the run commits the changes in one commit
@@ -86,9 +94,10 @@ all code cells close before the documentation cells; all code and documentation 
 before QA), runs the QA gate, and arbitrates escalations. When a reviewer and a producer
 deadlock on a `Critical` finding, the reviewer escalates to the leader; if the leader cannot
 decide either, it asks the user and leaves a `FIXME:`. Judgment priority is the user's original
-task first, then the design intent; in a documentation cell, a statement of what the code does
-matches the code, which takes precedence over both (see [Documentation](#documentation)). The
-authoritative review is `creview`, so unresolved items are left as `FIXME:`s rather than blocking.
+task first, then the handoff when `--handoff` is given, then the design intent; in a
+documentation cell, a statement of what the code does matches the code, which takes precedence
+over all three (see [Documentation](#documentation)). The authoritative review is `creview`, so
+unresolved items are left as `FIXME:`s rather than blocking.
 
 Teammates persist across steps, so they keep their own context and revise incrementally.
 Feedback flows **peer to peer**; the leader holds only the roster, pairings, each cell's
@@ -192,8 +201,9 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
   to one commit), the branch, the design document paths, the turning points the designs
   restore from, the refused restores with their reasons, the QA and interpretation-test
   results, the numbers of `FIXME:`s left and of escalations, whether team re-formation fell
-  back to the original roster, the departures of the code from the design or task that writers
-  report, the step and reason when the run stopped early, and the worktree kept, if any. It is
+  back to the original roster, whether the documentation the designs list went unwritten for
+  want of a writer, the departures of the code from the design or task that writers report,
+  the step and reason when the run stopped early, and the worktree kept, if any. It is
   written as well when the run ends before the commit step, such as on an invalid option or an
   unmet requirement. It is not written when `.claude` or `.claude/tmp` is a symbolic link.
   - When the run writes no file, whether for that reason, on an interruption, or on a failed
@@ -335,7 +345,9 @@ that changes documentation files runs as follows:
   - When the designs list no other file, no code cell runs, and the documentation cells run
     alone.
   - When the team re-formation falls back to the original roster and that roster has no writer,
-    the documentation the designs list is not written; the console and the final report say so.
+    the documentation the designs list is not written; the console, the final report, and the
+    result file's `docs_unwritten` say so, as do, under `/cdev:loop`, the warnings of
+    `state.jsonl` and `loop-summary.md`.
 - **Matching the code** — the writer writes from the designs and the code as it stands in the
   work target, this run's changes included.
   - A statement of what the code does matches the code, which takes precedence over the task,
@@ -363,8 +375,10 @@ that changes documentation files runs as follows:
   - No finding asks to make the documentation match the design or the task against the code.
     An unreported departure is settled by reporting it.
   - A statement the run neither changed nor made wrong is out of scope, `Info` at most.
-- **QA gate** — QA runs after the documentation cells, so the format, build, and test workflow
-  covers the documentation as well.
+- **QA gate** — QA runs after the documentation cells, so the project's format, build, and test
+  workflow covers the documentation changes when it handles documentation, such as with a
+  Markdown linter or a documentation build; the review, not QA, checks that the documentation
+  agrees with the code.
   - When the designs list documentation files, in an attempt that runs QA-fix cells, every
     writer runs a documentation cell again once they close, to bring its documentation in line
     with the code, before QA re-runs.
@@ -376,18 +390,17 @@ that changes documentation files runs as follows:
   - Test-driven development does not apply to documentation.
   - A `FIXME:` left in a documentation cell is a comment in the file's format, such as
     `<!-- FIXME: ... -->` in Markdown.
-  - A design's restore list never names a documentation file. To return one to a turning
-    point's content, the design lists it as a documentation change instead.
+  - A design's restore list never names a documentation file. In a run with `--worktree` whose
+    handoff names a turning point, a design returns a documentation file to that turning
+    point's content by listing it as a documentation change instead.
     - Before any other change, the writer takes that content with the same restore as the
       restore list's: the file gets its content at the turning point's commit, or is deleted
       when that commit lacks it.
     - That restore is refused on the same conditions as the restore list's, and the final report
       and the result file list a refused one with its reason.
-      - The documentation reviewer does not report the content a refused restore leaves
-        untaken as missing.
+      - When that restore is refused, the documentation reviewer does not report the turning
+        point's content as a missing documentation change.
     - The writer then brings the statements about the code in line with the code.
-    - Only a design that could restore files can do so: in a run with `--worktree` whose
-      handoff names the turning point.
 
 ## Loop (/cdev:loop)
 
