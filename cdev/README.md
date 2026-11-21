@@ -87,8 +87,8 @@ before QA), runs the QA gate, and arbitrates escalations. When a reviewer and a 
 deadlock on a `Critical` finding, the reviewer escalates to the leader; if the leader cannot
 decide either, it asks the user and leaves a `FIXME:`. Judgment priority is the user's original
 task first, then the design intent; in a documentation cell, a statement of what the code does
-follows the code before either (see [Documentation](#documentation)). The authoritative review
-is `creview`, so unresolved items are left as `FIXME:`s rather than blocking.
+matches the code, which takes precedence over both (see [Documentation](#documentation)). The
+authoritative review is `creview`, so unresolved items are left as `FIXME:`s rather than blocking.
 
 Teammates persist across steps, so they keep their own context and revise incrementally.
 Feedback flows **peer to peer**; the leader holds only the roster, pairings, each cell's
@@ -333,13 +333,14 @@ that changes documentation files runs as follows:
   the files it changes, and only once every code cell has closed.
   - When the designs list no other file, no code cell runs, and the documentation cells run
     alone.
-  - When the designs list no documentation file, no documentation cell runs.
-  - When the team re-formation falls back to the Step 1 roster and that roster has no writer,
+  - When the designs list no documentation file, no documentation cell runs, except one that
+    fixes a file of a writer's scope that QA reports failing.
+  - When the team re-formation falls back to the original roster and that roster has no writer,
     the documentation the designs list is not written; the console and the final report say so.
-- **Writing to the code** — the writer writes from the designs and the code as it stands in the
+- **Matching the code** — the writer writes from the designs and the code as it stands in the
   work target, this run's changes included.
-  - A statement of what the code does follows the code, ahead of the judgment priority: the
-    task, the handoff, and the design decide what to document, not what the code does.
+  - A statement of what the code does matches the code, which takes precedence over the task,
+    the handoff, and the design: they decide only what to document.
   - Where the code departs from the design or the task, the writer describes the code and
     reports the departure. The run does not fix the code.
   - The departures appear in the final report and the result file's `doc_departures`, and
@@ -348,11 +349,12 @@ that changes documentation files runs as follows:
   run's changes included:
   - whether the behavior, interfaces, options, defaults, paths, requirements, and examples they
     describe agree with the code;
-  - whether this run's code changes made wrong a part of those files that the writer left
-    unchanged;
+  - whether this run's code changes made wrong a part of the writer's scope that the writer
+    left unchanged;
   - whether every documentation change the design asks of the writer's scope is there;
-  - whether the changed files contradict each other, and whether they follow
-    `rules/document.md`.
+  - whether the changed files contradict each other, and whether they follow the project's
+    documentation conventions and `rules/document.md`;
+  - whether each departure the writer reports holds, a `Major` when it does not.
 - **Severity** — the reviewer sends its `Critical` and `Major` findings to the writer.
   - `Critical`: a statement readers rely on that contradicts the code.
   - `Major`: a documentation change the design asks for that is missing, a departure of the
@@ -375,8 +377,9 @@ that changes documentation files runs as follows:
     `<!-- FIXME: ... -->` in Markdown.
   - A design's restore list never restores a documentation file. To return one to a turning
     point's content, the design lists it as a documentation change, and the writer writes that
-    content, read from the turning point with git. Only a design that could restore files can
-    do so: in a run with `--worktree` whose handoff names the turning point.
+    content, read from the turning point's commit with git, or deletes the file when that
+    commit lacks it. Only a design that could restore files can do so: in a run with
+    `--worktree` whose handoff names the turning point.
 
 ## Loop (/cdev:loop)
 
