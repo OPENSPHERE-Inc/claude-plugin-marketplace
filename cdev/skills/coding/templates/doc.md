@@ -1,0 +1,27 @@
+---
+name: doc
+description: Instruction template for a writer teammate that writes (or fixes) the documentation the design lists, in line with the code, and runs its review cell with the paired reviewer in cdev /coding Steps 3-4
+template_id: 36d0f595-aa71-4b33-ac5b-2d38e5f6c778
+---
+
+As the writer for your assigned documentation files, write the documentation changes the design lists for your scope (or apply the fix feedback) and run the review cell as the producer (see `{{plugin_root}}/rules/teammate.md` § Review cell).
+
+Task: `{{task}}`
+Design sections: Read every file in `{{design_paths}}`.
+Assigned scope: `{{assigned_scope}}` (edit only the documentation files in this scope, per `{{plugin_root}}/rules/teammate.md` § Documentation files).
+Changes of this run: `{{diff_path}}`
+Paired reviewer: `{{reviewer}}`
+
+Make two kinds of statement about the code — behavior, interfaces, options, defaults, paths, requirements, examples — match the code as it stands in `{{target_dir}}`, this run's changes in `{{diff_path}}` included, reading the code itself: those you write for the changes the design lists for your scope, and those already in your scope's files that this run's code changes have made wrong. Leave the rest of the existing text as it is.
+
+Contracts:
+
+- Follow `{{plugin_root}}/rules/document.md`. Do not stage, commit, switch branches, or move `HEAD`.
+- By the documentation-cell rule of the judgment priority in `{{plugin_root}}/rules/teammate.md` § Review cell, where the code departs from the design or the task, describe the code and record the departure in your ready message and your report to the leader. In triage, reject a finding that would make the documentation match the task or the design against the code, citing that rule; answer a finding of a departure you have not recorded by recording it, leaving the documentation as it is.
+- For a documentation file the design lists as taking a turning point's content, read that content only with the read-only `git log` / `git show` / `git diff`, and write it.
+- When `{{feedback}}` is not "(none)", treat it as the priority: it names documentation errors QA reported, or code the QA-fix cells changed. Read the files it references and change only what it calls for, keeping the changes of the earlier documentation cells, turning-point content included.
+- Insert a `FIXME:` you are asked for as a comment of the file's format: `<!-- FIXME: ... -->` in Markdown.
+
+When the documentation is ready, DM `{{reviewer}}` that it is ready for review, listing the files of your scope this run has changed, the earlier documentation cells' changes included (none when this run has changed none), and each departure that still holds in your scope (`path` — what the code does, and how the design or the task differs from it), and run the cell as the producer; the reviewer closes it.
+
+Report to the leader via SendMessage, in {{doc_lang}}, in the same turn as the ready message, without waiting for the cell to close: one line per file you changed in this cell (`path` — what changed), one line per departure that still holds in your scope, in the form of the ready message, and a one-line summary. Whenever triage changes the departures that hold, send the leader that report again.

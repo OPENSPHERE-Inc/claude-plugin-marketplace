@@ -1,6 +1,6 @@
 # Teammate 共通ルール
 
-cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sensei、prompt-sensei、dev-helper）が遵守する共通ルール。
+cdev `coding` スキルの teammate（architect、coder、writer、reviewer、comment-sensei、prompt-sensei、dev-helper）が遵守する共通ルール。
 
 ## 禁止事項
 
@@ -8,6 +8,7 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 - **出力スコープ / ソース編集**: teammate は自身のタスクが割り当てた対象にのみ書き込む:
   - architect: タスクが割り当てた設計ドキュメントのセクションファイル（markdown）。ソースコードは編集しない。
   - coder: 割り当てスコープ内と、プロンプト teammate がそこから外部化したテンプレートファイルのソースコード（実装、および QA / レビュー / コメントのフィードバック修正）。
+  - writer: 割り当てスコープ内のドキュメントファイル（§ ドキュメントファイル）。ソースは編集しない。
   - コメントレビュー teammate（comment-sensei）: ソースファイル内のコメントのみ編集可。ロジックは変更しない。
   - プロンプト teammate（prompt-sensei）: coder の依頼が指定する AI 向けプロンプトファイル内のセルフチェック修正と圧縮、そこから外部化するテンプレートファイル、および解釈テストの結果ファイル。それ以外のソースは編集しない。
   - QA teammate（dev-helper）: フォーマット / ビルド / テストコマンドとフォーマッタの自動修正のみ。手動のソース編集は不可。
@@ -38,6 +39,10 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 ソースコード編集時は、本ファイルと同一ディレクトリの `comment.md` に従う。AI 向けプロンプトファイルの作成・編集時は、本ファイルと同一ディレクトリの `prompt.md` に従う。人間向けドキュメント（設計ドキュメントを含む）の作成・編集時は、本ファイルと同一ディレクトリの `document.md` に従う。これらの同階層ファイルは、本ファイルを Read した絶対パスを基準に解決すること。
 
+## ドキュメントファイル
+
+ドキュメントファイルとは、本ファイルと同一ディレクトリの `document.md` が扱う人間向けドキュメントのファイルを指す。README、API リファレンス、ガイド、変更履歴、および `CLAUDE.md` / `AGENTS.md` のようなプロジェクトメモリファイル（同一ディレクトリの `prompt.md` が AI 向けプロンプトから除外しているもの）などが該当する。次のものはドキュメントファイルではない: `prompt.md` の定義による AI 向けプロンプトファイル、ソースコードとそのコメント（docstring を含む）、テスト、外部化した Markdown 出力テンプレート（それを使うプロンプトファイルの coder が持つ）、実行の設計セルが書く設計ドキュメント。ファイルは丸ごとドキュメントファイルであるか、そうでないかのどちらかとする。ドキュメントファイルを編集するのは、それをスコープに持つ writer だけである。どの writer のスコープにもないドキュメントファイルは、それを割り当てスコープに持つ coder が編集してよい。
+
 ## チーム規約
 
 - **一度だけ起動し、永続する。** teammate は一度だけ起動され、ステップをまたいでコンテキストを保持する。各タスクは、そのタスクで Read すべきテンプレートとその変数を指定したメッセージとして届く。そのテンプレートを Read し、当該タスクではそれに従う。
@@ -48,9 +53,9 @@ cdev `coding` スキルの teammate（architect、coder、reviewer、comment-sen
 
 ## レビューセル
 
-セルは producer（architect / coder）を 1 名の reviewer とペアにし、そのペアが自律的に回し、reviewer がクローズする。
+セルは producer（architect / coder / writer）を 1 名の reviewer とペアにし、そのペアが自律的に回し、reviewer がクローズする。
 
 - **producer**: 成果物を作成し、ペアの reviewer へ準備完了を DM する。reviewer が指摘を DM してきたら各指摘を triage し — 修正するか、1 行の理由で却下する — 修正を適用して、reviewer へ再レビューの準備完了を伝える。reviewer またはリーダーから求められた箇所には `FIXME:` を挿入する。
 - **reviewer**: 成果物をレビューし、対応すべき（Critical / Major）指摘 — 箇所、問題、推奨する修正方針 — を各々producer へ DM し、重大度別の件数をリーダーへ報告する。producer の triage 後に resolve する: 修正が妥当か、却下が合理的かを検証する。問題なければ、セルが resolve したことを `SendMessage(to: "main")` でリーダーへ報告する（セル id を明記）。レビュー ⇄ triage をリーダーが指定したラウンド上限まで繰り返す。
-- **判断の優先順位**（triage および resolve）: ①ユーザーの最初のタスク指示 → ②タスクが申し送りを渡した場合はその申し送り → ③前段の設計意図。
+- **判断の優先順位**（triage および resolve）: ①ユーザーの最初のタスク指示 → ②タスクが申し送りを渡した場合はその申し送り → ③前段の設計意図。ドキュメントセルでは、この優先順位より先に次の規則を適用し、この優先順位は何をドキュメント化するかだけを決める: コードが何をするかについての記述はコードに従う。コードが設計やタスクと食い違う場合も、ドキュメントはコードを述べ、writer がその食い違いを乖離として、ドキュメントにではなく ready メッセージとリーダーへの報告に記録する。ドキュメントをタスクや設計に合わせてコードと矛盾させる修正は採らない。
 - **エスカレーション**: producer が `Critical` 指摘を却下し、reviewer がなお同意できない場合、reviewer は 1 段落のサマリ（指摘、producer の理由、reviewer の立場）を添えてリーダーへエスカレーションする。リーダーは判断の優先順位に基づき裁定する。解決しないままラウンド上限に達したら、reviewer はセルをクローズし、未解決の `Critical` については producer に当該箇所へ `FIXME:` を挿入させ、残課題をリーダーへ報告する。
