@@ -175,9 +175,10 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
       restore is left as it is: overwrite or delete an untracked file or a tracked file with
       local changes, or change a path outside the path it restores. The run goes on, and the
       final report and the result file list each refused path with its reason.
-    - Documentation files are not restored. A design that returns one to a turning point's
-      content lists it as a documentation change instead, and its writer writes that content
-      (see [Documentation](#documentation)).
+    - The restore list does not name documentation files. A design that returns one to a
+      turning point's content lists it as a documentation change instead. Its writer takes that
+      content with the same restore, refused on the same conditions, then brings the statements
+      about the code in line with the code (see [Documentation](#documentation)).
   - The run does not commit when the branch or HEAD has moved since the start.
 - `--team-tag {tag}` (default none) — appends `-{tag}` to every teammate name, e.g.
   `coder-backend-g1c2`, so that a second or later run in the same session does not reuse the
@@ -329,12 +330,10 @@ that changes documentation files runs as follows:
   - Each writer is paired with a reviewer whose domain covers the documentation.
   - An architect's scope can hold code and the documentation that describes it; one design
     covers both.
-- **When documentation cells run** — only when a closed design lists documentation files among
-  the files it changes, and only once every code cell has closed.
+- **When documentation cells run** — before the QA gate, only when a closed design lists
+  documentation files among the files it changes, and only once every code cell has closed.
   - When the designs list no other file, no code cell runs, and the documentation cells run
     alone.
-  - When the designs list no documentation file, no documentation cell runs, except one that
-    fixes a file of a writer's scope that QA reports failing.
   - When the team re-formation falls back to the original roster and that roster has no writer,
     the documentation the designs list is not written; the console and the final report say so.
 - **Matching the code** — the writer writes from the designs and the code as it stands in the
@@ -345,10 +344,10 @@ that changes documentation files runs as follows:
     reports the departure. The run does not fix the code.
   - The departures appear in the final report and the result file's `doc_departures`, and
     under `/cdev:loop` among the warnings of `state.jsonl` and `loop-summary.md`.
-- **Review** — the paired reviewer checks the files the writer changed against the code, this
-  run's changes included:
-  - whether the behavior, interfaces, options, defaults, paths, requirements, and examples they
-    describe agree with the code;
+- **Review** — the paired reviewer checks the documentation of the writer's scope against the
+  code, this run's changes included:
+  - whether the behavior, interfaces, options, defaults, paths, requirements, and examples the
+    changed files describe agree with the code;
   - whether this run's code changes made wrong a part of the writer's scope that the writer
     left unchanged;
   - whether every documentation change the design asks of the writer's scope is there;
@@ -368,18 +367,24 @@ that changes documentation files runs as follows:
   covers the documentation as well.
   - In an attempt that runs QA-fix cells, once they close, every writer runs a documentation
     cell again to bring its documentation in line with the code, before QA re-runs.
-  - When QA reports a failing file in a writer's scope, that writer fixes it in such a cell.
+  - When QA reports a failing file in a writer's scope, that writer fixes it in a documentation
+    cell, even when the designs list no documentation file.
   - A failing file in no writer's scope goes to a QA-fix cell, even when it is documentation.
   - No cell changes a file after the last QA.
 - **Other rules**
   - Test-driven development does not apply to documentation.
   - A `FIXME:` left in a documentation cell is a comment in the file's format, such as
     `<!-- FIXME: ... -->` in Markdown.
-  - A design's restore list never restores a documentation file. To return one to a turning
-    point's content, the design lists it as a documentation change, and the writer writes that
-    content, read from the turning point's commit with git, or deletes the file when that
-    commit lacks it. Only a design that could restore files can do so: in a run with
-    `--worktree` whose handoff names the turning point.
+  - A design's restore list never names a documentation file. To return one to a turning
+    point's content, the design lists it as a documentation change instead.
+    - Before any other change, the writer takes that content with the same restore as the
+      restore list's: the file gets its content at the turning point's commit, or is deleted
+      when that commit lacks it.
+    - That restore is refused on the same conditions as the restore list's, and the final report
+      and the result file list a refused one with its reason.
+    - The writer then brings the statements about the code in line with the code.
+    - Only a design that could restore files can do so: in a run with `--worktree` whose
+      handoff names the turning point.
 
 ## Loop (/cdev:loop)
 
