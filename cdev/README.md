@@ -71,9 +71,9 @@ cells, a final QA gate, and the commit, reporting progress to the console:
 5. **QA gate** — the build / format / test workflow runs once, together with an interpretation
    test of the changed AI-facing prompt files when the task has any; on failure the responsible
    coder fixes it, the fix goes through a review cell, and QA re-runs (bounded loop). A failure
-   in a documentation file of a writer's scope goes to that writer instead, and after the
-   coders' fixes have changed the code, every writer brings its documentation in line with it;
-   both run as documentation cells before QA re-runs.
+   in a documentation file of a writer's scope goes to that writer instead, and when the designs
+   list documentation files, every writer brings its documentation in line with the code after
+   the coders' fixes have changed it; both run as documentation cells before QA re-runs.
 6. **Commit** — under `--commit`, `dev-helper` writes a plan that splits the run's changes
    into commits, one per logical change, and `scripts/commit-plan.py` checks the plan and makes
    the commits. When no plan can be accepted, the run commits the changes in one commit
@@ -365,8 +365,9 @@ that changes documentation files runs as follows:
   - A statement the run neither changed nor made wrong is out of scope, `Info` at most.
 - **QA gate** — QA runs after the documentation cells, so the format, build, and test workflow
   covers the documentation as well.
-  - In an attempt that runs QA-fix cells, once they close, every writer runs a documentation
-    cell again to bring its documentation in line with the code, before QA re-runs.
+  - When the designs list documentation files, in an attempt that runs QA-fix cells, every
+    writer runs a documentation cell again once they close, to bring its documentation in line
+    with the code, before QA re-runs.
   - When QA reports a failing file in a writer's scope, that writer fixes it in a documentation
     cell, even when the designs list no documentation file.
   - A failing file in no writer's scope goes to a QA-fix cell, even when it is documentation.
@@ -382,6 +383,8 @@ that changes documentation files runs as follows:
       when that commit lacks it.
     - That restore is refused on the same conditions as the restore list's, and the final report
       and the result file list a refused one with its reason.
+      - The documentation reviewer does not report the content a refused restore leaves
+        untaken as missing.
     - The writer then brings the statements about the code in line with the code.
     - Only a design that could restore files can do so: in a run with `--worktree` whose
       handoff names the turning point.
@@ -647,8 +650,9 @@ and no agent of that name is available, the skill spawns `cdev:{name}`.
   each line of a `.jsonl` they wrote is one JSON object), and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by both; requires
   `python3` — see Requirements), `worktree.sh` (creates and removes the `--worktree`
-  worktree), `restore.sh` (restores an entry of a design's restore list from its turning
-  point commit into the working tree, refusing an entry whose restore would overwrite or
+  worktree), `restore.sh` (restores an entry of a design's restore list, or a documentation
+  file a writer returns to a turning point's content, from its turning point commit into the
+  working tree, refusing an entry whose restore would overwrite or
   delete an untracked file or a tracked file with local changes, or would change a path
   outside the entry; it may overwrite ignored files, as a git checkout does, so it is used
   only in the worktree of a `--worktree` run), and `commit-plan.py` (lists the changed paths,
