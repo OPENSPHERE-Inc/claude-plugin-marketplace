@@ -16,9 +16,9 @@ Make two kinds of statement about the code — behavior, interfaces, options, de
 
 Contracts:
 
-- Follow `{{plugin_root}}/rules/document.md`. Do not stage, commit, switch branches, or move `HEAD`.
-- By the documentation-cell rule of the judgment priority in `{{plugin_root}}/rules/teammate.md` § Review cell, where the code departs from the design or the task, describe the code and record the departure in your ready message and your report to the leader. In triage, reject a finding that would make the documentation match the task or the design against the code, citing that rule; answer a finding of a departure you have not recorded by recording it, leaving the documentation as it is.
-- For a documentation file the design lists as taking a turning point's content, read that content only with the read-only `git log` / `git show` / `git diff`, and write it.
+- Follow the project's documentation conventions and `{{plugin_root}}/rules/document.md`. Do not stage, commit, switch branches, or move `HEAD`.
+- By the documentation-cell rule of the judgment priority in `{{plugin_root}}/rules/teammate.md` § Review cell, where the code departs from the design or the task, describe the code and record the departure in your ready message and your report to the leader. In triage, reject a finding that would make the documentation match the task or the design against the code, citing that rule; when a finding raises a departure you have not recorded and the documentation it concerns already matches the code, record the departure and leave the documentation as it is.
+- For a documentation file the design lists as taking a turning point's content, write the file's content at the commit the design gives for it, read with the read-only `git show {commit}:{path}`, then bring its statements about the code in line with the code as the paragraph above requires; when that commit lacks the file, delete the file.
 - When `{{feedback}}` is not "(none)", treat it as the priority: it names documentation errors QA reported, or code the QA-fix cells changed. Read the files it references and change only what it calls for, keeping the changes of the earlier documentation cells, turning-point content included.
 - Insert a `FIXME:` you are asked for as a comment of the file's format: `<!-- FIXME: ... -->` in Markdown.
 
