@@ -201,9 +201,9 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
   to one commit), the branch, the design document paths, the turning points the designs
   restore from, the refused restores with their reasons, the QA and interpretation-test
   results, the numbers of `FIXME:`s left and of escalations, whether team re-formation fell
-  back to the original roster, whether the documentation the designs list went unwritten for
-  want of a writer, the departures of the code from the design or task that writers report,
-  the step and reason when the run stopped early, and the worktree kept, if any. It is
+  back to the original roster, whether the documentation the designs list got no documentation
+  cell for want of a writer, the departures of the code from the design or task that writers
+  report, the step and reason when the run stopped early, and the worktree kept, if any. It is
   written as well when the run ends before the commit step, such as on an invalid option or an
   unmet requirement. It is not written when `.claude` or `.claude/tmp` is a symbolic link.
   - When the run writes no file, whether for that reason, on an interruption, or on a failed
@@ -326,8 +326,7 @@ The following are not documentation:
   [AI-facing prompts](#ai-facing-prompts)).
 - Source code and the comments in it, docstrings included.
 - Tests.
-- Markdown output templates externalized from a prompt file; the coder of that prompt file
-  holds them.
+- Markdown output templates externalized from a prompt file.
 - The design documents the run's design cells write.
 
 `rules/teammate.md` § Documentation files holds this definition. The architect classifies each
@@ -345,9 +344,11 @@ that changes documentation files runs as follows:
   - When the designs list no other file, no code cell runs, and the documentation cells run
     alone.
   - When the team re-formation falls back to the original roster and that roster has no writer,
-    the documentation the designs list is not written; the console, the final report, and the
-    result file's `docs_unwritten` say so, as do, under `/cdev:loop`, the warnings of
-    `state.jsonl` and `loop-summary.md`.
+    no documentation cell runs: no writer writes the documentation the designs list and no
+    documentation review checks it, though a coder whose scope holds such a file may change it
+    in its code cell. The console, the final report, and the result file's `docs_unwritten` say
+    that no documentation cell ran, as do, under `/cdev:loop`, the warnings of `state.jsonl` and
+    `loop-summary.md`.
 - **Matching the code** — the writer writes from the designs and the code as it stands in the
   work target, this run's changes included.
   - A statement of what the code does matches the code, which takes precedence over the task,
