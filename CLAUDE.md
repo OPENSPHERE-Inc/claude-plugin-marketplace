@@ -266,12 +266,20 @@ Then exercise each of the following:
   - A task that changes only documentation.
     No code cell starts.
   - A task run with `--worktree` and given a `--handoff` that names a turning point, a branch
-    with its commit, and asks to return a file to it.
+    with its commit, and asks to return a file that is not documentation, such as a script, to it.
     A coder teammate restores the file with the installed plugin's `restore.sh`.
     Check that:
     - The file has its content at the turning point's commit in the worktree the teardown
       kept, or on the branch the run reports when it kept none.
     - The coder reports no refused entry.
+  - The same task, asking instead to return a documentation file, such as a README.
+    The design lists the file as a documentation change, and a writer teammate writes the
+    file's content at the turning point's commit, read with git.
+    Check that:
+    - In the worktree the teardown kept, or on the branch the run reports when it kept none,
+      the file has its content at the turning point's commit, apart from statements about the
+      code that the writer brought in line with the code.
+    - The design's restore list does not name the file.
   - A task that spans several concerns, run with `--worktree` and `--result`.
     Check that:
     - The branch holds several commits on top of the starting HEAD.
