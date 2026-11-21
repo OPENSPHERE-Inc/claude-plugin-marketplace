@@ -148,7 +148,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
 
 ## リーダーのスコープ（本体の隔離）
 
-リーダーが保持するのは、roster（各 teammate の name → agentType）、再 spawn 待ちの teammate、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA と解釈テストの結果、設計が復元元とするターニングポイントの名前、coder が拒否されたと報告する復元エントリ、writer が報告する乖離、エスカレーションの数と未解決項目のために残した `FIXME:` の数、コミット計画のパス、`commit-plan.py` の出力（`paths` がパスを挙げたかどうか、`check` の `errors`、作ったコミットとその件名、`tree_match`）のみ。設計本体・ソース・ドキュメント本体・指摘本体・コミット計画の本体は teammate 側に留まり、リーダーはコミット計画を Read しない。指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
+リーダーが保持するのは、roster（各 teammate の name → agentType）、再 spawn 待ちの teammate、ペアリング、各セルの状態、重要度カウント、ファイルパス、QA と解釈テストの結果、設計が復元元とするターニングポイントの名前、coder と writer が拒否されたと報告する復元エントリ、writer が報告する乖離、エスカレーションの数と未解決項目のために残した `FIXME:` の数、コミット計画のパス、`commit-plan.py` の出力（`paths` がパスを挙げたかどうか、`check` の `errors`、作ったコミットとその件名、`tree_match`）のみ。設計本体・ソース・ドキュメント本体・指摘本体・コミット計画の本体は teammate 側に留まり、リーダーはコミット計画を Read しない。指摘は producer ⇄ reviewer 間を `SendMessage` で行き来する。
 
 ## 作業用ディレクトリ
 
@@ -205,7 +205,7 @@ reviewer が `Critical` の不一致をエスカレーションした場合、�
    - `writer-{slug}` 宛に `templates/doc.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`assigned_scope = {そのスコープ}`、`diff_path = {tmp_dir}/changes.txt`、`feedback = (none)`、`reviewer = {ペア reviewer の name}` を渡して `SendMessage`。
    - ペア reviewer の name 宛に `templates/doc-review.md` を指定し、`task = {task_summary}`、`design_paths = {design_paths}`、`diff_path = {tmp_dir}/changes.txt`、`assigned_scope = {その writer のスコープ}`、`producer = writer-{slug}`、`cell_task = doc-{slug}`、`review_rounds = {--review-rounds}` を渡して `SendMessage`。
 
-   ゲート: ドキュメントセルごとに、そのクローズ報告と、その writer からあなたへの報告の両方（届く順序は問わない。エスカレーションは裁定する）。writer の報告は乖離を挙げる: それぞれ、そのスコープのファイルと、そこでコードが設計やタスクとどう食い違うか。各 writer の最新の報告の乖離を `{doc_departures}` として保持する。
+   ゲート: ドキュメントセルごとに、そのクローズ報告と、その writer からあなたへの報告の両方（届く順序は問わない。エスカレーションは裁定する）。writer の報告は乖離を挙げる: それぞれ、そのスコープのファイルと、そこでコードが設計やタスクとどう食い違うか。各 writer の最新の報告の乖離を `{doc_departures}` として保持する。writer の報告が拒否されたと挙げるエントリを、それぞれのターニングポイント、パス、理由とともに、重複なく `{restore_refused}` に加える。
 
 ## ステップ 4 — QA ゲート
 
@@ -242,4 +242,4 @@ QA 検証 ⇄ 修正のループを `--qa-attempts` を上限に実行する。
 3. 作業用ディレクトリを削除する: `${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}`。
 4. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
 5. `--result` 指定時は、結果ファイルを書く（§ 結果ファイル）。
-6. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、チームの再編成がステップ 1 のロスターにフォールバックしたかどうか、ステップごとに resolve したセル（ドキュメントセルを含む）、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、ステップ 5 の手順 1 で作ったコミットの数と各件名、null でなければ `commit_warning`、coder が拒否されたと報告した復元エントリ（ターニングポイント、パス、理由）、`{doc_departures}` の乖離、ステップ 3 で writer がいなかった場合は設計が挙げるドキュメントファイルが書かれていないこと、coder が報告したプロンプトレビューの件数、ステップ 4 を実行した場合の QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、稼働していない以外の理由で `TaskStop` が失敗した teammate、および spawn の拒否でステップ 5 に来た場合は、中断したステップと、spawn が拒否されたままの teammate。加えて、`--commit-always` が QA か解釈テストの未通過のままコミットした場合はそのこと、ブランチか `HEAD` が動いたためにコミットしなかった場合はそのこと、`--result` 指定時は結果ファイルのパスか、その書き出しに失敗したことを示す。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。
+6. コンソールへ報告する: 設計ドキュメントのパス（`{design_paths}`）、ペアリングを含むチームのロスター、チームの再編成がステップ 1 のロスターにフォールバックしたかどうか、ステップごとに resolve したセル（ドキュメントセルを含む）、エスカレーションと未解決項目のために残した `FIXME:`、変更されたファイル、ステップ 5 の手順 1 で作ったコミットの数と各件名、null でなければ `commit_warning`、coder か writer が拒否されたと報告した復元エントリ（ターニングポイント、パス、理由）、`{doc_departures}` の乖離、ステップ 3 で writer がいなかった場合は設計が挙げるドキュメントファイルが書かれていないこと、coder が報告したプロンプトレビューの件数、ステップ 4 を実行した場合の QA 結果（`summary_line`、あれば `workflow_warning`、`has_prompts` が true なら `prompt_summary_line`）、未修正の QA 失敗（`environmental` が true なら環境起因である旨を明示する）、解釈テストに不合格のままのプロンプトファイル、未テストのプロンプトファイルとその理由、稼働していない以外の理由で `TaskStop` が失敗した teammate、および spawn の拒否でステップ 5 に来た場合は、中断したステップと、spawn が拒否されたままの teammate。加えて、`--commit-always` が QA か解釈テストの未通過のままコミットした場合はそのこと、ブランチか `HEAD` が動いたためにコミットしなかった場合はそのこと、`--result` 指定時は結果ファイルのパスか、その書き出しに失敗したことを示す。`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加える。

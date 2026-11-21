@@ -273,13 +273,15 @@ Then exercise each of the following:
       kept, or on the branch the run reports when it kept none.
     - The coder reports no refused entry.
   - The same task, asking instead to return a documentation file, such as a README.
-    The design lists the file as a documentation change, and a writer teammate writes the
-    file's content at the turning point's commit, read with git.
+    The design lists the file as a documentation change, and a writer teammate returns the
+    file with the installed plugin's `restore.sh`, then brings its statements about the code in
+    line with the code.
     Check that:
     - In the worktree the teardown kept, or on the branch the run reports when it kept none,
       the file has its content at the turning point's commit, apart from statements about the
       code that the writer brought in line with the code.
     - The design's restore list does not name the file.
+    - The writer reports no refused entry.
   - A task that spans several concerns, run with `--worktree` and `--result`.
     Check that:
     - The branch holds several commits on top of the starting HEAD.
