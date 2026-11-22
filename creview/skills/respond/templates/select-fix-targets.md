@@ -1,10 +1,10 @@
 ---
 name: select-fix-targets
-description: Prompt for the select-fix-targets sub-agent in /creview:respond Step 1 that extracts fix targets and their assignees from the review document metadata
+description: Prompt for the select-fix-targets sub-agent in /creview:respond Step 1 that extracts fix targets, their assignees, and their stages from the review document metadata
 template_id: 7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95
 ---
 
-As the fix-target selection owner, Read the review document `{{document_path}}`, apply the fix-target selection rule, and Write `{{tmp_dir}}/targets.jsonl`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
+As the fix-target selection owner, Read the review document `{{document_path}}`, apply the fix-target selection rule, set the stages of each fix target, and Write `{{tmp_dir}}/targets.jsonl`. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
 
 Preconditions:
 
@@ -25,6 +25,8 @@ For each fix target, extract fix_plan from the part after ` — Plan: ` on the `
 
 When the `Estimate:` line carries an ` — ADR: {filename}` segment immediately before ` — Plan: `, set `adr` to the filename; otherwise `adr` is null. The segment is not part of fix_plan.
 
-`{{tmp_dir}}/targets.jsonl` format: `{items: [{id, assignee, estimate (Maintain|Alternative), adr (filename or null), fix_plan (string array, [] when absent)}], fix_count, not_ready: [{id, reason}]}`
+Set each fix target's `stages` from what its fix requirements (sub-agent.md § Fix requirements) state: `docs` when they call for editing a documentation file (§ Documentation files of the same file), and `code` when they call for editing any other file. An ADR file counts as neither. Judge only from what they state and the paths they name, without reading the source, searching the repository, or reading the project's CLAUDE.md, and count an edit of a file whose kind that leaves unclear as `code`. When they show neither, set `["code"]`.
 
-Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}` (`by_assignee` groups the fix targets by assignee; `not_ready` is the same as in targets.jsonl, each `reason` a short fixed phrase; do not include finding bodies). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.
+`{{tmp_dir}}/targets.jsonl` format: `{items: [{id, assignee, stages (["code"], ["docs"], or ["code", "docs"]), estimate (Maintain|Alternative), adr (filename or null), fix_plan (string array, [] when absent)}], fix_count, not_ready: [{id, reason}]}`
+
+Return value: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], code_stage: [{assignee, ids: [id, ...]}], docs_stage: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}` (`by_assignee` groups all the fix targets by assignee; `code_stage` and `docs_stage` group by assignee the fix targets whose `stages` includes `code` and `docs` respectively; `not_ready` is the same as in targets.jsonl, each `reason` a short fixed phrase; do not include finding bodies). Include `template_id` (Read from this template's frontmatter) verbatim in the return value.
