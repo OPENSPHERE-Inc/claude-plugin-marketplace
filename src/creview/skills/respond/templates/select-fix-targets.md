@@ -1,10 +1,10 @@
 ---
 name: select-fix-targets
-description: /creview:respond ステップ 1 でレビュードキュメントのメタデータから修正対象とその assignee を抽出する select-fix-targets サブエージェント向けプロンプト
+description: /creview:respond ステップ 1 でレビュードキュメントのメタデータから修正対象とその assignee・段を抽出する select-fix-targets サブエージェント向けプロンプト
 template_id: 7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95
 ---
 
-修正対象選別の担当として、レビュードキュメント `{{document_path}}` を Read し、修正対象選別ルールを適用し、`{{tmp_dir}}/targets.jsonl` を Write する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
+修正対象選別の担当として、レビュードキュメント `{{document_path}}` を Read し、修正対象選別ルールを適用し、各修正対象の段を定め、`{{tmp_dir}}/targets.jsonl` を Write する。`{{plugin_root}}/rules/sub-agent.md` を Read し共通禁止事項を遵守する。
 
 前提条件:
 
@@ -25,6 +25,8 @@ template_id: 7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95
 
 `Estimate:` 行が ` — Plan: ` の直前に ` — ADR: {ファイル名}` セグメントを持つ場合、そのファイル名を `adr` に設定する。無ければ `adr` は null。このセグメントは fix_plan には含めない。
 
-`{{tmp_dir}}/targets.jsonl` 形式: `{items: [{id, assignee, estimate (Maintain|Alternative), adr (ファイル名または null), fix_plan (文字列配列、無ければ [])}], fix_count, not_ready: [{id, reason}]}`
+各修正対象の `stages` は、その修正要件（sub-agent.md § 修正要件）が述べることから定める: ドキュメントファイル（同ファイルの § ドキュメントファイル）の編集を求めるなら `docs`、それ以外のファイルの編集を求めるなら `code` とする。ADR ファイルはどちらにも数えない。判定は修正要件が述べることと挙げるパスだけから行い、ソースを読まず、リポジトリを探さず、プロジェクトの CLAUDE.md も読まない。それで種類が分からないファイルの編集（名前からドキュメントかプロンプトテンプレートか分からない Markdown ファイルなど）は `code` と `docs` の両方に数える。修正要件がどちらも示さない場合は `["code"]` とする。
 
-戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}`（`by_assignee` は修正対象を assignee 単位でグルーピングする。`not_ready` は targets.jsonl と同じ内容で、各 `reason` は短い定型文とする。指摘本文は含めない）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
+`{{tmp_dir}}/targets.jsonl` 形式: `{items: [{id, assignee, stages (["code"]、["docs"]、または ["code", "docs"]), estimate (Maintain|Alternative), adr (ファイル名または null), fix_plan (文字列配列、無ければ [])}], fix_count, not_ready: [{id, reason}]}`
+
+戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], code_stage: [{assignee, ids: [id, ...]}], docs_stage: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}`（`by_assignee` はすべての修正対象を assignee 単位でグルーピングする。`code_stage` と `docs_stage` は、`stages` がそれぞれ `code`、`docs` を含む修正対象を assignee 単位でグルーピングする。`not_ready` は targets.jsonl と同じ内容で、各 `reason` は短い定型文とする。指摘本文は含めない）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

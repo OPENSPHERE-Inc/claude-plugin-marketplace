@@ -30,7 +30,8 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 `${CLAUDE_PLUGIN_ROOT}/rules/doc-worktree.md` に従う。その `plugin_root` 変数は `${CLAUDE_PLUGIN_ROOT}` とし、`doc-checkout` の末尾に `--fix-branch` を付ける。`pr_worktree` が true の場合は、次の PR ワークツリー向けオーバーライドを追加する:
 
 - フォーマット・ビルド・テスト検証サブエージェントへ: `build-format-detection.md の段階 2 は、{target_dir} 配下のファイルからではなく、{main_root}/CLAUDE.md、次に {main_root}/README.md から解決する。コマンドは通常どおり {target_dir} で実行する。`
-- `trust` が `off` のとき、select-fix-targets サブエージェントへ: `location または fix_plan が、{target_dir} に置いていないエージェントファイルのいずれかのパスを指す修正対象は、--trust なしでレビューしたためそのファイルをチェックアウトしていないという理由で not_ready へ移す。`
+- 修正サブエージェントへ: `プロジェクトの CLAUDE.md が求めることは、{target_dir} 配下のファイルからではなく、{main_root}/CLAUDE.md と、その求めについてそれが指す {main_root} 配下のファイルから取る。`
+- `trust` が `off` のとき、select-fix-targets サブエージェントへ: `修正に、{target_dir} に置いていないエージェントファイルのいずれかを必要とする修正対象は、--trust なしでレビューしたためそのファイルをチェックアウトしていないという理由で not_ready へ移す。修正がそのようなファイルを必要とするのは、修正対象の location がそのファイルにある場合、修正要件（sub-agent.md § 修正要件）がそのファイルの編集を求める場合、または修正要件がそのファイルのプルリクエスト版の内容に依存する場合である。そのようなパスを名指すことも、修正サブエージェントが {main_root} から取るプロジェクトの CLAUDE.md の求めに従うことも、それだけではその必要に当たらない。`
 
 `merge_base` が null でない場合は、解釈テストサブエージェントに次のオーバーライドを追加する。`{target_dir}` はその値で書く: `各テスト担当のプロンプトに次を加える: {target_dir} 配下のファイルだけを開く。プロンプトが指す {target_dir} 外のファイルは利用できないものとし、利用できないファイルを読めないことだけを理由に項目を unclear と報告しない。` `pr_worktree` が true かつ `trust` が `off` の場合は、そのオーバーライドの末尾に次を加える: `{target_dir} 配下の CLAUDE.md、CLAUDE.local.md、AGENTS.md、.mcp.json、.claude も、大文字小文字を問わずどの深さでも利用できないものとする。{target_dir} はそれらを除外している。`
 
@@ -113,17 +114,20 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 
 `{tmp_dir}` を作成する前に、`git rev-parse --show-prefix` の出力が空でない（セッションがリポジトリのサブディレクトリにある）場合は、スキルにはリポジトリルートでの起動が必要である旨のエラーを表示してスキルを終了する。スキルを直接起動した場合は、`{tmp_dir}` を作成した後にドキュメントのコードの場所を決める（§ ワークツリー）。
 
-`Agent(subagent_type="general-purpose", prompt=...)` で起動する。Sub はレビュードキュメントを Read し、修正対象選別ルールを適用し、`{tmp_dir}/targets.jsonl` を Write する。
+`Agent(subagent_type="general-purpose", prompt=...)` で起動する。Sub はレビュードキュメントを Read し、修正対象選別ルールを適用し、各修正を行う段を定め、`{tmp_dir}/targets.jsonl` を Write する。
 
-テンプレート `select-fix-targets.md`、`template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}` — 本文は読み込まない。`not_ready` はステップ 7 のために保持する。
+テンプレート `select-fix-targets.md`、`template_id` `7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、オーバーライド `(該当なし)`。戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], code_stage: [{assignee, ids: [id, ...]}], docs_stage: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}` — 本文は読み込まない。`code_stage` と `docs_stage` はステップ 2、`by_assignee` はステップ 5、`not_ready` はステップ 7 のために保持する。
 
 `fix_count == 0` の場合、ステップ 2〜5 をスキップしてステップ 6（編纂。反映するものなし → 「修正対象なし」を報告）へ進む。
 
-## ステップ 2 — 修正（専門家サブエージェントへ並列委譲）
+## ステップ 2 — 修正（コード修正段、次にドキュメント修正段）
 
-起動前に、`${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/baseline.txt` を実行する。非ゼロ終了の場合は、そのエラーで中止する。`by_assignee` の各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で修正サブエージェントを起動する。異なる assignee は並列起動する。同一 assignee 内の ids はテンプレートの並列化制約に従う。
+どちらの段よりも前に、`${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/baseline.txt` を実行する。非ゼロ終了の場合は、そのエラーで中止する。続いてコード修正段を実行し、その修正サブエージェントがすべて戻った後にドキュメント修正段を実行する。グループのない段は省略する。段の各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で修正サブエージェントを起動する。1 つのグループ内の ids はテンプレートの並列化制約に従う。
 
-テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`ids = {ids}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path}, ...], template_id}` — `items` のみを集め、status 本文は読み込まない。
+1. コード修正段: `code_stage` のグループを並列に起動し、`stage = code` と `diff_path = (none)` を渡す。
+2. ドキュメント修正段: `docs_stage` のグループに、コード修正段の `items` が `docs_left: true` を返した各 id を、その id をコード修正段で修正した assignee のグループへ加えたもの（`docs_stage` にその assignee のグループがなければ新しく作る）。この段にグループがあるかは、この追加の後に判定する。各グループを、前のグループが戻ってから起動する。異なる assignee のグループが同じドキュメントファイルを編集し得るためである。最初に `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/code-changes.txt` を実行し、`stage = docs` と `diff_path = {tmp_dir}/code-changes.txt` を渡す。非ゼロ終了の場合は、警告を出さずに `diff_path = (none)` を渡す。差分は、コードが変わった箇所をこの段に示す手がかりにすぎない。
+
+テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`ids = {ids}`、`stage = {段ごと、上記のとおり}`、`diff_path = {段ごと、上記のとおり}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path, docs_left}, ...], template_id}` — `items` のみを集め、コード修正段の `docs_left` はドキュメント修正段のために保持する。status 本文は読み込まない。
 
 ## ステップ 3 — コメントレビューとプロンプトレビュー（comment-sensei と prompt-sensei のサブエージェントへ委譲）
 
