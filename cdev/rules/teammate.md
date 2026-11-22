@@ -1,6 +1,6 @@
 # Teammate Common Rules
 
-Common rules that teammates of the cdev `coding` skill (architect, coder, reviewer, comment-sensei, prompt-sensei, dev-helper) observe.
+Common rules that teammates of the cdev `coding` skill (architect, coder, writer, reviewer, comment-sensei, prompt-sensei, dev-helper) observe.
 
 ## Prohibitions
 
@@ -8,6 +8,7 @@ Common rules that teammates of the cdev `coding` skill (architect, coder, review
 - **Output scope / source editing**: A teammate writes only to the target its task assigns:
   - Architect: the design-document section file the task assigns (markdown). No source-code edits.
   - Coder: source code (implementation, plus fixes for QA / review / comment feedback) within its assigned scope and the template files the prompt teammate externalized from it.
+  - Writer: the documentation files (§ Documentation files) in its assigned scope. No source edits.
   - Comment-review teammate (comment-sensei): comment-only edits in source files; no logic changes.
   - Prompt teammate (prompt-sensei): self-check fixes and compression in the AI-facing prompt files a coder's request names, the template files externalized from them, and the interpretation-test result file; no other source edits.
   - QA teammate (dev-helper): format / build / test commands and formatter auto-fixes only; no manual source edits.
@@ -38,6 +39,10 @@ Communicate via `SendMessage`. Destination terms and resolution:
 
 When editing source code, follow `comment.md` in the same directory as this file. When writing or editing an AI-facing prompt file, follow `prompt.md` in the same directory as this file. When writing or editing human-facing documentation (including design documents), follow `document.md` in the same directory as this file. Resolve these siblings relative to the absolute path you Read this file from.
 
+## Documentation files
+
+A documentation file is a file of the human-facing documentation that `document.md` in the same directory as this file governs, such as a README, an API reference, a guide, a changelog, and a project memory file such as `CLAUDE.md` / `AGENTS.md`, which `prompt.md` in the same directory leaves out of the AI-facing prompts. None of the following is a documentation file: an AI-facing prompt file as `prompt.md` defines it, source code and its comments (docstrings included), a test, an externalized Markdown output template, and a design document the run's design cells write. A file is a documentation file or not as a whole. Apart from the QA teammate's formatter auto-fixes, only the writer whose scope holds a documentation file edits it; a documentation file in no writer's scope may be edited by a coder whose assigned scope holds it.
+
 ## Team conventions
 
 - **Spawn once, persist.** A teammate is spawned once and keeps its context across steps. Each task arrives as a message that names the template to Read for that task plus its variables; Read that template and follow it for that task.
@@ -48,9 +53,9 @@ When editing source code, follow `comment.md` in the same directory as this file
 
 ## Review cell
 
-A cell pairs a producer (architect / coder) with one reviewer; the pair runs it autonomously and the reviewer closes it.
+A cell pairs a producer (architect / coder / writer) with one reviewer; the pair runs it autonomously and the reviewer closes it.
 
 - **Producer**: create the output, then DM the paired reviewer that it is ready. When the reviewer DMs findings, triage each — fix it, or reject it with a one-line reason — apply the fixes, and tell the reviewer you are ready for re-review. Insert a `FIXME:` at a location when the reviewer or leader asks for one.
 - **Reviewer**: review the output; DM each actionable (Critical / Major) finding — location, issue, recommended fix direction — to the producer; report severity counts to the leader. After the producer triages, resolve: verify the fixes are adequate and the rejections reasonable. When satisfied, report the cell resolved to the leader via `SendMessage(to: "main")` (naming the cell id). Repeat review ⇄ triage up to the round cap the leader gave.
-- **Judgment priority** (triage and resolve): (1) the user's original task instructions, then (2) the handoff, when your task passes one, then (3) the upstream design intent.
+- **Judgment priority** (triage and resolve): (1) the user's original task instructions, then (2) the handoff, when your task passes one, then (3) the upstream design intent. In a documentation cell, one rule comes before this priority, which decides only what to document: a statement of what the code does follows the code; where the code departs from the design or the task, the documentation still describes the code and the writer records the departure in its ready message and its report to the leader, not in the documentation, and no fix that makes the documentation match the task or the design against the code is adopted.
 - **Escalation**: if the producer rejects a `Critical` finding and the reviewer still disagrees, the reviewer escalates to the leader with a one-paragraph summary (the finding, the producer's reason, the reviewer's position); the leader arbitrates by the judgment priority. On reaching the round cap without resolution, the reviewer closes the cell, has the producer insert a `FIXME:` at the location for any unresolved `Critical`, and reports the residual to the leader.

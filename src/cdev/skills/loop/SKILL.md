@@ -109,7 +109,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
   - `skipped`: S と H のツリーが同じとき `"no-change"`、それ以外は null。
   - `fallback`: § 積み直し がフォールバックした場合はその理由（`{doc_lang}`）、それ以外は null。
 - `end`: ステップ 6 で書く。`{"kind": "normal"|"error", "step": "<止まったステップ>", "error": "<文字列>"|null, "output_branch": "<名前>"|null}`。
-- `warnings`: 短い警告文だけを書く。`coding-result.jsonl` からは、未通過の QA（環境起因かどうかを添える）、解釈テストが未通過または未テストとしたファイル、拒否された復元エントリ（`restore_refused`）、チーム再編成のフォールバック、null でない `commit_warning`。`rounds-result.jsonl` からは、その `workflow_warnings` と `prompt_warnings`。あなた自身のものとしては、発散調査レポートの欠落、ポストモーテムの代替判定、積み直しのフォールバック、成果物ブランチの作成失敗。`source` は `coding`、`review`、`postmortem`、`cleanup`、`finish` のいずれか。
+- `warnings`: 短い警告文だけを書く。`coding-result.jsonl` からは、未通過の QA（環境起因かどうかを添える）、解釈テストが未通過または未テストとしたファイル、拒否された復元エントリ（`restore_refused`）、チーム再編成のフォールバック、設計が挙げるドキュメントに writer の不在でドキュメントセルが回らなかったこと（`docs_unwritten`）、null でない `commit_warning`、`doc_departures` の各エントリ（writer が報告した、コードの設計やタスクからの乖離）。`rounds-result.jsonl` からは、その `workflow_warnings` と `prompt_warnings`。あなた自身のものとしては、発散調査レポートの欠落、ポストモーテムの代替判定、積み直しのフォールバック、成果物ブランチの作成失敗。`source` は `coding`、`review`、`postmortem`、`cleanup`、`finish` のいずれか。
 
 コンテキストから自分の位置が分からない場合は、このファイルと、そのトップレベルの `skill_dir` にある `SKILL.md` を Read する。Read した `SKILL.md` の `CLAUDE_PLUGIN_ROOT` のプレースホルダーは展開されないまま残る: Read した元の `skill_dir` の 2 階層上のディレクトリとみなす。このスキルでも内側スキルでも同じとする。`position` から続ける:
 

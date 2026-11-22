@@ -11,7 +11,7 @@ implementation to review.
 
 | Command | Purpose |
 |---------|---------|
-| `/cdev:coding` | Implement a coding task end to end: form a standing team, then run design → design review → coding → QA → code review with feedback loops. AI-facing prompt files also get a self-check, compression, and an interpretation test. |
+| `/cdev:coding` | Implement a coding task end to end: form a standing team, then run design cells → code cells → documentation cells → a QA gate, each cell a producer paired with a reviewer, with feedback loops. AI-facing prompt files also get a self-check, compression, and an interpretation test. |
 | `/cdev:loop` | Take a coding task through `/cdev:coding` and `/creview:rounds` without asking for decisions: send the work back to `/cdev:coding` when the review diverges, and decide in a post-mortem whether to finish or start over, each within a limit. See [Loop](#loop-cdevloop). |
 
 Invoke either with a task description, e.g. `/cdev:coding add a rate limiter to the
@@ -34,8 +34,8 @@ back to `/cdev:coding` on a divergence and by starting over after a post-mortem.
 
 In `/cdev:coding`, the leader (team lead) spawns each selected specialist once as a named,
 persistent background teammate (`Agent` with `run_in_background`), pairs each producer with a
-reviewer, and drives two cell steps, with a team re-formation between them, a final QA gate,
-and the commit, reporting progress to the console:
+reviewer, and drives the design cells, a team re-formation, the code cells, the documentation
+cells, a final QA gate, and the commit, reporting progress to the console:
 
 1. **Design cells** — each architect writes a design for its area, then its **paired
    reviewer** reviews it; the architect **triages** each finding (fix, or reject with a
@@ -47,39 +47,62 @@ and the commit, reporting progress to the console:
    its procedure in more detail than its goal and contracts need — and the reviewer raises
    any it finds as Major or higher.
 2. **Team re-formation** — once every design cell has closed, `dev-helper` reads the designs
-   and the roster, and re-forms the coders so that each file the designs add or change lies in
-   the scope of exactly one coder, paired with a reviewer matching the file's domain. As in
-   team formation, prompt files go only to coders whose scope holds no other source. A test the
-   design adds goes to the coder that holds the file it tests, unless that file is a prompt
-   file or no coder holds it. A file under the scope of a coder that may not hold it moves out
-   of that scope, and a file no existing coder can hold goes to a new coder. The leader starts
-   the coders and reviewers the updated roster adds. If the updated roster is still unusable
-   after one retry, coding starts with the original roster, and the final report says so.
+   and the roster, and re-forms the coders and writers so that each file the designs add or
+   change lies in the scope of exactly one of them, paired with a reviewer matching the file's
+   domain.
+   - Documentation files go only to writers, whose scope holds no other file (see
+     [Documentation](#documentation)).
+   - As in team formation, prompt files go only to coders whose scope holds no other source.
+   - A test the design adds goes to the coder that holds the file it tests, unless that file is
+     a prompt file or a documentation file, or no coder holds it.
+   - A file under the scope of a coder or writer that may not hold it moves out of that scope,
+     and a file no existing coder or writer can hold goes to a new one.
+   - The leader starts the coders, writers, and reviewers the updated roster adds.
+   - If the updated roster is still unusable after one retry, coding starts with the original
+     roster, and the final report says so.
 3. **Code cells** — each coder implements its scope (test-first when the project has a test
-   suite); `comment-sensei` fixes comment violations when comments are present, and
-   `prompt-sensei` self-checks and compresses AI-facing prompt files (see
-   [AI-facing prompts](#ai-facing-prompts)); the **paired reviewer** reviews, the coder triages,
-   the reviewer resolves and closes the cell.
-4. **QA gate** — the build / format / test workflow runs once, together with an interpretation
-   test of the changed AI-facing prompt files when the task has any; on failure the responsible
-   coder fixes it, the fix goes through a review cell, and QA re-runs (bounded loop).
-5. **Commit** — under `--commit`, `dev-helper` writes a plan that splits the run's changes
+   suite).
+   - `comment-sensei` fixes comment violations when comments are present, and `prompt-sensei`
+     self-checks and compresses AI-facing prompt files (see
+     [AI-facing prompts](#ai-facing-prompts)).
+   - The **paired reviewer** reviews, the coder triages, the reviewer resolves and closes the
+     cell.
+   - When the designs list no file other than documentation files, no code cell runs.
+4. **Documentation cells** — when the designs list documentation files, once every code cell
+   has closed, each writer writes the documentation files of its scope from the designs and the
+   code as it now stands, this run's changes included; the **paired reviewer** reviews them,
+   checking that they agree with the code, the writer triages, the reviewer resolves and closes
+   the cell.
+5. **QA gate** — the build / format / test workflow runs once, together with an interpretation
+   test of the changed AI-facing prompt files when the task has any.
+   - On failure the responsible coder fixes it, the fix goes through a review cell, and QA
+     re-runs (bounded loop).
+   - A failure in a documentation file of a writer's scope goes to that writer instead, who
+     fixes it in a documentation cell before QA re-runs.
+   - When the designs list documentation files, every writer brings its documentation in line
+     with the code after the coders' fixes have changed it, in a documentation cell before QA
+     re-runs.
+6. **Commit** — under `--commit`, `dev-helper` writes a plan that splits the run's changes
    into commits, one per logical change, and `scripts/commit-plan.py` checks the plan and makes
    the commits. When no plan can be accepted, the run commits the changes in one commit
    instead.
 
-A cell runs autonomously: the producer (architect / coder) and its paired reviewer loop
-review ⇄ triage ⇄ resolve until the reviewer closes the cell. The leader sets up the cells,
-enforces the step gates (all design cells close and the team is re-formed before coding; all
-code cells close before QA), runs the QA gate, and arbitrates escalations. When a reviewer and
-a producer deadlock on a `Critical` finding, the reviewer escalates to the leader; if the
-leader cannot decide either, it asks the user and leaves a `FIXME:`. Judgment priority is the
-user's original task first, then the design intent. The authoritative review is `creview`, so
+A cell runs autonomously: the producer (architect / coder / writer) and its paired reviewer
+loop review ⇄ triage ⇄ resolve until the reviewer closes the cell. The leader sets up the
+cells, enforces the step gates (all design cells close and the team is re-formed before coding;
+all code cells close before the documentation cells; all code and documentation cells close
+before QA), runs the QA gate, and arbitrates escalations. When a reviewer and a producer
+deadlock on a `Critical` finding, the reviewer escalates to the leader; if the leader cannot
+decide either, it asks the user and leaves a `FIXME:`. Judgment priority is the user's original
+task first, then the handoff when `--handoff` is given, then the design intent; in a
+documentation cell, a statement of what the code does matches the code, which takes precedence
+over all three (see [Documentation](#documentation)). The authoritative review is `creview`, so
 unresolved items are left as `FIXME:`s rather than blocking.
 
 Teammates persist across steps, so they keep their own context and revise incrementally.
 Feedback flows **peer to peer**; the leader holds only the roster, pairings, each cell's
-status, severity counts, paths, and the QA and interpretation-test results, never the bodies.
+status, severity counts, paths, the QA and interpretation-test results, and the departures of
+the code from the design or task that writers report, never the bodies.
 
 ## Requirements
 
@@ -99,8 +122,9 @@ test can count toward the cap. The leader spawns a refused teammate again the ne
 teammate's report or completion notice wakes it; when no teammate is left to wake it, the run
 ends with the error. In that case, wait for other agents in the session to finish, or raise the
 cap, and run again. The run commits nothing, unless `--commit-always` is on and the refusal
-came during the QA gate, after every code cell had closed: the run then commits as that option
-describes, and what follows about uncommitted changes and a kept worktree does not apply.
+came during the QA gate, after every code and documentation cell had closed: the run then
+commits as that option describes, and what follows about uncommitted changes and a kept
+worktree does not apply.
 Without `--worktree`, changes made before the error stay uncommitted in the working tree, and
 the files the run created stay untracked. The next run's clean-working-tree check counts
 untracked files as well and ignores `.claude/tmp/`, `.claude/worktrees/`, the `--output`
@@ -160,23 +184,28 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
       restore is left as it is: overwrite or delete an untracked file or a tracked file with
       local changes, or change a path outside the path it restores. The run goes on, and the
       final report and the result file list each refused path with its reason.
+    - The restore list does not name documentation files. A design that returns one to a
+      turning point's content lists it as a documentation change instead. Its writer takes that
+      content with the same restore, refused on the same conditions, then brings the statements
+      about the code in line with the code (see [Documentation](#documentation)).
   - The run does not commit when the branch or HEAD has moved since the start.
 - `--team-tag {tag}` (default none) — appends `-{tag}` to every teammate name, e.g.
   `coder-backend-g1c2`, so that a second or later run in the same session does not reuse the
   names of an earlier run's teammates. The tag is 1 to 16 letters, digits, and hyphens,
   starting with a letter or a digit; keeping it unused in the session is up to the caller.
-- `--commit-always` (default off; implies `--commit`) — commit after every code cell has
-  closed, even when QA or the interpretation test has not passed. The result file and the
-  final report say what did not pass.
+- `--commit-always` (default off; implies `--commit`) — commit after every code and
+  documentation cell has closed, even when QA or the interpretation test has not passed. The
+  result file and the final report say what did not pass.
 - `--result {path}` (default none) — write a JSON result at the end: whether the run committed,
   the last commit, the number of commits, any warning from the commit step (such as a fallback
   to one commit), the branch, the design document paths, the turning points the designs
   restore from, the refused restores with their reasons, the QA and interpretation-test
   results, the numbers of `FIXME:`s left and of escalations, whether team re-formation fell
-  back to the original roster, the step and reason when the run stopped early, and the
-  worktree kept, if any. It is written as well when the run ends before the commit step, such
-  as on an invalid option or an unmet requirement. It is not written when `.claude` or
-  `.claude/tmp` is a symbolic link.
+  back to the original roster, whether the documentation the designs list got no documentation
+  cell for want of a writer, the departures of the code from the design or task that writers
+  report, the step and reason when the run stopped early, and the worktree kept, if any. It is
+  written as well when the run ends before the commit step, such as on an invalid option or an
+  unmet requirement. It is not written when `.claude` or `.claude/tmp` is a symbolic link.
   - When the run writes no file, whether for that reason, on an interruption, or on a failed
     write, a file already at the path stays and can be mistaken for this run's result. Pass a
     path where no file exists, or delete the file before the run, and treat a missing file as
@@ -224,7 +253,8 @@ it remains.
 A file an AI agent reads as its instructions — an agent definition, a skill (`SKILL.md`), a
 slash command, a rule, or a prompt template a skill has an agent read — is an AI-facing prompt
 (`rules/prompt.md`); project memory files such as `CLAUDE.md` and Markdown output templates are
-not. The skill changes only prompt files in the repository: those under `~/.claude/` or
+not. Project memory files are documentation instead (see [Documentation](#documentation)).
+The skill changes only prompt files in the repository: those under `~/.claude/` or
 elsewhere outside it are out of reach, since a teammate writes only inside its work target.
 Like any other run, a run that edits prompt files needs a clean working tree unless it uses
 `--worktree`. A task that creates or edits a prompt file goes through the same design cells,
@@ -281,6 +311,97 @@ code cells, and QA gate as any other task, with these additions:
     launched, is reported as untested; it goes through no QA-fix cell, and the run does not pass
     the test.
   - The test runs in the same QA attempts as the build and tests, bounded by `--qa-attempts`.
+
+## Documentation
+
+Documentation is the human-facing documentation that `rules/document.md` governs:
+
+- Files such as a README, an API reference, a guide, or a change log.
+- Project memory files such as `CLAUDE.md` and `AGENTS.md`, which `rules/prompt.md` leaves out
+  of AI-facing prompts.
+
+The following are not documentation:
+
+- AI-facing prompt files, which go through the code cells (see
+  [AI-facing prompts](#ai-facing-prompts)).
+- Source code and the comments in it, docstrings included.
+- Tests.
+- Markdown output templates externalized from a prompt file.
+- The design documents the run's design cells write.
+
+`rules/teammate.md` § Documentation files holds this definition. The architect classifies each
+file its design lists, as a whole file, and the design review checks the classification. A task
+that changes documentation files runs as follows:
+
+- **Writers** — team formation and the team re-formation treat documentation as a domain of its
+  own.
+  - Documentation files go only to writers (`writer-{slug}`), whose scope holds no other file.
+  - Each writer is paired with a reviewer whose domain covers the documentation.
+  - An architect's scope can hold code and the documentation that describes it; one design
+    covers both.
+- **When documentation cells run** — before the QA gate, only when a closed design lists
+  documentation files among the files it changes, and only once every code cell has closed.
+  - When the designs list no other file, no code cell runs, and the documentation cells run
+    alone.
+  - When the team re-formation falls back to the original roster and that roster has no writer,
+    no documentation cell runs: no writer writes the documentation the designs list and no
+    documentation review checks it, though a coder whose scope holds such a file may change it
+    in its code cell. The console, the final report, and the result file's `docs_unwritten` say
+    that no documentation cell ran, as do, under `/cdev:loop`, the warnings of `state.jsonl` and
+    `loop-summary.md`.
+- **Matching the code** — the writer writes from the designs and the code as it stands in the
+  work target, this run's changes included.
+  - A statement of what the code does matches the code, which takes precedence over the task,
+    the handoff, and the design: they decide only what to document.
+  - Where the code departs from the design or the task, the writer describes the code and
+    reports the departure. The run does not fix the code.
+  - The departures appear in the final report and the result file's `doc_departures`, and
+    under `/cdev:loop` among the warnings of `state.jsonl` and `loop-summary.md`.
+- **Review** — the paired reviewer checks the documentation of the writer's scope against the
+  code, this run's changes included:
+  - whether the behavior, interfaces, options, defaults, paths, requirements, and examples the
+    changed files describe agree with the code;
+  - whether this run's code changes made wrong a part of the writer's scope that the writer
+    left unchanged;
+  - whether every documentation change the design asks of the writer's scope is there;
+  - whether the changed files contradict each other, and whether they follow the project's
+    documentation conventions and `rules/document.md`;
+  - whether each departure the writer reports holds, a `Major` when it does not.
+- **Severity** — the reviewer sends its `Critical` and `Major` findings to the writer.
+  - `Critical`: a statement readers rely on that contradicts the code.
+  - `Major`: a documentation change the design asks for that is missing, a departure of the
+    code from the design or the task that the writer has not reported, a statement that leads
+    readers to use the code wrongly, or notation that breaks rendering.
+  - `Minor` or below: wording or presentation that does not mislead.
+  - No finding asks to make the documentation match the design or the task against the code.
+    An unreported departure is settled by reporting it.
+  - A statement the run neither changed nor made wrong is out of scope, `Info` at most.
+- **QA gate** — QA runs after the documentation cells, so the project's format, build, and test
+  workflow covers the documentation changes when it handles documentation, such as with a
+  Markdown linter or a documentation build; the review, not QA, checks that the documentation
+  agrees with the code.
+  - When the designs list documentation files, in an attempt that runs QA-fix cells, every
+    writer runs a documentation cell again once they close, to bring its documentation in line
+    with the code, before QA re-runs.
+  - When QA reports a failing file in a writer's scope, that writer fixes it in a documentation
+    cell, even when the designs list no documentation file.
+  - A failing file in no writer's scope goes to a QA-fix cell, even when it is documentation.
+  - No cell changes a file after the last QA.
+- **Other rules**
+  - Test-driven development does not apply to documentation.
+  - A `FIXME:` left in a documentation cell is a comment in the file's format, such as
+    `<!-- FIXME: ... -->` in Markdown.
+  - A design's restore list never names a documentation file. In a run with `--worktree` whose
+    handoff names a turning point, a design returns a documentation file to that turning
+    point's content by listing it as a documentation change instead.
+    - Before any other change, the writer takes that content with the same restore as the
+      restore list's: the file gets its content at the turning point's commit, or is deleted
+      when that commit lacks it.
+    - That restore is refused on the same conditions as the restore list's, and the final report
+      and the result file list a refused one with its reason.
+      - When that restore is refused, the documentation reviewer does not report the turning
+        point's content as a missing documentation change.
+    - The writer then brings the statements about the code in line with the code.
 
 ## Loop (/cdev:loop)
 
@@ -442,7 +563,8 @@ In the names below, `{branch}` is the `--branch` value, `g` the generation, and 
 - `loop-summary.md`, written at the end, lists each cycle's end reasons, the send-backs, the
   post-mortem verdicts and the adopted generation, the turning points and how to delete them,
   the warnings, and any worktree left behind. The warnings include, for example, those of QA,
-  the build, and the interpretation test, and a failure to create the output branch.
+  the build, and the interpretation test, the departures of the code from the design or task
+  that `/cdev:coding`'s writers report, and a failure to create the output branch.
   - With `--cleanup`, it also lists the restack's commits and their subjects, or why nothing
     was restacked, and states that the original history stays on the work branch and that the
     commits before the last were not built or tested.
@@ -496,7 +618,7 @@ Two failures at the end do not stop the run; it still ends normally, with a warn
 - The main working tree's sources are never changed. Its uncommitted changes are not part of
   the starting commit and are left out of the run; the loop says so at the start.
 
-## Architect / coder / reviewer agents
+## Architect / coder / writer / reviewer agents
 
 Apart from the comment and prompt specialists listed under Bundled agents, this plugin does not
 bundle specialist reviewers. The `team-analysis`
@@ -504,22 +626,23 @@ task enumerates agents recursively (`**/*.md`, including subdirectories) from th
 **destination project** (`.claude/agents/`) → **user** (`~/.claude/agents/`) → **plugin
 bundle**, reads each agent's frontmatter `name` / `description`, and assigns the best-matching
 specialists to the **reviewer** role — each reviewer covers a producer's domain, and an
-out-of-domain specialty is never bundled onto one reviewer. **Architects and coders always run
-as `general-purpose`**: some specialist agents emit malformed tool calls and stall, and a
-producer works to its assigned scope and the project conventions while the specialist reviewers
-enforce domain correctness. When no specialist matches a domain, the reviewer falls back to
-`general-purpose`. Team re-formation after the design cells picks the reviewers it adds from the
-same agent pool by the same rules. When team formation, the team re-formation, or QA's choice of
-a fix specialist returns a bundled agent by its bare name, such as `prompt-sensei`, and no agent
-of that name is available, the skill spawns `cdev:{name}`.
+out-of-domain specialty is never bundled onto one reviewer. **Architects, coders, and writers
+always run as `general-purpose`**: some specialist agents emit malformed tool calls and stall,
+and a producer works to its assigned scope and the project conventions while the specialist
+reviewers enforce domain correctness. When no specialist matches a domain, the reviewer falls
+back to `general-purpose`. Team re-formation after the design cells picks the reviewers it adds
+from the same agent pool by the same rules. When team formation, the team re-formation, or QA's
+choice of a fix specialist returns a bundled agent by its bare name, such as `prompt-sensei`,
+and no agent of that name is available, the skill spawns `cdev:{name}`.
 
 ## Bundled agents and support files
 
-- `agents/dev-helper.md` — mechanical teammate: team formation (scoping + agent selection),
-  team re-formation after the design (assigning the files the design adds or changes to coders
-  and selecting any coders / reviewers needed), QA (running the project's format / build /
-  test, identifying the fix specialist on failure), and the commit plan (splitting the changed
-  files into commits by logical change).
+- `agents/dev-helper.md` — mechanical teammate: team formation (scoping + selecting the
+  architects, coders, writers, and reviewers), team re-formation after the design (assigning
+  the files the design adds or changes to coders and writers and selecting any coders /
+  writers / reviewers needed), QA (running the project's format / build / test, identifying
+  the fix specialist on failure), and the commit plan (splitting the changed files into
+  commits by logical change).
 - `agents/comment-sensei.md` — code-comment specialist teammate; reviews and fixes comments
   added or modified during coding, against `rules/comment.md`.
 - `agents/prompt-sensei.md` — AI-facing prompt specialist teammate; self-checks, fixes, and
@@ -534,15 +657,16 @@ of that name is available, the skill spawns `cdev:{name}`.
   code cells keep prompt files from over-specification), `commit-plan.md` (how the planners of
   the commit step and `/cdev:loop --cleanup` split changes into commits, the commit messages,
   and the plan file format).
-- `scripts/` — `fetch-diff.sh` (snapshots the pre-coding tree, then captures the QA diff since
-  coding start), `del-tmp.sh` (deletes the run's working directory under `.claude/tmp/`; with
-  `--dry`, it only runs the containment check, which the skill does before creating that
-  directory), `check-jsonl.py` (teammates check with it that each line of a `.jsonl` they
-  wrote is one JSON object), and
+- `scripts/` — `fetch-diff.sh` (snapshots the pre-coding tree, then captures the diff since
+  coding start for the documentation cells and QA), `del-tmp.sh` (deletes the run's working
+  directory under `.claude/tmp/`; with `--dry`, it only runs the containment check, which the
+  skill does before creating that directory), `check-jsonl.py` (teammates check with it that
+  each line of a `.jsonl` they wrote is one JSON object), and
   `lib/scratch-guard.py` (the shared `.claude/tmp/` containment check used by both; requires
   `python3` — see Requirements), `worktree.sh` (creates and removes the `--worktree`
-  worktree), `restore.sh` (restores an entry of a design's restore list from its turning
-  point commit into the working tree, refusing an entry whose restore would overwrite or
+  worktree), `restore.sh` (restores an entry of a design's restore list, or a documentation
+  file a writer returns to a turning point's content, from its turning point commit into the
+  working tree, refusing an entry whose restore would overwrite or
   delete an untracked file or a tracked file with local changes, or would change a path
   outside the entry; it may overwrite ignored files, as a git checkout does, so it is used
   only in the worktree of a `--worktree` run), and `commit-plan.py` (lists the changed paths,

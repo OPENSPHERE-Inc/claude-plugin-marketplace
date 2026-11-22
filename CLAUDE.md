@@ -7,13 +7,13 @@ under the MIT license. It publishes three first-party plugins:
 
 - **creview** — a multi-agent parallel code review workflow (`start` → `triage` → `respond`
   → `resolve`, plus an automatic multi-round driver `rounds`).
-- **cdev** — a team-native multi-agent coding workflow (`coding`: a standing team runs design
-  and coding as paired review cells, then a QA gate). AI-facing prompt files also get a
-  prompt-discipline self-check, compression, and an interpretation test. When it commits
-  (`--commit`), `coding` splits its result into commits by logical change. Requires background
-  subagents and inter-agent messaging. `loop` runs `coding` and creview's `rounds` inline as
-  one unattended pipeline, sending the work back to `coding` on a review divergence and
-  letting a post-mortem decide whether to finish or start over, each within a limit; with
+- **cdev** — a team-native multi-agent coding workflow (`coding`: a standing team runs design,
+  coding, and documentation as paired review cells, then a QA gate). AI-facing prompt files
+  also get a prompt-discipline self-check, compression, and an interpretation test. When it
+  commits (`--commit`), `coding` splits its result into commits by logical change. Requires
+  background subagents and inter-agent messaging. `loop` runs `coding` and creview's `rounds`
+  inline as one unattended pipeline, sending the work back to `coding` on a review divergence
+  and letting a post-mortem decide whether to finish or start over, each within a limit; with
   `--cleanup`, it restacks the adopted generation's changes into commits by logical change for
   the output branch. Depends on creview.
 - **cgh** — a GitHub pull request workflow on top of creview (`review`, `gate`, `respond`,
@@ -71,7 +71,7 @@ claude-plugin-marketplace/
 │   ├── .claude-plugin/plugin.json  # declares the dependency on creview
 │   ├── README.md / README_ja.md
 │   ├── skills/
-│   │   ├── coding/               # /cdev:coding (SKILL.md + templates/: team-analysis, team-reassign, design, design-review, code, code-review, comment-review, prompt-review, prompt-test, qa, commit-plan)
+│   │   ├── coding/               # /cdev:coding (SKILL.md + templates/: team-analysis, team-reassign, design, design-review, code, code-review, doc, doc-review, comment-review, prompt-review, prompt-test, qa, commit-plan)
 │   │   └── loop/                 # /cdev:loop (SKILL.md + templates/postmortem.md, cleanup.md)
 │   ├── agents/                   # comment-sensei.md, prompt-sensei.md, prompt-tester.md, dev-helper.md
 │   ├── rules/                    # teammate.md, agents-detection.md, build-format-detection.md, comment.md, review.md, document.md, prompt.md, divergence.md, commit-plan.md
@@ -260,13 +260,28 @@ Then exercise each of the following:
     for prompt files to invoke when the task edits only prompt files.
     The team re-formation after the design gives that file to a new coder, paired with a
     reviewer of its domain.
+  - A task that changes code and the documentation that describes it.
+    The documentation cells start after every code cell has closed, and a writer teammate,
+    which holds no code, writes the documentation.
+  - A task that changes only documentation.
+    No code cell starts.
   - A task run with `--worktree` and given a `--handoff` that names a turning point, a branch
-    with its commit, and asks to return a file to it.
+    with its commit, and asks to return a file that is not documentation, such as a script, to it.
     A coder teammate restores the file with the installed plugin's `restore.sh`.
     Check that:
     - The file has its content at the turning point's commit in the worktree the teardown
       kept, or on the branch the run reports when it kept none.
     - The coder reports no refused entry.
+  - The same task, asking instead to return a documentation file, such as a README.
+    The design lists the file as a documentation change, and a writer teammate returns the
+    file with the installed plugin's `restore.sh`, then brings its statements about the code in
+    line with the code.
+    Check that:
+    - In the worktree the teardown kept, or on the branch the run reports when it kept none,
+      the file has its content at the turning point's commit, apart from statements about the
+      code that the writer brought in line with the code.
+    - The design's restore list does not name the file.
+    - The writer reports no refused entry.
   - A task that spans several concerns, run with `--worktree` and `--result`.
     Check that:
     - The branch holds several commits on top of the starting HEAD.
