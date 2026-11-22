@@ -25,7 +25,7 @@ For each fix target, extract fix_plan from the part after ` — Plan: ` on the `
 
 When the `Estimate:` line carries an ` — ADR: {filename}` segment immediately before ` — Plan: `, set `adr` to the filename; otherwise `adr` is null. The segment is not part of fix_plan.
 
-Set each fix target's `stages` from what its fix requirements (sub-agent.md § Fix requirements) state: `docs` when they call for editing a documentation file (§ Documentation files of the same file), and `code` when they call for editing any other file. An ADR file counts as neither. Judge only from what they state and the paths they name, without reading the source, searching the repository, or reading the project's CLAUDE.md, and count an edit of a file whose kind that leaves unclear as `code`. When they show neither, set `["code"]`.
+Set each fix target's `stages` from what its fix requirements (sub-agent.md § Fix requirements) state: `docs` when they call for editing a documentation file (§ Documentation files of the same file), and `code` when they call for editing any other file. An ADR file counts as neither. Judge only from what they state and the paths they name, without reading the source, searching the repository, or reading the project's CLAUDE.md, and count an edit of a file whose kind that leaves unclear, such as a Markdown file whose name does not show whether it is documentation or a prompt template, as both `code` and `docs`. When they show neither, set `["code"]`.
 
 `{{tmp_dir}}/targets.jsonl` format: `{items: [{id, assignee, stages (["code"], ["docs"], or ["code", "docs"]), estimate (Maintain|Alternative), adr (filename or null), fix_plan (string array, [] when absent)}], fix_count, not_ready: [{id, reason}]}`
 

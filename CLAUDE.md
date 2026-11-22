@@ -366,8 +366,11 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     by the files its fix requirements (rules/sub-agent.md) call for
                     editing: code (other files), docs (documentation files), or both →
                     code-stage fix Subs (assignees in parallel) → docs-stage fix Subs
-                    (one assignee at a time, reading the fixed code; a fix in both
-                    stages keeps one status), each stage skipped when no fix has it →
+                    (one assignee at a time, reading the fixed code; they also take
+                    each code-only fix whose code stage left a documentation edit it
+                    needs unmade, such as one CLAUDE.md requires; a fix in both
+                    stages keeps one status), each stage skipped when no fix runs in
+                    it →
                     comment-review Sub → prompt-review Sub (when the fixes changed a
                     .md file; it then reviews every AI-facing prompt file they changed,
                     whatever its format)

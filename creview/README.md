@@ -439,14 +439,20 @@ stage, so that the documentation it changes describes the fixed code.
     reading the source or `CLAUDE.md`, and does not look ahead for
     documentation that the fixes will leave out of date.
   - An edit of a file whose kind that judgment leaves unclear counts as an edit
-    of another file.
+    of both kinds.
+    - Both stages then fix the finding, and each stage edits the file when it
+      is of that stage's kind.
   - A finding whose fix requirements show neither counts as editing other
     files.
 - The code stage edits the files other than documentation files, with the fixes
   of different triage assignees in parallel.
   - It is skipped when only documentation fixes are planned.
 - The documentation stage runs after the whole code stage has finished, and
-  only when documentation fixes are planned.
+  only when documentation fixes are planned or the code stage has left a
+  documentation edit of a fix unmade.
+  - Such an edit is one that a fix planned to edit other files only needs,
+    such as a README update that `CLAUDE.md` requires along with a code change.
+  - The documentation stage then fixes that finding as well.
   - The same triage assignees fix the documentation, one assignee at a time.
   - They read the fixed code in the working tree.
     - A diff of the working tree against HEAD shows them where the code
@@ -475,8 +481,9 @@ stage, so that the documentation it changes describes the fixed code.
   - A file that another assignee's fixes also changed goes into the final
     commit.
 
-Documentation that the code fixes leave out of date, but that no fix
-requirement asks to change, stays as it is in that run.
+Documentation that the code fixes leave out of date, but that neither a fix
+requirement nor what `CLAUDE.md` requires along with a fix asks to change,
+stays as it is in that run.
 
 - A fix that notices such documentation names it in the finding's `Status:`.
 - When `/creview:resolve` sends the finding back with `💬 Feedback`, the change

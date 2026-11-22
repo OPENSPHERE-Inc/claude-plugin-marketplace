@@ -125,9 +125,9 @@ allowed-tools: Agent, Read, Write, Edit, Glob, Grep, Bash(cd:*), Bash(grep:*), B
 どちらの段よりも前に、`${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/baseline.txt` を実行する。非ゼロ終了の場合は、そのエラーで中止する。続いてコード修正段を実行し、その修正サブエージェントがすべて戻った後にドキュメント修正段を実行する。グループのない段は省略する。段の各 `{assignee, ids}` ごとに `Agent(subagent_type=assignee, prompt=...)` で修正サブエージェントを起動する。1 つのグループ内の ids はテンプレートの並列化制約に従う。
 
 1. コード修正段: `code_stage` のグループを並列に起動し、`stage = code` と `diff_path = (none)` を渡す。
-2. ドキュメント修正段: `docs_stage` の各グループを、前のグループが戻ってから起動する。異なる assignee のグループが同じドキュメントファイルを編集し得るためである。最初に `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/code-changes.txt` を実行し、`stage = docs` と `diff_path = {tmp_dir}/code-changes.txt` を渡す。非ゼロ終了の場合は、警告を出さずに `diff_path = (none)` を渡す。差分は、コードが変わった箇所をこの段に示す手がかりにすぎない。
+2. ドキュメント修正段: `docs_stage` のグループに、コード修正段の `items` が `docs_left: true` を返した各 id を、その id をコード修正段で修正した assignee のグループへ加えたもの（`docs_stage` にその assignee のグループがなければ新しく作る）。この段にグループがあるかは、この追加の後に判定する。各グループを、前のグループが戻ってから起動する。異なる assignee のグループが同じドキュメントファイルを編集し得るためである。最初に `${CLAUDE_PLUGIN_ROOT}/scripts/fetch-diff.sh HEAD {tmp_dir}/code-changes.txt` を実行し、`stage = docs` と `diff_path = {tmp_dir}/code-changes.txt` を渡す。非ゼロ終了の場合は、警告を出さずに `diff_path = (none)` を渡す。差分は、コードが変わった箇所をこの段に示す手がかりにすぎない。
 
-テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`ids = {ids}`、`stage = {段ごと、上記のとおり}`、`diff_path = {段ごと、上記のとおり}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path}, ...], template_id}` — `items` のみを集め、status 本文は読み込まない。
+テンプレート `fix.md`、`template_id` `2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14`、変数 `plugin_root = ${CLAUDE_PLUGIN_ROOT}`、`main_root = {main_root}`, `target_dir = {target_dir}`、`ids = {ids}`、`stage = {段ごと、上記のとおり}`、`diff_path = {段ごと、上記のとおり}`、`document_path = {document_path}`、`tmp_dir = {tmp_dir}`、`adr_flag = {on|off、--adr に従う}`、`timestamp = {timestamp}`、オーバーライド `(該当なし)`。各エージェントの戻り値: `{items: [{id, path, docs_left}, ...], template_id}` — `items` のみを集め、コード修正段の `docs_left` はドキュメント修正段のために保持する。status 本文は読み込まない。
 
 ## ステップ 3 — コメントレビューとプロンプトレビュー（comment-sensei と prompt-sensei のサブエージェントへ委譲）
 
