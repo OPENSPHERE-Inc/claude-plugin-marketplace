@@ -10,7 +10,7 @@ A multi-agent parallel code review workflow for Claude Code.
 |---------|-----------|---------|
 | `/creview:start` | `parallel-review` | Run a parallel code review of local changes or a GitHub pull request; produce a review document with metadata markers. |
 | `/creview:triage` | `review-respond` (triage + estimate) | Triage and estimate the findings of a review document or of a GitHub pull request's comments; persist `triage` / `estimate` into the document. |
-| `/creview:respond` | `review-respond` (fix) | Fix Will-Fix / Maintain / Alternative findings; review the AI-facing prompt files the fixes create or change; verify the build and test how those prompt files are interpreted; persist `status`. |
+| `/creview:respond` | `review-respond` (fix) | Fix Will-Fix / Maintain / Alternative findings, the code first and then the documentation; review the AI-facing prompt files the fixes create or change; verify the build and test how those prompt files are interpreted; persist `status`. |
 | `/creview:resolve` | `review-resolve` | Verify the resolutions of a review document's findings or of a GitHub pull request's comments against the source; persist `verification`. |
 | `/creview:rounds` | `review-rounds` | Automatically iterate start → triage → respond → resolve across rounds. |
 
@@ -243,7 +243,9 @@ such as `git status` and `git commit`, run the hooks, filter drivers, and
 `core.fsmonitor` listed there, and its build and tests run the pull request's
 build scripts and tests. It takes the format, build, and test commands from the
 main working tree's `build-format.md`, `CLAUDE.md`, or `README.md`, not from
-the pull request's files.
+the pull request's files. What `CLAUDE.md` requires of each finding's fix, such
+as the documentation to update along with it, likewise comes from the main
+working tree's `CLAUDE.md` and the files it points to there.
 
 In a worktree, `/creview:respond` turns `--commit` on. For a document with a
 PR bullet only, it commits to a local branch `creview-pr-{number}`, which it
@@ -252,7 +254,11 @@ it records that branch in a Branch bullet, so later runs work on the fixes.
 Pushing the branch to the pull request is left to you. Run in place on a
 branch for such a document, it records that branch the same way. With Trust
 `off`, a finding whose fix needs a left-out agent file stays unfixed, and the
-summary lists it with the reason.
+summary lists it with the reason. Whether a fix needs one is judged from the
+finding before the fixes start. An edit to a left-out file that comes up only
+during a fix is not made, and the finding's `Status:` names it, as described
+below for the two fix stages of `/creview:respond`. To handle such findings as
+well, review the pull request again with `--trust`.
 
 At the end the worktree is removed and its branch kept; a worktree with
 uncommitted changes is kept and its path reported. A worktree for a document
@@ -410,12 +416,90 @@ arises during implementation. A later round that revisits the same location
 updates or supersedes the existing ADR instead of duplicating it.
 `/creview:rounds` accepts the same flag and passes it through to both phases.
 
+`/creview:respond` fixes in two stages, a code stage and then a documentation
+stage, so that the documentation it changes describes the fixed code.
+
+- A documentation file is a file of human-facing documentation, such as a
+  README, an API reference, a guide, a changelog, or a project memory file such
+  as `CLAUDE.md` or `AGENTS.md`.
+  - AI-facing prompt files, source code and its comments, tests, Markdown
+    output templates, and the review document and its ADR files are not.
+  - The code stage fixes AI-facing prompt files along with the other files.
+- A finding's fix requirements are the changes that its fix plan, the Decision
+  of its ADR, its last verification when that is `💬 Feedback`, and a fix
+  policy given to `/creview:rounds` ask of its fix.
+  - When the fix plan is empty, the approach derived from the finding takes its
+    place.
+  - Where they conflict, the fix policy prevails over the others, the ADR's
+    Decision over the plan and the `💬 Feedback` verification, and that
+    verification over the plan.
+- Before fixing, the skill decides from each finding's fix requirements whether
+  its fix edits documentation files, other files, or both.
+  - It judges only from what they state and the paths they name, without
+    reading the source or `CLAUDE.md`, and does not look ahead for
+    documentation that the fixes will leave out of date.
+  - An edit of a file whose kind that judgment leaves unclear counts as an edit
+    of another file.
+  - A finding whose fix requirements show neither counts as editing other
+    files.
+- The code stage edits the files other than documentation files, with the fixes
+  of different triage assignees in parallel.
+  - It is skipped when only documentation fixes are planned.
+- The documentation stage runs after the whole code stage has finished, and
+  only when documentation fixes are planned.
+  - The same triage assignees fix the documentation, one assignee at a time.
+  - They read the fixed code in the working tree.
+    - A diff of the working tree against HEAD shows them where the code
+      changed; when the diff cannot be made, they go on without it, and no
+      warning is given.
+  - Within each finding's scope, they make the documentation edits its fix
+    requirements call for, and those that `CLAUDE.md` requires along with them,
+    such as updating a translation.
+    - They look for no other documentation to edit.
+  - Under `▶️ Maintain`, where an edit states what the code does, it states
+    what the fixed code does.
+    - Where the fix requirements ask for a different statement, the fix follows
+      the code and records the difference in the finding's `Status:`.
+  - Under `🚧 Alternative`, the fix only adds a FIXME and leaves the existing
+    text as it is.
+- A finding's ADR is updated, or created under `--adr`, by the code stage.
+  - When the finding's fix is planned to edit documentation files only, the
+    documentation stage does it instead.
+- An edit of a fix that its stage cannot make, and that no other stage makes for
+  that finding, is not made; the finding's `Status:` names the file and the
+  change it needs.
+- A finding fixed in both stages gets one `Status:` line that describes both
+  fixes.
+- With `--commit`, a finding's documentation files go into the commit of its
+  triage assignee's fixes, as its other files do.
+  - A file that another assignee's fixes also changed goes into the final
+    commit.
+
+Documentation that the code fixes leave out of date, but that no fix
+requirement asks to change, stays as it is in that run.
+
+- A fix that notices such documentation names it in the finding's `Status:`.
+- When `/creview:resolve` sends the finding back with `💬 Feedback`, the change
+  that verification asks for becomes part of the re-fix's fix requirements, and
+  a documentation change it asks for is made in the documentation stage.
+
+No step of `/creview:respond` reviews the documentation against the code.
+
+- The comment review and the prompt review that follow the fixes do not check
+  the documentation against the code.
+- When a build, test, or interpretation-test fix changes the code after the
+  documentation stage, that stage does not run again.
+- `/creview:resolve` verifies each finding's fix only, and does not check other
+  documentation against the code.
+- Under `/creview:rounds`, the next round's review covers the documentation
+  along with the other changes.
+
 When the fixes of `/creview:respond` create or change an AI-facing prompt file,
-two more stages check that file; otherwise the skill runs without them. An
+two more checks examine that file; otherwise the skill runs without them. An
 AI-facing prompt file is an agent definition, a SKILL.md, a slash command, a
 rule, or a prompt template a skill has an agent read. `CLAUDE.md`, `AGENTS.md`,
 Markdown output templates, prompt strings embedded in source code, and READMEs
-are not. The two stages start only when the fixes change at least one `.md`
+are not. These checks start only when the fixes change at least one `.md`
 file, so a fix that changes only prompt templates in other formats gets neither
 of them. Once started, they check every AI-facing prompt file the fixes created
 or changed, whatever its format.

@@ -241,6 +241,11 @@ Then exercise each of the following:
 - `/creview:respond` on a document whose fixes edit an AI-facing prompt file.
   It runs the prompt review and the interpretation test.
   The test needs nested sub-agent spawning of depth 2, or reports the files as untested.
+- `/creview:respond` on a document with a finding whose plan edits both code and a README
+  that describes it.
+  Check that:
+  - The README matches the fixed code.
+  - The finding gets one new `Status:` line.
 - `/creview:start` with a pull request URL, both with HEAD at the pull request's head and with
   HEAD elsewhere, where it reviews in a worktree.
   It needs an authenticated `gh`.
@@ -357,7 +362,12 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     the doc, with PR / Branch / Trust bullets and `- **Source:** pr-comments`
                     → the skill runs on that doc; resolve verifies each finding with no
                     metadata against the code
-/creview:respond → select-fix-targets Sub reads doc metadata → fix Subs →
+/creview:respond → select-fix-targets Sub reads doc metadata and sets each fix's stages
+                    by the files its fix requirements (rules/sub-agent.md) call for
+                    editing: code (other files), docs (documentation files), or both →
+                    code-stage fix Subs (assignees in parallel) → docs-stage fix Subs
+                    (one assignee at a time, reading the fixed code; a fix in both
+                    stages keeps one status), each stage skipped when no fix has it →
                     comment-review Sub → prompt-review Sub (when the fixes changed a
                     .md file; it then reviews every AI-facing prompt file they changed,
                     whatever its format)
