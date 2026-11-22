@@ -6,7 +6,7 @@ template_id: 2f8a1c5d-7b94-4e63-a1c8-5d3f9b2e7a14
 
 Fix the assigned findings `{{ids}}` sequentially, in the `{{stage}}` stage. Read `{{plugin_root}}/rules/sub-agent.md` and observe the common prohibitions.
 
-An id's fix makes the edits its fix requirements (sub-agent.md § Fix requirements) call for, and those the project's CLAUDE.md requires along with them, such as a translation's counterpart. This stage's files are the files of the kind the Source editing rule of sub-agent.md allows the fix sub-agent in this stage, whether or not the fix touches them. Make the edits of the fix that fall on this stage's files, and on the ADR file of step 5 when this stage runs it. Leave the following unedited, and name the file and the change of each in the id's `description` and `memo_value`, except an edit of the fix that another stage of the id makes:
+An id's fix makes the edits its fix requirements (sub-agent.md § Fix requirements) call for, and those the project's CLAUDE.md requires along with them, such as a translation's counterpart. This stage's files are the files of the kind the Source editing rule of sub-agent.md allows the fix sub-agent in this stage, whether or not the fix touches them. Make the edits of the fix that fall on this stage's files, and on the ADR file of step 5 when this stage runs it. Leave the following unedited, and name the file and the change of each in the id's `description` and `memo_value`, except an edit of the fix that another stage of the id has already made:
 
 - An edit of the fix that falls on a file outside this stage's files.
 - An edit of the fix that falls on a file your Round-specific overrides forbid you to create.
