@@ -458,9 +458,11 @@ stage, so that the documentation it changes describes the fixed code.
     - A diff of the working tree against HEAD shows them where the code
       changed; when the diff cannot be made, they go on without it, and no
       warning is given.
-  - Within each finding's scope, they make the documentation edits its fix
-    requirements call for, and those that `CLAUDE.md` requires along with them,
-    such as updating a translation.
+  - Within each finding's scope, they make the edits that fall on documentation
+    files, among those its fix requirements call for and those that `CLAUDE.md`
+    requires along with them.
+    - What `CLAUDE.md` requires includes updating a translation, and updating a
+      README to match a code change.
     - They look for no other documentation to edit.
   - Under `▶️ Maintain`, where an edit states what the code does, it states
     what the fixed code does.
