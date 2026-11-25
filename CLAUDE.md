@@ -315,6 +315,13 @@ Then exercise each of the following:
   - `{branch}-g1` is still at `cleanup.head`, and each turning point is at the commit
     `turning_points` records.
   - `loop-summary.md` shows the restack.
+- A `/cdev:loop` run in which a review stopped on a divergence and the work was sent back.
+  Check that, for the cycle the send-back started:
+  - Its `{branch}-tp/g{g}c{c}-review-base` is at the second-to-last entry of `round_start_revs`
+    in the previous cycle's `rounds-result.jsonl`.
+  - Its `review_base` in `state.jsonl` is that name.
+  - Its Round 1 review document, the first entry of `doc_paths` in its `rounds-result.jsonl`,
+    names that turning point as the base in the scope its header gives.
 
 Exercise `/cgh:review`, `/cgh:gate`, `/cgh:respond`, and `/cgh:resolve` on a pull request of a
 scratch repository: they post to GitHub under your account.
@@ -483,16 +490,22 @@ counts, end reasons, and verdicts.
 
 A cycle is one `/cdev:coding --worktree={branch}-g{g} --team-tag g{g}c{c}-{hhmmss}
 --commit-always --result ...` followed by one `/creview:rounds --worktree={branch}-g{g}
---incremental --base {branch}-tp/g{g}c1-coding-start --on-divergence stop --result ...`, where
-`{branch}` is the `--branch` value and `{hhmmss}` the time part of the run's timestamp, which
-keeps the teammate names apart from an earlier run's in the same session. A generation is the
-series of cycles on one work branch `{branch}-g{g}`, created at the starting commit, the main
-working tree's HEAD at the start. The turning points
-`{branch}-tp/g{g}c{c}-coding-start` and `-coding-done` are branches made with `git branch`
-right before and after each `/cdev:coding`, never moved or deleted, and no work branch's
-history is rewritten; they live under `{branch}-tp/` because `refs/heads/{branch}` cannot
-coexist with `refs/heads/{branch}/...`. `--base` is always the generation's first turning
-point A, the starting commit, so every cycle's Round 1 reviews the whole generation.
+--incremental --base {review_base} --on-divergence stop --result ...`, where `{branch}` is the
+`--branch` value, `{review_base}` the cycle's `review_base` in `state.jsonl`, and `{hhmmss}`
+the time part of the run's timestamp, which keeps the teammate names apart from an earlier
+run's in the same session. A generation is the series of cycles on one work branch
+`{branch}-g{g}`, created at the starting commit, the main working tree's HEAD at the start.
+The turning points `{branch}-tp/g{g}c{c}-coding-start` and `-coding-done` are branches made
+with `git branch` right before and after each `/cdev:coding`, and `-review-base` one made at
+the send-back that starts cycle c (c > 1). Turning points are never moved or deleted, and no
+work branch's history is rewritten; they live under `{branch}-tp/` because
+`refs/heads/{branch}` cannot coexist with `refs/heads/{branch}/...`. A generation's first
+cycle reviews from its first turning point A, the starting commit. After a send-back, the base
+is `{branch}-tp/g{g}c{c}-review-base`, made at the second-to-last entry of the previous
+cycle's `round_start_revs`: the start of Round N-1 when that review stopped in Round N, so
+Round 1 reviews the fixes of Round N-1 and the send-back's changes. When the leader cannot get that
+commit, the base falls back to the generation's first turning point A, with a warning. Lines a
+send-back returns to their content at the next review's base do not appear in that review.
 
 On the `divergence` end reason with send-backs left, the leader writes a handoff from paths
 alone, pointing at the divergence investigation report and listing the generation's turning
@@ -501,10 +514,17 @@ points as restore candidates, and starts the next cycle with `--handoff` on the 
 the end of a generation, the leader launches the post-mortem sub-agent (`general-purpose`,
 `templates/postmortem.md`, with a `template_id` the SKILL checks), which writes
 `postmortem.md` and `postmortem.jsonl` and, on `redo`, the next generation's handoff; a `redo`
-with generations left is a grand reset from the starting commit. On a normal end (`finish`, or
-`redo` with no generations left, which adopts the last generation), the output branch
-`{branch}` is created at the tip of the adopted generation's work branch; a failure to create
-it is recorded as a warning and the end stays normal.
+with generations left is a grand reset from the starting commit. For both its verdict and the
+adopted generation, the post-mortem counts a generation's unresolved Critical / Major findings
+from the final reports of all its cycles. From the report of a cycle before the last, it leaves
+out the findings left unfixed in the round that cycle's review stopped in; they count only when
+a later cycle's report lists them. It counts the other findings that report lists as
+unresolved, as left unfixed, or as 🟢 Fixed (Maintain) only when their problem holds at the tip
+of that generation's work branch. A fix by a FIXME insertion counts among the FIXMEs.
+`templates/postmortem.md` holds the full rule.
+On a normal end (`finish`, or `redo` with no generations left, which adopts the last
+generation), the output branch `{branch}` is created at the tip of the adopted generation's
+work branch; a failure to create it is recorded as a warning and the end stays normal.
 
 Under `--cleanup`, a normal end instead creates the output branch at the tip of a restack of the
 adopted generation's changes from the starting commit. The leader launches the cleanup planner

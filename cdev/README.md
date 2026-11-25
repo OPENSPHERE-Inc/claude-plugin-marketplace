@@ -421,9 +421,16 @@ bounded, so the run always ends. It never pushes or opens a pull request.
   its result, split by logical change, even when QA or the interpretation test did not pass.
   `/creview:rounds` then runs on the same branch with `--incremental`, and stops instead of
   pausing when it detects a divergence (`--on-divergence stop`).
-- Round 1 of every cycle's review covers the whole generation, as the diff from the starting
-  commit; later rounds review only the previous round's fixes. A send-back can touch fixes
-  across earlier rounds, so the review after it looks at the whole generation again.
+- Round 1 of a cycle's review covers the diff from the cycle's base; later rounds review only
+  the previous round's fixes.
+  - In a generation's first cycle, the base is the starting commit.
+  - After a send-back, when the previous cycle's review stopped in Round N, the base is the
+    commit at the start of that review's Round N-1.
+    - Round 1 then reviews the fixes of Round N-1 and the send-back's changes.
+    - When the loop cannot get that commit, the review starts from the starting commit, with a
+      warning.
+  - Lines that a send-back returns to their content at the next review's base do not appear in
+    that review.
 - **Send-back**: when the review stops on a divergence, the loop writes a handoff that has
   `/cdev:coding` follow the sources and fix proposals of the divergence investigation report,
   and starts the next cycle on the same branch.
@@ -443,6 +450,21 @@ bounded, so the run always ends. It never pushes or opens a pull request.
   diverged past the send-back limit, a post-mortem sub-agent reads the generation's design
   documents, review documents, final reports, and divergence reports, and returns `finish` or
   `redo`.
+  - It counts a generation's unresolved Critical and Major findings from the final reports of
+    all its cycles.
+    - From the report of a cycle before the last, it leaves out the findings left unfixed in
+      the round where that cycle's review stopped, which count only when a later cycle's report
+      lists them.
+    - It counts the other findings the same report lists as unresolved or as fixed only when
+      they still hold at the tip of the generation's work branch, since a later send-back can
+      undo a fix without any review's diff showing it.
+    - A fix by a `FIXME:` counts as a `FIXME:`, not as a fixed finding.
+  - It lists in `postmortem.md` the findings it counts for the generation it examines.
+    - It marks as reintroduced those that hold again at the tip of the generation's work branch
+      after a fix by any of the generation's cycles removed their problem, and gives their
+      number in its summary line, which `loop-summary.md` shows.
+  - `skills/loop/templates/postmortem.md` holds the full rules for which findings the
+    post-mortem counts and marks as reintroduced.
   - By default, it returns `redo` only when all of these hold:
     - A problem that affects the result's quality remains: an unresolved Critical or Major
       finding, a `FIXME:` on one, a failed QA, or an unresolved divergence.
@@ -465,7 +487,8 @@ bounded, so the run always ends. It never pushes or opens a pull request.
   last one, unless an earlier one surpasses it, being no worse in each of unresolved Critical
   and Major findings, `FIXME:`s, QA, and unresolved divergence, and better in at least one.
   When several earlier ones do, it picks the latest of those that no other of them surpasses.
-  The loop creates the output branch at the tip of that generation's work branch.
+  On `finish`, `postmortem.md` shows these values for every generation.
+  The loop creates the output branch at the tip of the adopted generation's work branch.
   - With `--cleanup`, the loop instead restacks the generation's changes from the starting
     commit into commits by logical change, and creates the output branch at the last of them.
     The work branch keeps the original history.
@@ -508,12 +531,16 @@ In the names below, `{branch}` is the `--branch` value, `g` the generation, and 
 | Work branch | `{branch}-g{g}` | At the start of generation g, at the starting commit |
 | Turning point A | `{branch}-tp/g{g}c{c}-coding-start` | Right before cycle c's `/cdev:coding` |
 | Turning point B | `{branch}-tp/g{g}c{c}-coding-done` | Right after cycle c's `/cdev:coding` |
+| Turning point R | `{branch}-tp/g{g}c{c}-review-base` | At the send-back that starts cycle c, on the commit at the start of Round N-1 when the previous cycle's review stopped in Round N |
 
-- A turning point is a branch that marks the code at that moment. Turning point A of a
-  generation's first cycle is the starting commit, and that of a later cycle is the work
-  branch's tip after the previous review. Turning point B is the tip after `/cdev:coding`'s
-  commits, the same commit as A when it committed nothing. The work branch's tip holds the
-  state after the last review.
+- A turning point is a branch that marks the code at a commit in the work branch's history.
+  - Turning point A of a generation's first cycle is the starting commit, and that of a later
+    cycle is the work branch's tip after the previous review.
+  - Turning point B is the tip after `/cdev:coding`'s commits, the same commit as A when it
+    committed nothing.
+  - Turning point R of cycle c is the base of cycle c's review, and exists only when the loop
+    can get the commit at the start of Round N-1.
+  - The work branch's tip holds the state after the last review.
 - The loop creates branches without touching any working tree, never moves or deletes a
   turning point, and never rewrites a work branch's history. A grand reset leaves the earlier
   generations' work branches and turning points in place. Cleaning them up is yours; to delete
@@ -610,10 +637,10 @@ Two failures at the end do not stop the run; it still ends normally, with a warn
   coding phase.
 - A run makes at most `(1 + max_sendbacks) × max_generations` cycles, 9 with the defaults.
   Each cycle runs `/cdev:coding` from team formation to QA and up to `--max-rounds` review
-  rounds, and every send-back has the next review's Round 1 cover the whole generation again.
-  `--pursuit` tends to run up to the generation limit. For the caps on sub-agents launched in a
-  session and running at once, see the [creview README](../creview/README.md).
-- A run makes two turning points per cycle, up to 18 with the defaults.
+  rounds. `--pursuit` tends to run up to the generation limit. For the caps on sub-agents
+  launched in a session and running at once, see the [creview README](../creview/README.md).
+- A run makes two turning points per cycle and at most one more per send-back, up to
+  `(2 + 3 × max_sendbacks) × max_generations`, 24 with the defaults.
 - `--cleanup` adds one or two launches of the planner sub-agent at the end.
 - The main working tree's sources are never changed. Its uncommitted changes are not part of
   the starting commit and are left out of the run; the loop says so at the start.
