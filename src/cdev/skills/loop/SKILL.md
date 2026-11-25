@@ -48,7 +48,7 @@ allowed-tools: Skill, Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(mkdir:*),
 - `{loop_dir}`: 絶対パス。相対パスの `--output` は `{repo_root}` を基点に解決する。
 - `{hhmmss}`: `{timestamp}` の時刻部。
 - 世代 g の作業ブランチ: `{loop_branch}-g{g}`。
-- 世代 g のサイクル c のターニングポイント（TP）: TP-A `{loop_branch}-tp/g{g}c{c}-coding-start` と TP-B `{loop_branch}-tp/g{g}c{c}-coding-done`。
+- 世代 g のサイクル c のターニングポイント（TP）: TP-A `{loop_branch}-tp/g{g}c{c}-coding-start` と TP-B `{loop_branch}-tp/g{g}c{c}-coding-done`。c > 1 では TP-R `{loop_branch}-tp/g{g}c{c}-review-base` も加わる。ステップ 4 の手順 2 が、そのサイクルのレビューの基点として作る。
 - 成果物ブランチ: `{loop_branch}`。
 
 ブランチは、どの作業ツリーにも触れない `git branch {name} {commit}` でのみ作成する。TP は動かさず、消さない。作業ブランチの履歴は書き換えない。
@@ -81,7 +81,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
  "generations": [
    {"generation": 1, "work_branch": "...-g1", "sendbacks": 1, "unresolved_divergence": false,
     "cycles": [
-      {"cycle": 1, "handoff": null,
+      {"cycle": 1, "handoff": null, "review_base": "...-tp/g1c1-coding-start",
        "coding": {"started": true, "skill_dir": "<abs>", "result_path": "...",
                   "committed": true, "qa_passed": true, "prompt_test_passed": true,
                   "restored_from": [], "fixme_count": 0},
@@ -101,6 +101,8 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 - トップレベルの `skill_dir`: このスキルのベースディレクトリ。このスキルの起動時に Skill ツールが示したもの。
 - `position.step`: `init`、`coding`、`review`、`sendback`、`postmortem`、`finish` のいずれか。
 - `coding` / `review`: `started` と `skill_dir` は起動時に、ほかのフィールドは結果ファイルから書く。
+- `review_base`: そのサイクルの `/creview:rounds` が `--base` に取る TP の名前。差し戻しの新しいサイクルでは、ステップ 4 の手順 2 が書くまで null。
+- `turning_points[].kind`: TP-A は `coding-start`、TP-B は `coding-done`、TP-R は `review-base`。
 - `postmortem.fallback`: ステップ 5 が自身の判定で代替した場合はその理由、それ以外は null。
 - `cleanup`: `--cleanup` が OFF のとき、および § 積み直し に入るまでは null。それ以降は `{"head": "<H>", "plan_path": "<abs>", "launches": 1, "commit": "<sha>", "count": 3, "skipped": null, "fallback": null}`:
   - `head` と `plan_path`: § 積み直し に入るときに書く。
@@ -109,7 +111,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
   - `skipped`: S と H のツリーが同じとき `"no-change"`、それ以外は null。
   - `fallback`: § 積み直し がフォールバックした場合はその理由（`{doc_lang}`）、それ以外は null。
 - `end`: ステップ 6 で書く。`{"kind": "normal"|"error", "step": "<止まったステップ>", "error": "<文字列>"|null, "output_branch": "<名前>"|null}`。
-- `warnings`: 短い警告文だけを書く。`coding-result.jsonl` からは、未通過の QA（環境起因かどうかを添える）、解釈テストが未通過または未テストとしたファイル、拒否された復元エントリ（`restore_refused`）、チーム再編成のフォールバック、設計が挙げるドキュメントに writer の不在でドキュメントセルが回らなかったこと（`docs_unwritten`）、null でない `commit_warning`、`doc_departures` の各エントリ（writer が報告した、コードの設計やタスクからの乖離）。`rounds-result.jsonl` からは、その `workflow_warnings` と `prompt_warnings`。あなた自身のものとしては、発散調査レポートの欠落、ポストモーテムの代替判定、積み直しのフォールバック、成果物ブランチの作成失敗。`source` は `coding`、`review`、`postmortem`、`cleanup`、`finish` のいずれか。
+- `warnings`: 短い警告文だけを書く。`coding-result.jsonl` からは、未通過の QA（環境起因かどうかを添える）、解釈テストが未通過または未テストとしたファイル、拒否された復元エントリ（`restore_refused`）、チーム再編成のフォールバック、設計が挙げるドキュメントに writer の不在でドキュメントセルが回らなかったこと（`docs_unwritten`）、null でない `commit_warning`、`doc_departures` の各エントリ（writer が報告した、コードの設計やタスクからの乖離）。`rounds-result.jsonl` からは、その `workflow_warnings` と `prompt_warnings`。あなた自身のものとしては、発散調査レポートの欠落、g{g}c1 の TP-A へのレビュー基点のフォールバック（ステップ 4 の手順 2）、ポストモーテムの代替判定、積み直しのフォールバック、成果物ブランチの作成失敗。`source` は `coding`、`review`、`sendback`、`postmortem`、`cleanup`、`finish` のいずれか。
 
 コンテキストから自分の位置が分からない場合は、このファイルと、そのトップレベルの `skill_dir` にある `SKILL.md` を Read する。Read した `SKILL.md` の `CLAUDE_PLUGIN_ROOT` のプレースホルダーは展開されないまま残る: Read した元の `skill_dir` の 2 階層上のディレクトリとみなす。このスキルでも内側スキルでも同じとする。`position` から続ける:
 
@@ -120,7 +122,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
   - そのサイクルの結果ファイルがあれば、内側スキルは終わっている: そのステップの結果ファイルの扱いから続ける。
   - 結果ファイルがなく、内側スキルが終わったこと（完了報告、または途中での終了）がコンテキストにあれば、結果ファイルがない異常終了として扱う。
   - それ以外では、内側スキルはこのセッションでまだ実行中である: 起動し直さず、そのリーダーとして続ける。その指示がコンテキストにない場合は `{skill_dir}/SKILL.md` を Read する。
-- `position.step` が `sendback` なら、ステップ 4 の手順 1 は済んでいる: 手順 2 から続ける。
+- `position.step` が `sendback` なら、ステップ 4 の手順 1 は済んでいる: 手順 2 から続ける。そのサイクルの `review_base` が null でなければ、手順 3 から続ける。
 - その世代の `postmortem` に判定が記録されていれば、その判定でステップ 5 の手順 5 から続ける。申し送りの書き込みと、判定が記録されていないポストモーテムの起動は、出力を上書きするだけである: やり直す。
 
 ## 申し送り
@@ -130,10 +132,10 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 差し戻しの申し送りはあなたが書く。本文を Read せずに書ける内容に限る:
 
 - 起点: 作業ブランチとその先頭のコミット。タスクはこのブランチに実装済みであり、発散の源泉を取り除く変更を設計・実装する。
-- やり直す理由と方針: 発散調査レポートのパスと、各 `D-n` の Source とその推奨の Fix proposal に従うという指示。推奨案は `/creview:rounds` 向けに書かれているので、次のように読み替えるよう添える: 推奨案が担当指摘や修正サブエージェントを挙げていても、推奨案が記述するコードやプロンプトの変更内容を採る。推奨案が指摘を Won't Fix とする箇所や、判断をユーザーに委ねる箇所は、設計で判断し、受容する範囲とその前提を次のレビューが読むコードかドキュメントに明記する。トリアージの判断はそのレビューに引き継がれないからである。
+- やり直す理由と方針: 発散調査レポートのパス、サイクルの `review_base`（名前とコミット）、および各 `D-n` の Source とその推奨の Fix proposal に従うという指示。推奨案は `/creview:rounds` 向けに書かれているので、次のように読み替えるよう添える: 推奨案が担当指摘や修正サブエージェントを挙げていても、推奨案が記述するコードやプロンプトの変更内容を採る。推奨案が指摘を Won't Fix とする箇所や、判断をユーザーに委ねる箇所は、設計で判断し、受容する範囲とその前提を、それらが制約するコードや文と同じファイルに、そのファイルの規律が残す形（AI 向けプロンプトでは判断材料の WHY）で書く。トリアージの判断は後のレビューに引き継がれず、後の差し戻しではレビューの基点がこのサイクルの変更より後に進みうるからである。
 - 維持すること: 発散に関わらない既存の実装とレビューでの修正。世代 2 以降では、参照資料にあるポストモーテムの申し送りの方針も維持する。世代 2 以降では、この方針とその申し送りが避けるとしたことが、それらを知らずに書かれたレポートの Fix proposal より優先すると添える: 源泉はそれらに沿う変更だけで除き、そうした変更で除けない源泉は、それらから外れずには除けないことを設計に明記して世代のポストモーテムに委ねる。
 - 避けること: レポートが源泉として挙げた形を再び持ち込むこと。世代 2 以降では、ポストモーテムの申し送りが避けるとしたことも避ける。
-- 戻り先の候補: この世代でこれまでに作ったすべての TP を、名前、コミット、その時点で保持する内容とともに挙げる。g{g}c1 の TP-A は開始コミットで、実装前である。g{g}c{k} の TP-B は、サイクル k の `/cdev:coding` の後で、そのレビュー修正の前である。k > 1 の g{g}c{k} の TP-A は、サイクル k-1 のレビューの後のコードである。現在の先頭に積むことが既定であること、戻す場合は TP の内容をファイルに復元して前方へコミットし（コミットは `/cdev:coding` が行う）、履歴は書き換えないことを併記する。
+- 戻り先の候補: この世代でこれまでに作ったすべての TP を、名前、コミット、その時点で保持する内容とともに挙げる。g{g}c1 の TP-A は開始コミットで、実装前である。g{g}c{k} の TP-B は、サイクル k の `/cdev:coding` の後で、そのレビュー修正の前である。k > 1 の g{g}c{k} の TP-A は、サイクル k-1 のレビューの後のコードである。g{g}c{k} の TP-R は、サイクル k-1 のレビューが停止したラウンドの一つ前のラウンドの開始時点のコードで、サイクル k のレビューの基点である。現在の先頭に積むことが既定であること、戻す場合は TP の内容をファイルに復元して前方へコミットし（コミットは `/cdev:coding` が行う）、履歴は書き換えないことを併記する。サイクルの `review_base` の時点の内容に戻した行は、復元でも編集でも、次のレビューが読む差分に現れないことも併記する。
 - 参照資料: 発散調査レポート、世代 2 以降ではポストモーテムの申し送り（状態ファイルにある、その世代の最初のサイクルの `handoff`）、この世代の各サイクルの設計ドキュメント（`coding-result.jsonl` の `design_paths`）、レビュードキュメント（`rounds-result.jsonl` の `doc_paths`）、最終レポート（`rounds-result.jsonl` の `final_report_path`）。結果ファイルからはこれらのパスだけを Read する。
 
 ## 積み直し
@@ -193,7 +195,7 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 ## ステップ 2 — コーディングフェーズ
 
 1. `position` を `coding` にする。コンソール: `## Loop g{g}c{c} — Coding`。
-2. c = 1 の場合は作業ブランチを S に作成し、その世代の項目を最初のサイクルとともに記録する。そのサイクルの `handoff` は、g1 では null、それ以降は直前のポストモーテムの申し送りのパスとする。
+2. c = 1 の場合は作業ブランチを S に作成し、その世代の項目を最初のサイクルとともに記録する。そのサイクルの `handoff` は、g1 では null、それ以降は直前のポストモーテムの申し送りのパスとし、`review_base` は g{g}c1 の TP-A の名前とする。
 3. TP-A を作成する: c = 1 の場合は S に、それ以外は作業ブランチの先頭に作る。コミットとともに記録する。
 4. `{loop_dir}/g{g}c{c}/` を作成し、次の引数で `cdev:coding` を実行する（§ 内側スキルの実行）。g1c1 以外のすべてのサイクルで `--handoff` を加える:
 
@@ -208,10 +210,10 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 ## ステップ 3 — レビューフェーズ
 
 1. `position` を `review` にする。コンソール: `## Loop g{g}c{c} — Review`。
-2. 次の引数で `creview:rounds` を実行する。`--base` を世代の最初の TP-A とし、どのサイクルの Round 1 も世代全体を S からの差分としてレビューさせる: 差し戻しは、それまでの修正に横断的に手を入れる。
+2. 次の引数で `creview:rounds` を実行する。`{loop_review_base}` はそのサイクルの `review_base` とする。
 
    ```
-   creview:rounds {loop_dir}/g{g}c{c}/review --worktree={loop_branch}-g{g} --incremental --base {loop_branch}-tp/g{g}c1-coding-start --on-divergence stop --result {loop_dir}/g{g}c{c}/rounds-result.jsonl [{rounds_args}]
+   creview:rounds {loop_dir}/g{g}c{c}/review --worktree={loop_branch}-g{g} --incremental --base {loop_review_base} --on-divergence stop --result {loop_dir}/g{g}c{c}/rounds-result.jsonl [{rounds_args}]
    ```
 
 3. 戻ったら `rounds-result.jsonl` を Read し、その結果と警告を記録する。
@@ -225,7 +227,8 @@ Skill ツールで、各ステップが挙げる引数を付けて起動する�
 ## ステップ 4 — 差し戻し
 
 1. c とその世代の `sendbacks` を 1 増やし、新しいサイクルの項目と、`sendback` にした `position` とともに、1 回の書き込みで記録する。コンソール: `## Loop g{g}c{c} — Send-back`。
-2. 差し戻しの申し送り（§ 申し送り）を `{loop_dir}/g{g}c{c}/handoff.md` に書き、そのパスをサイクルの `handoff` に記録して、ステップ 2 へ戻る。
+2. サイクルのレビューの基点を決める。R は `{loop_dir}/g{g}c{c-1}/rounds-result.jsonl` の `round_start_revs` の末尾から 2 番目の要素であり、そのレビューが停止したラウンドの一つ前のラウンドの開始コミットである。`round_start_revs` が 2 要素以上の配列で、`git rev-parse --verify --quiet "{R}^{commit}"` が終了コード 0 で終わる場合（置き換えるのは `{R}` だけ）は、R に TP-R を作成し、それを `turning_points` に、その名前をサイクルの `review_base` に、1 回の書き込みで記録する。それ以外では、g{g}c1 の TP-A の名前を `review_base` に、`source` を `sendback` とする警告を `warnings` に、1 回の書き込みで記録する。このサイクルの `/cdev:coding` がその後に何をしても、この `review_base` は変えない: その基点の時点の内容に戻した行はその基点からの差分に現れないが、これはレビューを R より後の変更に縮める代償として受け入れる。
+3. 差し戻しの申し送り（§ 申し送り）を `{loop_dir}/g{g}c{c}/handoff.md` に書き、そのパスをサイクルの `handoff` に記録して、ステップ 2 へ戻る。
 
 ## ステップ 5 — ポストモーテムとグランドリセット
 
