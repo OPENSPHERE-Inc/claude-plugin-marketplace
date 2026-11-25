@@ -22,8 +22,9 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls
 - `--max-rounds N`（デフォルト 10、範囲 1〜20）— 外側ループの最大ラウンド数を変更する。
 - `--base {branch}`（デフォルト `main` または `master`）— ベースブランチを指定する（review フェーズに渡される）。`--incremental` は Round 2 以降これを上書きする。
 - `--adversarial`（デフォルト OFF）— review フェーズを敵対的モードで実行する（review フェーズにそのまま渡す）。
+- `--strict-docs`（デフォルト OFF）— ラウンドループの判断で、ドキュメントファイルを他のファイルと同じに扱う（review フェーズにそのまま渡す）。指定しない場合、修正がドキュメントファイルだけを変更したラウンドでラウンドループを終える（2.6）。
 - `--worktree[=branch]`（デフォルト OFF）— 全ラウンドを `branch` 上の別の git ワークツリーで実行する（§ ワークツリー）。`=branch` を省略すると、現在の HEAD から新しいブランチ `creview-rounds-{YYYYMMDD-HHMMSS}`（開始時刻）を作成する。`--commit` を有効にする。
-- `--on-divergence {ask|stop}`（デフォルト `ask`）— ステップ 2.2 の発散パターン検出ゲートが発散を検出したときの扱い。`ask`: 発散調査レポートを提示してユーザーの続行の指示を待つ。`stop`: 何も提示せずラウンドループを止める（ステップ 2.2 手順 8）。
+- `--on-divergence {ask|stop}`（デフォルト `ask`）— ステップ 2.2 の発散パターン検出ゲートが発散を検出したときの扱い。`ask`: 発散調査レポートを提示してユーザーの続行の指示を待つ。`stop`: 何も提示せずラウンドループを止める（ステップ 2.2 手順 8）。ただし `--strict-docs` を指定しない場合、ドキュメントの発散はそのラウンドで修正する（ステップ 2.2 手順 4.3）。
 - `--result {path}`（デフォルトなし）— 実行の終わりに結果ファイル（§ 結果ファイル）を書く。
 
 ## ワークツリー（`--worktree`）
@@ -48,7 +49,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls
 
 - `converged` — 2.6 が条件 2 を満たさないと判定した。または、前ラウンドがコミットを残していないため、ステップ 2.1 手順 3 がラウンドループを終了した。
 - `max-rounds` — 最終ラウンドが次のラウンドに進む条件を満たし、ラウンドカウンターが `--max-rounds` を超えた。
-- `divergence` — `--on-divergence stop` で、ステップ 2.2 手順 8 が発散によりラウンドループを止めた。
+- `divergence` — `--on-divergence stop` で、ステップ 2.2 手順 8 が発散によりラウンドループを止めた。または、混在の発散のラウンド（ステップ 2.2 手順 4.3）の後で 2.6 がラウンドループを終えた。
 - `user-stop` — ステップ 2.2 手順 5、または 2.6 の `--confirm-round` の待機で、ユーザーがループの停止を指示した。
 - `error` — フェーズの `error` で実行を終えた（ステップ 2 冒頭。§ フェーズサブエージェントの起動 がそれとして扱うものを含む）。または、ステップ 1 の手順 3 より後でスキルが終了した。
 
@@ -70,7 +71,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls
 - `rounds`: レビューフェーズを起動したラウンドの数。ステップ 1 でスキルが終了した場合は 0。
 - `round_start_revs`: それらの各ラウンドの `{this_round_rev}`（完全なハッシュ）をラウンド順に並べたもの。
 - `final_report_path`: ステップ 3 の `report_path`。ステップ 3 がレポートを作らなかった場合は null。
-- `divergence_report_path`: `{divergence_report_path}`（`--on-divergence` の値に寄らない）。レポートを返した調査がない場合は null。
+- `divergence_report_path`: `{divergence_report_path}`（ステップ 2.2 手順 4.2。`--on-divergence` の値に寄らない）。レポートを保持していない場合は null。
 - `doc_paths`: レビューフェーズが返した非 null の `doc_path` すべてをラウンド順に並べたもの。
 - `workflow_warnings` / `prompt_warnings`: 2.3 / 2.5 で各ラウンドの記録用に保持した（中断したラウンドの分を含む）`workflow_warning` ごとの `{round, warning}` と、`prompt_warning` ごとの `{round, source, warning}`。ない場合は `[]`。
 - `error`: `{end_reason}` が `error` でなければ null。`error` なら `{round, phase, message}`。`round` は実行が止まったラウンドで、`final-report` では最終ラウンド、`init` では null。`phase` は、フェーズの error（ステップ 2.5 での再実行を含む）では `review`、`triage`、`respond`、`resolve` のいずれか、ステップ 2.2 の検出・調査サブエージェントでは `divergence`、ステップ 3 のサブエージェントでは `final-report`、ステップ 1 での終了では `init`。`message` は返された `error`、または表示したエラー。
@@ -141,7 +142,7 @@ allowed-tools: Agent, Read, Write, Glob, Grep, Bash(cd:*), Bash(grep:*), Bash(ls
 Round 1 開始
   ├─ 2.1 review          [フェーズ Sub] creview:start   → round1.md
   ├─ 2.2 triage+estimate  [フェーズ Sub] creview:triage  → トリアージ／見積を永続化
-  │     ↳ Round 2 以降: [発散パターン検出 Sub] → 発散あり: [発散調査 Sub] → divergence-round{N}.md を提示し続行の指示を待つ（--on-divergence stop: 何も提示せずラウンドループを止め、最終ステップへ）
+  │     ↳ Round 2 以降: [発散パターン検出 Sub] → 発散あり: [発散調査 Sub] → divergence-round{N}.md を提示し続行の指示を待つ（--on-divergence stop: 何も提示せずラウンドループを止め、最終ステップへ。--strict-docs なしでは、発散がすべてドキュメントの発散のラウンドはそれを修正して続け、ほかの発散もあるラウンドは、調査レポートが実在すればそれを修正した後で、なければ修正せずに止まる）
   │     ↳ --confirm: 見積サマリを提示し続行の指示を待つ
   ├─ 2.3 respond / fix    [フェーズ Sub] creview:respond → status を永続化
   │     ↳ Maintain / Alternative の対象がなければスキップ
@@ -165,7 +166,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 5. すべてのサブエージェントが受け取る作業対象 `{target_dir}` を確定する: `--worktree` 指定時は `{worktree_path}`、それ以外は `git rev-parse --show-toplevel` の出力。
 6. 現在のブランチ名を取得する。
 7. 出力ディレクトリの存在を確認し、なければ作成する。
-8. ラウンドカウンターを 1、`{prev_round_rev}` を `(該当なし)` に設定する。
+8. ラウンドカウンターを 1、`{prev_round_rev}` を `(該当なし)`、`{docs_divergence_rounds}` を空に設定する。
 
 ## ステップ 2 — ラウンドループ
 
@@ -181,7 +182,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
    - `--incremental` が OFF、または `{prev_round_rev}` が `(該当なし)`: `{review_base}` = `--base` の値、`{review_range}` = `(該当なし)`。
    - それ以外: `{review_base}` = `{prev_round_rev}`、`{review_range}` = `{prev_round_rev}..{this_round_rev}`。両リビジョンが等しい場合は前ラウンドがコミットを残していないため、ラウンドループを終了してステップ 3 へ進む。
 4. `templates/phase-review.md`（`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`）でフェーズ Sub を起動する。
-   - 変数: `round_num`（ラウンドカウンター）、`base`（`{review_base}`）、`review_range`（`{review_range}`）、`document_path`（今ラウンドのファイルパス）、`language`（ユーザーのチャット言語）、`adversarial`（`--adversarial` の状態）
+   - 変数: `round_num`（ラウンドカウンター）、`base`（`{review_base}`）、`review_range`（`{review_range}`）、`document_path`（今ラウンドのファイルパス）、`language`（ユーザーのチャット言語）、`adversarial`（`--adversarial` の状態）、`strict_docs`（`--strict-docs` の状態）
    - オーバーライド: (該当なし)
 5. 戻り値（`{doc_path, findings_total, severity_counts, error}`）のみ context に保持する。
 
@@ -193,13 +194,16 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
    - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの
 3. 戻り値（`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, tmp_dir, error}`）のみ context に保持する。
 4. 発散パターン検出ゲート: Round 2 以降のフィードバックループ外で、`error` が null、`will_fix_count` が 1 以上、かつ `maintain_count` と `alternative_count` の合計が 1 以上の場合に実行する。
-   1. 検出: `Agent(subagent_type="creview:review-helper", prompt=...)` で `templates/divergence-check.md`（`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`）のサブエージェントを起動し、戻り値（`{divergence_count, investigator}`）のみ context に保持する。
+   1. 検出: `Agent(subagent_type="creview:review-helper", prompt=...)` で `templates/divergence-check.md`（`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`）のサブエージェントを起動し、戻り値（`{divergence_count, docs_count, investigator}`）のみ context に保持する。`docs_count` が欠けている、整数でない、または `divergence_count` より大きい場合は 0 とみなす。
       - 変数: `document_path`（今ラウンドのファイルパス）、`previous_round_doc_paths`（Round 1〜N-1 の doc_path）、`output_path`（`{tmp_dir}/divergence.jsonl`）
       - オーバーライド: (該当なし)
-   2. 調査: `divergence_count` が 1 以上の場合、`Agent(subagent_type="{investigator}", prompt=...)` で `templates/divergence-investigate.md`（`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`）のサブエージェントを起動し、戻り値（`{report_path}`）のみを `{divergence_report_path}` として context に保持する（後のラウンドのレポートで置き換える）。
+   2. 調査: `divergence_count` が 1 以上の場合、`Agent(subagent_type="{investigator}", prompt=...)` で `templates/divergence-investigate.md`（`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`）のサブエージェントを起動し、戻り値（`{report_path}`）のみを `{divergence_report_path}` として context に保持する（後のラウンドのレポートで置き換える。`--on-divergence stop` では、`report_path` を返さなかった調査はこれを null にする）。
       - 変数: `divergence_path`（`{tmp_dir}/divergence.jsonl`）、`document_path`、`previous_round_doc_paths`、`template_path`（`${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/divergence-report.md`）、`report_path`（`{base-path}/{branch-dir}/divergence-round{N}.md`）、`language`（ユーザーのチャット言語）
       - オーバーライド: (該当なし)
-5. ユーザー確認: `--on-divergence stop` で手順 4 が発散を検出したラウンドでは、何も提示せず、何も待たない。それ以外では、以下のいずれかに該当する場合、該当するものをまとめてユーザーに提示し、続行の指示を待つ。
+   3. ドキュメントの発散: `--strict-docs` を指定しない `--on-divergence stop` では、手順 4.2 が返した `report_path` が実在するファイルを指せばそれを、そうでなければ null を `{docs_report_path}` とし、`docs_count` が 1 以上で `divergence_count` と等しいドキュメントのみの発散のラウンドか、`docs_count` が 1 以上で `divergence_count` より小さく、`{docs_report_path}` が null でない混在の発散のラウンドを、ドキュメントの発散のラウンドとする。それ以外の実行では、どのラウンドもドキュメントの発散のラウンドではない。ドキュメントの発散のラウンドを、種類と `{docs_report_path}` とともに `{docs_divergence_rounds}` に加え、`{docs_report_path}` が null でなければ、その種類に応じた下記の修正方針を、`{docs_report_path}` を埋めて、今ラウンドの 2.3 と 2.4、およびステップ 2.5 での 2.2 / 2.3 / 2.4 の再実行のオーバーライドに加える。
+      - ドキュメントのみの発散のラウンド: `発散の修正方針: 発散調査レポート {docs_report_path} がドキュメントの発散と示す各発散について、その推奨修正案を、案が担い手として名指しする今ラウンドの指摘を通じて適用する。各担い手は、自身の Plan が求める変更の代わりに、案がそれを担い手として名指しするファイルへの案の変更を行う。そのような発散にある今ラウンドの指摘のうちその案が担い手として名指ししないものと、案が Won't Fix とする指摘は、修正対象から外す。指摘の Triage や Estimate と異なる箇所では、この方針を優先する。`
+      - 混在の発散のラウンド: ドキュメントのみの発散のラウンドの方針に続けて `今ラウンドの修正対象には、それらの案が担い手として名指しする指摘だけを選ぶ。`
+5. ユーザー確認: ここでは、ドキュメントの発散のラウンド（手順 4.3）を、手順 4 が発散を検出しなかったラウンドとして扱う。`--on-divergence stop` で手順 4 が発散を検出したラウンドでは、何も提示せず、何も待たない。それ以外では、以下のいずれかに該当する場合、該当するものをまとめてユーザーに提示し、続行の指示を待つ。
    - 今回の手順 4 が発散を 1 件以上検出した（`--confirm` の状態に寄らない）: 発散パターンを検出した旨と、`report_path` を Read した内容。
    - `--confirm` が有効で、`error` が null かつ Maintain / Alternative が 1 件以上ある: `summary_path` を Read した内容。
 6. `tmp_dir` が非 null の場合、`summary_path` を含むフェーズの作業用ディレクトリを削除する（`del-tmp.sh` は削除済みのターゲットを読み飛ばすため、`error` 経路も個別扱いは不要）:
@@ -207,8 +211,8 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
 7. `error` が非 null の場合は、ステップ 2 冒頭のフェーズの error の扱いに従う。
-8. 手順 5 でユーザーがループの停止を指示した場合、または `--on-divergence stop` で手順 4 が発散を検出した場合は、以降のフェーズを実行せず 2.6 で今ラウンドの結果を記録し、次ラウンドへ進まずステップ 3 へ進む。
-9. 手順 5 でユーザーが続行とともに修正方針を指示した場合は、その指示の原文を、参照先としての `report_path`、および指摘の Triage や Estimate と異なる箇所では方針を優先する旨の注記とともに、今ラウンドの 2.3 と 2.4、およびステップ 2.5 での 2.2 / 2.3 / 2.4 の再実行のオーバーライドに加える。
+8. 手順 5 でユーザーがループの停止を指示した場合、または `--on-divergence stop` で、ドキュメントの発散のラウンド（手順 4.3）でないラウンドの手順 4 が発散を検出した場合は、以降のフェーズを実行せず 2.6 で今ラウンドの結果を記録し、次ラウンドへ進まずステップ 3 へ進む。
+9. 手順 5 でユーザーが続行とともに修正方針を指示した場合は、その指示の原文を、参照先としての `report_path`、および指摘の Triage や Estimate、または手順 4.3 の修正方針と異なる箇所では方針を優先する旨の注記とともに、今ラウンドの 2.3 と 2.4、およびステップ 2.5 での 2.2 / 2.3 / 2.4 の再実行のオーバーライドに加える。
 10. 対応フェーズのスキップ判定: `will_fix_count` が 0、または `maintain_count` と `alternative_count` がともに 0 の場合、2.3 をスキップして 2.4 に進む（Won't Fix / Downgrade の指摘は 2.4 で検証を受ける）。
 
 ### 2.3 — 対応フェーズ（respond スキル）
@@ -216,18 +220,20 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 1. コンソールに表示: `## Round {N} — Step 3: Respond (Fix & Verify)`
 2. `templates/phase-respond.md`（`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`）でフェーズ Sub を起動する。
    - 変数: `document_path`、`commit_flag`（`--commit` の状態）、`adr_flag`（`--adr` の状態）
-   - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの。ステップ 2.2 でユーザーが修正方針を指示したラウンドでは、その指示を加える
-3. 戻り値（`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line, error}`）のみ context に保持する。`workflow_warning` が非 null の場合は本ラウンドの記録用に保持する。`prompt_warning` が非 null の場合は、フィードバックループ外では出所 `Step 3` を付けて本ラウンドの記録用に保持し、ループ内ではステップ 2.5 手順 2 に従う。
+   - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの。ステップ 2.2 の修正方針（手順 4.3 または手順 9）があるラウンドでは、それを加える
+3. 戻り値（`{fix_count, fixed_count, code_changed, docs_only, workflow_warning, prompt_warning, summary_line, error}`）のみ context に保持する。`workflow_warning` が非 null の場合は本ラウンドの記録用に保持する。`prompt_warning` が非 null の場合は、フィードバックループ外では出所 `Step 3` を付けて本ラウンドの記録用に保持し、ループ内ではステップ 2.5 手順 2 に従う。
 
 ### 2.4 — 検証フェーズ（resolve スキル）
 
 1. コンソールに表示: `## Round {N} — Step 4: Resolve`
 2. `templates/phase-resolve.md`（`template_id`: `2f9c6a1e-7b53-4d84-8e2b-5a1f9d3c7b26`）でフェーズ Sub を起動する。
    - 変数: `document_path`、`base`（今ラウンドの `{review_base}`）
-   - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの。ステップ 2.2 でユーザーが修正方針を指示したラウンドでは、その指示を加える
+   - オーバーライド: フィードバックループ外は (該当なし)、ループ内はステップ 2.5 が挙げるもの。ステップ 2.2 の修正方針（手順 4.3 または手順 9）があるラウンドでは、それを加える
 3. 戻り値（`{summary_line, resolved_count, feedback_count, unresolved_count, error}`）のみ context に保持する。
 
 ### 2.5 — フィードバック確認と再修正ループ
+
+混在の発散のラウンド（ステップ 2.2 手順 4.3）では、このステップを飛ばして 2.6 へ進む。
 
 ステップ 2.4 の戻り値（`feedback_count`）から「フィードバック必要」な指摘の有無を判定する。レビュードキュメント本文を直接 Read しない。
 
@@ -236,9 +242,9 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 各 attempt は 2.2 → 2.3 → 2.4 を再実行し、以下のテキストをフェーズ Sub の `overrides` 変数として渡す:
 
-1. `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)` を表示。2.2 をオーバーライド `トリアージサブエージェント: stage が "feedback" の指摘を優先的にトリアージする（current_meta.verification に Feedback 詳細あり）。` および `見積サブエージェント: current_meta.verification の Feedback 内容を踏まえて見積。コストが膨らむ場合は Downgrade を検討。` で再実行する。ユーザーが修正方針を指示したラウンドでは、ステップ 2.2 手順 9 の修正方針もオーバーライドに加える。
+1. `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)` を表示。2.2 をオーバーライド `トリアージサブエージェント: stage が "feedback" の指摘を優先的にトリアージする（current_meta.verification に Feedback 詳細あり）。` および `見積サブエージェント: current_meta.verification の Feedback 内容を踏まえて見積。コストが膨らむ場合は Downgrade を検討。` で再実行する。ステップ 2.2 手順 4.3 と手順 9 の修正方針があるラウンドでは、それらもオーバーライドに加える。
 2. 2.2 が対応フェーズのスキップを決めた場合、この手順をスキップして手順 3 へ進む。そうでなければ `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` を表示し、2.3 をオーバーライド `フィードバック再修正パス: 修正対象は Verification が 💬 Feedback の指摘。そのフィードバック内容を踏まえて再修正する。` で再実行する。このオーバーライドを特定のサブエージェントに名指しで限定しない — 修正対象を選定するサブエージェントにも届く必要がある。戻り値の `workflow_warning` が非 null の場合は本ラウンドの記録値を更新する（後勝ち）。戻り値の `prompt_warning` が非 null の場合は、出所 `Step 5.2 attempt {M}` を付けて本ラウンドの記録に追加し、それまでに保持した値は残す。
-3. `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)` を表示。ユーザーが修正方針を指示したラウンドではステップ 2.2 手順 9 の修正方針を、それ以外ではオーバーライド `(該当なし)` を渡して 2.4 を再実行。
+3. `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)` を表示。ステップ 2.2 手順 4.3 と手順 9 の修正方針があるラウンドではそれらを、それ以外ではオーバーライド `(該当なし)` を渡して 2.4 を再実行。
 4. フィードバックが残っていれば手順 1 に戻る。3 回で解消しない場合はラウンドを終了する（残った 💬 Feedback は 2.6 で「未解決」としてカウント）。
 
 ### 2.6 — ラウンド終了
@@ -255,13 +261,16 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 - 解決数: 検証フェーズの `resolved_count`
 - フィードバック試行回数: 本ラウンドで実施したステップ 2.5 の試行回数
 - ラウンド開始リビジョン: 今ラウンドの `{this_round_rev}`
+- docs_only: 今ラウンドの対応フェーズ実行のいずれかが `code_changed` を true で返し、そのような実行がすべて `docs_only` を true で返した場合は true。それ以外は false
 - workflow_warning: 2.3 / 2.5 で保持した `workflow_warning`（フォーマット／ビルド手順未解決、または環境起因でビルド／テスト検証が完了しなかったラウンドのみ。それ以外は null）
 - prompt_warning: 2.3 / 2.5 で保持した出所付きの `prompt_warning` をすべて 1 つの値に連結したもの（AI 向けプロンプトファイルが解釈テストに不合格のまま残ったか未テストだったラウンドのみ。それ以外は null）
+
+混在の発散のラウンド（ステップ 2.2 手順 4.3）の後は、下記の条件を判定せずにステップ 3 へ進む。
 
 次のラウンドに進む条件: 以下の**すべて**を満たす場合に限り、`{prev_round_rev}` を今ラウンドの `{this_round_rev}` に設定し、ラウンドカウンターをインクリメントしてステップ 2.1 へ戻る:
 
 1. ラウンドカウンターが `--max-rounds` 以下である。
-2. 今ラウンドの対応フェーズ実行（ステップ 2.3、またはステップ 2.5 の attempt の手順 2）のいずれかが `code_changed` を true で返した。対応フェーズが 1 度も実行されなかった場合は false として扱う。
+2. 今ラウンドの対応フェーズ実行（ステップ 2.3、またはステップ 2.5 の attempt の手順 2）のいずれかが `code_changed` を true で返した。`--strict-docs` を指定しない場合は、その同じ戻り値の `docs_only` が false であることも要する。対応フェーズが 1 度も実行されなかった場合は false として扱う。
 
 条件を満たし、かつ `--confirm-round` が有効な場合は、ステップ 2.1 へ戻る前にユーザーの続行の指示を待つ。ユーザーが代わりにループの停止を指示した場合は、次のラウンドを始めずステップ 3 へ進む。
 
@@ -274,7 +283,7 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 1. `Agent(subagent_type="creview:review-helper", prompt=...)` で `templates/final-report-compile.md`（`template_id`: `4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16`）のサブエージェントを起動する。
    - 変数:
      - `round_doc_paths`: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
-     - `round_stats`: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...（workflow_warning が非 null のラウンドは末尾に workflow_warning="..." を、prompt_warning が非 null のラウンドは末尾に prompt_warning="..." を付す）
+     - `round_stats`: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, docs_only=<bool>, ...（workflow_warning が非 null のラウンドは末尾に workflow_warning="..." を、prompt_warning が非 null のラウンドは末尾に prompt_warning="..." を付す）
      - `template_path`: {template_path}
      - `report_path`: {report_path}
      - `language`: ユーザーのチャット言語
@@ -291,4 +300,8 @@ Round 2 開始（前ラウンドのレビュードキュメントは渡さない
 
 1. `--worktree` 指定時は § ワークツリー のティアダウンを実行する。
 2. `--result` 指定時は結果ファイルを書く（§ 結果ファイル）。
-3. `{end_reason}` が `error` の場合は、その `error`、中断したラウンドとフェーズ、各ラウンドのレビュードキュメントのパス（レビューフェーズが返した非 null の `doc_path` すべて）と、2.3 / 2.5 で各ラウンドの記録用に保持した `workflow_warning` / `prompt_warning` すべて（中断したラウンドの分を含め、それぞれにラウンドを、`prompt_warning` には出所も付ける）をユーザーに報告する。それ以外の場合は、`{end_reason}`（`divergence` では `{divergence_report_path}` を添える）と最終レポートのパスをユーザーに報告し、主要な統計（総指摘数、解決数、未解決数）を簡潔に伝える。どちらの場合も、`--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれも加え、`--result` 指定時は結果ファイルのパス（書き出しに失敗した場合はその旨）を加える。
+3. `{end_reason}` が `error` の場合は、その `error`、中断したラウンドとフェーズ、各ラウンドのレビュードキュメントのパス（レビューフェーズが返した非 null の `doc_path` すべて）と、2.3 / 2.5 で各ラウンドの記録用に保持した `workflow_warning` / `prompt_warning` すべて（中断したラウンドの分を含め、それぞれにラウンドを、`prompt_warning` には出所も付ける）をユーザーに報告する。それ以外の場合は、`{end_reason}`（`divergence` では `{divergence_report_path}` を添える）と最終レポートのパスをユーザーに報告し、主要な統計（総指摘数、解決数、未解決数）を簡潔に伝える。どちらの場合も、次を加える:
+   - `{docs_divergence_rounds}` のうち、2.3 が null の `error` を返し、ステップ 2.5 での 2.3 の再実行があればその各回も null の `error` を返したラウンドについて: そのドキュメントの発散でループを止めずにそのラウンドの中で扱ったことと、その `{docs_report_path}`。`{docs_report_path}` が null の場合は、調査レポートが返らなかったため、そのラウンドの修正が発散の修正方針なしで行われたこと。混在の発散のラウンドでは、その 2.4 が null の `error` を返したとき、さらにその修正の後でループを止めたこと。
+   - `{docs_divergence_rounds}` のうち、2.3 が実行されなかったか、2.3 またはステップ 2.5 での 2.3 の再実行が非 null の `error` を返したラウンドについて: そのラウンドの修正が完了する前に実行が止まったことと、その `{docs_report_path}`。`{docs_report_path}` が null の場合は、調査レポートが返らなかったこと。
+   - `--worktree` 指定時はブランチと、ティアダウンで残したワークツリーがあればそれ。
+   - `--result` 指定時は結果ファイルのパス（書き出しに失敗した場合はその旨）。

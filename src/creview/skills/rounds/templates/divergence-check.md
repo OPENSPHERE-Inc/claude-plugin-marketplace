@@ -12,7 +12,7 @@ template_id: 6570a998-e9f3-4421-af84-6911eebd7c07
 - 過去ラウンドのレビュードキュメントのパス: `{{previous_round_doc_paths}}`
 - 検出結果の出力先: `{{output_path}}`
 
-判定材料はこれらのレビュードキュメント（指摘本文と、`<!-- METADATA(id) -->` ブロックの Triage / Estimate / Status / Verification）に限る。例外として、指摘のファイルが AI 向けプロンプトファイルかを判定するためには、そのファイルを Read してよい。ファイルが既にない場合は、パスと指摘本文から判定する。
+判定材料はこれらのレビュードキュメント（指摘本文と、`<!-- METADATA(id) -->` ブロックの Triage / Estimate / Status / Verification）に限る。例外として、指摘のファイルが AI 向けプロンプトファイルかドキュメントファイル（`sub-agent.md` § ドキュメントファイル）かを判定するためには、そのファイルを Read してよい。ファイルが既にない場合は、パスと指摘本文から判定する。
 
 定義:
 
@@ -20,6 +20,7 @@ template_id: 6570a998-e9f3-4421-af84-6911eebd7c07
 - 連鎖リンク: あるラウンドの修正対象の指摘のうち、それより前のラウンドの指摘への修正（`Status: 🟢 Fixed — ...` に記された変更）を原因とするもの。その修正が導入・変更したコードを問題にしている指摘が該当する。箇所が重なるだけで、修正前からある問題を指す指摘は該当しない。
 - 連鎖: 連鎖リンクを過去へ辿った列（指摘 → その修正 → 次の指摘 → その修正 → ...）。
 - 細部の指摘: AI 向けプロンプトファイル上の修正対象の指摘のうち、`contract-style-prompts.md` § AI 向けプロンプトファイル上の指摘 が手続き細部の指摘に分類するもの。指摘のファイルは location のパス部分とし、location がファイルを示さない指摘はどのファイルにも数えない。
+- ドキュメントの発散: `links` のすべての指摘について、指摘のファイルがドキュメントファイルである発散。
 
 以下に該当するものをすべて発散として検出する:
 
@@ -31,10 +32,11 @@ template_id: 6570a998-e9f3-4421-af84-6911eebd7c07
 
 発散を 1 件以上検出した場合:
 
-- 検出結果を `{{output_path}}` に Write する。形式: `{divergences: [{id, kind, links}]}`
+- 検出結果を `{{output_path}}` に Write する。形式: `{divergences: [{id, kind, docs, links}]}`
   - `id`: `D-1` からの連番。
   - `kind`: 次のうち最初に当てはまるもの。過剰指定のプロンプトを含むか、発散に含まれる今ラウンドの指摘がすべて細部の指摘であれば `"over-specification"`、往復に該当すれば `"oscillation"`、それ以外は `"chain"`。
+  - `docs`: 発散がドキュメントの発散なら true、それ以外は false。
   - `links`: 発散を構成する全指摘を古い順に並べた `{round, id, location, finding, fix}` の配列。過剰指定のプロンプトでは、そのファイル上に細部の指摘があるラウンドが途切れずに続き今ラウンドで終わる区間について、各ラウンドのそのファイル上の細部の指摘を入れる。連鎖リンクである必要はない。`finding` は指摘の 1 行要約。`fix` は指摘の Status が `🟢 Fixed` ならその修正の 1 行要約、それ以外（今ラウンドの指摘を含む）は null。
 - `{{plugin_root}}/rules/agents-detection.md` の手順で、発散の源泉を調査する agent を解決する。マッチ対象は検出した全発散の指摘内容、記録先は `investigator`。
 
-戻り値: `{divergence_count, investigator, template_id}`。`investigator` は発散が 0 件なら null。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。
+戻り値: `{divergence_count, docs_count, investigator, template_id}`。`docs_count` は `docs` が true の発散の件数。`investigator` は発散が 0 件なら null。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

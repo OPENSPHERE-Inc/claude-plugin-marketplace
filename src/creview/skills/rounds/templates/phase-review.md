@@ -14,10 +14,11 @@ template_id: 3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64
 - 今ラウンドのレビュードキュメントのパス: `{{document_path}}`
 - ドキュメントの言語: `{{language}}`
 - 敵対的モード: `{{adversarial}}`
+- ドキュメントの厳格なレビュー: `{{strict_docs}}`
 
 実施内容:
 
-1. `creview:start` スキルを起動し、そのレビューリーダーとしてステップ 1〜4（作業用ディレクトリの削除を含む）を実行する。引数は `Round {{round_num}}` と `--output {{document_path}}` に加え、`{{review_range}}` が `(該当なし)` でなければ `--range {{review_range}}`、そうでなければ `--base {{base}}` を渡し、`{{adversarial}}` が ON の場合は `--adversarial` を付す。レビュー対象を自分で指定しない。
+1. `creview:start` スキルを起動し、そのレビューリーダーとしてステップ 1〜4（作業用ディレクトリの削除を含む）を実行する。引数は `Round {{round_num}}` と `--output {{document_path}}` に加え、`{{review_range}}` が `(該当なし)` でなければ `--range {{review_range}}`、そうでなければ `--base {{base}}` を渡し、`{{adversarial}}` が ON の場合は `--adversarial` を、`{{strict_docs}}` が ON の場合は `--strict-docs` を付す。レビュー対象を自分で指定しない。
 2. 自分が発行するすべてのサブエージェント起動プロンプトの「ラウンド固有のオーバーライド」セクションに以下を追加する:
    - 過去ラウンドのレビュードキュメントをレビュアーに渡さない。過去ラウンドとの重複排除も行わない。
    - レビュアーへのプロンプトに絶対に含めない: 過去ラウンドの指摘件数、件数の推移、「収束しつつある」等の傾向情報、過去ラウンドの指摘 ID（`C-1`、`M-1` 等）、Fixed / Won't Fix の統計情報。
