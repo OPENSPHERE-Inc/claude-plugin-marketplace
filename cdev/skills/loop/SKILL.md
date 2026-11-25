@@ -48,7 +48,7 @@ Show an error and terminate on a value out of range, and on any of these options
 - `{loop_dir}`: an absolute path; resolve a relative `--output` against `{repo_root}`.
 - `{hhmmss}`: the time part of `{timestamp}`.
 - Work branch of generation g: `{loop_branch}-g{g}`.
-- Turning points (TPs) of cycle c of generation g: TP-A `{loop_branch}-tp/g{g}c{c}-coding-start` and TP-B `{loop_branch}-tp/g{g}c{c}-coding-done`.
+- Turning points (TPs) of cycle c of generation g: TP-A `{loop_branch}-tp/g{g}c{c}-coding-start` and TP-B `{loop_branch}-tp/g{g}c{c}-coding-done`, and for c > 1, TP-R `{loop_branch}-tp/g{g}c{c}-review-base`, which Step 4 step 2 creates as the base of that cycle's review.
 - Output branch: `{loop_branch}`.
 
 Create a branch only with `git branch {name} {commit}`, which touches no working tree. Never move or delete a TP, and never rewrite a work branch's history.
@@ -81,7 +81,7 @@ Write:
  "generations": [
    {"generation": 1, "work_branch": "...-g1", "sendbacks": 1, "unresolved_divergence": false,
     "cycles": [
-      {"cycle": 1, "handoff": null,
+      {"cycle": 1, "handoff": null, "review_base": "...-tp/g1c1-coding-start",
        "coding": {"started": true, "skill_dir": "<abs>", "result_path": "...",
                   "committed": true, "qa_passed": true, "prompt_test_passed": true,
                   "restored_from": [], "fixme_count": 0},
@@ -101,6 +101,8 @@ Write:
 - `skill_dir` at the top level: this skill's base directory, which the Skill tool showed when it invoked this skill.
 - `position.step`: `init`, `coding`, `review`, `sendback`, `postmortem`, or `finish`.
 - `coding` / `review`: `started` and `skill_dir` at the invocation, the other fields from the result file.
+- `review_base`: the name of the TP the cycle's `/creview:rounds` takes as `--base`. In a send-back's new cycle, null until Step 4 step 2 writes it.
+- `turning_points[].kind`: `coding-start` for a TP-A, `coding-done` for a TP-B, `review-base` for a TP-R.
 - `postmortem.fallback`: the reason when Step 5 fell back on its own verdict, otherwise null.
 - `cleanup`: null when `--cleanup` is off and until § Cleanup starts, then `{"head": "<H>", "plan_path": "<abs>", "launches": 1, "commit": "<sha>", "count": 3, "skipped": null, "fallback": null}`:
   - `head` and `plan_path`: written as § Cleanup starts.
@@ -109,7 +111,7 @@ Write:
   - `skipped`: `"no-change"` when S and H have the same tree, otherwise null.
   - `fallback`: the reason, in `{doc_lang}`, when § Cleanup fell back, otherwise null.
 - `end`: written in Step 6, `{"kind": "normal"|"error", "step": "<the step it stopped in>", "error": "<string>"|null, "output_branch": "<name>"|null}`.
-- `warnings`: only short warning texts. From `coding-result.jsonl`: an unpassed QA, stating whether it is environmental; the files the interpretation test failed or left untested; the restore entries refused (`restore_refused`); a team re-formation fallback; that the documentation the design lists got no documentation cell for want of a writer (`docs_unwritten`); the `commit_warning` when not null; each entry of `doc_departures`, a departure of the code from the design or the task that a writer reported. From `rounds-result.jsonl`: its `workflow_warnings` and `prompt_warnings`. Your own: a missing divergence report, a post-mortem fallback, a cleanup fallback, a failed output branch creation. `source` is `coding`, `review`, `postmortem`, `cleanup`, or `finish`.
+- `warnings`: only short warning texts. From `coding-result.jsonl`: an unpassed QA, stating whether it is environmental; the files the interpretation test failed or left untested; the restore entries refused (`restore_refused`); a team re-formation fallback; that the documentation the design lists got no documentation cell for want of a writer (`docs_unwritten`); the `commit_warning` when not null; each entry of `doc_departures`, a departure of the code from the design or the task that a writer reported. From `rounds-result.jsonl`: its `workflow_warnings` and `prompt_warnings`. Your own: a missing divergence report, a review base fallen back to the TP-A of g{g}c1 (Step 4 step 2), a post-mortem fallback, a cleanup fallback, a failed output branch creation. `source` is `coding`, `review`, `sendback`, `postmortem`, `cleanup`, or `finish`.
 
 When you cannot tell your position from context, Read this file and the `SKILL.md` in its top-level `skill_dir`. In a `SKILL.md` you Read, the `CLAUDE_PLUGIN_ROOT` placeholder stays unexpanded: take it as the directory two levels above the `skill_dir` you Read it from, for this skill and for an inner skill alike. Continue from `position`:
 
@@ -120,7 +122,7 @@ When you cannot tell your position from context, Read this file and the `SKILL.m
   - When the cycle's result file exists, the inner skill has ended: continue from the Step's handling of the result file.
   - When it does not exist and the context shows the inner skill ended, by its closing report or an early termination, treat it as an abnormal end with no result file.
   - Otherwise the inner skill is still running in this session: do not invoke it again; continue as its leader, Reading `{skill_dir}/SKILL.md` when its instructions are not in context.
-- When `position.step` is `sendback`, Step 4 step 1 is done: continue from its step 2.
+- When `position.step` is `sendback`, Step 4 step 1 is done: continue from its step 2, or from its step 3 when the cycle's `review_base` is not null.
 - When the generation's `postmortem` records a verdict, continue from Step 5 step 5 with it. Writing a handoff and launching a post-mortem whose verdict is not recorded only overwrite their outputs: redo them.
 
 ## Handoff
@@ -130,10 +132,10 @@ A handoff is Markdown in `{doc_lang}` with these sections, in this order, their 
 You write the send-back handoff, only with what you can write without Reading a body:
 
 - Starting point: the work branch and its head commit. The task is already implemented on it; design and implement the change that removes the divergence's sources.
-- Why and policy: the divergence report's path, with the instruction to follow each `D-n`'s Source and its recommended Fix proposal. Add that the proposal, written for `/creview:rounds`, is to be read as follows: take the change to the code or prompts it describes, whatever carrier finding or fix sub-agent it names. Where it treats findings as Won't Fix or leaves a decision to the user, decide that in the design and state the accepted scope and its premises in the code or documentation the next review reads, since no triage decision carries over to that review.
+- Why and policy: the divergence report's path and the cycle's `review_base` (its name and commit), with the instruction to follow each `D-n`'s Source and its recommended Fix proposal. Add that the proposal, written for `/creview:rounds`, is to be read as follows: take the change to the code or prompts it describes, whatever carrier finding or fix sub-agent it names. Where it treats findings as Won't Fix or leaves a decision to the user, decide that in the design, and state the accepted scope and its premises in the same file as the code or text they constrain, in a form that file's discipline keeps (in an AI-facing prompt, a judgment WHY): no triage decision carries over to a later review, and after a later send-back the base of a review can lie past this cycle's changes.
 - Keep: the existing implementation and review fixes the divergence does not involve and, from generation 2 on, the policy of the post-mortem handoff in the references. Add, from generation 2 on, that this policy and what that handoff says to avoid prevail over the report's Fix proposals, which were written without knowledge of them: remove each source only by changes that keep to them, and when no such change removes a source, state in the design that it cannot be removed without departing from them and leave it to the generation's post-mortem.
 - Avoid: bringing back a form the report names as a source and, from generation 2 on, what the post-mortem handoff says to avoid.
-- Candidate return points: every TP of this generation so far, each with its name, its commit, and what it holds. The TP-A of g{g}c1 holds the start commit, before implementation; the TP-B of g{g}c{k} holds cycle k after `/cdev:coding`, before its review fixes; the TP-A of g{g}c{k} for k > 1 holds the code after cycle k-1's review. State that building on the current head is the default, and that returning means restoring a TP's content into files and committing forward, which `/cdev:coding` does, never rewriting history.
+- Candidate return points: every TP of this generation so far, each with its name, its commit, and what it holds. The TP-A of g{g}c1 holds the start commit, before implementation; the TP-B of g{g}c{k} holds cycle k after `/cdev:coding`, before its review fixes; the TP-A of g{g}c{k} for k > 1 holds the code after cycle k-1's review; the TP-R of g{g}c{k} holds the code at the start of the round before the one in which cycle k-1's review stopped, and is the base of cycle k's review. State that building on the current head is the default, and that returning means restoring a TP's content into files and committing forward, which `/cdev:coding` does, never rewriting history. State also that lines returned to their content at the cycle's `review_base`, by a restore or by an edit, do not appear in the diff the next review reads.
 - References: the divergence report; from generation 2 on, the post-mortem handoff (the `handoff` of the generation's first cycle in the state file); and for each cycle of this generation, the design documents (`design_paths` of `coding-result.jsonl`), the review documents (`doc_paths` of `rounds-result.jsonl`), and the final report (`final_report_path` of `rounds-result.jsonl`). Read only these paths from the result files.
 
 ## Cleanup
@@ -193,7 +195,7 @@ Never change the main working tree's sources. Between phases, stay at `{repo_roo
 ## Step 2 — Coding phase
 
 1. Set `position` to `coding`. Console: `## Loop g{g}c{c} — Coding`.
-2. When c = 1, create the work branch at S, and record the generation's entry with its first cycle, whose `handoff` is null in g1 and the previous post-mortem's handoff path after that.
+2. When c = 1, create the work branch at S, and record the generation's entry with its first cycle, whose `handoff` is null in g1 and the previous post-mortem's handoff path after that, and whose `review_base` is the name of the TP-A of g{g}c1.
 3. Create TP-A: at S when c = 1, otherwise at the work branch's head. Record it with its commit.
 4. Create `{loop_dir}/g{g}c{c}/` and run `cdev:coding` (§ Running an inner skill) with these arguments, adding `--handoff` in every cycle but g1c1:
 
@@ -208,10 +210,10 @@ Never change the main working tree's sources. Between phases, stay at `{repo_roo
 ## Step 3 — Review phase
 
 1. Set `position` to `review`. Console: `## Loop g{g}c{c} — Review`.
-2. Run `creview:rounds` with these arguments. `--base` is the generation's first TP-A so that Round 1 of every cycle reviews the whole generation as a diff from S, since a send-back reworks the earlier fixes across the board.
+2. Run `creview:rounds` with these arguments, where `{loop_review_base}` is the cycle's `review_base`.
 
    ```
-   creview:rounds {loop_dir}/g{g}c{c}/review --worktree={loop_branch}-g{g} --incremental --base {loop_branch}-tp/g{g}c1-coding-start --on-divergence stop --result {loop_dir}/g{g}c{c}/rounds-result.jsonl [{rounds_args}]
+   creview:rounds {loop_dir}/g{g}c{c}/review --worktree={loop_branch}-g{g} --incremental --base {loop_review_base} --on-divergence stop --result {loop_dir}/g{g}c{c}/rounds-result.jsonl [{rounds_args}]
    ```
 
 3. Once it returns, Read `rounds-result.jsonl` and record its results and warnings.
@@ -225,7 +227,8 @@ Never change the main working tree's sources. Between phases, stay at `{repo_roo
 ## Step 4 — Send-back
 
 1. Increment c and the generation's `sendbacks`, and record them in one write with the new cycle's entry and `position` at `sendback`. Console: `## Loop g{g}c{c} — Send-back`.
-2. Write the send-back handoff (§ Handoff) to `{loop_dir}/g{g}c{c}/handoff.md`, record its path in the cycle's `handoff`, and return to Step 2.
+2. Fix the cycle's review base. R is the second-to-last entry of `round_start_revs` in `{loop_dir}/g{g}c{c-1}/rounds-result.jsonl`: the start commit of the round before the one that review stopped in. When `round_start_revs` is an array of two entries or more and `git rev-parse --verify --quiet "{R}^{commit}"` exits 0, with only `{R}` substituted, create TP-R at R, and record it in `turning_points` and its name in the cycle's `review_base` in one write. Otherwise record the name of the TP-A of g{g}c1 in `review_base` and a warning with `source` `sendback` in `warnings`, in one write. Keep this `review_base` whatever this cycle's `/cdev:coding` then does: lines it returns to their content at that base do not appear in the diff from it, which is accepted as the price of narrowing the review to the changes after R.
+3. Write the send-back handoff (§ Handoff) to `{loop_dir}/g{g}c{c}/handoff.md`, record its path in the cycle's `handoff`, and return to Step 2.
 
 ## Step 5 — Post-mortem and grand reset
 
