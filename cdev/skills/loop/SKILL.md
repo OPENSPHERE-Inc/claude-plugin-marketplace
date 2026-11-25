@@ -33,7 +33,7 @@ When the argument is `$ARGUMENTS`, interpret it as the coding task and options. 
 - `--cleanup` (default OFF) — On a normal end, create the output branch at the head of commits that restack the adopted generation's changes from the start commit (§ Cleanup).
 - `--output {dir}` (default `.claude/tmp/cdev-loop-{timestamp}/`) — The run directory `{loop_dir}`.
 
-Passed through: `--review-rounds N` (range 1–10) and `--qa-attempts N` (range 1–10) to `/cdev:coding` as `{coding_args}`; `--max-rounds N` (range 1–20), `--adversarial`, and `--adr` to `/creview:rounds` as `{rounds_args}`. Each is empty when none is given.
+Passed through: `--review-rounds N` (range 1–10) and `--qa-attempts N` (range 1–10) to `/cdev:coding` as `{coding_args}`; `--max-rounds N` (range 1–20), `--adversarial`, and `--adr` to `/creview:rounds` as `{rounds_args}`; `--strict-docs` to both, recorded also as `limits.strict_docs`. Each is empty when none is given.
 
 Show an error and terminate on a value out of range, and on any of these options:
 
@@ -75,7 +75,8 @@ Write:
 ```json
 {"task": "<task>", "timestamp": "...", "repo_root": "<abs>", "loop_dir": "<abs>",
  "skill_dir": "<abs>", "start_commit": "<S>", "branch": "<loop_branch>", "doc_lang": "<chat language>",
- "limits": {"max_sendbacks": 2, "max_generations": 3, "pursuit": false, "cleanup": false},
+ "limits": {"max_sendbacks": 2, "max_generations": 3, "pursuit": false, "cleanup": false,
+            "strict_docs": false},
  "coding_args": "<pass-through options or empty>", "rounds_args": "<same>",
  "position": {"generation": 1, "cycle": 2, "step": "review"},
  "generations": [
@@ -132,7 +133,7 @@ A handoff is Markdown in `{doc_lang}` with these sections, in this order, their 
 You write the send-back handoff, only with what you can write without Reading a body:
 
 - Starting point: the work branch and its head commit. The task is already implemented on it; design and implement the change that removes the divergence's sources.
-- Why and policy: the divergence report's path and the cycle's `review_base` (its name and commit), with the instruction to follow each `D-n`'s Source and its recommended Fix proposal. Add that the proposal, written for `/creview:rounds`, is to be read as follows: take the change to the code or prompts it describes, whatever carrier finding or fix sub-agent it names. Where it treats findings as Won't Fix or leaves a decision to the user, decide that in the design, and state the accepted scope and its premises in the same file as the code or text they constrain, in a form that file's discipline keeps (in an AI-facing prompt, a judgment WHY): no triage decision carries over to a later review, and after a later send-back the base of a review can lie past this cycle's changes.
+- Why and policy: the divergence report's path and the cycle's `review_base` (its name and commit), with the instruction to follow each `D-n`'s Source and its recommended Fix proposal. Add that the proposal, written for `/creview:rounds`, is to be read as follows: take the change to the code or prompts it describes, whatever carrier finding or fix sub-agent it names. Where it treats findings as Won't Fix or leaves a decision to the user, decide that in the design, and state the accepted scope and its premises in the same file as the code or text they constrain, in a form that file's discipline keeps (in an AI-facing prompt, a judgment WHY): no triage decision carries over to a later review, and after a later send-back the base of a review can lie past this cycle's changes. When `limits.strict_docs` is false, add that the send-back leaves out each `D-n` the report marks as a documentation divergence: the review applied its Fix proposal in the round it stopped in.
 - Keep: the existing implementation and review fixes the divergence does not involve and, from generation 2 on, the policy of the post-mortem handoff in the references. Add, from generation 2 on, that this policy and what that handoff says to avoid prevail over the report's Fix proposals, which were written without knowledge of them: remove each source only by changes that keep to them, and when no such change removes a source, state in the design that it cannot be removed without departing from them and leave it to the generation's post-mortem.
 - Avoid: bringing back a form the report names as a source and, from generation 2 on, what the post-mortem handoff says to avoid.
 - Candidate return points: every TP of this generation so far, each with its name, its commit, and what it holds. The TP-A of g{g}c1 holds the start commit, before implementation; the TP-B of g{g}c{k} holds cycle k after `/cdev:coding`, before its review fixes; the TP-A of g{g}c{k} for k > 1 holds the code after cycle k-1's review; the TP-R of g{g}c{k} holds the code at the start of the round before the one in which cycle k-1's review stopped, and is the base of cycle k's review. State that building on the current head is the default, and that returning means restoring a TP's content into files and committing forward, which `/cdev:coding` does, never rewriting history. State also that lines returned to their content at the cycle's `review_base`, by a restore or by an edit, do not appear in the diff the next review reads.
