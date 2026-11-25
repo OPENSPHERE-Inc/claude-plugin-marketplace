@@ -159,6 +159,9 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
 
 - `--review-rounds N` (default 5, max 10) — max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, max 10) — max QA verify ⇄ fix attempts.
+- `--strict-docs` (default off) — have a cell's reviewer raise new findings on documentation
+  files in every round, not only in its first review of the cell (see
+  [Documentation](#documentation)). Severity is the same with or without it.
 - `--commit` (default off) — commit the verified implementation, split into commits by logical
   change, with messages that follow the repository's commit history and conventions.
   - Each changed file goes into exactly one commit: the change of one file is never split
@@ -376,6 +379,15 @@ that changes documentation files runs as follows:
   - No finding asks to make the documentation match the design or the task against the code.
     An unreported departure is settled by reporting it.
   - A statement the run neither changed nor made wrong is out of scope, `Info` at most.
+- **Review rounds** — by default, the reviewer of a documentation cell raises findings only in its
+  first review of the cell.
+  - In each later round, it judges only whether the writer's fix or rejection settles each
+    finding it raised, and sends again each unsettled one with what remains of it. The cell
+    closes once they are all settled, or at the `--review-rounds` cap.
+  - The reviewer of a code cell does the same for its findings on documentation files, which a
+    coder holds when no writer does, and raises findings on other files in every round.
+  - With `--strict-docs`, the reviewer raises new findings on documentation files in every
+    round.
 - **QA gate** — QA runs after the documentation cells, so the project's format, build, and test
   workflow covers the documentation changes when it handles documentation, such as with a
   Markdown linter or a documentation build; the review, not QA, checks that the documentation
@@ -421,6 +433,13 @@ bounded, so the run always ends. It never pushes or opens a pull request.
   its result, split by logical change, even when QA or the interpretation test did not pass.
   `/creview:rounds` then runs on the same branch with `--incremental`, and stops instead of
   pausing when it detects a divergence (`--on-divergence stop`).
+  - Unless `--strict-docs` is given, a divergence whose findings are all on documentation files
+    does not stop it: the review applies the investigation report's fix proposal for it in the
+    same round. A round with only such divergences goes on, and one that also has others stops
+    after those fixes.
+  - Unless `--strict-docs` is given, a review round whose fixes changed only documentation files
+    ends the review.
+  - See the [creview README](../creview/README.md).
 - Round 1 of a cycle's review covers the diff from the cycle's base; later rounds review only
   the previous round's fixes.
   - In a generation's first cycle, the base is the starting commit.
@@ -434,6 +453,9 @@ bounded, so the run always ends. It never pushes or opens a pull request.
 - **Send-back**: when the review stops on a divergence, the loop writes a handoff that has
   `/cdev:coding` follow the sources and fix proposals of the divergence investigation report,
   and starts the next cycle on the same branch.
+  - Unless `--strict-docs` is given, the handoff leaves out the divergences the report marks as
+    documentation divergences: the review applied their fix proposals in the round it stopped
+    in.
   - From the second generation on, the handoff also carries over the policy of the
     post-mortem's handoff that started the generation, and what that handoff says to avoid.
     These prevail over the investigation report's fix proposals: a source that cannot be
@@ -515,7 +537,8 @@ bounded, so the run always ends. It never pushes or opens a pull request.
     restacked.
 - `--output {dir}` (default `.claude/tmp/cdev-loop-{timestamp}/`) — the run directory.
 - Passed through to `/cdev:coding`: `--review-rounds N` and `--qa-attempts N`. Passed through
-  to `/creview:rounds`: `--max-rounds N`, `--adversarial`, and `--adr`.
+  to `/creview:rounds`: `--max-rounds N`, `--adversarial`, and `--adr`. Passed through to both:
+  `--strict-docs`.
 - Rejected with an error: `--worktree`, `--commit`, and `--incremental`, which are always on;
   `--confirm` and `--confirm-round`, which wait for you; `--base`, which the loop sets; and the
   options the loop passes to the inner skills itself (`--on-divergence`, `--result`,
@@ -629,7 +652,7 @@ Two failures at the end do not stop the run; it still ends normally, with a warn
 - The loop needs what `/cdev:coding` and `/creview:rounds` need: background subagents and
   `SendMessage`, nested sub-agent spawning of depth 3 or more
   (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), a repository you trust, and a session started at
-  the repository root. It also needs the creview plugin, version 0.22.0 or later, which Claude
+  the repository root. It also needs the creview plugin, version 0.24.0 or later, which Claude
   Code installs with cdev as a dependency.
 - The project's configure, build, and test steps must leave in the worktree neither initialized
   submodules nor untracked files that `.gitignore` does not cover. Git refuses to remove such a
