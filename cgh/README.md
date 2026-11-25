@@ -8,7 +8,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 
 ## Requirements
 
-- The `creview` plugin, version 0.19.0 or later, which Claude Code installs with `cgh` as a
+- The `creview` plugin, version 0.24.0 or later, which Claude Code installs with `cgh` as a
   dependency, and what it needs for a pull request: an authenticated GitHub CLI (`gh`), Git 2.41
   or later, `python3` (3.9 or later) on the `PATH`, and a clone with the pull request's
   repository as a remote. The skills refuse a pull request of any other repository.
@@ -23,8 +23,8 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 
 | Command | Purpose | Options |
 |---------|---------|---------|
-| `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial`, `--trust`, `--adr`, `--force-comment` |
-| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--trust`, `--adr`, `--force-comment`, `--incremental` |
+| `/cgh:review` | Review a pull request and post the triaged findings. | `--adversarial`, `--strict-docs`, `--trust`, `--adr`, `--force-comment` |
+| `/cgh:gate` | Judge whether a self-reviewed pull request can merge, and post PASS or BLOCK. | `--adversarial`, `--strict-docs`, `--trust`, `--adr`, `--force-comment`, `--incremental` |
 | `/cgh:respond` | Fix what a pull request's reviews call for, and reply to them. | `--no-confirm`, `--trust`, `--adr` |
 | `/cgh:resolve` | Verify the findings you raised, posted by `/cgh:review` or written by hand, and reply with the result. | `--trust` |
 
@@ -108,12 +108,29 @@ Severity and blocking are separate. Critical, Major, and Minor say only how bad 
 consequence is. After triage, each finding is judged blocking or non-blocking on its own, and each
 posted comment shows which, next to its severity:
 
+- Unless `--strict-docs` is given, two kinds of finding do not block, whatever the points below
+  say:
+  - A finding whose problem lies only in the title or description: a claim there that the code
+    contradicts, such as an outdated test count or a change the diff does not make, or work the
+    description leaves open, such as an unchecked item, a TODO / WIP note, or a promised
+    follow-up. A finding that also reports broken code, a regression, or a security problem is
+    not one.
+  - A finding about a problem in a file of documentation for people, such as a README, an API
+    reference, a guide, a changelog, or a project memory file such as `CLAUDE.md` or
+    `AGENTS.md`. AI-facing prompts, code, tests, and the description are not documentation here.
+    A finding that also reports broken code, a regression, or a security problem, other than one
+    in that documentation itself, is not one.
+  - A finding that also reports a failed check, an unsettled discussion, or a change the review
+    could not read is of neither kind. A finding not clearly of either kind is judged by the
+    points below.
 - Work left undone with no issue, an unsettled discussion, a claim of the title or description
-  that the code contradicts, and a change the review could not read always block.
-  - An unchecked item in the description, or a test count the description has not caught up
-    with, is typically Minor and blocking.
+  that the code contradicts, and a change the review could not read block, unless the first point
+  exempts the finding.
+  - With `--strict-docs`, an unchecked item in the description, or a test count the description
+    has not caught up with, is typically Minor and blocking.
   - A contradicted claim blocks even when its problem would not block under the points below,
-    such as a deferred bug or a README that lacks what the description says it covers.
+    such as a deferred bug or, with `--strict-docs`, a README that lacks what the description
+    says it covers.
 - A security problem blocks unless the author or an assignee deferred it explicitly, in the
   description, by naming a tracking issue, or, for a decider, by a decline.
 - A decline in a comment alone normally leaves an unsettled discussion, which blocks until the
@@ -121,8 +138,8 @@ posted comment shows which, next to its severity:
 - Other broken code and regressions block, unless both of these hold: it occurs only under a
   special condition normal use does not reach or in a very short window, and deferring it is
   evident from the description or from a decline by the assignees or, with none, the author.
-- A problem in documentation for people, such as a README, does not block, even a security
-  problem. AI-facing prompts, code, and the description are not documentation here.
+- A problem in documentation for people, as the first point describes it, does not block, even a
+  security problem.
 - A finding with no judgment blocks. You can change a judgment at the preview.
 
 The verdict goes in the review body, followed by a short overview: what this run checked and what
@@ -261,6 +278,24 @@ that as well. Findings already in the description's language go out untranslated
 Passed to `/creview:start`, it runs the reviewers in adversarial mode, where every Critical /
 Major finding must state a concrete failure scenario. See the
 [creview README](../creview/README.md).
+
+## `--strict-docs`
+
+`/cgh:review` passes it to `/creview:start`, and `/cgh:gate` to its code stage's
+`/creview:start`. Together with `--adversarial`, it has the reviewers review documentation files
+with the adversarial stance as well; without `--adversarial`, it changes nothing there. See the
+[creview README](../creview/README.md).
+
+With `/cgh:gate`, findings on the title, the description, and documentation for people are then
+judged by the same points as any other finding, as listed under [`/cgh:gate`](#cghgate): a claim
+of the title or description that the code contradicts and work the description leaves open block,
+while a problem in documentation for people still does not, unless the finding also reports such
+a claim, such as a README that lacks what the description says it covers. Without it, those
+findings do not block, apart from the exceptions listed there.
+
+An earlier gate finding keeps the judgment it was posted with: a finding on the description that
+a run with `--strict-docs` posted as blocking still blocks a later run without it while it is
+unverified. You can change the judgment at the preview.
 
 ## `--trust`
 
