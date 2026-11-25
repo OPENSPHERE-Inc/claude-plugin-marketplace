@@ -8,7 +8,7 @@ For each detected divergence, identify the source that keeps the chain going, an
 
 Input:
 
-- Detection result: `{{divergence_path}}` (format: `{divergences: [{id, kind, links}]}`. `kind` is `"chain"` (the chain in which a fix for a finding produces the next finding keeps going without shrinking), `"oscillation"` (a finding of this round asks to revert a past fix or asks for a change that contradicts it), or `"over-specification"` (detail findings keep coming without shrinking in consecutive rounds on an AI-facing prompt file, or a chain or oscillation has only detail findings in this round; a fix-target finding is one whose Triage is `🔧 Will Fix` and whose Estimate is not `🔻 Downgrade`, and a detail finding is a fix-target finding that `contract-style-prompts.md` classifies as a procedure-detail finding). `links` lists the findings that make up the divergence, oldest first, as `{round, id, location, finding, fix}`)
+- Detection result: `{{divergence_path}}` (format: `{divergences: [{id, kind, docs, links}]}`. `kind` is `"chain"` (the chain in which a fix for a finding produces the next finding keeps going without shrinking), `"oscillation"` (a finding of this round asks to revert a past fix or asks for a change that contradicts it), or `"over-specification"` (detail findings keep coming without shrinking in consecutive rounds on an AI-facing prompt file, or a chain or oscillation has only detail findings in this round; a fix-target finding is one whose Triage is `🔧 Will Fix` and whose Estimate is not `🔻 Downgrade`, and a detail finding is a fix-target finding that `contract-style-prompts.md` classifies as a procedure-detail finding). `docs` is true for a documentation divergence, one whose findings in `links` are all on documentation files (`sub-agent.md` § Documentation files). `links` lists the findings that make up the divergence, oldest first, as `{round, id, location, finding, fix}`)
 - This round's review document: `{{document_path}}`
 - Paths to past rounds' review documents: `{{previous_round_doc_paths}}`
 - Report template: `{{template_path}}`
@@ -27,6 +27,8 @@ Identify the following for each divergence:
   - An AI-facing prompt specifies the procedure in more detail than its goal and contracts need, so each round's review finds another gap, ambiguity, or inconsistency in the details, and each fix that adds detail gives the next review more to find.
 - Fix proposals: one or more responses that break the chain. For each, state its content, why it stops the chain, and its impact range, and mark one as recommended. Treating this round's finding as Won't Fix, or leaving a design decision to the user, may be among the proposals. When the source is a problem class that cannot be closed, propose not a response to the individual counterexample but replacing the approach, or stating explicitly the scope that is accepted (input constraints, preconditions, tolerated residual risk).
 
+This round's respond applies the recommended proposal of a divergence whose `docs` is true as its fix policy. Write that proposal so that this round's findings carry it out: for each file it edits, name one fix-target finding of this round among the divergence's `links` that makes all of the proposal's changes to that file in place of the change its own Plan asks for. Across all divergences, every file these proposals edit has exactly one carrier: when the proposals of several divergences edit the same file, merge their changes to it into one carrier's and refer to that carrier from the later divergence. The fix policy leaves the divergence's other findings of this round unfixed, so take into the carriers' changes what the proposal keeps of them.
+
 For a divergence whose `kind` is `"over-specification"`, substantiate the over-specification source: identify the excess instructions the findings concentrate on and the goal and contracts those instructions serve. When the prompt does not state them, derive the result to be obtained and the contracts to keep from those instructions and from the prompt's callers (the SKILL step that launches it, the side that receives its return value, and the like), and use them as the goal and contracts of the rewrite. When the evidence shows that the findings in fact concern a goal or a contract, identify the source as for the other kinds.
 
 When the source is an over-specified prompt:
@@ -41,6 +43,6 @@ In an oscillation, when a finding of this round removes procedural detail from a
 
 When several divergences share a source, refer to the earlier divergence from the later one's source section instead of duplicating the description.
 
-Output: Read `{{template_path}}` to grasp the skeleton, fill it in `{{language}}`, and Write it to `{{report_path}}`.
+Output: Read `{{template_path}}` to grasp the skeleton, fill it in `{{language}}`, with each divergence's Documentation divergence line from its `docs`, and Write it to `{{report_path}}`.
 
 Return value: `{report_path, template_id}`. Include `template_id` as Read from this template's frontmatter, as-is.

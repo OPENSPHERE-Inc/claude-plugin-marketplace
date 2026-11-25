@@ -90,7 +90,7 @@ claude-plugin-marketplace/
 │   ├── cdev/...                  # src/cdev/<same tree as cdev/>
 │   └── cgh/...                   # src/cgh/<same tree as cgh/>
 │
-├── tests/                        # scratch-guard-test.sh, gh-review-test.py, commit-plan-test.py — repo-level self-tests (not shipped)
+├── tests/                        # scratch-guard-test.sh, gh-review-test.py, commit-plan-test.py, respond-compile-review-test.py — repo-level self-tests (not shipped)
 │
 └── .claude/rules/                # Discipline rules for editing THIS repo
     ├── comment.md  commit.md  development.md
@@ -222,6 +222,9 @@ python3 tests/gh-review-test.py
 
 # cdev's commit-plan.py, in temporary git repositories
 python3 tests/commit-plan-test.py
+
+# creview respond's compile-review.py, on temporary review documents
+python3 tests/respond-compile-review-test.py
 ```
 
 ### Install smoke test
@@ -256,6 +259,14 @@ Then exercise each of the following:
   They compile a review document from its comments.
   `/creview:triage` leaves out threads resolved on GitHub, and `/creview:resolve` keeps them.
   They need an authenticated `gh`.
+- `/creview:rounds` on a branch whose only change is to a README, with a statement in it that
+  contradicts the code.
+  Check that:
+  - The loop ends after the first round whose fixes edit only documentation files, with the
+    end reason `converged`.
+  - The final report gives the end reason as converged with only documentation fixes.
+  - With `--strict-docs`, a run that starts from the branch as it was before the first run goes
+    on to another round after such a round.
 - `/cdev:coding`, in a runtime with background subagents and inter-agent messaging, on each of
   the following:
   - A task without AI-facing prompt files.
@@ -383,7 +394,9 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     whatever its format)
                     → format&build-verify Sub + prompt-test Sub (when the prompt review
                     returned prompt files; it launches one prompt-tester per file) ⇄
-                    build-fix / prompt-fix loop → compile → persist status
+                    build-fix / prompt-fix loop → compile → persist status; the
+                    compile's result JSON carries docs_only, true when at least one fix
+                    was made and every fix target's stages are docs alone
 /creview:resolve → analyze + verify Subs → compile → persist verification
                     (triage / respond / resolve invoked directly follow
                     rules/doc-worktree.md: gh-pr.py doc-checkout reads the doc's PR /
@@ -395,10 +408,22 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
 /creview:rounds  → launches one review-leader Sub per phase per round (each Sub invokes
                     the phase's skill and runs it whole) + divergence gate after triage
                     (Round 2 on: detect → investigate → pause with the report, or under
-                    --on-divergence stop, stop the loop and go to the final report) +
-                    feedback re-fix inner loop; --result {path} writes a result JSON
-                    (end reason, rounds, each round's start commit, paths, warnings)
-                    at the end, also on an error
+                    --on-divergence stop, stop the loop and go to the final report;
+                    without --strict-docs, stop instead fixes each documentation
+                    divergence, one whose findings are all on documentation files, in
+                    its round by the report's recommended proposal: the round goes on
+                    when every divergence is one, with no such policy when no report
+                    came back, and otherwise the loop ends as divergence after resolve,
+                    once that round has fixed only the findings the proposals name to
+                    carry them, or at once when no report came back) + feedback re-fix
+                    inner loop; a round that does not end as divergence and whose fixes all
+                    ran in respond's docs stage alone, with no build/test-fix Sub launched
+                    (docs_only), ends the loop as converged unless --strict-docs is given;
+                    --strict-docs also reaches the review phase, where under
+                    --adversarial the reviewers apply the adversarial stance to
+                    documentation files as well; --result {path} writes a result JSON
+                    (end reason, rounds, each round's start commit, paths, warnings) at
+                    the end, also on an error
 ```
 
 Each skill's `skills/<skill>/scripts/compile-review.py` (run directly by the leader, not a
@@ -464,6 +489,15 @@ says only how bad a problem's consequence is, and the gate's verdict rests on `b
 separate: a `comment-writer` judges each Will Fix finding after triage, `gh-review.py draft
 --blocking` reads that, each posted comment and result line shows the result in its visible text,
 and `gh-review.py collect` reads it back on a later run, from the user's own comments only.
+`/cgh:gate --strict-docs` passes `--strict-docs` to the code stage's `/creview:start`.
+Without it, the judgment makes two kinds of finding non-blocking, ahead of every other rule:
+one whose problem lies only in the pull request's title or description, such as an
+outdated claim or an unchecked item, and one about a file of documentation for people, such as
+a README or `CLAUDE.md`. A finding that also reports a failed check, an unsettled discussion, or
+a change the review could not read is of neither kind, and neither is a title or description
+finding that also reports broken code, a regression, or a security problem, nor a documentation
+finding that also reports broken code, a regression, or a security problem outside that
+documentation.
 Under `--incremental`, `gh-review.py since` takes the commit of the user's latest gate review from
 the review's `commit_id`, and `/cgh:gate` passes it to the code stage's `/creview:start --since`
 and to `draft --since`, which names it under the verdict; with no such review, when the head no
@@ -510,8 +544,12 @@ send-back returns to their content at the next review's base do not appear in th
 On the `divergence` end reason with send-backs left, the leader writes a handoff from paths
 alone, pointing at the divergence investigation report and listing the generation's turning
 points as restore candidates, and starts the next cycle with `--handoff` on the same branch;
-`/cdev:coding`'s design may restore files to a turning point's content, committed forward. At
-the end of a generation, the leader launches the post-mortem sub-agent (`general-purpose`,
+`/cdev:coding`'s design may restore files to a turning point's content, committed forward.
+The loop passes `--strict-docs` to both `/cdev:coding` and `/creview:rounds`, and `state.jsonl`
+records it as `limits.strict_docs`. Without it, the review fixes each documentation divergence
+in the round that detects it, and the handoff leaves out each divergence the report marks as a
+documentation divergence, since that round has already applied its fix proposal. At the end of
+a generation, the leader launches the post-mortem sub-agent (`general-purpose`,
 `templates/postmortem.md`, with a `template_id` the SKILL checks), which writes
 `postmortem.md` and `postmortem.jsonl` and, on `redo`, the next generation's handoff; a `redo`
 with generations left is a grand reset from the starting commit. For both its verdict and the

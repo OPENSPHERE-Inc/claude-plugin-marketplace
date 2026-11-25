@@ -182,7 +182,7 @@ comment-sensei が戻った後、プロンプトレビューを実行する。`{
    python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py {tmp_dir} {document_path}
    ```
 
-2. stdout の結果 JSON（`{fixed_count, code_changed, summary_line, maintain, alternative}`）を受け取る。`fixed_count` は修正件数（statuses のファイル数）。
+2. stdout の結果 JSON（`{fixed_count, code_changed, docs_only, summary_line, maintain, alternative}`）を受け取る。`fixed_count` は修正件数（statuses のファイル数）。`docs_only` は、修正が 1 件以上あり、`{tmp_dir}/targets.jsonl` のすべての修正対象の `stages` が `docs` だけの場合に true。
 
 3. リーダーが `{tmp_dir}` を一括削除:
    ```bash

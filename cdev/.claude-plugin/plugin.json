@@ -1,6 +1,6 @@
 {
   "name": "cdev",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Team-native multi-agent coding workflow: a standing team runs design and coding as paired review cells, then a QA gate. AI-facing prompt files also get a prompt-discipline self-check, compression, and an interpretation test. Architects, coders, and reviewers are resolved from the destination project's .claude/agents. Requires a runtime with background subagents and inter-agent messaging; where a teammate cannot launch sub-agents, the interpretation test reports the prompt files as untested. The loop skill runs the coding workflow and creview's multi-round review as one pipeline: it sends the work back to coding when the review detects divergence and has a post-mortem decide whether to finish or start over, both within set limits. The loop skill requires the creview plugin and nested sub-agent spawning of depth 3 or more.",
   "author": {
     "name": "OPENSPHERE Inc.",
@@ -18,6 +18,6 @@
     "prompt-engineering"
   ],
   "dependencies": [
-    { "name": "creview", "version": ">=0.22.0" }
+    { "name": "creview", "version": ">=0.24.0" }
   ]
 }

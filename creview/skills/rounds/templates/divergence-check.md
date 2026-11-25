@@ -12,7 +12,7 @@ Input:
 - Paths to past rounds' review documents: `{{previous_round_doc_paths}}`
 - Detection result output path: `{{output_path}}`
 
-Base the judgment only on these review documents (the finding bodies, and the Triage / Estimate / Status / Verification in the `<!-- METADATA(id) -->` blocks). The one exception: to judge whether a finding's file is an AI-facing prompt file, you may Read that file; when it no longer exists, judge from its path and the finding body.
+Base the judgment only on these review documents (the finding bodies, and the Triage / Estimate / Status / Verification in the `<!-- METADATA(id) -->` blocks). The one exception: to judge whether a finding's file is an AI-facing prompt file or a documentation file (`sub-agent.md` § Documentation files), you may Read that file; when it no longer exists, judge from its path and the finding body.
 
 Definitions:
 
@@ -20,6 +20,7 @@ Definitions:
 - Chain link: a fix-target finding of a round that is caused by a fix for a finding of an earlier round (the change recorded in `Status: 🟢 Fixed — ...`). A finding qualifies when it takes issue with code that fix introduced or changed. A finding that merely overlaps the location and points at a problem that predates the fix does not qualify.
 - Chain: the sequence obtained by tracing chain links back into the past (finding → its fix → next finding → its fix → ...).
 - Detail finding: a fix-target finding on an AI-facing prompt file that `contract-style-prompts.md` § Findings on an AI-facing prompt file classifies as a procedure-detail finding. A finding's file is the path part of its location; a finding whose location names no file counts toward no file.
+- Documentation divergence: a divergence in which every finding of its `links` has a documentation file as its file.
 
 Detect each of the following as a divergence:
 
@@ -31,10 +32,11 @@ Merge chains that share their origin finding into one divergence. Merge an over-
 
 When one or more divergences are detected:
 
-- Write the detection result to `{{output_path}}`. Format: `{divergences: [{id, kind, links}]}`
+- Write the detection result to `{{output_path}}`. Format: `{divergences: [{id, kind, docs, links}]}`
   - `id`: sequential from `D-1`.
   - `kind`: the first of these that applies: `"over-specification"` when the divergence includes an over-specified prompt or every finding of this round in it is a detail finding; `"oscillation"` when it matches oscillation; otherwise `"chain"`.
+  - `docs`: true when the divergence is a documentation divergence, false otherwise.
   - `links`: an array of `{round, id, location, finding, fix}` listing every finding that makes up the divergence, oldest first. For an over-specified prompt, these are the file's detail findings in each round of the unbroken run of rounds with detail findings on it that ends in this round; they need not be chain links. `finding` is a one-line summary of the finding. `fix` is a one-line summary of its fix when its Status is `🟢 Fixed`, and null otherwise, this round's findings included.
 - Resolve the agent that investigates the divergences' sources with the procedure in `{{plugin_root}}/rules/agents-detection.md`. The match target is the finding content of all detected divergences; the result field is `investigator`.
 
-Return value: `{divergence_count, investigator, template_id}`. `investigator` is null when there are 0 divergences. Include `template_id` as Read from this template's frontmatter, as-is.
+Return value: `{divergence_count, docs_count, investigator, template_id}`. `docs_count` is the number of divergences whose `docs` is true. `investigator` is null when there are 0 divergences. Include `template_id` as Read from this template's frontmatter, as-is.

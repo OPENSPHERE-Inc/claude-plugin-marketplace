@@ -22,8 +22,9 @@ The user may optionally specify an output base path. When the argument is `$ARGU
 - `--max-rounds N` (default 10, range 1–20) — Change the maximum number of rounds for the outer loop.
 - `--base {branch}` (default `main` or `master`) — Specify the base branch (passed to the review phase). `--incremental` overrides it from Round 2 on.
 - `--adversarial` (default OFF) — Run the review phase in adversarial mode (passed through to the review phase).
+- `--strict-docs` (default OFF) — Treat documentation files like any other file in the round loop's decisions (passed through to the review phase). Without it, a round whose fixes changed only documentation files ends the round loop (2.6).
 - `--worktree[=branch]` (default OFF) — Run every round in a separate git worktree on `branch` (§ Worktree). Without `=branch`, a new branch `creview-rounds-{YYYYMMDD-HHMMSS}` (the start time) is created from the current HEAD. Enables `--commit`.
-- `--on-divergence {ask|stop}` (default `ask`) — What happens when the Step 2.2 divergence pattern detection gate detects a divergence. `ask`: present the divergence investigation report and wait for the user's instruction to continue. `stop`: present nothing and stop the round loop (Step 2.2 step 8).
+- `--on-divergence {ask|stop}` (default `ask`) — What happens when the Step 2.2 divergence pattern detection gate detects a divergence. `ask`: present the divergence investigation report and wait for the user's instruction to continue. `stop`: present nothing and stop the round loop (Step 2.2 step 8), or, for documentation divergences without `--strict-docs`, fix them in their round (Step 2.2 step 4.3).
 - `--result {path}` (default none) — Write the result file (§ Result file) when the run ends.
 
 ## Worktree (`--worktree`)
@@ -48,7 +49,7 @@ Hold `{end_reason}`, how the run ended, as one of:
 
 - `converged` — 2.6 found condition 2 unmet, or Step 2.1 step 3 ended the round loop because the previous round left no commit.
 - `max-rounds` — the last round met the conditions for proceeding, and the round counter exceeded `--max-rounds`.
-- `divergence` — Step 2.2 step 8 stopped the round loop on a divergence under `--on-divergence stop`.
+- `divergence` — Step 2.2 step 8 stopped the round loop on a divergence under `--on-divergence stop`, or 2.6 ended it after a mixed divergence round (Step 2.2 step 4.3).
 - `user-stop` — the user instructed to stop the loop, at Step 2.2 step 5 or at the `--confirm-round` wait in 2.6.
 - `error` — a phase `error` ended the run (the start of Step 2, including what § Phase sub-agent launch treats as one), or the skill terminated in Step 1 after step 3.
 
@@ -70,7 +71,7 @@ Under `--result`, every run that passes Step 1 step 3 leaves the result file at 
 - `rounds`: the number of rounds that launched a review phase; 0 when the skill terminated in Step 1.
 - `round_start_revs`: the `{this_round_rev}` (full hash) of each of those rounds, in round order.
 - `final_report_path`: Step 3's `report_path`; null when Step 3 produced no report.
-- `divergence_report_path`: `{divergence_report_path}`, under either `--on-divergence` value; null when no investigation returned a report.
+- `divergence_report_path`: `{divergence_report_path}` (Step 2.2 step 4.2), under either `--on-divergence` value; null when it holds no report.
 - `doc_paths`: every non-null `doc_path` a review phase returned, in round order.
 - `workflow_warnings` / `prompt_warnings`: `{round, warning}` for each `workflow_warning`, and `{round, source, warning}` for each `prompt_warning`, retained for a round's record in 2.3 / 2.5, the stopped round's included; `[]` when none.
 - `error`: null unless `{end_reason}` is `error`; then `{round, phase, message}`. `round` is the round the run stopped in, the last round for `final-report`, and null for `init`. `phase` is `review`, `triage`, `respond`, or `resolve` for a phase error (a Step 2.5 re-run included), `divergence` for the Step 2.2 detection or investigation sub-agent, `final-report` for the Step 3 sub-agent, or `init` for a termination in Step 1. `message` is the returned `error` or the error shown.
@@ -141,7 +142,7 @@ Verify that the returned `template_id` matches the UUID the Step specifies; rela
 Round 1 start
   ├─ 2.1 review          [phase Sub] creview:start   → round1.md
   ├─ 2.2 triage+estimate  [phase Sub] creview:triage  → persists triage / estimate
-  │     ↳ Round 2 on: [divergence pattern detection Sub] → on divergence: [divergence investigation Sub] → present divergence-round{N}.md, wait for the instruction to continue (--on-divergence stop: present nothing, stop the round loop, go to the final step)
+  │     ↳ Round 2 on: [divergence pattern detection Sub] → on divergence: [divergence investigation Sub] → present divergence-round{N}.md, wait for the instruction to continue (--on-divergence stop: present nothing, stop the round loop, go to the final step; without --strict-docs, a round whose divergences are all documentation divergences fixes them and goes on, and one that also has others stops after fixing them when its investigation report exists, and without fixing them otherwise)
   │     ↳ --confirm: present the estimate summary, wait for the instruction to continue
   ├─ 2.3 respond / fix    [phase Sub] creview:respond → persists status
   │     ↳ skipped when there is no Maintain / Alternative target
@@ -165,7 +166,7 @@ On a phase error → end the round loop, skip the final step, go to Step 4
 5. Fix `{target_dir}`, the work target every sub-agent receives: `{worktree_path}` under `--worktree`, otherwise the output of `git rev-parse --show-toplevel`.
 6. Get the current branch name.
 7. Verify the output directory exists; if not, create it.
-8. Set the round counter to 1 and `{prev_round_rev}` to `(none)`.
+8. Set the round counter to 1, `{prev_round_rev}` to `(none)`, and `{docs_divergence_rounds}` to empty.
 
 ## Step 2 — Round loop
 
@@ -181,7 +182,7 @@ When a phase sub-agent returns a non-null `error`, including on a re-run in Step
    - `--incremental` OFF, or `{prev_round_rev}` is `(none)`: `{review_base}` = the `--base` value, `{review_range}` = `(none)`.
    - Otherwise: `{review_base}` = `{prev_round_rev}`, `{review_range}` = `{prev_round_rev}..{this_round_rev}`. When the two revisions are equal, the previous round left no commit: end the round loop and proceed to Step 3.
 4. Launch the phase sub-agent with `templates/phase-review.md` (`template_id`: `3e7b1c9d-6a24-4f85-b1d7-8c2e5a9f3b64`).
-   - Variables: `round_num` (the round counter), `base` (`{review_base}`), `review_range` (`{review_range}`), `document_path` (this round's file path), `language` (user's chat language), `adversarial` (`--adversarial` state)
+   - Variables: `round_num` (the round counter), `base` (`{review_base}`), `review_range` (`{review_range}`), `document_path` (this round's file path), `language` (user's chat language), `adversarial` (`--adversarial` state), `strict_docs` (`--strict-docs` state)
    - Overrides: (none)
 5. Hold only the return value (`{doc_path, findings_total, severity_counts, error}`) in context.
 
@@ -193,13 +194,16 @@ When a phase sub-agent returns a non-null `error`, including on a re-run in Step
    - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists
 3. Hold only the return value (`{will_fix_count, wontfix_count, flipped_count, maintain_count, alternative_count, downgrade_count, summary_path, summary_line, tmp_dir, error}`) in context.
 4. Divergence pattern detection gate: run it from Round 2 on, outside the feedback loop, when `error` is null, `will_fix_count` is at least 1, and `maintain_count` plus `alternative_count` is at least 1.
-   1. Detection: launch the sub-agent via `Agent(subagent_type="creview:review-helper", prompt=...)` with `templates/divergence-check.md` (`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`) and hold only the return value (`{divergence_count, investigator}`) in context.
+   1. Detection: launch the sub-agent via `Agent(subagent_type="creview:review-helper", prompt=...)` with `templates/divergence-check.md` (`template_id`: `6570a998-e9f3-4421-af84-6911eebd7c07`) and hold only the return value (`{divergence_count, docs_count, investigator}`) in context. Treat `docs_count` as 0 when it is missing, not an integer, or greater than `divergence_count`.
       - Variables: `document_path` (this round's file path), `previous_round_doc_paths` (doc_paths of Round 1..N-1), `output_path` (`{tmp_dir}/divergence.jsonl`)
       - Overrides: (none)
-   2. Investigation: when `divergence_count` is at least 1, launch the sub-agent via `Agent(subagent_type="{investigator}", prompt=...)` with `templates/divergence-investigate.md` (`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`) and hold only the return value (`{report_path}`) in context, as `{divergence_report_path}` (a later round's report replaces it).
+   2. Investigation: when `divergence_count` is at least 1, launch the sub-agent via `Agent(subagent_type="{investigator}", prompt=...)` with `templates/divergence-investigate.md` (`template_id`: `ad54f81e-81f1-43c0-acff-0941524b8a3e`) and hold only the return value (`{report_path}`) in context, as `{divergence_report_path}` (a later round's report replaces it; under `--on-divergence stop`, an investigation that returns no `report_path` sets it to null).
       - Variables: `divergence_path` (`{tmp_dir}/divergence.jsonl`), `document_path`, `previous_round_doc_paths`, `template_path` (`${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/divergence-report.md`), `report_path` (`{base-path}/{branch-dir}/divergence-round{N}.md`), `language` (user's chat language)
       - Overrides: (none)
-5. User confirmation: in a round where step 4 detected a divergence under `--on-divergence stop`, present nothing and wait for nothing. Otherwise, when any of the following applies, present the applicable ones to the user together and wait for their instruction to continue.
+   3. Documentation divergences: under `--on-divergence stop` without `--strict-docs`, take `{docs_report_path}` as the `report_path` step 4.2 returned when it names an existing file, and as null otherwise, and take as a documentation divergence round a documentation-only divergence round, whose `docs_count` is at least 1 and equals `divergence_count`, or a mixed divergence round, whose `docs_count` is at least 1 and less than `divergence_count` and whose `{docs_report_path}` is not null. In any other run, no round is a documentation divergence round. Add each documentation divergence round to `{docs_divergence_rounds}` with its kind and `{docs_report_path}`, and, when `{docs_report_path}` is not null, add the fix policy of its kind below, with `{docs_report_path}` filled in, to the overrides of this round's 2.3 and 2.4 and of the re-runs of 2.2, 2.3, and 2.4 in Step 2.5.
+      - Documentation-only divergence round: `Divergence fix policy: for each divergence that the divergence investigation report {docs_report_path} marks as a documentation divergence, apply its recommended fix proposal through the findings of this round the proposal names to carry it. Each carrier makes the proposals' changes to the files they name it for, in place of the change its own Plan asks for. Leave out of the fix targets every finding of this round in such a divergence that its proposal does not name to carry it, and every finding the proposal treats as Won't Fix. This policy prevails where it differs from a finding's Triage or Estimate.`
+      - Mixed divergence round: the documentation-only divergence round's policy, followed by `Select as fix targets of this round only the findings those proposals name to carry them.`
+5. User confirmation: treat a documentation divergence round (step 4.3) here as a round in which step 4 detected no divergence. In a round where step 4 detected a divergence under `--on-divergence stop`, present nothing and wait for nothing. Otherwise, when any of the following applies, present the applicable ones to the user together and wait for their instruction to continue.
    - This run's step 4 detected one or more divergences (regardless of the `--confirm` state): the fact that a divergence pattern was detected, and the content Read from `report_path`.
    - `--confirm` is enabled, `error` is null, and at least one Maintain / Alternative exists: the content Read from `summary_path`.
 6. When `tmp_dir` is non-null, remove the phase's working directory, which holds `summary_path` (`del-tmp.sh` skips an already-removed target, so the `error` path needs no separate handling):
@@ -207,8 +211,8 @@ When a phase sub-agent returns a non-null `error`, including on a re-run in Step
    ${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh {tmp_dir}
    ```
 7. When `error` is non-null, proceed as the start of Step 2 directs for a phase error.
-8. When the user instructs to stop the loop at step 5, or when step 4 detected a divergence under `--on-divergence stop`, run no further phase, record this round's results in 2.6, and proceed to Step 3 without advancing to the next round.
-9. When the user instructs a fix policy along with continuing at step 5, add that instruction verbatim, together with `report_path` as its reference and a note that the policy prevails where it differs from a finding's Triage or Estimate, to the overrides of this round's 2.3 and 2.4 and of the re-runs of 2.2, 2.3, and 2.4 in Step 2.5.
+8. When the user instructs to stop the loop at step 5, or when step 4 detected a divergence under `--on-divergence stop` in a round that is not a documentation divergence round (step 4.3), run no further phase, record this round's results in 2.6, and proceed to Step 3 without advancing to the next round.
+9. When the user instructs a fix policy along with continuing at step 5, add that instruction verbatim, together with `report_path` as its reference and a note that the policy prevails where it differs from a finding's Triage or Estimate, or from the step 4.3 fix policy, to the overrides of this round's 2.3 and 2.4 and of the re-runs of 2.2, 2.3, and 2.4 in Step 2.5.
 10. Respond phase skip decision: when `will_fix_count` is 0, or when `maintain_count` and `alternative_count` are both 0, skip 2.3 and proceed to 2.4 (Won't Fix / Downgrade findings receive their verification in 2.4).
 
 ### 2.3 — Respond phase (respond skill)
@@ -216,18 +220,20 @@ When a phase sub-agent returns a non-null `error`, including on a re-run in Step
 1. Display in console: `## Round {N} — Step 3: Respond (Fix & Verify)`
 2. Launch the phase sub-agent with `templates/phase-respond.md` (`template_id`: `8b5e3d7a-4c16-4a92-a7f3-2d9c6b1e8f47`).
    - Variables: `document_path`, `commit_flag` (`--commit` state), `adr_flag` (`--adr` state)
-   - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists. In a round where the user instructed a fix policy in Step 2.2, add that instruction
-3. Hold only the return value (`{fix_count, fixed_count, code_changed, workflow_warning, prompt_warning, summary_line, error}`) in context. When `workflow_warning` is non-null, retain it for this round's record. When `prompt_warning` is non-null, retain it for this round's record with the source `Step 3` outside the feedback loop, and as Step 2.5 step 2 directs inside it.
+   - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists. In a round with a fix policy from Step 2.2 (step 4.3 or step 9), add it
+3. Hold only the return value (`{fix_count, fixed_count, code_changed, docs_only, workflow_warning, prompt_warning, summary_line, error}`) in context. When `workflow_warning` is non-null, retain it for this round's record. When `prompt_warning` is non-null, retain it for this round's record with the source `Step 3` outside the feedback loop, and as Step 2.5 step 2 directs inside it.
 
 ### 2.4 — Resolve phase (resolve skill)
 
 1. Display in console: `## Round {N} — Step 4: Resolve`
 2. Launch the phase sub-agent with `templates/phase-resolve.md` (`template_id`: `2f9c6a1e-7b53-4d84-8e2b-5a1f9d3c7b26`).
    - Variables: `document_path`, `base` (this round's `{review_base}`)
-   - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists. In a round where the user instructed a fix policy in Step 2.2, add that instruction
+   - Overrides: outside the feedback loop, (none); inside it, the ones Step 2.5 lists. In a round with a fix policy from Step 2.2 (step 4.3 or step 9), add it
 3. Hold only the return value (`{summary_line, resolved_count, feedback_count, unresolved_count, error}`) in context.
 
 ### 2.5 — Feedback confirmation and re-fix loop
+
+Skip this step in a mixed divergence round (Step 2.2 step 4.3) and proceed to 2.6.
 
 From the Step 2.4 return value (`feedback_count`), determine whether findings that "require feedback" remain. Do not Read the review document body.
 
@@ -236,9 +242,9 @@ From the Step 2.4 return value (`feedback_count`), determine whether findings th
 
 Each attempt re-runs 2.2 → 2.3 → 2.4, passing the text below as the phase sub-agent's `overrides` variable:
 
-1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.`, adding the fix policy of Step 2.2 step 9 in a round where the user instructed one.
+1. Display `## Round {N} — Step 5.1: Feedback Triage (attempt {M}/3)`. Re-run 2.2 with the overrides `Triage sub-agent: triage findings whose stage is "feedback" with priority (current_meta.verification has Feedback details).` and `Estimate sub-agent: estimate based on the Feedback content in current_meta.verification. Consider Downgrade if cost grows.`, adding the fix policies of Step 2.2 steps 4.3 and 9 in a round that has them.
 2. When 2.2 decided to skip the respond phase, skip this step and proceed to step 3. Otherwise display `## Round {N} — Step 5.2: Feedback Fix (attempt {M}/3)` and re-run 2.3 with the override `Feedback re-fix pass: the fix targets are the findings whose Verification is 💬 Feedback; re-fix based on that feedback content.` Do not scope this override to a named sub-agent — the fix-target selection sub-agent must receive it too. When the returned `workflow_warning` is non-null, update that value in this round's record (last write wins). When the returned `prompt_warning` is non-null, add it to this round's record with the source `Step 5.2 attempt {M}`, keeping the values retained before it.
-3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run 2.4 with the fix policy of Step 2.2 step 9 as its overrides in a round where the user instructed one, and with overrides `(none)` otherwise.
+3. Display `## Round {N} — Step 5.3: Feedback Verify (attempt {M}/3)`. Re-run 2.4 with the fix policies of Step 2.2 steps 4.3 and 9 as its overrides in a round that has them, and with overrides `(none)` otherwise.
 4. If feedback remains, return to step 1. If not resolved within 3 attempts, end the round (remaining 💬 Feedback are counted as "unresolved" in 2.6).
 
 ### 2.6 — Round end
@@ -255,13 +261,16 @@ Record the round's results. Each counter is obtained from phase sub-agent return
 - Resolved count: the resolve phase's `resolved_count`
 - Feedback attempts: the number of Step 2.5 attempts performed in this round
 - Round start revision: this round's `{this_round_rev}`
+- docs_only: true when a respond phase run in this round returned `code_changed` true and every such run returned `docs_only` true; false otherwise
 - workflow_warning: the `workflow_warning` retained in 2.3 / 2.5 (only for rounds where the format / build procedure was unresolved or the build / test verification did not complete for an environmental cause; null otherwise)
 - prompt_warning: every `prompt_warning` retained in 2.3 / 2.5, each with its source, joined into one value (only for rounds where an AI-facing prompt file was left failing the interpretation test or untested; null otherwise)
+
+After a mixed divergence round (Step 2.2 step 4.3), proceed to Step 3 without judging the condition below.
 
 Condition for proceeding to the next round: only when **all** of the following are met, set `{prev_round_rev}` to this round's `{this_round_rev}`, increment the round counter, and return to Step 2.1:
 
 1. The round counter is at most `--max-rounds`.
-2. The respond phase returned `code_changed` true at least once in this round (Step 2.3, or a Step 2.5 attempt's step 2). Treat it as false when no respond phase ran in the round.
+2. The respond phase returned `code_changed` true at least once in this round (Step 2.3, or a Step 2.5 attempt's step 2), with `docs_only` false in that same return unless `--strict-docs` is given. Treat it as false when no respond phase ran in the round.
 
 When the conditions are met and `--confirm-round` is enabled, wait for the user's instruction to continue before returning to Step 2.1. When the user instructs to stop the loop instead, proceed to Step 3 without starting the next round.
 
@@ -274,7 +283,7 @@ Final report path: `{base-path}/{branch-dir}/final-report.md`
 1. Launch the sub-agent via `Agent(subagent_type="creview:review-helper", prompt=...)` with `templates/final-report-compile.md` (`template_id`: `4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16`).
    - Variables:
      - `round_doc_paths`: Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...
-     - `round_stats`: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ... (for rounds whose workflow_warning is non-null, append workflow_warning="..." at the end, and likewise prompt_warning="..." for rounds whose prompt_warning is non-null)
+     - `round_stats`: Round 1: findings=N, will_fix=N, flipped=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, docs_only=<bool>, ... (for rounds whose workflow_warning is non-null, append workflow_warning="..." at the end, and likewise prompt_warning="..." for rounds whose prompt_warning is non-null)
      - `template_path`: {template_path}
      - `report_path`: {report_path}
      - `language`: user's chat language
@@ -291,4 +300,8 @@ Template: `${CLAUDE_PLUGIN_ROOT}/skills/rounds/templates/final-report.md` (the f
 
 1. Under `--worktree`, run the teardown in § Worktree.
 2. Under `--result`, write the result file (§ Result file).
-3. When `{end_reason}` is `error`, report to the user that `error`, the round and phase that stopped, each round's review document path (every non-null `doc_path` a review phase returned), and every `workflow_warning` and `prompt_warning` retained for a round's record in 2.3 / 2.5, the stopped round's included, each with its round and, for a `prompt_warning`, its source. Otherwise report `{end_reason}` to the user, with `{divergence_report_path}` when it is `divergence`, and the final report path, and concisely convey key statistics (total findings, resolved count, unresolved count). In either case, under `--worktree`, add the branch and any worktree the teardown kept, and under `--result`, the result file path, or that writing it failed.
+3. When `{end_reason}` is `error`, report to the user that `error`, the round and phase that stopped, each round's review document path (every non-null `doc_path` a review phase returned), and every `workflow_warning` and `prompt_warning` retained for a round's record in 2.3 / 2.5, the stopped round's included, each with its round and, for a `prompt_warning`, its source. Otherwise report `{end_reason}` to the user, with `{divergence_report_path}` when it is `divergence`, and the final report path, and concisely convey key statistics (total findings, resolved count, unresolved count). In either case, add:
+   - For each round in `{docs_divergence_rounds}` whose 2.3 and every Step 2.5 re-run of 2.3 returned a null `error`: that it handled its documentation divergences in the round instead of stopping the loop on them, and its `{docs_report_path}`, or, when that is null, that no investigation report was returned, so the round's fixes ran without the divergence fix policy. For a mixed divergence round whose 2.4 returned a null `error`, also that the loop stopped after its fixes.
+   - For each round in `{docs_divergence_rounds}` whose 2.3 did not run, or whose 2.3 or a Step 2.5 re-run of 2.3 returned a non-null `error`: that the run stopped before that round's fixes completed, and its `{docs_report_path}`, or, when that is null, that no investigation report was returned.
+   - Under `--worktree`, the branch and any worktree the teardown kept.
+   - Under `--result`, the result file path, or that writing it failed.

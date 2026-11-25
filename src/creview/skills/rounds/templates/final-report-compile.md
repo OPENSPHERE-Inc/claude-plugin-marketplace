@@ -9,7 +9,7 @@ template_id: 4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16
 入力:
 
 - 各ラウンドのレビュードキュメント: `{{round_doc_paths}}`（例: `Round 1 → {round1_doc_path}, Round 2 → {round2_doc_path}, ...`）
-- 各ラウンドの統計（参考情報）: `{{round_stats}}`（例: `Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, ...`）。`workflow_warning="..."` が付与されているラウンドは、そのラウンドの respond でフォーマット／ビルド手順が解決できず自動検証をスキップしたか、環境起因でビルド／テスト検証が完了しなかったことを示す（どちらかは警告内容で判別する）。`prompt_warning="..."` が付与されているラウンドは、そのラウンドの respond 実行で、修正が作成・変更した AI 向けプロンプトファイルが解釈テストに不合格のまま残ったか、未テストだったことを示す。その値は、該当する各実行の警告をそれぞれ出所（`Step 3`、またはフィードバック再修正の `Step 5.2 attempt M`）付きで連結したもので、各警告が、そのファイルと、実行した試行回数または未テストになった理由を示す。
+- 各ラウンドの統計（参考情報）: `{{round_stats}}`（例: `Round 1: findings=N, will_fix=N, maintain=N, alternative=N, downgrade=N, fixed=N, wontfix=N, feedback_attempts=N, unresolved=N, code_changed=<bool>, docs_only=<bool>, ...`）。`workflow_warning="..."` が付与されているラウンドは、そのラウンドの respond でフォーマット／ビルド手順が解決できず自動検証をスキップしたか、環境起因でビルド／テスト検証が完了しなかったことを示す（どちらかは警告内容で判別する）。`prompt_warning="..."` が付与されているラウンドは、そのラウンドの respond 実行で、修正が作成・変更した AI 向けプロンプトファイルが解釈テストに不合格のまま残ったか、未テストだったことを示す。その値は、該当する各実行の警告をそれぞれ出所（`Step 3`、またはフィードバック再修正の `Step 5.2 attempt M`）付きで連結したもので、各警告が、そのファイルと、実行した試行回数または未テストになった理由を示す。
 - レポートテンプレート: `{{template_path}}`
 - 出力先: `{{report_path}}`
 - 言語: `{{language}}`
@@ -21,7 +21,7 @@ template_id: 4f8a2d1c-9b35-4e67-a2c1-8b5d3f9e7a16
 1. テンプレート markdown を Read し構造（`<...>` placeholder、表構造、将来推奨セクションのサブセクション例）を把握する。
 2. 各ラウンド md の `<!-- METADATA(id) --> 〜 <!-- /METADATA(id) -->` から Triage / Estimate / Status / Verification 値を抽出し、個別指摘の詳細（重要度 / 場所 / 概要 / 対応 / 別 PR 推奨の有無等）を取得する。
 3. テンプレートの統計サマリ・全指摘一覧・将来推奨・レビュードキュメント一覧を埋めて `{{report_path}}` に Write する。
-   - 終了理由は `{{end_reason}}` から埋める: `converged` は `{{round_stats}}` の最終ラウンドが `findings=0` なら「指摘ゼロで収束」、それ以外は「ソースコード変更なしで収束」、`max-rounds` は N を `{{round_stats}}` のラウンド数とした「最大ラウンド数 N に到達」、`user-stop` は「ユーザー指示によりラウンドループを停止」、`divergence` は「発散によりラウンドループを停止（{{divergence_report_path}}）」とし、パスが `(該当なし)` の場合は括弧ごと省く。
+   - 終了理由は `{{end_reason}}` から埋める: `converged` は `{{round_stats}}` の最終ラウンドが `findings=0` なら「指摘ゼロで収束」、そうでなく `docs_only=true` なら「ドキュメントの修正だけで収束」、それ以外は「ソースコード変更なしで収束」、`max-rounds` は N を `{{round_stats}}` のラウンド数とした「最大ラウンド数 N に到達」、`user-stop` は「ユーザー指示によりラウンドループを停止」、`divergence` は「発散によりラウンドループを停止（{{divergence_report_path}}）」とし、パスが `(該当なし)` の場合は括弧ごと省く。
    - `{{round_stats}}` に `workflow_warning` を持つラウンドが 1 つ以上ある場合、テンプレートの「ビルド／フォーマット検証メモ」セクションに該当ラウンドと警告内容を記載する。1 つも無い場合はそのセクションを「全ラウンドで自動検証を実施」と記載する。
    - `{{round_stats}}` に `prompt_warning` を持つラウンドが 1 つ以上ある場合、テンプレートの「プロンプト解釈テストメモ」セクションに該当ラウンドと、その各警告を出所とともに記載する。1 つも無い場合はそのセクションを「全ラウンドで、解釈テストに不合格または未テストの AI 向けプロンプトファイルは残っていない」と記載する。
    - 「将来の対応推奨項目」セクションへの集約規則:

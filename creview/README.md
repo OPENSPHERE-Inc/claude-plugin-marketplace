@@ -41,7 +41,16 @@ after the pull request review below.
 `/creview:start` takes an `--adversarial` option (default OFF) that runs the
 reviewers in adversarial mode, where every Critical / Major finding must state
 a concrete failure scenario; `/creview:rounds` accepts the same flag and passes
-it through to `/creview:start`. `/creview:triage` is adversarial
+it through to `/creview:start`. By default, adversarial mode reviews
+documentation files, which the documentation stage of `/creview:respond` below
+defines, by the usual review rules, without the adversarial stance; they stay in
+the review. The
+`--strict-docs` option (default OFF) of `/creview:start` applies the
+adversarial stance to them as well. Without `--adversarial`, it changes
+nothing. `/creview:rounds` passes `--strict-docs` through to `/creview:start`
+and also applies it to its round loop, as described below.
+
+`/creview:triage` is adversarial
 unconditionally: the triage sub-agent proposes a verdict, the findings are
 split into batches of up to eight and three challenge sub-agents per batch
 independently argue the opposite where they can, and an adjudication sub-agent
@@ -502,6 +511,8 @@ No step of `/creview:respond` reviews the documentation against the code.
   documentation against the code.
 - Under `/creview:rounds`, the next round's review covers the documentation
   along with the other changes.
+  - Without `--strict-docs`, a round whose fixes changed only documentation
+    files is the last, so no later round reviews those fixes.
 
 When the fixes of `/creview:respond` create or change an AI-facing prompt file,
 two more checks examine that file; otherwise the skill runs without them. An
@@ -600,7 +611,48 @@ names the investigation report, and the round's findings to be fixed are listed
 under "Recommended future actions" as left unfixed. `stop` suits a calling
 workflow that decides for itself how to act on a divergence: `/cdev:loop` of
 the cdev plugin runs `/creview:rounds` this way and sends the work back to
-`/cdev:coding` with the investigation report.
+`/cdev:coding` with the investigation report. Without `--strict-docs`, `stop`
+handles documentation divergences in their round instead, as described next.
+
+Without `--strict-docs`, documentation fixes do not keep the round loop going,
+and documentation divergences do not stop it under `--on-divergence stop`:
+
+- A round whose fixes changed only documentation files ends the loop, as a
+  round whose fixes changed no source code does.
+  - A run of `/creview:respond` counts as changing only documentation files
+    when it fixed at least one finding and planned every fix target of the run
+    for the documentation stage alone.
+  - Edits that the comment review or the prompt review makes after the fixes
+    do not count as fixes here, and a run that tried to fix a build or test
+    failure does not count as changing only documentation files.
+- A documentation divergence is one whose findings are all on documentation
+  files. The investigation report marks each divergence as one or not.
+- Under `--on-divergence stop`, a round with documentation divergences fixes
+  them in the round.
+  - The round's respond and resolve phases, and the phases the feedback re-fix
+    loop re-runs, get a fix policy: for each documentation divergence, apply the
+    report's recommended fix proposal through the findings of the round that the
+    proposal names to carry it, and leave the divergence's other findings of the
+    round unfixed.
+  - At the `--confirm` estimate summary, the round counts as a round without a
+    divergence. A fix policy you give there prevails over that one.
+  - When every divergence of the round is a documentation divergence, the round
+    goes on as usual, and the loop then continues or ends by the usual
+    conditions. When the investigation returns no report, the round goes on
+    without the fix policy.
+  - When the round also has other divergences, its respond phase fixes only the
+    findings that carry the documentation divergences' fix proposals and leaves
+    its other findings to be fixed unfixed. Its resolve phase runs, the feedback
+    re-fix loop does not, and the loop then stops on divergence. When the
+    investigation returns no report, the round stops before its fixes, as with
+    `--strict-docs`.
+  - The completion report names each such round with its investigation report,
+    or says that none was returned.
+- With `--on-divergence ask`, a documentation divergence pauses the loop as any
+  other divergence does.
+
+With `--strict-docs`, the round loop treats documentation files as any other
+files.
 
 When a phase stops on an error, `/creview:rounds` stops there and writes no
 final report. Such an error is, for example, a script that fails or a sub-agent
@@ -632,7 +684,9 @@ not stop the run.
 end reason, the number of rounds, the commit each round started from, the paths
 of the final report, of the latest divergence investigation report, and of each
 round's review document, the workflow and interpretation test warnings, the
-error, and the worktree left behind, if any. A relative `--result` path
+error, and the worktree left behind, if any. Under `--on-divergence stop`, the
+divergence investigation report's path is null when the latest investigation
+returned no report. A relative `--result` path
 resolves against the repository root, which under `--worktree` is the main
 working tree's root. The paths in the file are absolute under `--worktree`;
 without it, they are relative to the repository root, or absolute when the
@@ -653,9 +707,18 @@ a missing file as an error. The end reason is one of:
 - `converged` — a round's fixes changed no source code, which includes a round
   with no findings, or, under `--incremental`, the previous round left no new
   commit to review.
+  - Without `--strict-docs`, a round whose fixes changed only documentation
+    files converges as well; the final report then gives the end reason as
+    converged with only documentation fixes.
+  - A round in which `--on-divergence stop` stops the loop on a divergence
+    ends as `divergence` instead, even when its fixes changed no source code
+    or only documentation files.
 - `max-rounds` — the last round still changed source code when the run reached
-  `--max-rounds`.
-- `divergence` — `--on-divergence stop` stopped the loop on a divergence.
+  `--max-rounds`. Without `--strict-docs`, fixes that changed only
+  documentation files do not count.
+- `divergence` — `--on-divergence stop` stopped the loop on a divergence, either
+  before the round's fixes or, in a round that also had documentation
+  divergences, after fixing those.
 - `user-stop` — you told the loop to stop while it waited for you: at the
   divergence gate's pause, at the `--confirm` estimate summary before a round's
   fixes, or at the `--confirm-round` wait before the next round starts.
