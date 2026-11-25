@@ -15,7 +15,8 @@ see **[CLAUDE.md](CLAUDE.md)**.
 - **Maintainer**: OPENSPHERE Inc.
 - **No build step. No CI yet.** Validation = consistency checks +
   `bash tests/scratch-guard-test.sh` + `python3 tests/gh-review-test.py` +
-  `python3 tests/commit-plan-test.py` + manual install.
+  `python3 tests/commit-plan-test.py` + `python3 tests/respond-compile-review-test.py` +
+  manual install.
 
 ## Key Files
 
@@ -57,6 +58,9 @@ see **[CLAUDE.md](CLAUDE.md)**.
   faked (not shipped).
 - `tests/commit-plan-test.py` — self-test of `cdev/scripts/commit-plan.py`, run in temporary
   git repositories (not shipped).
+- `tests/respond-compile-review-test.py` — self-test of
+  `creview/skills/respond/scripts/compile-review.py` on temporary review documents (not
+  shipped).
 - `README.md` / `README_ja.md` (top + per-plugin) — cross-linked EN / JA docs.
 - `.claude/rules/*.md` — Discipline rules for editing this repo
   (prompt/document/comment/…); `paired-files.md` defines the files that change together.
