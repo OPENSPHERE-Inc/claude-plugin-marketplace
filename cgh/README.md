@@ -71,12 +71,18 @@ two review documents into one, with the pull request stage's findings first.
   in [rules/gate-focus-pr.md](rules/gate-focus-pr.md).
 - The code stage reviews the code. It looks only for broken code, regressions of existing
   behavior, changes the review could not read, and work left undone in the code with no issue
-  recording it, such as a `TODO` or a follow-up a code comment promises. It does not raise again
-  a problem the pull request stage reports as a failed check or an unsettled discussion. It
-  still raises a problem in the code that the pull request stage reports only as a claim of the
-  title or description or an open item in the description, since editing the title or
-  description settles those findings. The focus is in
+  recording it, such as a `TODO` or a follow-up a code comment promises. The focus is in
   [rules/gate-focus-code.md](rules/gate-focus-code.md).
+  - With `--strict-docs`, it also looks for these problems in documentation for people: a
+    statement that the change adds, edits, or leaves out of date and that the code contradicts,
+    a TODO or a promised follow-up the change adds to it, and a security problem the change adds
+    to it.
+  - It does not raise again a problem the pull request stage reports as a failed check or an
+    unsettled discussion.
+  - It still raises a problem in the code that the pull request stage reports only as a claim of
+    the title or description or an open item in the description, since editing the title or
+    description settles those findings. With `--strict-docs`, it raises such a problem in
+    documentation for people as well.
 
 Nice-to-have tests, refactoring, and style are not findings. A residue that names an issue or a
 pull request counts as recorded. A conversation comment does not record one.
@@ -129,8 +135,7 @@ posted comment shows which, next to its severity:
   - With `--strict-docs`, an unchecked item in the description, or a test count the description
     has not caught up with, is typically Minor and blocking.
   - A contradicted claim blocks even when its problem would not block under the points below,
-    such as a deferred bug or, with `--strict-docs`, a README that lacks what the description
-    says it covers.
+    such as a deferred bug.
 - A security problem blocks unless the author or an assignee deferred it explicitly, in the
   description, by naming a tracking issue, or, for a decider, by a decline.
 - A decline in a comment alone normally leaves an unsettled discussion, which blocks until the
@@ -138,8 +143,14 @@ posted comment shows which, next to its severity:
 - Other broken code and regressions block, unless both of these hold: it occurs only under a
   special condition normal use does not reach or in a very short window, and deferring it is
   evident from the description or from a decline by the assignees or, with none, the author.
-- A problem in documentation for people, as the first point describes it, does not block, even a
-  security problem.
+- A problem in documentation for people, as the first point describes it:
+  - Without `--strict-docs`, it does not block, even a security problem.
+  - With `--strict-docs`, it is judged by the points above as a problem in code.
+    - A TODO / WIP note in it or a follow-up it promises is work left undone, and a security
+      problem in it is a security problem.
+    - Any other problem in it, such as a statement the code contradicts, blocks as other broken
+      code does. A deferral makes it non-blocking only when it misleads only about a case normal
+      use does not reach.
 - A finding with no judgment blocks. You can change a judgment at the preview.
 
 The verdict goes in the review body, followed by a short overview: what this run checked and what
@@ -282,20 +293,23 @@ Major finding must state a concrete failure scenario. See the
 ## `--strict-docs`
 
 `/cgh:review` passes it to `/creview:start`, and `/cgh:gate` to its code stage's
-`/creview:start`. Together with `--adversarial`, it has the reviewers review documentation files
-with the adversarial stance as well; without `--adversarial`, it changes nothing there. See the
-[creview README](../creview/README.md).
+`/creview:start`. Together with `--adversarial`, it has `/creview:start`'s reviewers review
+documentation files with the adversarial stance as well; without `--adversarial`, it leaves
+their stance unchanged. See the [creview README](../creview/README.md).
 
-With `/cgh:gate`, findings on the title, the description, and documentation for people are then
-judged by the same points as any other finding, as listed under [`/cgh:gate`](#cghgate): a claim
-of the title or description that the code contradicts and work the description leaves open block,
-while a problem in documentation for people still does not, unless the finding also reports such
-a claim, such as a README that lacks what the description says it covers. Without it, those
-findings do not block, apart from the exceptions listed there.
+With `/cgh:gate`, the code stage also reviews and triages documentation for people by the same
+focus as code, as described under [`/cgh:gate`](#cghgate). Findings on the title, the
+description, and documentation for people are then judged by the same points as any other
+finding, as listed there. A claim of the title or description that the code contradicts and
+work the description leaves open block.
+A problem in documentation for people is judged as a problem in code: a README statement that the
+code contradicts blocks, and a deferral makes it non-blocking only when it misleads only about a
+case normal use does not reach. Without `--strict-docs`, those findings do not block, apart from
+the exceptions listed there.
 
-An earlier gate finding keeps the judgment it was posted with: a finding on the description that
-a run with `--strict-docs` posted as blocking still blocks a later run without it while it is
-unverified. You can change the judgment at the preview.
+An earlier gate finding keeps the judgment it was posted with: a finding on the description or
+on documentation for people that a run with `--strict-docs` posted as blocking still blocks a
+later run without it while it is unverified. You can change the judgment at the preview.
 
 ## `--trust`
 
