@@ -489,7 +489,9 @@ says only how bad a problem's consequence is, and the gate's verdict rests on `b
 separate: a `comment-writer` judges each Will Fix finding after triage, `gh-review.py draft
 --blocking` reads that, each posted comment and result line shows the result in its visible text,
 and `gh-review.py collect` reads it back on a later run, from the user's own comments only.
-`/cgh:gate --strict-docs` passes `--strict-docs` to the code stage's `/creview:start`.
+`/cgh:gate --strict-docs` passes `--strict-docs` to the code stage's `/creview:start`, and an
+override has that stage's reviewers, triage sub-agent, and estimate sub-agents apply
+`rules/gate-focus-code.md` to documentation for people as to code.
 Without it, the judgment makes two kinds of finding non-blocking, ahead of every other rule:
 one whose problem lies only in the pull request's title or description, such as an
 outdated claim or an unchecked item, and one about a file of documentation for people, such as
@@ -498,6 +500,10 @@ a change the review could not read is of neither kind, and neither is a title or
 finding that also reports broken code, a regression, or a security problem, nor a documentation
 finding that also reports broken code, a regression, or a security problem outside that
 documentation.
+With it, the judgment exempts neither kind and judges them by its other rules, judging a problem
+in documentation for people as one in code: a TODO / WIP note or a promised follow-up in it as
+work left undone, a security problem in it as a security problem, and any other problem in it,
+such as a statement the code contradicts, as broken code or a regression.
 Under `--incremental`, `gh-review.py since` takes the commit of the user's latest gate review from
 the review's `commit_id`, and `/cgh:gate` passes it to the code stage's `/creview:start --since`
 and to `draft --since`, which names it under the verdict; with no such review, when the head no
