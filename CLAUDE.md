@@ -264,9 +264,15 @@ Then exercise each of the following:
   Check that:
   - The loop ends after the first round whose fixes edit only documentation files, with the
     end reason `converged`.
-  - The final report gives the end reason as converged with only documentation fixes.
+  - The final report gives the end reason as converged with only documentation text fixes.
   - With `--strict-docs`, a run that starts from the branch as it was before the first run goes
     on to another round after such a round.
+- `/creview:rounds` on a branch whose only change is to a docstring or a comment in source code,
+  with a statement in it that contradicts the code.
+  Check that:
+  - The loop ends after the first round whose fixes edit only documentation text, with the end
+    reason `converged`.
+  - The final report gives the end reason as converged with only documentation text fixes.
 - `/cdev:coding`, in a runtime with background subagents and inter-agent messaging, on each of
   the following:
   - A task without AI-facing prompt files.
@@ -396,7 +402,13 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     returned prompt files; it launches one prompt-tester per file) ⇄
                     build-fix / prompt-fix loop → compile → persist status; the
                     compile's result JSON carries docs_only, true when at least one fix
-                    was made and every fix target's stages are docs alone
+                    was made and every fix target is a fix of documentation text alone
+                    (rules/sub-agent.md § Documentation text: documentation files and
+                    prose comments): its stages are docs alone, or they include code
+                    and text_only is true both in its targets.jsonl entry, which
+                    select-fix-targets sets from its fix requirements, and in every
+                    status of its id, at least one, which the fix sets from the edits
+                    it made
 /creview:resolve → analyze + verify Subs → compile → persist verification
                     (triage / respond / resolve invoked directly follow
                     rules/doc-worktree.md: gh-pr.py doc-checkout reads the doc's PR /
@@ -410,18 +422,19 @@ skill folder name == the `name:` in SKILL.md frontmatter (bare, not namespaced).
                     (Round 2 on: detect → investigate → pause with the report, or under
                     --on-divergence stop, stop the loop and go to the final report;
                     without --strict-docs, stop instead fixes each documentation
-                    divergence, one whose findings are all on documentation files, in
-                    its round by the report's recommended proposal: the round goes on
-                    when every divergence is one, with no such policy when no report
-                    came back, and otherwise the loop ends as divergence after resolve,
-                    once that round has fixed only the findings the proposals name to
-                    carry them, or at once when no report came back) + feedback re-fix
+                    divergence, one in which every finding's problem lies only in
+                    documentation text, in its round by the report's recommended
+                    proposal: the round goes on when every divergence is one, with no
+                    such policy when no report came back, and otherwise the loop ends
+                    as divergence after resolve, once that round has fixed only the
+                    findings the proposals name to carry them, or at once when no
+                    report came back) + feedback re-fix
                     inner loop; a round that does not end as divergence and whose fixes all
-                    ran in respond's docs stage alone, with no build/test-fix Sub launched
+                    changed documentation text alone, with no build/test-fix Sub launched
                     (docs_only), ends the loop as converged unless --strict-docs is given;
                     --strict-docs also reaches the review phase, where under
                     --adversarial the reviewers apply the adversarial stance to
-                    documentation files as well; --result {path} writes a result JSON
+                    documentation text as well; --result {path} writes a result JSON
                     (end reason, rounds, each round's start commit, paths, warnings) at
                     the end, also on an error
 ```
@@ -491,17 +504,21 @@ separate: a `comment-writer` judges each Will Fix finding after triage, `gh-revi
 and `gh-review.py collect` reads it back on a later run, from the user's own comments only.
 `/cgh:gate --strict-docs` passes `--strict-docs` to the code stage's `/creview:start`, and an
 override has that stage's reviewers, triage sub-agent, and estimate sub-agents apply
-`rules/gate-focus-code.md` to documentation for people as to code.
+`rules/gate-focus-code.md` to documentation text as to code: documentation for people and the
+prose comments in other files, as creview's `rules/sub-agent.md` § Documentation text defines
+them. A statement in it that the code contradicts is then broken code or a regression, not the
+comment wording that § Review of `rules/gate-focus-code.md` leaves out.
 Without it, the judgment makes two kinds of finding non-blocking, ahead of every other rule:
 one whose problem lies only in the pull request's title or description, such as an
-outdated claim or an unchecked item, and one about a file of documentation for people, such as
-a README or `CLAUDE.md`. A finding that also reports a failed check, an unsettled discussion, or
-a change the review could not read is of neither kind, and neither is a title or description
-finding that also reports broken code, a regression, or a security problem, nor a documentation
-finding that also reports broken code, a regression, or a security problem outside that
-documentation.
+outdated claim or an unchecked item, and one about a problem in documentation text, such as one
+in a README, in `CLAUDE.md`, or in a prose comment. The second kind includes a `TODO` or `FIXME`
+in a prose comment with no issue recording it and a follow-up a prose comment promises. A
+finding that also reports a failed check, an unsettled discussion, or a change the review could
+not read is of neither kind, and neither is a title or description finding that also reports
+broken code, a regression, or a security problem, nor a documentation text finding that also
+reports broken code, a regression, or a security problem outside documentation text.
 With it, the judgment exempts neither kind and judges them by its other rules, judging a problem
-in documentation for people as one in code: a TODO / WIP note or a promised follow-up in it as
+in documentation text as one in code: a TODO / FIXME / WIP note or a promised follow-up in it as
 work left undone, a security problem in it as a security problem, and any other problem in it,
 such as a statement the code contradicts, as broken code or a regression.
 Under `--incremental`, `gh-review.py since` takes the commit of the user's latest gate review from
@@ -884,6 +901,14 @@ keep the H1 cross-link line (`*[日本語版 README](README_ja.md)*` /
   detail finding matches the procedure-detail finding of `contract-style-prompts.md`.
   `contract-style-prompts.md` and `divergence.md` are not byte-identical copies of the prompt
   rule, so no test catches their drift: when you change one, check the others.
+- **§ Documentation text of `creview/rules/sub-agent.md` and of `cdev/rules/teammate.md` hold
+  the same text**, and so do § 人向けテキスト of their `src/` masters. The definition of
+  documentation text, the documentation files and the prose comments in other files, decides
+  what the skills treat leniently without `--strict-docs`.
+  `cgh/skills/gate/templates/blocking-judge.md` and its `src/` master restate the same
+  definition in a self-contained form, since the `comment-writer` that reads them reads no
+  bundled rule. None of these is a byte-identical copy, so no test catches their drift: when you
+  change one, check the others.
 - **A sub-agent's Write is rejected when the `.md` basename starts with `REPORT`,
   `SUMMARY`, `FINDINGS`, or `ANALYSIS`** (case-insensitive, basename only). Claude Code's
   Write tool blocks it and tells the sub-agent to return the content as text instead. Output
