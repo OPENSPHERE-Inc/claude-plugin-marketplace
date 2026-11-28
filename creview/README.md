@@ -42,12 +42,15 @@ after the pull request review below.
 reviewers in adversarial mode, where every Critical / Major finding must state
 a concrete failure scenario; `/creview:rounds` accepts the same flag and passes
 it through to `/creview:start`. By default, adversarial mode reviews
-documentation files, which the documentation stage of `/creview:respond` below
-defines, by the usual review rules, without the adversarial stance; they stay in
-the review. The
-`--strict-docs` option (default OFF) of `/creview:start` applies the
-adversarial stance to them as well. Without `--adversarial`, it changes
-nothing. `/creview:rounds` passes `--strict-docs` through to `/creview:start`
+documentation text, the documentation files and the prose comments defined with
+the documentation stage of `/creview:respond` below, by the usual review rules,
+without the adversarial stance; it stays in the review. Every change to a
+documentation file is a change to documentation text. In any other file, each
+changed part is judged on its own: within one source file, a change to a prose
+comment gets the usual rules and a change to the code the adversarial stance.
+The `--strict-docs` option (default OFF) of `/creview:start` applies the
+adversarial stance to documentation text as well. Without `--adversarial`, it
+changes nothing. `/creview:rounds` passes `--strict-docs` through to `/creview:start`
 and also applies it to its round loop, as described below.
 
 `/creview:triage` is adversarial
@@ -434,6 +437,28 @@ stage, so that the documentation it changes describes the fixed code.
   - AI-facing prompt files, source code and its comments, tests, Markdown
     output templates, and the review document and its ADR files are not.
   - The code stage fixes AI-facing prompt files along with the other files.
+- Documentation text is the documentation files and the prose comments in other
+  files. The bundled rule `rules/sub-agent.md` § Documentation text defines it.
+  - A documentation file is documentation text as a whole, its code examples
+    and directives included: the judgment of parts below applies only to the
+    comments in other files.
+  - A prose comment is a part of a comment that only people read, such as the
+    text of a comment or a docstring, or the description in a doc block.
+  - Each part is judged on its own, by what reads it in the project.
+    - A part that a tool of the project reads and acts on is code, such as a
+      directive to a compiler or a linter, a type a type checker reads, or an
+      example a test runner runs.
+    - Neither generating an API reference from the comments nor a check of
+      only the text's form, such as a spell check, makes a part code.
+  - A `TODO` or `FIXME` in a comment, and a follow-up a comment promises, are
+    prose comments. Commented-out code is not.
+  - AI-facing prompt files, and templates an AI agent fills, hold no prose
+    comment.
+  - A part that cannot be told to be for people counts as code.
+  - The stages still divide the work by documentation files: the code stage
+    fixes prose comments along with the code around them.
+  - Without `--strict-docs`, adversarial mode and `/creview:rounds` treat
+    documentation text leniently, as described with each.
 - A finding's fix requirements are the changes that its fix plan, the Decision
   of its ADR, its last verification when that is `💬 Feedback`, and a fix
   policy given to `/creview:rounds` ask of its fix.
@@ -512,7 +537,7 @@ No step of `/creview:respond` reviews the documentation against the code.
 - Under `/creview:rounds`, the next round's review covers the documentation
   along with the other changes.
   - Without `--strict-docs`, a round whose fixes changed only documentation
-    files is the last, so no later round reviews those fixes.
+    text is the last, so no later round reviews those fixes.
 
 When the fixes of `/creview:respond` create or change an AI-facing prompt file,
 two more checks examine that file; otherwise the skill runs without them. An
@@ -614,19 +639,32 @@ the cdev plugin runs `/creview:rounds` this way and sends the work back to
 `/cdev:coding` with the investigation report. Without `--strict-docs`, `stop`
 handles documentation divergences in their round instead, as described next.
 
-Without `--strict-docs`, documentation fixes do not keep the round loop going,
-and documentation divergences do not stop it under `--on-divergence stop`:
+Without `--strict-docs`, fixes of documentation text do not keep the round loop
+going, and documentation divergences do not stop it under
+`--on-divergence stop`:
 
-- A round whose fixes changed only documentation files ends the loop, as a
+- A round whose fixes changed only documentation text ends the loop, as a
   round whose fixes changed no source code does.
-  - A run of `/creview:respond` counts as changing only documentation files
-    when it fixed at least one finding and planned every fix target of the run
-    for the documentation stage alone.
+  - A run of `/creview:respond` counts as changing only documentation text
+    when it fixed at least one finding and every fix target of the run is a
+    fix of documentation text alone.
+    - A fix target planned for the documentation stage alone is one.
+    - A fix target planned for the code stage is one only when two judgments
+      both find that it edits documentation text alone. A judgment that cannot
+      tell finds that it does not.
+      - Before fixing, the skill judges from the fix requirements whether every
+        edit they call for is to documentation text.
+      - After fixing, the fix reports whether every edit it made was.
+  - A `🚧 Alternative` fix only adds a FIXME comment unless its fix
+    requirements call for another change. A round whose fixes only add FIXME
+    comments, in files other than AI-facing prompt files and templates an AI
+    agent fills, can therefore end the loop as well.
   - Edits that the comment review or the prompt review makes after the fixes
     do not count as fixes here, and a run that tried to fix a build or test
-    failure does not count as changing only documentation files.
-- A documentation divergence is one whose findings are all on documentation
-  files. The investigation report marks each divergence as one or not.
+    failure does not count as changing only documentation text.
+- A documentation divergence is one in which the problem of every finding lies
+  only in documentation text. The investigation report marks each divergence
+  as one or not.
 - Under `--on-divergence stop`, a round with documentation divergences fixes
   them in the round.
   - The round's respond and resolve phases, and the phases the feedback re-fix
@@ -651,8 +689,8 @@ and documentation divergences do not stop it under `--on-divergence stop`:
 - With `--on-divergence ask`, a documentation divergence pauses the loop as any
   other divergence does.
 
-With `--strict-docs`, the round loop treats documentation files as any other
-files.
+With `--strict-docs`, the round loop treats documentation text as it treats
+code.
 
 When a phase stops on an error, `/creview:rounds` stops there and writes no
 final report. Such an error is, for example, a script that fails or a sub-agent
@@ -708,14 +746,14 @@ a missing file as an error. The end reason is one of:
   with no findings, or, under `--incremental`, the previous round left no new
   commit to review.
   - Without `--strict-docs`, a round whose fixes changed only documentation
-    files converges as well; the final report then gives the end reason as
-    converged with only documentation fixes.
+    text converges as well; the final report then gives the end reason as
+    converged with only documentation text fixes.
   - A round in which `--on-divergence stop` stops the loop on a divergence
     ends as `divergence` instead, even when its fixes changed no source code
-    or only documentation files.
+    or only documentation text.
 - `max-rounds` — the last round still changed source code when the run reached
   `--max-rounds`. Without `--strict-docs`, fixes that changed only
-  documentation files do not count.
+  documentation text do not count.
 - `divergence` — `--on-divergence stop` stopped the loop on a divergence, either
   before the round's fixes or, in a round that also had documentation
   divergences, after fixing those.

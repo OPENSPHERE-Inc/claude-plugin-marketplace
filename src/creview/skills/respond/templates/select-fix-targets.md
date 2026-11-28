@@ -27,6 +27,8 @@ template_id: 7c3e9a1d-5b48-4f62-9a8c-2d6f1b3e7a95
 
 各修正対象の `stages` は、その修正要件（sub-agent.md § 修正要件）が述べることから定める: ドキュメントファイル（同ファイルの § ドキュメントファイル）の編集を求めるなら `docs`、それ以外のファイルの編集を求めるなら `code` とする。ADR ファイルはどちらにも数えない。判定は修正要件が述べることと挙げるパスだけから行い、ソースを読まず、リポジトリを探さず、プロジェクトの CLAUDE.md も読まない。それで種類が分からないファイルの編集（名前からドキュメントかプロンプトテンプレートか分からない Markdown ファイルなど）は `code` と `docs` の両方に数える。修正要件がどちらも示さない場合は `["code"]` とする。
 
-`{{tmp_dir}}/targets.jsonl` 形式: `{items: [{id, assignee, stages (["code"]、["docs"]、または ["code", "docs"]), estimate (Maintain|Alternative), adr (ファイル名または null), fix_plan (文字列配列、無ければ [])}], fix_count, not_ready: [{id, reason}]}`
+各修正対象の `text_only` は、同じ修正要件から、`stages` と同じ読む範囲の制約で定める: 修正要件が、求める編集がすべて人向けテキスト（sub-agent.md § 人向けテキスト）に当たると示す場合に限り true、それ以外は false とする。部分の種類は修正要件が述べることから判断し、何がその部分を読むかは、ソースを読む修正に任せる: 修正要件がコメントや docstring の本文、doc ブロックの説明文の編集と述べる部分は、プロジェクトのツールがその部分を読んで作用すると示していない限り人向けコメントであり、例、型、指示などコメントのそれ以外の部分は、何もそれに作用しないと示していない限り人向けかどうか判断できない部分であり、種類を示していない部分も同じである。`🚧 Alternative` の修正は、修正要件がほかの変更を求めない限り、FIXME コメントの挿入だけである。
+
+`{{tmp_dir}}/targets.jsonl` 形式: `{items: [{id, assignee, stages (["code"]、["docs"]、または ["code", "docs"]), text_only (true または false), estimate (Maintain|Alternative), adr (ファイル名または null), fix_plan (文字列配列、無ければ [])}], fix_count, not_ready: [{id, reason}]}`
 
 戻り値: `{path, fix_count, by_assignee: [{assignee, ids: [id, ...]}], code_stage: [{assignee, ids: [id, ...]}], docs_stage: [{assignee, ids: [id, ...]}], not_ready: [{id, reason}], template_id}`（`by_assignee` はすべての修正対象を assignee 単位でグルーピングする。`code_stage` と `docs_stage` は、`stages` がそれぞれ `code`、`docs` を含む修正対象を assignee 単位でグルーピングする。`not_ready` は targets.jsonl と同じ内容で、各 `reason` は短い定型文とする。指摘本文は含めない）。`template_id` は本テンプレートの frontmatter から Read した値をそのまま含める。

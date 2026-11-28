@@ -8,7 +8,7 @@ template_id: ad54f81e-81f1-43c0-acff-0941524b8a3e
 
 入力:
 
-- 検出結果: `{{divergence_path}}`（形式: `{divergences: [{id, kind, docs, links}]}`。`kind` は `"chain"`（指摘への修正が次の指摘を生む連鎖が縮小せず続いている）、`"oscillation"`（今ラウンドの指摘が過去の修正の取り消しや相反する変更を求めている）、または `"over-specification"`（AI 向けプロンプトファイルに細部の指摘が連続ラウンドで縮小せず出ている、または今ラウンドの指摘がすべて細部の指摘である連鎖・往復。修正対象の指摘とは Triage が `🔧 Will Fix` で Estimate が `🔻 Downgrade` でない指摘、細部の指摘とは修正対象の指摘のうち `contract-style-prompts.md` が手続き細部の指摘に分類するもの）。`docs` はドキュメントの発散、すなわち `links` の指摘がすべてドキュメントファイル（`sub-agent.md` § ドキュメントファイル）上にある発散で true。`links` は発散を構成する指摘を古い順に並べた `{round, id, location, finding, fix}`）
+- 検出結果: `{{divergence_path}}`（形式: `{divergences: [{id, kind, docs, links}]}`。`kind` は `"chain"`（指摘への修正が次の指摘を生む連鎖が縮小せず続いている）、`"oscillation"`（今ラウンドの指摘が過去の修正の取り消しや相反する変更を求めている）、または `"over-specification"`（AI 向けプロンプトファイルに細部の指摘が連続ラウンドで縮小せず出ている、または今ラウンドの指摘がすべて細部の指摘である連鎖・往復。修正対象の指摘とは Triage が `🔧 Will Fix` で Estimate が `🔻 Downgrade` でない指摘、細部の指摘とは修正対象の指摘のうち `contract-style-prompts.md` が手続き細部の指摘に分類するもの）。`docs` はドキュメントの発散、すなわち `links` のすべての指摘について指摘の問題が人向けテキスト（`sub-agent.md` § 人向けテキスト）の中だけにある発散で true。`links` は発散を構成する指摘を古い順に並べた `{round, id, location, finding, fix}`）
 - 今ラウンドのレビュードキュメント: `{{document_path}}`
 - 過去ラウンドのレビュードキュメントのパス: `{{previous_round_doc_paths}}`
 - レポートテンプレート: `{{template_path}}`

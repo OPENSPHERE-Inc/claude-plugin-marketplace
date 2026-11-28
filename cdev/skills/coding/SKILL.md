@@ -26,7 +26,7 @@ The user supplies a coding task: a feature to implement, a change to make, or a 
 
 - `--review-rounds N` (default 5, range 1–10) — Max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, range 1–10) — Max QA verify ⇄ fix attempts.
-- `--strict-docs` (default OFF) — Have a cell's reviewer raise new findings on documentation files in every round, not only in the cell's first review (`strict_docs` in Steps 3-4).
+- `--strict-docs` (default OFF) — Have a cell's reviewer raise new findings on documentation text (documentation files and prose comments) in every round, not only in the cell's first review (`strict_docs` in Steps 3-4).
 - `--commit` (default OFF) — After QA passes, commit the implementation in commits split by logical change (Step 5).
 - `--worktree[=branch]` (default OFF) — Run the task in a separate git worktree on `branch` (§ Worktree). Without `=branch`, a new branch `cdev-coding-{timestamp}` is created from the current HEAD. Enables `--commit`.
 - `--output {dir}` — Specify the output directory for the design documents (`{design_dir}`).

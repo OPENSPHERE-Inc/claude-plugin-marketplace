@@ -30,14 +30,14 @@ id の修正が行う編集は、その修正要件（sub-agent.md § 修正要�
 5. ADR（`code` 段で行う。`docs` 段では当該 id の `stages` が `code` を含まない場合に限り行う）:
    - `adr` が非 null: ADR を更新する — Status を `Accepted` にし、History エントリを追記する（日付 = `{{timestamp}}` の日付部を YYYY-MM-DD 形式で、`{レビュードキュメントのファイル名} / {finding-id}`、修正内容の 1 行要約）。Decision からの逸脱や実装中に行った設計判断があれば Decision / Consequences に記録する。
    - `adr` が null、`{{adr_flag}}` が on、かつ実装自体が恒久的なトレードオフを伴う複数の実行可能なアプローチから 1 つを選択した場合: レビュードキュメントと同じディレクトリに `{{{document_path}} の basename から .md を除いたもの}-adr-{finding-id}.md` を Status `Accepted`・Created History エントリ付きで Write する。スケルトンは `{{plugin_root}}/rules/adr-format.md` に従う。memo_value に ` — ADR: {ファイル名}` を追記する。
-6. `{{tmp_dir}}/statuses/{finding-id}.jsonl` に Write。`docs` 段で当該 id の `stages` が `code` を含む場合は、コード修正段が書いたファイルに統合する: `id`、`specialist`、`verdict` と、`files` の既存のパスをすべて保つ。この段が変更したドキュメントファイルを `files` に加える。`description` と `memo_value` は両段を合わせた 1 つの修正として書き直し、コード修正段が編集せずに残した変更のうちこの段も行わないものはそのファイルとともに残し、` — ADR: {ファイル名}` があれば末尾に保つ。そのファイルがないか読めない場合は新しく書き、`files` にはこの段の変更だけを入れ、コード側の修正を確認できなかったことを `description` と `memo_value` に記す。
+6. `{{tmp_dir}}/statuses/{finding-id}.jsonl` に Write。`docs` 段で当該 id の `stages` が `code` を含む場合は、コード修正段が書いたファイルに統合する: `id`、`specialist`、`verdict` と、`files` の既存のパスをすべて保つ。この段が変更したドキュメントファイルを `files` に加える。`text_only` は、コード修正段が true にしていれば true のまま保ち、それ以外は false にする。`description` と `memo_value` は両段を合わせた 1 つの修正として書き直し、コード修正段が編集せずに残した変更のうちこの段も行わないものはそのファイルとともに残し、` — ADR: {ファイル名}` があれば末尾に保つ。そのファイルがないか読めない場合は新しく書き、`files` にはこの段の変更だけを入れ、`text_only` は false とし、コード側の修正を確認できなかったことを `description` と `memo_value` に記す。
 
 並列化制約（複数 id を担当する場合）:
 
 - 同一ファイルに影響する複数 ids は順次処理（書き込み競合防止）。
 - 異なるファイルに影響する ids は並列処理可。
 
-`{{tmp_dir}}/statuses/{finding-id}.jsonl` 形式: `{id, specialist, verdict（targets.jsonl の estimate。Maintain | Alternative）, description（修正内容の簡潔な説明）, memo_value, files（この修正が変更したファイルのリポジトリ相対パス。ドキュメントファイルを含み、ADR ファイルは含めない）}`
+`{{tmp_dir}}/statuses/{finding-id}.jsonl` 形式: `{id, specialist, verdict（targets.jsonl の estimate。Maintain | Alternative）, description（修正内容の簡潔な説明）, memo_value, files（この修正が変更したファイルのリポジトリ相対パス。ドキュメントファイルを含み、ADR ファイルは含めない）, text_only（ADR ファイルを `files` と同じく除き、この修正が行ったすべての編集が人向けテキスト（sub-agent.md § 人向けテキスト）に当たる場合に true。それ以外の場合と判断できない場合は false）}`
 
 `description` と `memo_value` の散文は、`{{document_path}}` の既存 Finding 説明と同じ言語で記述する（`🟢 Fixed` ラベルと絵文字は固定）。
 

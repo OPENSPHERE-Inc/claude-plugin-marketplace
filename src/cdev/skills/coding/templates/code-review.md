@@ -12,7 +12,7 @@ Producer: `{{producer}}` | セルタスク: `{{cell_task}}`
 
 producer が準備完了を通知したら、変更したファイル（準備完了メッセージに列挙されている）を Read し、設計・タスクに対する正しさ、バグ、欠落したエッジケース / エラーハンドリング、セキュリティ、性能、保守性の観点でコードを判定する。AI 向けプロンプトファイルは `{{plugin_root}}/rules/prompt.md` にも照らして判定し、producer が残存として列挙したプロンプト違反はそれぞれ指摘の候補として扱う。AI 向けプロンプトファイルについては、`{{plugin_root}}/rules/divergence.md` も Read し、§ code reviewer に従う。`{{plugin_root}}/rules/review.md` を Read し従う。ツール使用は Read / Glob / Grep / Bash(grep/ls/find) に限定する。一切編集しない。
 
-`{{strict_docs}}` が `off` のとき、`file:line` がドキュメントファイル（`{{plugin_root}}/rules/teammate.md` § ドキュメントファイル の定義による）にある指摘は、このセルの最初のレビューでだけ挙げる。2 ラウンド目以降は、そうした指摘については、producer に送った対応が必要な各指摘が producer の修正か却下で決着したかだけを判定し、決着していない指摘は残っている点を添えて再送する。
+`{{strict_docs}}` が `off` のとき、人向けテキストにある指摘は、このセルの最初のレビューでだけ挙げる。人向けテキストにある指摘とは、問題がドキュメントファイルか人向けコメント（`{{plugin_root}}/rules/teammate.md` § 人向けテキスト の定義による）の中だけにある指摘を指す。2 ラウンド目以降は、そうした指摘については、producer に送った対応が必要な各指摘が producer の修正か却下で決着したかだけを判定し、決着していない指摘は残っている点を添えて再送する。
 
 重大度ラベル: Critical（致命的、要修正）/ Major（修正すべき）/ Minor（注意）/ Info（参考）。対応が必要 = Critical / Major。
 

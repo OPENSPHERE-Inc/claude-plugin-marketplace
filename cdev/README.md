@@ -160,8 +160,9 @@ Options of `/cdev:coding`; for those of `/cdev:loop`, see [Loop](#loop-cdevloop)
 - `--review-rounds N` (default 5, max 10) — max review ⇄ triage iterations per cell.
 - `--qa-attempts N` (default 5, max 10) — max QA verify ⇄ fix attempts.
 - `--strict-docs` (default off) — have a cell's reviewer raise new findings on documentation
-  files in every round, not only in its first review of the cell (see
-  [Documentation](#documentation)). Severity is the same with or without it.
+  text, the documentation files and the prose comments in code, in every round, not only in its
+  first review of the cell (see [Documentation](#documentation)). Severity is the same with or
+  without it.
 - `--commit` (default off) — commit the verified implementation, split into commits by logical
   change, with messages that follow the repository's commit history and conventions.
   - Each changed file goes into exactly one commit: the change of one file is never split
@@ -328,6 +329,8 @@ The following are not documentation:
 - AI-facing prompt files, which go through the code cells (see
   [AI-facing prompts](#ai-facing-prompts)).
 - Source code and the comments in it, docstrings included.
+  - The prose comments in code still count as documentation text, as **Review rounds** below
+    defines it.
 - Tests.
 - Markdown output templates externalized from a prompt file.
 - The design documents the run's design cells write.
@@ -384,10 +387,28 @@ that changes documentation files runs as follows:
   - In each later round, it judges only whether the writer's fix or rejection settles each
     finding it raised, and sends again each unsettled one with what remains of it. The cell
     closes once they are all settled, or at the `--review-rounds` cap.
-  - The reviewer of a code cell does the same for its findings on documentation files, which a
-    coder holds when no writer does, and raises findings on other files in every round.
-  - With `--strict-docs`, the reviewer raises new findings on documentation files in every
-    round.
+  - The reviewer of a code cell does the same for its findings on documentation text, and raises
+    its other findings in every round. A finding on documentation text is one whose problem lies
+    only in documentation files, which a coder holds when no writer does, or in prose comments.
+  - Documentation text is the documentation files and the prose comments in other files. A prose
+    comment is a part of a comment that only people read, such as the text of a comment or a
+    docstring, or the description in a doc block. `rules/teammate.md` § Documentation text holds
+    this definition.
+    - A documentation file is documentation text as a whole, its code examples and directives
+      included: the judgment of parts below applies only to the comments in other files.
+    - A `TODO` or `FIXME` in a comment, and a follow-up a comment promises, are prose comments.
+    - A part that a tool of the project reads and acts on is code, whatever it looks like, such
+      as a directive to a compiler or a linter, a type a type checker reads, or an example a test
+      runner runs. Commented-out code is code as well, and so is a part when it is unclear
+      whether only people read it.
+    - Generating documentation for people, such as an API reference, from the comments does not
+      by itself make a part code, and neither does a check of only the form of a comment's text,
+      such as its spelling or the markers in it.
+    - AI-facing prompt files and the templates an AI agent fills hold no prose comments.
+    - Prose comments belong to the code cells: the coder writes them, and `comment-sensei`
+      reviews and fixes them.
+  - With `--strict-docs`, the reviewers of both kinds of cell raise new findings in every round,
+    on documentation text as well.
 - **QA gate** — QA runs after the documentation cells, so the project's format, build, and test
   workflow covers the documentation changes when it handles documentation, such as with a
   Markdown linter or a documentation build; the review, not QA, checks that the documentation
@@ -433,11 +454,11 @@ bounded, so the run always ends. It never pushes or opens a pull request.
   its result, split by logical change, even when QA or the interpretation test did not pass.
   `/creview:rounds` then runs on the same branch with `--incremental`, and stops instead of
   pausing when it detects a divergence (`--on-divergence stop`).
-  - Unless `--strict-docs` is given, a divergence whose findings are all on documentation files
-    does not stop it: the review applies the investigation report's fix proposal for it in the
-    same round. A round with only such divergences goes on, and one that also has others stops
-    after those fixes.
-  - Unless `--strict-docs` is given, a review round whose fixes changed only documentation files
+  - Unless `--strict-docs` is given, a divergence in which the problem of every finding lies only
+    in documentation text (see [Documentation](#documentation)) does not stop it: the review
+    applies the investigation report's fix proposal for it in the same round. A round with only
+    such divergences goes on, and one that also has others stops after those fixes.
+  - Unless `--strict-docs` is given, a review round whose fixes changed only documentation text
     ends the review.
   - See the [creview README](../creview/README.md).
 - Round 1 of a cycle's review covers the diff from the cycle's base; later rounds review only
@@ -652,7 +673,7 @@ Two failures at the end do not stop the run; it still ends normally, with a warn
 - The loop needs what `/cdev:coding` and `/creview:rounds` need: background subagents and
   `SendMessage`, nested sub-agent spawning of depth 3 or more
   (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), a repository you trust, and a session started at
-  the repository root. It also needs the creview plugin, version 0.24.0 or later, which Claude
+  the repository root. It also needs the creview plugin, version 0.25.0 or later, which Claude
   Code installs with cdev as a dependency.
 - The project's configure, build, and test steps must leave in the worktree neither initialized
   submodules nor untracked files that `.gitignore` does not cover. Git refuses to remove such a

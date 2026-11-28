@@ -12,7 +12,7 @@ Input:
 - Paths to past rounds' review documents: `{{previous_round_doc_paths}}`
 - Detection result output path: `{{output_path}}`
 
-Base the judgment only on these review documents (the finding bodies, and the Triage / Estimate / Status / Verification in the `<!-- METADATA(id) -->` blocks). The one exception: to judge whether a finding's file is an AI-facing prompt file or a documentation file (`sub-agent.md` § Documentation files), you may Read that file; when it no longer exists, judge from its path and the finding body.
+Base the judgment only on these review documents (the finding bodies, and the Triage / Estimate / Status / Verification in the `<!-- METADATA(id) -->` blocks). The one exception is a finding's file, which you may Read to judge whether it is an AI-facing prompt file. Judge whether the problem of a finding lies only in documentation text (`sub-agent.md` § Documentation text) by the part the finding body describes, Reading the file only to find that part and what reads it: a later fix may have rewritten or moved the line its location names. When the file no longer exists or the part is no longer in it, judge from its path and the finding body.
 
 Definitions:
 
@@ -20,7 +20,7 @@ Definitions:
 - Chain link: a fix-target finding of a round that is caused by a fix for a finding of an earlier round (the change recorded in `Status: 🟢 Fixed — ...`). A finding qualifies when it takes issue with code that fix introduced or changed. A finding that merely overlaps the location and points at a problem that predates the fix does not qualify.
 - Chain: the sequence obtained by tracing chain links back into the past (finding → its fix → next finding → its fix → ...).
 - Detail finding: a fix-target finding on an AI-facing prompt file that `contract-style-prompts.md` § Findings on an AI-facing prompt file classifies as a procedure-detail finding. A finding's file is the path part of its location; a finding whose location names no file counts toward no file.
-- Documentation divergence: a divergence in which every finding of its `links` has a documentation file as its file.
+- Documentation divergence: a divergence in which, for every finding of its `links`, the problem of the finding lies only in documentation text. A finding you cannot tell this of, such as one whose body and metadata leave open whether the text or the code is to change, does not have its problem only in documentation text.
 
 Detect each of the following as a divergence:
 
