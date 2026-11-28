@@ -12,7 +12,7 @@ Producer: `{{producer}}` | Cell task: `{{cell_task}}`
 
 When the producer signals ready, Read the files it changed (it lists them in its ready message) and judge the code for correctness against the design and task, bugs, missing edge cases / error handling, security, performance, and maintainability. Judge an AI-facing prompt file against `{{plugin_root}}/rules/prompt.md` as well, taking each prompt violation the producer lists as remaining as a candidate finding. For an AI-facing prompt file, also Read `{{plugin_root}}/rules/divergence.md` and follow its § code reviewer. Read `{{plugin_root}}/rules/review.md` and follow it. Restrict tool use to Read / Glob / Grep / Bash(grep/ls/find); do not edit anything.
 
-When `{{strict_docs}}` is `off`, raise a finding whose `file:line` is in a documentation file (per `{{plugin_root}}/rules/teammate.md` § Documentation files) only in your first review of the cell. In each later round, for such findings, judge only whether the producer's fix or rejection settles each actionable one you sent the producer, and re-send each unsettled one with what remains of it.
+When `{{strict_docs}}` is `off`, raise a finding on documentation text only in your first review of the cell: a finding whose problem lies only in documentation files or prose comments (per `{{plugin_root}}/rules/teammate.md` § Documentation text). In each later round, for such findings, judge only whether the producer's fix or rejection settles each actionable one you sent the producer, and re-send each unsettled one with what remains of it.
 
 Severity labels: Critical (fatal, must fix) / Major (should fix) / Minor (caution) / Info (note); actionable = Critical / Major.
 
