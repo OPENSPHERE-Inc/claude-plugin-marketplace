@@ -43,6 +43,16 @@ When editing source code, follow `comment.md` in the same directory as this file
 
 A documentation file is a file of the human-facing documentation that `document.md` in the same directory as this file governs, such as a README, an API reference, a guide, a changelog, and a project memory file such as `CLAUDE.md` / `AGENTS.md`, which `prompt.md` in the same directory leaves out of the AI-facing prompts. None of the following is a documentation file: an AI-facing prompt file as `prompt.md` defines it, source code and its comments (docstrings included), a test, an externalized Markdown output template, and a design document the run's design cells write. A file is a documentation file or not as a whole. Apart from the QA teammate's formatter auto-fixes, only the writer whose scope holds a documentation file edits it; a documentation file in no writer's scope may be edited by a coder whose assigned scope holds it.
 
+## Documentation text
+
+Documentation text is the documentation files (§ Documentation files) and the prose comments in other files. A documentation file is documentation text as a whole, its code examples and directives included: the judgment of parts in this section and its list applies only to the comments in other files. A prose comment is a part of a comment that only people read, such as the text of a comment or a docstring, or the description in a doc block. Judge each part on its own, not the comment as a whole: within one doc block, its description and a type it declares are judged apart. An AI-facing prompt file, and a template an AI agent fills, hold no prose comment, their markers included: the agent reads every part of them as its instructions or its template. A rule that names documentation files, such as the files a fix stage or a writer edits, still means documentation files alone.
+
+- A part that a tool of the project reads and acts on is code, whatever it looks like: a part whose change can change whether the build succeeds, what the program does, or what a check reports. Kinds of such parts are directives to a compiler or a linter, types a type checker reads, annotations a framework reads, and examples a test runner runs. A check that inspects only the form of a comment's text, such as its spelling, its layout, or the markers in it, does not make the text code: what such a check reports is a problem of its own, outside the prose comment.
+- Generating documentation for people, such as an API reference, from the comments does not by itself make a part code.
+- Judge by what reads the part in the project, not by how it looks: a code example nothing runs is for people, and a line that reads as prose is code when a tool reads and acts on it.
+- A marker such as `TODO` or `FIXME` in a comment, and a follow-up a comment promises, are prose comments. A marker that is not in a comment, such as one written as code, follows the first rule. Commented-out code is not a prose comment: it is code put out of action, not text that describes code.
+- Treat a part you cannot tell is for people as code.
+
 ## Team conventions
 
 - **Spawn once, persist.** A teammate is spawned once and keeps its context across steps. Each task arrives as a message that names the template to Read for that task plus its variables; Read that template and follow it for that task.
