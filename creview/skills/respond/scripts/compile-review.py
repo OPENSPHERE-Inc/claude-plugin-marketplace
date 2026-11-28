@@ -11,10 +11,16 @@ no fixes), runs the sibling render-review.py, and prints a result JSON object to
 stdout: {"fixed_count", "code_changed", "docs_only", "summary_line", "maintain",
 "alternative"}.
 
-`docs_only` is true only when there is at least one fix, every item in
-<tmp_dir>/targets.jsonl (read as one JSON object) has a `stages` list that holds
-"docs" and not "code", and each status `id` has an item there. It is false when
-targets.jsonl is missing, unreadable, or malformed.
+`docs_only` is true only when there is at least one fix, each status `id` has an
+item in <tmp_dir>/targets.jsonl (read as one JSON object), and every item there
+counts as a fix of documentation text alone:
+- An item whose `stages` holds "docs" and not "code" counts.
+- An item whose `stages` holds "code" counts only when its `text_only` is the
+  boolean true and at least one status carries its `id`, each with `text_only`
+  the boolean true.
+- Any other item does not count.
+It is false when targets.jsonl is missing, unreadable, or malformed, or when an
+item is not an object with a string `id` and a `stages` list.
 """
 
 import glob
@@ -36,20 +42,31 @@ def json_line(value):
     return json.dumps(value, ensure_ascii=False).translate(LINE_SEPARATORS)
 
 
-def docs_only_target_ids(tmp_dir):
+def target_is_text_only(item, status_flags):
+    if "code" in item["stages"]:
+        return item.get("text_only") is True and bool(status_flags) and all(status_flags)
+    return "docs" in item["stages"]
+
+
+def docs_text_only(tmp_dir, statuses):
     try:
         with open(os.path.join(tmp_dir, "targets.jsonl"), encoding="utf-8") as f:
             targets = json.load(f)
     except (OSError, ValueError):
-        return set()
+        return False
     items = targets.get("items") if isinstance(targets, dict) else None
     if not isinstance(items, list) or not all(
             isinstance(item, dict) and isinstance(item.get("id"), str)
             and isinstance(item.get("stages"), list)
-            and "docs" in item["stages"] and "code" not in item["stages"]
             for item in items):
-        return set()
-    return {item["id"] for item in items}
+        return False
+    item_ids = {item["id"] for item in items}
+    status_flags = {}
+    for status in statuses:
+        if not isinstance(status["id"], str) or status["id"] not in item_ids:
+            return False
+        status_flags.setdefault(status["id"], []).append(status.get("text_only") is True)
+    return all(target_is_text_only(item, status_flags.get(item["id"], [])) for item in items)
 
 
 def main():
@@ -57,11 +74,13 @@ def main():
         sys.exit(f"Usage: {sys.argv[0]} <tmp_dir> <document_path>")
     tmp_dir, document_path = sys.argv[1:3]
 
+    statuses = []
     events = []
     verdicts = {"Maintain": 0, "Alternative": 0}
     for status_path in sorted(glob.glob(os.path.join(tmp_dir, "statuses", "*.jsonl"))):
         with open(status_path, encoding="utf-8") as f:
             status = json.load(f)
+        statuses.append(status)
         events.append({"id": status["id"], "field": "status", "value": status["memo_value"]})
         if status.get("verdict") in verdicts:
             verdicts[status["verdict"]] += 1
@@ -75,12 +94,11 @@ def main():
     fixed = len(events)
     breakdown = " + ".join(f"{n} {name}" for name, n in verdicts.items() if n)
     summary_line = f"{fixed} fixed ({breakdown})" if breakdown else f"{fixed} fixed"
-    docs_ids = docs_only_target_ids(tmp_dir)
 
     print(json.dumps({
         "fixed_count": fixed,
         "code_changed": fixed > 0,
-        "docs_only": fixed > 0 and all(event["id"] in docs_ids for event in events),
+        "docs_only": fixed > 0 and docs_text_only(tmp_dir, statuses),
         "summary_line": summary_line,
         "maintain": verdicts["Maintain"],
         "alternative": verdicts["Alternative"],

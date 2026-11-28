@@ -182,7 +182,7 @@ The leader (you) does not load decision bodies into context. The fix `status` is
    python3 ${CLAUDE_PLUGIN_ROOT}/skills/respond/scripts/compile-review.py {tmp_dir} {document_path}
    ```
 
-2. Receive the result JSON from stdout (`{fixed_count, code_changed, docs_only, summary_line, maintain, alternative}`). `fixed_count` is the number of fixes (the count of statuses files). `docs_only` is true when there is at least one fix and every fix target in `{tmp_dir}/targets.jsonl` has `docs` alone as its `stages`.
+2. Receive the result JSON from stdout (`{fixed_count, code_changed, docs_only, summary_line, maintain, alternative}`). `fixed_count` is the number of fixes (the count of statuses files). `docs_only` is true when there is at least one fix and every fix target in `{tmp_dir}/targets.jsonl` counts as a fix of documentation text alone (`rules/sub-agent.md` § Documentation text): a fix target whose `stages` is `docs` alone, or one whose `stages` includes `code` and whose `text_only` is true both in its targets.jsonl entry and in every status file of its id.
 
 3. The leader removes `{tmp_dir}` in one shot:
    ```bash

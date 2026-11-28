@@ -40,9 +40,15 @@ The README names a removed option.
 """
 
 
-def item(finding_id, stages, estimate="Maintain"):
-    return {"id": finding_id, "assignee": "general-purpose", "stages": stages,
-            "estimate": estimate, "adr": None, "fix_plan": []}
+MISSING = object()
+
+
+def item(finding_id, stages, estimate="Maintain", text_only=MISSING):
+    target = {"id": finding_id, "assignee": "general-purpose", "stages": stages}
+    if text_only is not MISSING:
+        target["text_only"] = text_only
+    target.update({"estimate": estimate, "adr": None, "fix_plan": []})
+    return target
 
 
 class CompileReviewTest(unittest.TestCase):
@@ -58,13 +64,17 @@ class CompileReviewTest(unittest.TestCase):
             f.write(data.encode("utf-8") if isinstance(data, str) else data)
         return path
 
-    def status(self, finding_id, verdict="Maintain"):
-        self.write(f"statuses/{finding_id}.jsonl", json.dumps({
+    def status(self, finding_id, verdict="Maintain", text_only=MISSING, name=None):
+        status = {
             "id": finding_id, "specialist": "general-purpose", "verdict": verdict,
             "description": f"Fixed {finding_id}.",
             "memo_value": f"🟢 Fixed ({verdict}) — fixed {finding_id}",
             "files": ["README.md"],
-        }, ensure_ascii=False))
+        }
+        if text_only is not MISSING:
+            status["text_only"] = text_only
+        self.write(f"statuses/{name or finding_id}.jsonl",
+                   json.dumps(status, ensure_ascii=False))
 
     def targets(self, *items):
         self.write("targets.jsonl", json.dumps(
@@ -171,6 +181,82 @@ class CompileReviewTest(unittest.TestCase):
         self.status("M-1")
         self.targets(item("M-1", ["docs"]), item("M-1", ["code"]))
         self.assertIs(self.run_compile()["docs_only"], False)
+
+    def test_text_only_code_stage_fixes_are_docs_only(self):
+        cases = {
+            "code stages alone": (item("M-1", ["code"], text_only=True),
+                                  item("M-2", ["code", "docs"], text_only=True)),
+            "mixed with a docs stage": (item("M-1", ["code", "docs"], text_only=True),
+                                        item("M-2", ["docs"])),
+        }
+        for name, targets in cases.items():
+            with self.subTest(case=name):
+                self.setUp()
+                self.status("M-1", text_only=True)
+                self.status("M-2", text_only=True)
+                self.targets(*targets)
+                result = self.run_compile()
+                self.assertIs(result["docs_only"], True)
+                self.assertEqual(result["fixed_count"], 2)
+
+    def test_a_code_stage_target_not_marked_text_only_is_not_docs_only(self):
+        for text_only in (False, MISSING):
+            with self.subTest(text_only=text_only):
+                self.setUp()
+                self.status("M-1", text_only=True)
+                self.targets(item("M-1", ["code"], text_only=text_only))
+                self.assertIs(self.run_compile()["docs_only"], False)
+
+    def test_a_code_stage_status_not_marked_text_only_is_not_docs_only(self):
+        for text_only in (False, MISSING):
+            with self.subTest(text_only=text_only):
+                self.setUp()
+                self.status("M-1", text_only=text_only)
+                self.targets(item("M-1", ["code"], text_only=True))
+                self.assertIs(self.run_compile()["docs_only"], False)
+
+    def test_a_text_only_code_stage_target_without_a_status_is_not_docs_only(self):
+        for stages in (["code"], ["code", "docs"]):
+            with self.subTest(stages=stages):
+                self.setUp()
+                self.status("M-2", text_only=True)
+                self.targets(item("M-1", stages, text_only=True), item("M-2", ["docs"]))
+                self.assertIs(self.run_compile()["docs_only"], False)
+
+    def test_text_only_other_than_the_boolean_true_is_not_docs_only(self):
+        for value in ("true", 1, 1.0, None, [True]):
+            for side in ("target", "status"):
+                with self.subTest(value=value, side=side):
+                    self.setUp()
+                    self.status("M-1", text_only=value if side == "status" else True)
+                    self.targets(item("M-1", ["code"],
+                                      text_only=value if side == "target" else True))
+                    self.assertIs(self.run_compile()["docs_only"], False)
+
+    def test_every_status_of_a_code_stage_target_must_be_text_only(self):
+        for second, expected in ((True, True), (False, False), (MISSING, False)):
+            with self.subTest(second=second):
+                self.setUp()
+                self.status("M-1", text_only=True)
+                self.status("M-1", text_only=second, name="M-1-docs")
+                self.targets(item("M-1", ["code", "docs"], text_only=True))
+                self.assertIs(self.run_compile()["docs_only"], expected)
+
+    def test_a_docs_stage_target_ignores_text_only(self):
+        for text_only in (False, "true", MISSING):
+            with self.subTest(text_only=text_only):
+                self.setUp()
+                self.status("M-2", text_only=False)
+                self.targets(item("M-2", ["docs"], text_only=text_only))
+                self.assertIs(self.run_compile()["docs_only"], True)
+
+    def test_a_target_with_neither_stage_is_not_docs_only_even_if_text_only(self):
+        for stages in ([], ["review"]):
+            with self.subTest(stages=stages):
+                self.setUp()
+                self.status("M-1", text_only=True)
+                self.targets(item("M-1", stages, text_only=True))
+                self.assertIs(self.run_compile()["docs_only"], False)
 
     def test_existing_output_is_unchanged(self):
         for with_targets in (False, True):
