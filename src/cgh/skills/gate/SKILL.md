@@ -1,6 +1,6 @@
 ---
 name: gate
-description: URL で指定されたセルフレビュー済みの GitHub プルリクエストにマージゲートを実施し、壊れたコード、リグレッション、記録されていない残余がなくこのままマージできるかを判定して、ユーザーの指示を受けて PASS または BLOCK を指摘とともに投稿する。修正後にパスするまで繰り返し実行する。2 回目以降は前回までの指摘を確認する。プルリクエストをマージしてよいか問われたときに使う。承認もマージも行わない。
+description: URL で指定されたセルフレビュー済みの GitHub プルリクエストにマージゲートを実施し、壊れたコード、リグレッション、記録されていない残余（既定では、ドキュメント、コードコメント、プルリクエストのタイトルや説明にだけある問題は数えない）がなくこのままマージできるかを判定して、ユーザーの指示を受けて PASS または BLOCK を指摘とともに投稿する。修正後にパスするまで繰り返し実行する。2 回目以降は前回までの指摘を確認する。プルリクエストをマージしてよいか問われたときに使う。承認もマージも行わない。
 allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(git rev-parse:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
@@ -12,7 +12,7 @@ allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(
 
 `--adversarial`（デフォルト OFF）— コードの段階の `/creview:start` に `--adversarial` を渡す（Step 2）。
 
-`--strict-docs`（デフォルト OFF）— コードの段階の `/creview:start` に `--strict-docs` を渡してその段階のレビュアー、トリアージ、見積に人向けのドキュメントをコードと同じく扱わせ（Step 2）、ブロッキングを `strict_docs` = `on` で判定する（Step 3）。
+`--strict-docs`（デフォルト OFF）— コードの段階の `/creview:start` に `--strict-docs` を渡してその段階のレビュアー、トリアージ、見積に人向けのドキュメントと人向けコメントをコードと同じく扱わせ（Step 2）、ブロッキングを `strict_docs` = `on` で判定する（Step 3）。
 
 `--trust`（デフォルト OFF）— `gh-review.py prior` と両段階の `/creview:start` に `--trust` を渡し、プルリクエストの worktree がエージェントファイルを持つようにする。
 
@@ -80,7 +80,7 @@ null なら `{prior_document}` は `(none)` とする。
 
 ### コードの段階
 
-`{pr_url} --code-only --output {code_document}` で `creview:start` を実行する。`--adversarial`、`--strict-docs`、`--trust` が指定されていれば追加し、`{since}` が null でなければ `--since {since}` を追加する。`{docs_focus}` は `${CLAUDE_PLUGIN_ROOT}/rules/gate-focus-code.md を、人向けのドキュメント（README、API リファレンス、ガイド、changelog、CLAUDE.md や AGENTS.md などのプロジェクトメモリファイルなど）にもコードと同じく適用する: そこにあるコードが反する記述は、差分がその記述を追加または変更したときは壊れたコード、変更がそれを古くしたときはリグレッションとする。TODO / WIP の記述や約束したフォローアップのうち、変更がそこに足し、記録する issue のないものは記録されていない残余とする。変更がそこに足すセキュリティ問題（露出した秘密情報や、セキュリティホールを開く手順など）は壊れたコードとする。そうした問題は § Review に該当し、ほかのオーバーライドがコードの問題と言うところではコードの問題に含める。` とする。すべてのレビュアーへのオーバーライド:
+`{pr_url} --code-only --output {code_document}` で `creview:start` を実行する。`--adversarial`、`--strict-docs`、`--trust` が指定されていれば追加し、`{since}` が null でなければ `--since {since}` を追加する。`{docs_focus}` は `${CLAUDE_PLUGIN_ROOT}/rules/gate-focus-code.md を、人向けテキストにもコードと同じく適用する。人向けテキスト（sub-agent.md § 人向けテキスト）とは、README、API リファレンス、ガイド、changelog、CLAUDE.md や AGENTS.md などのプロジェクトメモリファイルなどの人向けのドキュメントと、ほかのファイルにある人向けコメントを指す。そこにあるコードが反する記述は、差分がその記述を追加または変更したときは壊れたコード、変更がそれを古くしたときはリグレッションとする: その矛盾は § Review が報告しないとするコメントの文言には当たらない。TODO / WIP の記述や約束したフォローアップのうち、変更がそこに足し、記録する issue のないものは記録されていない残余とし、変更がそこに足すセキュリティ問題（露出した秘密情報や、セキュリティホールを開く手順など）は壊れたコードとする。そうした問題は § Review に該当し、ほかのオーバーライドがコードの問題と言うところではコードの問題に含める。` とする。すべてのレビュアーへのオーバーライド:
 
 - `${CLAUDE_PLUGIN_ROOT}/rules/gate-focus-code.md を Read し、通常の観点に代えてその § Review を適用する。`
 - `--strict-docs` が指定されたとき: `{docs_focus}`

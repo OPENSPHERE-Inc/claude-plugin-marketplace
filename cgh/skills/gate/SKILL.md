@@ -1,6 +1,6 @@
 ---
 name: gate
-description: Run a merge gate on a self-reviewed GitHub pull request given by URL, judging whether it can merge as it stands with nothing broken, nothing regressed, and no untracked residue, and on the user's instruction post PASS or BLOCK with the findings. Run it again after fixes until it passes; later runs check the earlier findings. Use when the user asks whether a pull request is ready to merge. It never approves or merges.
+description: Run a merge gate on a self-reviewed GitHub pull request given by URL, judging whether it can merge as it stands with nothing broken, nothing regressed, and no untracked residue (by default, a problem only in documentation, code comments, or the pull request's title or description does not count), and on the user's instruction post PASS or BLOCK with the findings. Run it again after fixes until it passes; later runs check the earlier findings. Use when the user asks whether a pull request is ready to merge. It never approves or merges.
 allowed-tools: Skill, Agent, Read, Write, Edit, Glob, Grep, Bash(mkdir:*), Bash(git rev-parse:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gh-review.py:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/del-tmp.sh:*)
 ---
 
@@ -12,7 +12,7 @@ If the argument is `$ARGUMENTS`, interpret it as the pull request URL (`{pr_url}
 
 `--adversarial` (default OFF) — Pass `--adversarial` to the code stage's `/creview:start` (Step 2).
 
-`--strict-docs` (default OFF) — Pass `--strict-docs` to the code stage's `/creview:start` and have that stage's reviewers, triage, and estimates treat documentation for people as code (Step 2), and judge blocking with `strict_docs` = `on` (Step 3).
+`--strict-docs` (default OFF) — Pass `--strict-docs` to the code stage's `/creview:start` and have that stage's reviewers, triage, and estimates treat documentation for people and prose comments as code (Step 2), and judge blocking with `strict_docs` = `on` (Step 3).
 
 `--trust` (default OFF) — Pass `--trust` to `gh-review.py prior` and to both stages' `/creview:start`, so that a worktree of the pull request has its agent files.
 
@@ -80,7 +80,7 @@ When it reports findings, run `creview:triage` with `{pr_document}`, adding `--a
 
 ### Code stage
 
-Run `creview:start` with `{pr_url} --code-only --output {code_document}`, adding `--adversarial`, `--strict-docs`, and `--trust` when given and `--since {since}` when `{since}` is not null. `{docs_focus}` is `Apply ${CLAUDE_PLUGIN_ROOT}/rules/gate-focus-code.md to documentation for people (such as a README, an API reference, a guide, a changelog, or a project memory file such as CLAUDE.md or AGENTS.md) as to code: a statement in it that the code contradicts is broken code when the diff adds or changes the statement, and a regression when the change leaves it out of date; a TODO / WIP note or a promised follow-up the change adds to it, with no issue recording it, is untracked residue; a security problem the change adds to it, such as an exposed secret or a step that opens a security hole, is broken code. Such a problem is within § Review and counts as a problem in the code wherever another override names one.` Overrides for every reviewer:
+Run `creview:start` with `{pr_url} --code-only --output {code_document}`, adding `--adversarial`, `--strict-docs`, and `--trust` when given and `--since {since}` when `{since}` is not null. `{docs_focus}` is `Apply ${CLAUDE_PLUGIN_ROOT}/rules/gate-focus-code.md to documentation text as to code. Documentation text (sub-agent.md § Documentation text) is documentation for people, such as a README, an API reference, a guide, a changelog, or a project memory file such as CLAUDE.md or AGENTS.md, and the prose comments in other files. A statement in it that the code contradicts is broken code when the diff adds or changes the statement, and a regression when the change leaves it out of date: such a contradiction is not the comment wording § Review leaves out. A TODO / WIP note or a promised follow-up the change adds to it, with no issue recording it, is untracked residue, and a security problem the change adds to it, such as an exposed secret or a step that opens a security hole, is broken code. Such a problem is within § Review and counts as a problem in the code wherever another override names one.` Overrides for every reviewer:
 
 - `Read ${CLAUDE_PLUGIN_ROOT}/rules/gate-focus-code.md and apply its § Review in place of your usual perspective.`
 - When `--strict-docs` is given: `{docs_focus}`
