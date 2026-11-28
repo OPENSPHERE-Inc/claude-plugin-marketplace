@@ -22,7 +22,7 @@ The user may optionally specify an output base path. When the argument is `$ARGU
 - `--max-rounds N` (default 10, range 1–20) — Change the maximum number of rounds for the outer loop.
 - `--base {branch}` (default `main` or `master`) — Specify the base branch (passed to the review phase). `--incremental` overrides it from Round 2 on.
 - `--adversarial` (default OFF) — Run the review phase in adversarial mode (passed through to the review phase).
-- `--strict-docs` (default OFF) — Treat documentation files like any other file in the round loop's decisions (passed through to the review phase). Without it, a round whose fixes changed only documentation files ends the round loop (2.6).
+- `--strict-docs` (default OFF) — Treat documentation text (`${CLAUDE_PLUGIN_ROOT}/rules/sub-agent.md` § Documentation text: documentation files and prose comments) like code in the round loop's decisions (passed through to the review phase). Without it, a round whose fixes changed only documentation text ends the round loop (2.6).
 - `--worktree[=branch]` (default OFF) — Run every round in a separate git worktree on `branch` (§ Worktree). Without `=branch`, a new branch `creview-rounds-{YYYYMMDD-HHMMSS}` (the start time) is created from the current HEAD. Enables `--commit`.
 - `--on-divergence {ask|stop}` (default `ask`) — What happens when the Step 2.2 divergence pattern detection gate detects a divergence. `ask`: present the divergence investigation report and wait for the user's instruction to continue. `stop`: present nothing and stop the round loop (Step 2.2 step 8), or, for documentation divergences without `--strict-docs`, fix them in their round (Step 2.2 step 4.3).
 - `--result {path}` (default none) — Write the result file (§ Result file) when the run ends.
