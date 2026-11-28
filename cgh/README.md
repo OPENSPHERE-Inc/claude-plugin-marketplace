@@ -8,7 +8,7 @@ The plugin never approves, merges, pushes, or marks a thread resolved.
 
 ## Requirements
 
-- The `creview` plugin, version 0.24.0 or later, which Claude Code installs with `cgh` as a
+- The `creview` plugin, version 0.25.0 or later, which Claude Code installs with `cgh` as a
   dependency, and what it needs for a pull request: an authenticated GitHub CLI (`gh`), Git 2.41
   or later, `python3` (3.9 or later) on the `PATH`, and a clone with the pull request's
   repository as a remote. The skills refuse a pull request of any other repository.
@@ -73,16 +73,40 @@ two review documents into one, with the pull request stage's findings first.
   behavior, changes the review could not read, and work left undone in the code with no issue
   recording it, such as a `TODO` or a follow-up a code comment promises. The focus is in
   [rules/gate-focus-code.md](rules/gate-focus-code.md).
-  - With `--strict-docs`, it also looks for these problems in documentation for people: a
-    statement that the change adds, edits, or leaves out of date and that the code contradicts,
-    a TODO or a promised follow-up the change adds to it, and a security problem the change adds
-    to it.
+  - Without `--strict-docs`, a `TODO` or a promised follow-up in a prose comment, described below,
+    is raised but does not block by itself (see the blocking points below).
+  - With `--strict-docs`, it also looks in documentation text, described below, for a statement
+    that the change adds, edits, or leaves out of date and that the code contradicts, and for a
+    security problem the change adds to it. It looks for a TODO or a promised follow-up the change
+    adds to documentation for people as well, as it does in comments. A comment that the code
+    contradicts is then broken code or a regression, not a matter of comment wording, which the
+    code stage does not report.
   - It does not raise again a problem the pull request stage reports as a failed check or an
     unsettled discussion.
   - It still raises a problem in the code that the pull request stage reports only as a claim of
     the title or description or an open item in the description, since editing the title or
     description settles those findings. With `--strict-docs`, it raises such a problem in
-    documentation for people as well.
+    documentation text as well.
+
+Documentation text is documentation for people and the prose comments in other files.
+Documentation for people is a file such as a README, an API reference, a guide, a changelog, or a
+project memory file such as `CLAUDE.md` or `AGENTS.md`. AI-facing prompts, code and tests apart
+from their prose comments, and the description are not documentation text. A file of
+documentation for people is documentation text as a whole, its code examples and directives
+included: the judgment of parts below applies only to the comments in other files.
+
+- A prose comment is a part of a comment that only people read, such as the text of a comment or
+  a docstring, or the description in a doc block. Each part is judged on its own: within one doc
+  block, its description and a type it declares are judged apart.
+- A `TODO` or `FIXME` in a comment, and a follow-up a comment promises, are prose comments.
+- A part that a tool of the project reads and acts on is code, whatever it looks like, such as a
+  directive to a compiler or a linter, a type a type checker reads, an annotation a framework
+  reads, or an example a test runner runs. A check of only the form of a comment's text, such as
+  its spelling or the markers in it, does not make the text code.
+- Generating documentation for people, such as an API reference, from the comments does not by
+  itself make a part code.
+- Commented-out code is code, and so is a part when it is unclear whether only people read it.
+- AI-facing prompt files and the templates an AI agent fills hold no prose comments.
 
 Nice-to-have tests, refactoring, and style are not findings. A residue that names an issue or a
 pull request counts as recorded. A conversation comment does not record one.
@@ -121,11 +145,10 @@ posted comment shows which, next to its severity:
     description leaves open, such as an unchecked item, a TODO / WIP note, or a promised
     follow-up. A finding that also reports broken code, a regression, or a security problem is
     not one.
-  - A finding about a problem in a file of documentation for people, such as a README, an API
-    reference, a guide, a changelog, or a project memory file such as `CLAUDE.md` or
-    `AGENTS.md`. AI-facing prompts, code, tests, and the description are not documentation here.
-    A finding that also reports broken code, a regression, or a security problem, other than one
-    in that documentation itself, is not one.
+  - A finding about a problem in documentation text, as described above. This includes a `TODO`
+    or `FIXME` in a prose comment with no issue recording it and a follow-up a prose comment
+    promises, which the code stage raises as work left undone. A finding that also reports broken
+    code, a regression, or a security problem outside documentation text is not one.
   - A finding that also reports a failed check, an unsettled discussion, or a change the review
     could not read is of neither kind. A finding not clearly of either kind is judged by the
     points below.
@@ -143,11 +166,11 @@ posted comment shows which, next to its severity:
 - Other broken code and regressions block, unless both of these hold: it occurs only under a
   special condition normal use does not reach or in a very short window, and deferring it is
   evident from the description or from a decline by the assignees or, with none, the author.
-- A problem in documentation for people, as the first point describes it:
+- A problem in documentation text, as the first point describes it:
   - Without `--strict-docs`, it does not block, even a security problem.
   - With `--strict-docs`, it is judged by the points above as a problem in code.
-    - A TODO / WIP note in it or a follow-up it promises is work left undone, and a security
-      problem in it is a security problem.
+    - A TODO / FIXME / WIP note in it or a follow-up it promises is work left undone, and a
+      security problem in it is a security problem.
     - Any other problem in it, such as a statement the code contradicts, blocks as other broken
       code does. A deferral makes it non-blocking only when it misleads only about a case normal
       use does not reach.
@@ -294,22 +317,24 @@ Major finding must state a concrete failure scenario. See the
 
 `/cgh:review` passes it to `/creview:start`, and `/cgh:gate` to its code stage's
 `/creview:start`. Together with `--adversarial`, it has `/creview:start`'s reviewers review
-documentation files with the adversarial stance as well; without `--adversarial`, it leaves
-their stance unchanged. See the [creview README](../creview/README.md).
+documentation text, the documentation files and the prose comments in code, with the adversarial
+stance as well; without `--adversarial`, it leaves their stance unchanged. See the
+[creview README](../creview/README.md).
 
-With `/cgh:gate`, the code stage also reviews and triages documentation for people by the same
-focus as code, as described under [`/cgh:gate`](#cghgate). Findings on the title, the
-description, and documentation for people are then judged by the same points as any other
-finding, as listed there. A claim of the title or description that the code contradicts and
-work the description leaves open block.
-A problem in documentation for people is judged as a problem in code: a README statement that the
-code contradicts blocks, and a deferral makes it non-blocking only when it misleads only about a
-case normal use does not reach. Without `--strict-docs`, those findings do not block, apart from
-the exceptions listed there.
+With `/cgh:gate`, the code stage also reviews and triages documentation text by the same focus
+as code, as described under [`/cgh:gate`](#cghgate). Findings on the title, the description, and
+documentation text are then judged by the same points as any other finding, as listed there. A
+claim of the title or description that the code contradicts and work the description leaves open
+block.
+A problem in documentation text is judged as a problem in code: a README statement or a comment
+that the code contradicts blocks, as does a `TODO` in a comment with no issue recording it, and a
+deferral makes a contradicted statement non-blocking only when it misleads only about a case
+normal use does not reach. Without `--strict-docs`, those findings do not block, apart from the
+exceptions listed there.
 
 An earlier gate finding keeps the judgment it was posted with: a finding on the description or
-on documentation for people that a run with `--strict-docs` posted as blocking still blocks a
-later run without it while it is unverified. You can change the judgment at the preview.
+on documentation text that a run with `--strict-docs` posted as blocking still blocks a later
+run without it while it is unverified. You can change the judgment at the preview.
 
 ## `--trust`
 
